@@ -24,7 +24,24 @@ use std::sync::{Arc, Mutex};
 // Shared with the generated launchers: brings the device's own system fonts into the egui fallback
 // chain and makes them visible to the app's own font scanners (see templates/android/system_fonts.rs).
 mod system_fonts;
+// Register an imported font with PhotoCraft's text engine.
+fn register_custom_font(bytes: Vec<u8>) -> Result<Vec<String>, String> {
+    if bytes.is_empty() || bytes.len() > 32 * 1024 * 1024 {
+        return Err("Font file must be between 1 byte and 32 MB".into());
+    }
 
+    let mut engine = photocraft_text::shared()
+        .lock()
+        .map_err(|e| format!("Font engine lock failed: {e}"))?;
+
+    let families = engine.fonts.register_font_data(bytes);
+
+    if families.is_empty() {
+        return Err("No supported font families found".into());
+    }
+
+    Ok(families)
+}
 // Shared with the generated launchers: turns Android's soft keyboard into egui IME events (see
 // templates/android/ime_bridge.rs). The `mod ime_bridge;` marker also keeps the vendored
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.

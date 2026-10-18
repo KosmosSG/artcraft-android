@@ -16,7 +16,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Install Java 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -27,7 +27,7 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Configure Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
@@ -35,21 +35,12 @@ jobs:
           sdkmanager --install "ndk;27.2.12479018"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Build PhotoCraft debug APK
+      - name: Build PhotoCraft APK
         run: bash build-debug.sh -photocraft
 
-      - name: Upload PhotoCraft APK
-        if: success()
+      - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
           name: PhotoCraft-Android-Debug
           path: output/*.apk
           if-no-files-found: error
-
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v5
-        with:
-          name: PhotoCraft-Build-Logs
-          path: logs/
-          if-no-files-found: warn

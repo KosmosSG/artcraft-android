@@ -761,6 +761,11 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui, _frame);
+        // The upstream Window menu toggles this egui flag.
+        let custom_fonts_open = ui.ctx().data(|d| d.get_temp::<bool>(
+            egui::Id::new("artcraft.custom_fonts_visible")
+        )).unwrap_or(false);
+        if custom_fonts_open {
         egui::Window::new("Custom Fonts")
             .default_pos([24.0, 100.0])
             .resizable(false)
@@ -772,6 +777,7 @@ impl eframe::App for PhotoCraftAndroidApp {
                     .unwrap_or_else(|e| e.into_inner()).clone();
                 if !status.is_empty() { ui.label(status); }
             });
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

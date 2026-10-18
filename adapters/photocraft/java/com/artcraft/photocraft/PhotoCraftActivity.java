@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.provider.DocumentsContract;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
@@ -48,6 +49,8 @@ public final class PhotoCraftActivity extends NativeActivity {
     private static final String TAG = "PhotoCraftSAF";
     private static final int REQ_OPEN = 0x5043;
     private static final int REQ_SAVE = 0x5044;
+    private static final int REQ_FONT_FOLDER = 0x5045;
+    private static final String FONT_FOLDER_PREF = "shared_font_tree_uri";
     private static final String PREFS = "photocraft_saf_uri_map";
     private final ConcurrentLinkedQueue<String> results = new ConcurrentLinkedQueue<>();
     private final Map<Integer, Long> requestIds = new HashMap<>();
@@ -363,17 +366,136 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
+    /** Ask Android for read-only access to a user-selected shared font directory. */
+    public void pcRequestFontFolder(long id) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                requestIds.put(REQ_FONT_FOLDER, id);
+                startActivityForResult(intent, REQ_FONT_FOLDER);
+            } catch (Exception error) {
+                requestIds.remove(REQ_FONT_FOLDER);
+                enqueueError(id, "font_folder", error.toString());
+            }
+        });
+    }
+
+    /** Refresh the previously selected folder, without prompting again. */
+    public void pcRefreshFontFolder(long id) {
+        String stored = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(FONT_FOLDER_PREF, null);
+        if (stored == null) {
+            enqueueError(id, "font_folder", "Select Shared Font Folder first");
+            return;
+        }
+        scanFontFolder(id, Uri.parse(stored));
+    }
+
+    private void scanFontFolder(long id, Uri treeUri) {
+        io.execute(() -> {
+            try {
+                boolean granted = false;
+                for (android.content.UriPermission permission :
+                        getContentResolver().getPersistedUriPermissions()) {
+                    if (treeUri.equals(permission.getUri()) && permission.isReadPermission()) {
+                        granted = true;
+                        break;
+                    }
+                }
+                if (!granted) throw new SecurityException("Folder access expired; select the folder again");
+
+                File cache = new File(appStorageDir(), "shared-font-cache");
+                if (!cache.isDirectory() && !cache.mkdirs())
+                    throw new Exception("Could not create shared font cache");
+
+                Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(
+                        treeUri, DocumentsContract.getTreeDocumentId(treeUri));
+                JSONArray paths = new JSONArray();
+                int count = 0;
+                try (Cursor cursor = getContentResolver().query(children,
+                        new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                                DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                    if (cursor == null) throw new Exception("Font folder could not be listed");
+                    while (cursor.moveToNext()) {
+                        String documentId = cursor.getString(0);
+                        String name = cursor.getString(1);
+                        String mime = cursor.getString(2);
+                        if (documentId == null || name == null ||
+                                DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) continue;
+                        String lower = name.toLowerCase(java.util.Locale.ROOT);
+                        if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")) continue;
+                        if (count >= 200) break;
+                        if (!cursor.isNull(3)) {
+                            long size = cursor.getLong(3);
+                            if (size <= 0 || size > 32L * 1024 * 1024) continue;
+                        }
+                        Uri fontUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
+                        String extension = lower.endsWith(".ttf") ? ".ttf" : ".otf";
+                        String hash = Integer.toHexString(documentId.hashCode());
+                        File target = new File(cache, "font-" + hash + extension);
+                        // Limit actual bytes too: provider-reported sizes are not always reliable.
+                        try (InputStream input = getContentResolver().openInputStream(fontUri);
+                             OutputStream output = new FileOutputStream(target)) {
+                            if (input == null) throw new Exception("Cannot read font " + name);
+                            byte[] buffer = new byte[64 * 1024];
+                            int n;
+                            long total = 0;
+                            while ((n = input.read(buffer)) != -1) {
+                                total += n;
+                                if (total > 32L * 1024 * 1024)
+                                    throw new Exception("Font too large: " + name);
+                                output.write(buffer, 0, n);
+                            }
+                            if (total == 0) throw new Exception("Empty font: " + name);
+                        } catch (Exception fontError) {
+                            target.delete();
+                            Log.w(TAG, "Skipping shared font " + name, fontError);
+                            continue;
+                        }
+                        paths.put(target.getAbsolutePath());
+                        count++;
+                    }
+                }
+                JSONObject result = base(id, "font_folder", "ok");
+                result.put("paths", paths);
+                result.put("count", count);
+                results.offer(result.toString());
+            } catch (Exception error) {
+                enqueueError(id, "font_folder", error.toString());
+            }
+        });
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) return;
+        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE && requestCode != REQ_FONT_FOLDER) return;
         Long boxedId = requestIds.remove(requestCode);
         if (boxedId == null) return;
         final long id = boxedId;
-        final String kind = requestCode == REQ_OPEN ? "open" : "save";
+        final String kind = requestCode == REQ_OPEN ? "open" : (requestCode == REQ_SAVE ? "save" : "font_folder");
         if (resultCode != RESULT_OK || data == null) {
             suggestedNames.remove(id);
             enqueueCancel(id, kind);
+            return;
+        }
+        if (requestCode == REQ_FONT_FOLDER) {
+            Uri treeUri = data.getData();
+            if (treeUri == null) { enqueueCancel(id, kind); return; }
+            try {
+                int readFlag = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                if (readFlag == 0) throw new SecurityException("Folder read permission not granted");
+                getContentResolver().takePersistableUriPermission(treeUri, readFlag);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString(FONT_FOLDER_PREF, treeUri.toString()).apply();
+                scanFontFolder(id, treeUri);
+            } catch (Exception error) {
+                enqueueError(id, kind, error.toString());
+            }
             return;
         }
         if (requestCode == REQ_SAVE) {

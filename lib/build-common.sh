@@ -311,6 +311,21 @@ if fixed:
     print(f"  Repaired upstream compile errors still present in {title}: {', '.join(fixed)}")
 PY
 
+# Apply the Android-only Window > Custom Fonts menu patch after cloning PhotoCraft.
+# Keep this scoped to PhotoCraft; fail rather than silently build without the menu.
+if [[ "$APP" == "photocraft" ]]; then
+    MENU_PATCH="$ROOT/patches/photocraft-menus.patch"
+    [[ -f "$MENU_PATCH" ]] || fail "Missing PhotoCraft menu patch: $MENU_PATCH"
+    if git -C "$SRC" apply --reverse --check "$MENU_PATCH" >/dev/null 2>&1; then
+        echo "PhotoCraft Custom Fonts menu patch is already applied."
+    elif git -C "$SRC" apply --check "$MENU_PATCH"; then
+        git -C "$SRC" apply "$MENU_PATCH"
+        echo "Applied PhotoCraft Window > Custom Fonts menu patch."
+    else
+        fail "PhotoCraft upstream menus.rs has changed; the Custom Fonts patch no longer applies."
+    fi
+fi
+
 say 4 "Preparing the NativeActivity launcher..."
 if [[ -x "adapters/$APP/prepare.sh" ]]; then
     echo "Using app-specific adapter: adapters/$APP/prepare.sh"

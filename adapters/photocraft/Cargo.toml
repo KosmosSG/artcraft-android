@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 photocraft-engine = { path = "../../crates/engine" }
 photocraft-ui-egui = { path = "../../crates/ui-egui" }
+photocraft-text = { path = "../../crates/text" }
 photocraft-io = { path = "../../crates/io" }
 photocraft-doc = { path = "../../crates/doc" }
 photocraft-codecs = { path = "../../crates/codecs" }

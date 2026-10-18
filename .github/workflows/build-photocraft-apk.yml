@@ -27,11 +27,34 @@ jobs:
         with:
           targets: aarch64-linux-android
 
+
       - name: Set up Android SDK
+        shell: bash
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          sdkmanager --version
+          set -euo pipefail
+
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+          echo "Checking Android SDK tools..."
+          find "$SDK_ROOT/cmdline-tools" \
+            -maxdepth 3 -name sdkmanager -type f \
+            -print 2>/dev/null || true
+
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" \
+            -maxdepth 3 -name sdkmanager -type f \
+            -print -quit 2>/dev/null || true)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android SDK command-line tools not found."
+            exit 1
+          fi
+
+          SDK_BIN="$(dirname "$SDKMANAGER")"
+          echo "$SDK_BIN" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
+
 
       - name: Install Android NDK
         run: |

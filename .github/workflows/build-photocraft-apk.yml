@@ -28,7 +28,10 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          sdkmanager --version
 
       - name: Install Android NDK
         run: |

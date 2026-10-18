@@ -101,6 +101,18 @@ impl AndroidFileBridge {
             .map_err(|e| e.to_string())
     }
 
+    fn request_font_folder(&self, id: u64, refresh: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+            let method = if refresh { jni_str!("pcRefreshFontFolder") }
+                         else { jni_str!("pcRequestFontFolder") };
+            env.call_method(&*activity, method, jni_sig!("(J)V"),
+                &[JValue::Long(id as i64)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn request_save(&self, id: u64, name: &str) -> Result<(), String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -234,6 +246,8 @@ struct PickerState {
     next_id: AtomicU64,
     replies: Mutex<HashMap<u64, FileDialogReply>>,
     font_request: Mutex<Option<u64>>,
+    shared_font_request: Mutex<Option<u64>>,
+    shared_font_status: Mutex<String>,
     font_status: Mutex<String>,
 }
 
@@ -251,6 +265,53 @@ impl PickerState {
                 *self.font_status.lock().unwrap_or_else(|e| e.into_inner()) = format!("Picker error: {error}");
             }
         }
+    }
+
+    fn launch_shared_fonts(&self, bridge: &AndroidFileBridge, refresh: bool) {
+        let mut pending = self.shared_font_request.lock().unwrap_or_else(|e| e.into_inner());
+        if pending.is_some() { return; }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        match bridge.request_font_folder(id, refresh) {
+            Ok(()) => {
+                *pending = Some(id);
+                *self.shared_font_status.lock().unwrap_or_else(|e| e.into_inner()) =
+                    if refresh { "Refreshing shared fonts…" } else { "Select ArtCraft-Fonts in Android Files…" }.into();
+            }
+            Err(error) => {
+                *self.shared_font_status.lock().unwrap_or_else(|e| e.into_inner()) =
+                    format!("Shared folder error: {error}");
+            }
+        }
+    }
+
+    fn process_shared_font_result(&self, value: &serde_json::Value) {
+        let result = (|| -> Result<String, String> {
+            match value.get("status").and_then(|v| v.as_str()) {
+                Some("cancel") => return Ok("Shared folder selection cancelled".into()),
+                Some("ok") => {},
+                _ => return Err(value.get("message").and_then(|v| v.as_str())
+                    .unwrap_or("Could not read shared font folder").into()),
+            }
+            if value.get("kind").and_then(|v| v.as_str()) != Some("font_folder") {
+                return Err("Unexpected shared folder response".into());
+            }
+            let paths = value.get("paths").and_then(|v| v.as_array())
+                .ok_or("Shared folder returned no font list")?;
+            let mut registered = 0usize;
+            let mut skipped = 0usize;
+            for item in paths {
+                let Some(path) = item.as_str() else { skipped += 1; continue };
+                let result = fs::read(path).map_err(|e| e.to_string())
+                    .and_then(register_custom_font);
+                match result {
+                    Ok(families) => { registered += 1; log::info!("Shared font {path}: {:?}", families); },
+                    Err(error) => { skipped += 1; log::warn!("Skipping shared font {path}: {error}"); }
+                }
+            }
+            Ok(format!("Shared fonts loaded: {registered}; skipped: {skipped}"))
+        })();
+        *self.shared_font_status.lock().unwrap_or_else(|e| e.into_inner()) =
+            result.unwrap_or_else(|error| format!("Shared fonts: {error}"));
     }
 
     fn process_font_result(&self, bridge: &AndroidFileBridge, id: u64, value: &serde_json::Value) {
@@ -368,6 +429,16 @@ impl PickerState {
                 ctx.request_repaint();
                 continue;
             }
+            let is_shared_font = {
+                let mut pending = self.shared_font_request.lock().unwrap_or_else(|e| e.into_inner());
+                if *pending == Some(id) { *pending = None; true } else { false }
+            };
+            if is_shared_font {
+                self.process_shared_font_result(&value);
+                ctx.request_repaint();
+                continue;
+            }
+
             let Some(reply) = self
                 .replies
                 .lock()
@@ -773,6 +844,18 @@ impl eframe::App for PhotoCraftAndroidApp {
                 if ui.button("Import Font (.ttf / .otf)").clicked() {
                     self.picker.launch_font(&self.bridge);
                 }
+                ui.separator();
+                ui.label("Shared ArtCraft font library");
+                if ui.button("Select Shared Font Folder").clicked() {
+                    self.picker.launch_shared_fonts(&self.bridge, false);
+                }
+                if ui.button("Refresh Shared Fonts").clicked() {
+                    self.picker.launch_shared_fonts(&self.bridge, true);
+                }
+                let shared_status = self.picker.shared_font_status.lock()
+                    .unwrap_or_else(|e| e.into_inner()).clone();
+                if !shared_status.is_empty() { ui.label(shared_status); }
+                ui.separator();
                 let status = self.picker.font_status.lock()
                     .unwrap_or_else(|e| e.into_inner()).clone();
                 if !status.is_empty() { ui.label(status); }
@@ -814,6 +897,9 @@ fn android_main(android_app: AndroidApp) {
         }
     }
     let picker = Arc::new(PickerState::default());
+    // Restore shared fonts asynchronously from the persisted SAF folder on startup.
+    // Missing or revoked permission is nonfatal; private imported fonts remain available.
+    picker.launch_shared_fonts(&bridge, true);
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

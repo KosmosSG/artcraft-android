@@ -1,0 +1,68 @@
+
+name: Inspect PhotoCraft Android Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out integration repository
+        uses: actions/checkout@v4
+
+      - name: Download PhotoCraft Android source
+        uses: actions/checkout@v4
+        with:
+          repository: morte2437/photocraft-android
+          path: source-photocraft
+          fetch-depth: 0
+
+      - name: Download ArtCraft Android source
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          path: source-artcraft
+          fetch-depth: 0
+
+      - name: Inspect source trees and build instructions
+        shell: bash
+        run: |
+          {
+            echo "=== PhotoCraft Android ==="
+            git -C source-photocraft log -1 --format='%H %s'
+            find source-photocraft -maxdepth 4 -type f \
+              \( -name 'README*' \
+              -o -name 'Cargo.toml' \
+              -o -name 'build.gradle*' \
+              -o -name 'settings.gradle*' \
+              -o -name 'gradlew' \
+              -o -name 'build.ps1' \
+              -o -name 'AndroidManifest.xml' \
+              -o -name 'rust-toolchain*' \) \
+              -print | sort
+
+            echo
+            echo "=== ArtCraft Android ==="
+            git -C source-artcraft log -1 --format='%H %s'
+            find source-artcraft -maxdepth 4 -type f \
+              \( -name 'README*' \
+              -o -name 'Cargo.toml' \
+              -o -name 'build.gradle*' \
+              -o -name 'settings.gradle*' \
+              -o -name 'gradlew' \
+              -o -name 'build.ps1' \
+              -o -name 'AndroidManifest.xml' \
+              -o -name 'rust-toolchain*' \) \
+              -print | sort
+          } | tee build-inspection.txt
+
+      - name: Upload inspection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: photocraft-build-inspection
+          path: build-inspection.txt
+          if-no-files-found: error

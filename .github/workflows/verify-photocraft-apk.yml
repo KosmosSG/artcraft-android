@@ -138,7 +138,7 @@ jobs:
           echo "=== ACTUAL APK IDENTITY ==="
           echo "$PACKAGE_INFO"
 
-          PACKAGE="$(echo "$PACKAGE_INFO" | sed -n "s/.*name='\([^']*\)'.*/\1/p")"
+          PACKAGE="$(echo "$PACKAGE_INFO" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
           VERSION_CODE="$(echo "$PACKAGE_INFO" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
           VERSION_NAME="$(echo "$PACKAGE_INFO" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
 

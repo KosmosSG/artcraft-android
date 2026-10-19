@@ -15,11 +15,51 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      - name: Download encrypted signing backup
+        uses: actions/checkout@v5
+        with:
+          repository: KosmosSG/photocraft-signing-private
+          token: ${{ secrets.PHOTOCRAFT_SIGNING_REPO_TOKEN }}
+          path: signing-backup
+          persist-credentials: false
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Restore permanent signing key
+        shell: bash
+        env:
+          BACKUP_PASSWORD: ${{ secrets.PHOTOCRAFT_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$BACKUP_PASSWORD" || { echo 'Missing signing backup password'; exit 1; }
+          test -s signing-backup/photocraft-signing-backup.tar.gz.enc || { echo 'Encrypted backup missing'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/photocraft-signing" keys
+          openssl enc -d -aes-256-cbc -pbkdf2 -salt -iter 200000 \
+            -pass env:BACKUP_PASSWORD \
+            -in signing-backup/photocraft-signing-backup.tar.gz.enc \
+            -out "$RUNNER_TEMP/photocraft-signing/backup.tar.gz"
+          tar -xzf "$RUNNER_TEMP/photocraft-signing/backup.tar.gz" \
+            -C "$RUNNER_TEMP/photocraft-signing" \
+            photocraft-release.p12 keystore-password.txt
+          cp "$RUNNER_TEMP/photocraft-signing/keystore-password.txt" keys/.keystore-password
+          KEY_PASS="$(cat keys/.keystore-password)"
+          test -n "$KEY_PASS" || { echo 'Empty keystore password'; exit 1; }
+          keytool -importkeystore -noprompt \
+            -srckeystore "$RUNNER_TEMP/photocraft-signing/photocraft-release.p12" \
+            -srcstoretype PKCS12 -srcstorepass "$KEY_PASS" \
+            -destkeystore keys/artcraft-builder.jks \
+            -deststoretype JKS -deststorepass "$KEY_PASS" \
+            -srcalias photocraft -destalias artcraftbuilder
+          chmod 600 keys/.keystore-password keys/artcraft-builder.jks
+          keytool -list -v -keystore keys/artcraft-builder.jks \
+            -storepass "$KEY_PASS" -alias artcraftbuilder | grep 'SHA256:'
+          rm -rf "$RUNNER_TEMP/photocraft-signing" signing-backup
+          test -s keys/artcraft-builder.jks
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

@@ -18,48 +18,67 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+
             const runs = await github.paginate(
               github.rest.actions.listWorkflowRuns,
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: 'build-photocraft-release.yml',
-                branch: 'photocraft-in-app-updater'
+                branch: 'photocraft-in-app-updater',
                 status: 'success',
                 per_page: 100
               }
             );
+
             if (!runs.length) {
-              core.setFailed('No successful PhotoCraft release workflow found.');
+              core.setFailed('No successful PhotoCraft release build found.');
               return;
             }
-            const run = runs[0];
-            const artifacts = await github.paginate(
-              github.rest.actions.listWorkflowRunArtifacts,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: run.id,
-                per_page: 100
+
+            let selected = null;
+
+            for (const run of runs) {
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id,
+                  per_page: 100
+                }
+              );
+
+              const artifact = artifacts.find(
+                a => a.name === 'PhotoCraft-Android-Release' && !a.expired
+              );
+
+              if (artifact) {
+                selected = { run, artifact };
+                break;
               }
-            );
-            const artifact = artifacts.find(a =>
-              a.name === 'PhotoCraft-Android-Release' && !a.expired
-            );
-            if (!artifact) {
-              core.setFailed('Release APK artifact is missing or expired.');
+            }
+
+            if (!selected) {
+              core.setFailed('No available PhotoCraft release APK artifact found.');
               return;
             }
+
             const response = await github.rest.actions.downloadArtifact({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              artifact_id: artifact.id,
+              artifact_id: selected.artifact.id,
               archive_format: 'zip'
             });
-            fs.writeFileSync('photocraft-artifact.zip',
-              Buffer.from(response.data));
-            core.info('Downloaded APK from successful run ' + run.id);
-            core.info('Source commit: ' + run.head_sha);
+
+            fs.writeFileSync(
+              'photocraft-artifact.zip',
+              Buffer.from(response.data)
+            );
+
+            core.info('Downloaded from run: ' + selected.run.id);
+            core.info('Source branch: ' + selected.run.head_branch);
+            core.info('Source commit: ' + selected.run.head_sha);
 
       - name: Extract APK
         shell: bash
@@ -73,23 +92,94 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -d '' apks < <(find verified-apk -type f -name '*.apk' -print0)
-          test "${#apks[@]}" -eq 1 || {
-            echo "Expected exactly one APK."
+
+          mapfile -d '' apks < <(
+            find verified-apk -type f -name '*.apk' -print0
+          )
+
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "ERROR: Expected exactly one APK."
             exit 1
-          }
+          fi
+
           APK="${apks[0]}"
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
           APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
           AAPT="$(find "$SDK/build-tools" -name aapt -type f | sort -V | tail -1)"
-          test -n "$APKSIGNER" && test -n "$AAPT" || {
-            echo "Android build tools not found."
+
+          if [ -z "$APKSIGNER" ] || [ -z "$AAPT" ]; then
+            echo "ERROR: Android build tools not found."
             exit 1
-          }
+          fi
+
           echo "=== APK SIGNATURE ==="
           "$APKSIGNER" verify --verbose --print-certs "$APK"
+
           echo "=== PACKAGE AND VERSION ==="
           "$AAPT" dump badging "$APK" | grep '^package:'
+
           echo "=== APK SHA256 ==="
           sha256sum "$APK"
-          echo "=== VERIFICATION COMPLETE ==="
+
+      - name: Check PhotoCraft upgrade requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$(find verified-apk -type f -name '*.apk' -print -quit)"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT="$(find "$SDK/build-tools" -name aapt -type f | sort -V | tail -1)"
+
+          PACKAGE_INFO="$("$AAPT" dump badging "$APK" | grep '^package:')"
+
+          echo "=== ACTUAL APK IDENTITY ==="
+          echo "$PACKAGE_INFO"
+
+          PACKAGE="$(echo "$PACKAGE_INFO" | sed -n "s/.*name='\([^']*\)'.*/\1/p")"
+          VERSION_CODE="$(echo "$PACKAGE_INFO" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          VERSION_NAME="$(echo "$PACKAGE_INFO" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+
+          EXPECTED_CERT="45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"
+
+          ACTUAL_CERT="$(
+            "$APKSIGNER" verify --print-certs "$APK" |
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            head -1 |
+            tr '[:upper:]' '[:lower:]'
+          )"
+
+          echo "=== UPGRADE CHECK ==="
+          echo "Package: $PACKAGE"
+          echo "Version name: $VERSION_NAME"
+          echo "Version code: $VERSION_CODE"
+          echo "Certificate: $ACTUAL_CERT"
+
+          test "$PACKAGE" = "com.artcraft.photocraft" || {
+            echo "FAIL: Wrong Android package."
+            exit 1
+          }
+
+          test "$VERSION_NAME" = "0.10.1" || {
+            echo "FAIL: Expected version 0.10.1."
+            exit 1
+          }
+
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || {
+            echo "FAIL: Invalid Android version code."
+            exit 1
+          }
+
+          if [ "$VERSION_CODE" -le 16779776 ]; then
+            echo "FAIL: Version code must exceed 16779776."
+            exit 1
+          fi
+
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT" || {
+            echo "FAIL: Signing certificate does not match v0.10.0."
+            exit 1
+          }
+
+          echo "PASS: PhotoCraft v0.10.1 APK meets upgrade requirements."

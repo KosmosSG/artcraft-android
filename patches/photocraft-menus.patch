@@ -1,0 +1,98 @@
+
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -16,6 +16,14 @@
+     (app.ui.dialogs.is_empty() && app.discard.is_none()) || crate::shortcuts::NAV_COMMANDS.contains(&id)
+ }
+ 
++/// Android menu commands, bridged through the egui context to the Android wrapper.
++#[cfg(target_os = "android")]
++static CUSTOM_FONTS_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++#[cfg(target_os = "android")]
++const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
++#[cfg(target_os = "android")]
++const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
++
+ /// Top-level menus in Photoshop order.
+ pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Select", "Filter", "View", "Window", "Help"];
+ 
+@@ -76,6 +84,20 @@
+     if crate::discard_ui::intercept(app, id, &params) {
+         return Ok(Value::Null);
+     }
++    #[cfg(target_os = "android")]
++    {
++        if id == CUSTOM_FONTS_ID {
++            let was_visible = CUSTOM_FONTS_VISIBLE.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
++            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.custom_fonts_visible"), !was_visible));
++            ctx.request_repaint();
++            return Ok(Value::Null);
++        }
++        if id == CHECK_UPDATES_ID {
++            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.check_updates_requested"), true));
++            ctx.request_repaint();
++            return Ok(Value::Null);
++        }
++    }
+     let r = invoke_unguarded(app, ctx, id, params)?;
+     // The palette's empty-query list (UI-217-7); opening the palette isn't a command to recall.
+     if id != "edit.search" {
+@@ -695,6 +717,8 @@
+         return e;
+     }
+     match id {
++        #[cfg(target_os = "android")]
++        CUSTOM_FONTS_ID | CHECK_UPDATES_ID => true,
+         "window.panel.activate" | "window.panel.layout" => true,
+         "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
+         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
+@@ -755,6 +779,10 @@
+ 
+ /// Is a UI-level panel toggle currently on (for checkmarks)?
+ fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
++    #[cfg(target_os = "android")]
++    if id == CUSTOM_FONTS_ID {
++        return Some(CUSTOM_FONTS_VISIBLE.load(std::sync::atomic::Ordering::Relaxed));
++    }
+     if let Some(checked) = crate::panel_docking::checked(app, id) {
+         return Some(checked);
+     }
+@@ -885,6 +913,10 @@
+ /// Is `id` implemented by the engine or the shell (a live menu item)? Shared by the menus and
+ /// the parity report ([`crate::parity`]).
+ pub fn is_live(id: &str) -> bool {
++    #[cfg(target_os = "android")]
++    if id == CUSTOM_FONTS_ID || id == CHECK_UPDATES_ID {
++        return true;
++    }
+     static UI_IDS: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
+     photocraft_engine::commands::find(id).is_some()
+         || crate::tool_shortcuts::tool(id).is_some()
+@@ -966,6 +998,27 @@
+             items.insert(at, e);
+         }
+     }
++    #[cfg(target_os = "android")]
++    {
++        for (id, label, top, check) in [
++            (CUSTOM_FONTS_ID, "Custom Fonts", "Window", checked(app, CUSTOM_FONTS_ID)),
++            (CHECK_UPDATES_ID, "Check for Updates", "Help", None),
++        ] {
++            let entry = MenuItem {
++                id: id.into(),
++                label: label.into(),
++                path: vec![top.into()],
++                shortcut: None,
++                enabled: true,
++                checked: check,
++                color: None,
++            };
++            let at = items.iter()
++                .rposition(|i| i.path.first().map(String::as_str) == Some(top))
++                .map_or(items.len(), |p| p + 1);
++            items.insert(at, entry);
++        }
++    }
+     crate::plugin_ui::insert_menu_items(app, &mut items);
+     if let Some(mask) = app.session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).and_then(|l| l.mask.as_ref())
+         && let Some(item) = items.iter_mut().find(|i| i.id == "layer.layerMask.enabled")

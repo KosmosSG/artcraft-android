@@ -51,4 +51,20 @@ import file_associations
 file_associations.patch_cargo_toml(path, app)
 tomllib.loads(path.read_text())
 PY
+
+# Set the Android PhotoCraft release version without changing upstream crates.
+python3 - "$DEST/Cargo.toml" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = "version.workspace = true"
+assert text.count(old) == 1, "Expected one inherited version setting"
+text = text.replace(old, 'version = "0.10.1"', 1)
+tomllib.loads(text)
+path.write_text(text)
+PY
+
 echo "Installed PhotoCraft SAF adapter in $DEST (upstream PhotoCraft crates were not edited)."

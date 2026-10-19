@@ -706,6 +706,9 @@ fn android_main(android_app: AndroidApp) {
         viewport: egui::ViewportBuilder::default()
             .with_title("PhotoCraft")
             .with_drag_and_drop(true),
+        // Match PhotoCraft's GPU rendering path rather than relying on the
+        // window renderer default selected by the Android shell.
+        renderer: eframe::Renderer::Wgpu,
         android_app: Some(android_app),
         ..Default::default()
     };
@@ -717,7 +720,7 @@ fn android_main(android_app: AndroidApp) {
         options,
         Box::new(move |cc| {
             PhotocraftApp::setup_context(&cc.egui_ctx, photocraft_ui_egui::theme::ThemeKind::Pro);
-            let app = PhotocraftApp::new(
+            let mut app = PhotocraftApp::new(
                 Session::new(),
                 services(
                     app_bridge.clone_for_services(),
@@ -726,6 +729,47 @@ fn android_main(android_app: AndroidApp) {
                     app_intent_inbox.clone(),
                 ),
             );
+
+            // eframe drawing a window through wgpu does not automatically enable
+            // PhotoCraft's own GPU image compositor. Pass the *same* render state
+            // to PhotoCraft and publish its adapter details for Help > System Info.
+            // Keep intentional CPU rendering preferences and a CPU-only adapter
+            // as CPU, rather than forcing GPU work onto a software rasterizer.
+            if let Some(rs) = cc.wgpu_render_state.clone() {
+                let adapter = rs.adapter.get_info();
+                log::info!(
+                    "PhotoCraft Android GPU adapter: {} | backend: {:?} | device: {:?} | driver: {}",
+                    adapter.name,
+                    adapter.backend,
+                    adapter.device_type,
+                    adapter.driver,
+                );
+                app.perf.gpu_info.set_adapter(&adapter);
+
+                if adapter.device_type == eframe::wgpu::DeviceType::Cpu {
+                    log::warn!("PhotoCraft Android selected a software graphics adapter; keeping CPU canvas");
+                    app.perf.gpu_info.fallback = Some(
+                        "No compatible hardware graphics adapter; using CPU compositing.".into(),
+                    );
+                } else if std::env::var_os("PHOTOCRAFT_CPU_CANVAS").is_some()
+                    || app.session.prefs().performance.effective_rendering_mode()
+                        == photocraft_engine::prefs::RenderingMode::Cpu
+                {
+                    log::info!("PhotoCraft Android CPU canvas is selected in preferences/environment");
+                } else {
+                    app.set_wgpu(rs);
+                    log::info!(
+                        "PhotoCraft Android image compositor after GPU setup: {}",
+                        app.perf.gpu_info.canvas
+                    );
+                }
+            } else {
+                log::warn!("PhotoCraft Android has no wgpu render state; keeping CPU canvas");
+                app.perf.gpu_info.fallback = Some(
+                    "The Android window did not provide a wgpu graphics device.".into(),
+                );
+            }
+
             Ok(Box::new(PhotoCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),

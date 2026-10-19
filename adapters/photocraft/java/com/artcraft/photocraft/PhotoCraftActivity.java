@@ -35,6 +35,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -56,6 +60,14 @@ public final class PhotoCraftActivity extends NativeActivity {
     private final Map<Integer, Long> requestIds = new HashMap<>();
     private final Map<Long, String> suggestedNames = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+    // Separate queue/executor: update checks must not block SAF or shared-font scanning.
+    private final ConcurrentLinkedQueue<String> updateResults = new ConcurrentLinkedQueue<>();
+    private final ExecutorService updateIo = Executors.newSingleThreadExecutor();
+    private static final String RELEASES_API =
+            "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
+    private static final String RELEASES_PAGE =
+            "https://github.com/KosmosSG/artcraft-android/releases";
 
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real
@@ -328,6 +340,113 @@ public final class PhotoCraftActivity extends NativeActivity {
      */
     public String intentPoll() {
         return intentPaths.poll();
+    }
+
+    /** JNI: begin a manual, read-only check of published PhotoCraft GitHub releases. */
+    public void pcCheckForUpdates() {
+        updateIo.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(RELEASES_API).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "PhotoCraft-Android-Updater");
+                int httpStatus = connection.getResponseCode();
+                if (httpStatus != 200) {
+                    throw new java.io.IOException("GitHub returned HTTP " + httpStatus);
+                }
+                byte[] bytes;
+                try (InputStream input = connection.getInputStream();
+                     ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                    byte[] chunk = new byte[8192];
+                    int n;
+                    while ((n = input.read(chunk)) != -1) {
+                        if (buffer.size() + n > 1024 * 1024) {
+                            throw new java.io.IOException("GitHub response is too large");
+                        }
+                        buffer.write(chunk, 0, n);
+                    }
+                    bytes = buffer.toByteArray();
+                }
+                JSONArray releases = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
+                String installedVersion = getPackageManager()
+                        .getPackageInfo(getPackageName(), 0).versionName;
+                if (installedVersion == null) installedVersion = "0.0.0";
+                String latestVersion = null;
+                String latestUrl = null;
+                for (int i = 0; i < releases.length(); i++) {
+                    JSONObject release = releases.optJSONObject(i);
+                    if (release == null || release.optBoolean("draft")
+                            || release.optBoolean("prerelease")) continue;
+                    String tag = release.optString("tag_name", "");
+                    if (!tag.startsWith("photocraft-v")) continue;
+                    String version = tag.substring("photocraft-v".length());
+                    if (!version.matches("[0-9]+\\.[0-9]+\\.[0-9]+")) continue;
+                    if (latestVersion == null || compareVersions(version, latestVersion) > 0) {
+                        latestVersion = version;
+                        latestUrl = release.optString("html_url", RELEASES_PAGE);
+                    }
+                }
+                JSONObject result = new JSONObject();
+                result.put("status", "ok");
+                result.put("installed_version", installedVersion);
+                if (latestVersion == null) {
+                    result.put("state", "no_release");
+                    result.put("message", "No published PhotoCraft release was found");
+                } else {
+                    result.put("latest_version", latestVersion);
+                    result.put("url", latestUrl);
+                    result.put("state", compareVersions(latestVersion, installedVersion) > 0
+                            ? "update_available" : "up_to_date");
+                }
+                updateResults.offer(result.toString());
+            } catch (Exception error) {
+                Log.w(TAG, "PhotoCraft update check failed", error);
+                try {
+                    JSONObject result = new JSONObject();
+                    result.put("status", "error");
+                    result.put("message", error.getMessage() == null
+                            ? "Could not check GitHub releases" : error.getMessage());
+                    updateResults.offer(result.toString());
+                } catch (Exception ignored) { }
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    /** JNI: returns one completed update-check result as JSON, or null while waiting. */
+    public String pcPollUpdateResult() { return updateResults.poll(); }
+
+    /** JNI: open only the official PhotoCraft release URL in a browser. */
+    public void pcOpenUpdatePage(String url) {
+        if (url == null || !url.startsWith(
+                "https://github.com/KosmosSG/artcraft-android/releases/")) return;
+        runOnUiThread(() -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            } catch (Exception error) {
+                Log.w(TAG, "Could not open PhotoCraft release page", error);
+            }
+        });
+    }
+
+    private static int compareVersions(String a, String b) {
+        String[] aa = a.split("\\.");
+        String[] bb = b.split("\\.");
+        for (int i = 0; i < 3; i++) {
+            int av = i < aa.length ? parseVersionPart(aa[i]) : 0;
+            int bv = i < bb.length ? parseVersionPart(bb[i]) : 0;
+            if (av != bv) return Integer.compare(av, bv);
+        }
+        return 0;
+    }
+
+    private static int parseVersionPart(String value) {
+        try { return Integer.parseInt(value); }
+        catch (NumberFormatException ignored) { return 0; }
     }
 
     public String pcPollPickerResult() { return results.poll(); }

@@ -1052,7 +1052,22 @@ fn android_main(android_app: AndroidApp) {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
                 picker: app_picker.clone(),
-                updates: UpdateDialogState::default(),
+                updates: {
+    let mut state = UpdateDialogState::default();
+
+    match app_bridge.check_for_updates() {
+        Ok(()) => {
+            state.checking = true;
+            state.message = "Checking for PhotoCraft updates…".into();
+            log::info!("PhotoCraft startup update check started");
+        }
+        Err(error) => {
+            log::warn!("Could not start automatic update check: {error}");
+        }
+    }
+
+    state
+},
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
                 intent_inbox: app_intent_inbox.clone(),

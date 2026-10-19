@@ -1,0 +1,95 @@
+name: Verify PhotoCraft APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Download latest successful release artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'build-photocraft-release.yml',
+                branch: 'shared-font-library',
+                status: 'success',
+                per_page: 100
+              }
+            );
+            if (!runs.length) {
+              core.setFailed('No successful PhotoCraft release workflow found.');
+              return;
+            }
+            const run = runs[0];
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+                per_page: 100
+              }
+            );
+            const artifact = artifacts.find(a =>
+              a.name === 'PhotoCraft-Android-Release' && !a.expired
+            );
+            if (!artifact) {
+              core.setFailed('Release APK artifact is missing or expired.');
+              return;
+            }
+            const response = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+              archive_format: 'zip'
+            });
+            fs.writeFileSync('photocraft-artifact.zip',
+              Buffer.from(response.data));
+            core.info('Downloaded APK from successful run ' + run.id);
+            core.info('Source commit: ' + run.head_sha);
+
+      - name: Extract APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verified-apk
+          unzip -q photocraft-artifact.zip -d verified-apk
+          find verified-apk -type f -name '*.apk' -print
+
+      - name: Verify APK signature and show identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' apks < <(find verified-apk -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 1 || {
+            echo "Expected exactly one APK."
+            exit 1
+          }
+          APK="${apks[0]}"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT="$(find "$SDK/build-tools" -name aapt -type f | sort -V | tail -1)"
+          test -n "$APKSIGNER" && test -n "$AAPT" || {
+            echo "Android build tools not found."
+            exit 1
+          }
+          echo "=== APK SIGNATURE ==="
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo "=== PACKAGE AND VERSION ==="
+          "$AAPT" dump badging "$APK" | grep '^package:'
+          echo "=== APK SHA256 ==="
+          sha256sum "$APK"
+          echo "=== VERIFICATION COMPLETE ==="

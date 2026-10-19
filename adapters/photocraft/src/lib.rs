@@ -832,6 +832,53 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui, _frame);
+        let update_request_id =
+    egui::Id::new("artcraft.check_updates_requested");
+
+let update_requested = ui.ctx().data_mut(|data| {
+    let requested = data
+        .get_temp::<bool>(update_request_id)
+        .unwrap_or(false);
+
+    if requested {
+        data.insert_temp(update_request_id, false);
+    }
+
+    requested
+});
+
+if update_requested {
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new("artcraft.update_dialog_open"),
+            true,
+        );
+    });
+}
+
+let mut update_dialog_open = ui.ctx().data(|data| {
+    data.get_temp::<bool>(
+        egui::Id::new("artcraft.update_dialog_open"),
+    )
+    .unwrap_or(false)
+});
+
+if update_dialog_open {
+    egui::Window::new("PhotoCraft Updates")
+        .open(&mut update_dialog_open)
+        .show(ui.ctx(), |ui| {
+            ui.label("PhotoCraft Update Checker");
+            ui.label("GitHub release checking is not connected yet.");
+            ui.label("The next step will enable online version checking.");
+        });
+
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new("artcraft.update_dialog_open"),
+            update_dialog_open,
+        );
+    });
+}
         // The upstream Window menu toggles this egui flag.
         let custom_fonts_open = ui.ctx().data(|d| d.get_temp::<bool>(
             egui::Id::new("artcraft.custom_fonts_visible")

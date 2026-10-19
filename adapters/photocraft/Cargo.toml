@@ -12,6 +12,7 @@ photocraft-engine = { path = "../../crates/engine" }
 photocraft-ui-egui = { path = "../../crates/ui-egui" }
 photocraft-io = { path = "../../crates/io" }
 photocraft-doc = { path = "../../crates/doc" }
+photocraft-text = { path = "../../crates/text" }
 photocraft-codecs = { path = "../../crates/codecs" }
 eframe = { workspace = true, features = ["wgpu", "persistence"] }
 egui = { workspace = true }

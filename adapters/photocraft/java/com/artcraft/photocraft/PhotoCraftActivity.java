@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.provider.DocumentsContract;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
@@ -34,6 +35,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -48,11 +53,21 @@ public final class PhotoCraftActivity extends NativeActivity {
     private static final String TAG = "PhotoCraftSAF";
     private static final int REQ_OPEN = 0x5043;
     private static final int REQ_SAVE = 0x5044;
+    private static final int REQ_FONT_FOLDER = 0x5045;
+    private static final String FONT_FOLDER_PREF = "shared_font_tree_uri";
     private static final String PREFS = "photocraft_saf_uri_map";
     private final ConcurrentLinkedQueue<String> results = new ConcurrentLinkedQueue<>();
     private final Map<Integer, Long> requestIds = new HashMap<>();
     private final Map<Long, String> suggestedNames = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+    // Separate queue/executor: update checks must not block SAF or shared-font scanning.
+    private final ConcurrentLinkedQueue<String> updateResults = new ConcurrentLinkedQueue<>();
+    private final ExecutorService updateIo = Executors.newSingleThreadExecutor();
+    private static final String RELEASES_API =
+            "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
+    private static final String RELEASES_PAGE =
+            "https://github.com/KosmosSG/artcraft-android/releases";
 
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real
@@ -327,6 +342,113 @@ public final class PhotoCraftActivity extends NativeActivity {
         return intentPaths.poll();
     }
 
+    /** JNI: begin a manual, read-only check of published PhotoCraft GitHub releases. */
+    public void pcCheckForUpdates() {
+        updateIo.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(RELEASES_API).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "PhotoCraft-Android-Updater");
+                int httpStatus = connection.getResponseCode();
+                if (httpStatus != 200) {
+                    throw new java.io.IOException("GitHub returned HTTP " + httpStatus);
+                }
+                byte[] bytes;
+                try (InputStream input = connection.getInputStream();
+                     ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                    byte[] chunk = new byte[8192];
+                    int n;
+                    while ((n = input.read(chunk)) != -1) {
+                        if (buffer.size() + n > 1024 * 1024) {
+                            throw new java.io.IOException("GitHub response is too large");
+                        }
+                        buffer.write(chunk, 0, n);
+                    }
+                    bytes = buffer.toByteArray();
+                }
+                JSONArray releases = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
+                String installedVersion = getPackageManager()
+                        .getPackageInfo(getPackageName(), 0).versionName;
+                if (installedVersion == null) installedVersion = "0.0.0";
+                String latestVersion = null;
+                String latestUrl = null;
+                for (int i = 0; i < releases.length(); i++) {
+                    JSONObject release = releases.optJSONObject(i);
+                    if (release == null || release.optBoolean("draft")
+                            || release.optBoolean("prerelease")) continue;
+                    String tag = release.optString("tag_name", "");
+                    if (!tag.startsWith("photocraft-v")) continue;
+                    String version = tag.substring("photocraft-v".length());
+                    if (!version.matches("[0-9]+\\.[0-9]+\\.[0-9]+")) continue;
+                    if (latestVersion == null || compareVersions(version, latestVersion) > 0) {
+                        latestVersion = version;
+                        latestUrl = release.optString("html_url", RELEASES_PAGE);
+                    }
+                }
+                JSONObject result = new JSONObject();
+                result.put("status", "ok");
+                result.put("installed_version", installedVersion);
+                if (latestVersion == null) {
+                    result.put("state", "no_release");
+                    result.put("message", "No published PhotoCraft release was found");
+                } else {
+                    result.put("latest_version", latestVersion);
+                    result.put("url", latestUrl);
+                    result.put("state", compareVersions(latestVersion, installedVersion) > 0
+                            ? "update_available" : "up_to_date");
+                }
+                updateResults.offer(result.toString());
+            } catch (Exception error) {
+                Log.w(TAG, "PhotoCraft update check failed", error);
+                try {
+                    JSONObject result = new JSONObject();
+                    result.put("status", "error");
+                    result.put("message", error.getMessage() == null
+                            ? "Could not check GitHub releases" : error.getMessage());
+                    updateResults.offer(result.toString());
+                } catch (Exception ignored) { }
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    /** JNI: returns one completed update-check result as JSON, or null while waiting. */
+    public String pcPollUpdateResult() { return updateResults.poll(); }
+
+    /** JNI: open only the official PhotoCraft release URL in a browser. */
+    public void pcOpenUpdatePage(String url) {
+        if (url == null || !url.startsWith(
+                "https://github.com/KosmosSG/artcraft-android/releases/")) return;
+        runOnUiThread(() -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            } catch (Exception error) {
+                Log.w(TAG, "Could not open PhotoCraft release page", error);
+            }
+        });
+    }
+
+    private static int compareVersions(String a, String b) {
+        String[] aa = a.split("\\.");
+        String[] bb = b.split("\\.");
+        for (int i = 0; i < 3; i++) {
+            int av = i < aa.length ? parseVersionPart(aa[i]) : 0;
+            int bv = i < bb.length ? parseVersionPart(bb[i]) : 0;
+            if (av != bv) return Integer.compare(av, bv);
+        }
+        return 0;
+    }
+
+    private static int parseVersionPart(String value) {
+        try { return Integer.parseInt(value); }
+        catch (NumberFormatException ignored) { return 0; }
+    }
+
     public String pcPollPickerResult() { return results.poll(); }
 
     public void pcRequestOpen(long id, boolean multiple) {
@@ -363,17 +485,156 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
+    /** Ask Android for read-only access to a user-selected shared font directory. */
+    public void pcRequestFontFolder(long id) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                requestIds.put(REQ_FONT_FOLDER, id);
+                startActivityForResult(intent, REQ_FONT_FOLDER);
+            } catch (Exception error) {
+                requestIds.remove(REQ_FONT_FOLDER);
+                enqueueError(id, "font_folder", error.toString());
+            }
+        });
+    }
+
+    /** Refresh the previously selected folder, without prompting again. */
+    public void pcRefreshFontFolder(long id) {
+        String stored = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(FONT_FOLDER_PREF, null);
+        if (stored == null) {
+            enqueueError(id, "font_folder", "Select Shared Font Folder first");
+            return;
+        }
+        scanFontFolder(id, Uri.parse(stored));
+    }
+
+    private void scanFontFolder(long id, Uri treeUri) {
+        io.execute(() -> {
+            try {
+                boolean granted = false;
+                for (android.content.UriPermission permission :
+                        getContentResolver().getPersistedUriPermissions()) {
+                    if (treeUri.equals(permission.getUri()) && permission.isReadPermission()) {
+                        granted = true;
+                        break;
+                    }
+                }
+                if (!granted) throw new SecurityException("Folder access expired; select the folder again");
+
+                File cache = new File(appStorageDir(), "shared-font-cache");
+                if (!cache.isDirectory() && !cache.mkdirs())
+                    throw new Exception("Could not create shared font cache");
+
+                JSONArray paths = new JSONArray();
+                int count = 0;
+                int visitedFolders = 0;
+                // Breadth-first scan. Bounded to avoid loops, huge providers and slow scans.
+                java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                pending.add(DocumentsContract.getTreeDocumentId(treeUri));
+                while (!pending.isEmpty() && count < 200 && visitedFolders < 1000) {
+                    String parentId = pending.removeFirst();
+                    if (!seen.add(parentId)) continue;
+                    visitedFolders++;
+                    Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
+                    try (Cursor cursor = getContentResolver().query(children,
+                            new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                                    DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                        if (cursor == null) {
+                            Log.w(TAG, "Cannot list font subfolder: " + parentId);
+                            continue;
+                        }
+                        while (cursor.moveToNext() && count < 200) {
+                            String documentId = cursor.getString(0);
+                            String name = cursor.getString(1);
+                            String mime = cursor.getString(2);
+                            if (documentId == null || name == null) continue;
+                            if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                                if (seen.size() + pending.size() < 1000) pending.addLast(documentId);
+                                continue;
+                            }
+                            String lower = name.toLowerCase(java.util.Locale.ROOT);
+                            if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")) continue;
+                            if (!cursor.isNull(3)) {
+                                long size = cursor.getLong(3);
+                                if (size <= 0 || size > 32L * 1024 * 1024) continue;
+                            }
+                            Uri fontUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
+                            String extension = lower.endsWith(".ttf") ? ".ttf" : ".otf";
+                            // Use the full document ID for cache naming, including subfolder path.
+                            String hash = java.util.UUID.nameUUIDFromBytes(
+                                    documentId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                                    .toString();
+                            File target = new File(cache, "font-" + hash + extension);
+                            try (InputStream input = getContentResolver().openInputStream(fontUri);
+                                 OutputStream output = new FileOutputStream(target)) {
+                                if (input == null) throw new Exception("Cannot read font " + name);
+                                byte[] buffer = new byte[64 * 1024];
+                                int n;
+                                long total = 0;
+                                while ((n = input.read(buffer)) != -1) {
+                                    total += n;
+                                    if (total > 32L * 1024 * 1024)
+                                        throw new Exception("Font too large: " + name);
+                                    output.write(buffer, 0, n);
+                                }
+                                if (total == 0) throw new Exception("Empty font: " + name);
+                            } catch (Exception fontError) {
+                                target.delete();
+                                Log.w(TAG, "Skipping shared font " + name, fontError);
+                                continue;
+                            }
+                            paths.put(target.getAbsolutePath());
+                            count++;
+                        }
+                    } catch (SecurityException securityError) {
+                        throw securityError;
+                    } catch (Exception folderError) {
+                        Log.w(TAG, "Skipping unreadable font subfolder: " + parentId, folderError);
+                    }
+                }
+                JSONObject result = base(id, "font_folder", "ok");
+                result.put("paths", paths);
+                result.put("count", count);
+                results.offer(result.toString());
+            } catch (Exception error) {
+                enqueueError(id, "font_folder", error.toString());
+            }
+        });
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) return;
+        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE && requestCode != REQ_FONT_FOLDER) return;
         Long boxedId = requestIds.remove(requestCode);
         if (boxedId == null) return;
         final long id = boxedId;
-        final String kind = requestCode == REQ_OPEN ? "open" : "save";
+        final String kind = requestCode == REQ_OPEN ? "open" : (requestCode == REQ_SAVE ? "save" : "font_folder");
         if (resultCode != RESULT_OK || data == null) {
             suggestedNames.remove(id);
             enqueueCancel(id, kind);
+            return;
+        }
+        if (requestCode == REQ_FONT_FOLDER) {
+            Uri treeUri = data.getData();
+            if (treeUri == null) { enqueueCancel(id, kind); return; }
+            try {
+                int readFlag = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                if (readFlag == 0) throw new SecurityException("Folder read permission not granted");
+                getContentResolver().takePersistableUriPermission(treeUri, readFlag);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString(FONT_FOLDER_PREF, treeUri.toString()).apply();
+                scanFontFolder(id, treeUri);
+            } catch (Exception error) {
+                enqueueError(id, kind, error.toString());
+            }
             return;
         }
         if (requestCode == REQ_SAVE) {

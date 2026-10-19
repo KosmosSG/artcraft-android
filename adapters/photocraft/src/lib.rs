@@ -25,6 +25,58 @@ use std::sync::{Arc, Mutex};
 // chain and makes them visible to the app's own font scanners (see templates/android/system_fonts.rs).
 mod system_fonts;
 
+fn register_custom_font(bytes: Vec<u8>) -> Result<Vec<String>, String> {
+    if bytes.is_empty() || bytes.len() > 32 * 1024 * 1024 {
+        return Err("Font file must be between 1 byte and 32 MB".into());
+    }
+
+    let mut engine = photocraft_text::shared()
+        .lock()
+        .map_err(|e| format!("Font engine lock failed: {e}"))?;
+
+    let families = engine.fonts.register_font_data(bytes);
+
+    if families.is_empty() {
+        return Err("No supported font families found".into());
+    }
+
+    Ok(families)
+}
+
+fn load_custom_fonts(files_dir: &Path) {
+    let Ok(entries) = fs::read_dir(files_dir.join("custom-fonts")) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let valid_extension = path.extension()
+            .and_then(|v| v.to_str())
+            .is_some_and(|v| {
+                v.eq_ignore_ascii_case("ttf") || v.eq_ignore_ascii_case("otf")
+            });
+
+        if !valid_extension || !path.is_file() {
+            continue;
+        }
+
+        if !fs::metadata(&path)
+            .is_ok_and(|m| m.len() > 0 && m.len() <= 32 * 1024 * 1024)
+        {
+            continue;
+        }
+
+        match fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(register_custom_font)
+        {
+            Ok(families) => log::info!("Restored custom font {:?}: {:?}", path, families),
+            Err(error) => log::warn!("Could not restore custom font {:?}: {error}", path),
+        }
+    }
+}
+
+
 // Shared with the generated launchers: turns Android's soft keyboard into egui IME events (see
 // templates/android/ime_bridge.rs). The `mod ime_bridge;` marker also keeps the vendored
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
@@ -67,6 +119,26 @@ impl AndroidFileBridge {
             })
             .map_err(|e| e.to_string())
     }
+
+    fn request_font_folder(&self, id: u64, refresh: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+            let method = if refresh {
+                jni_str!("pcRefreshFontFolder")
+            } else {
+                jni_str!("pcRequestFontFolder")
+            };
+            env.call_method(
+                &*activity,
+                method,
+                jni_sig!("(J)V"),
+                &[JValue::Long(id as i64)],
+            )?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
 
     fn request_save(&self, id: u64, name: &str) -> Result<(), String> {
         self.vm
@@ -147,6 +219,72 @@ impl AndroidFileBridge {
             .map_err(|e| e.to_string())
     }
 
+    fn check_for_updates(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(
+                &*activity,
+                jni_str!("pcCheckForUpdates"),
+                jni_sig!("()V"),
+                &[],
+            );
+            if result.is_err() {
+                env.exception_clear();
+            }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn poll_update_result(&self) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = match env.call_method(
+                &*activity,
+                jni_str!("pcPollUpdateResult"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            ) {
+                Ok(value) => value.l()?,
+                Err(error) => {
+                    env.exception_clear();
+                    return Err(error);
+                }
+            };
+            if value.is_null() {
+                return Ok(None);
+            }
+            let value = JString::cast_local(env, value)?;
+            Ok(Some(value.try_to_string(env)?))
+        }).map_err(|e| e.to_string())
+    }
+
+    fn open_update_page(&self, url: &str) -> Result<(), String> {
+        if !url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/") {
+            return Err("Not an official PhotoCraft release URL".into());
+        }
+
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let java_url = env.new_string(url)?;
+            let url_obj = JObject::from(java_url);
+            let result = env.call_method(
+                &*activity,
+                jni_str!("pcOpenUpdatePage"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&url_obj)],
+            );
+            if result.is_err() {
+                env.exception_clear();
+            }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn files_dir(&self) -> Result<PathBuf, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<PathBuf> {
@@ -200,9 +338,212 @@ impl AndroidFileBridge {
 struct PickerState {
     next_id: AtomicU64,
     replies: Mutex<HashMap<u64, FileDialogReply>>,
+        font_request: Mutex<Option<u64>>,
+    shared_font_request: Mutex<Option<u64>>,
+    shared_font_status: Mutex<String>,
+    font_status: Mutex<String>,
 }
 
 impl PickerState {
+    
+    fn launch_font(&self, bridge: &AndroidFileBridge) {
+        let mut pending = self.font_request
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        if pending.is_some() {
+            return;
+        }
+
+        let id = self.next_id
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_add(1);
+
+        match bridge.request_open(id, false) {
+            Ok(()) => {
+                *pending = Some(id);
+                *self.font_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) =
+                    "Choose a TTF or OTF file".into();
+            }
+            Err(error) => {
+                *self.font_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) =
+                    format!("Picker error: {error}");
+            }
+        }
+    }
+
+    fn launch_shared_fonts(&self, bridge: &AndroidFileBridge, refresh: bool) {
+        let mut pending = self.shared_font_request
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        if pending.is_some() {
+            return;
+        }
+
+        let id = self.next_id
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_add(1);
+
+        match bridge.request_font_folder(id, refresh) {
+            Ok(()) => {
+                *pending = Some(id);
+                *self.shared_font_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) =
+                    if refresh {
+                        "Refreshing shared fonts..."
+                    } else {
+                        "Select ArtCraft-Fonts in Android Files..."
+                    }.into();
+            }
+            Err(error) => {
+                *self.shared_font_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) =
+                    format!("Shared folder error: {error}");
+            }
+        }
+    }
+
+    
+    fn process_shared_font_result(&self, value: &serde_json::Value) {
+        let result = (|| -> Result<String, String> {
+            match value.get("status").and_then(|v| v.as_str()) {
+                Some("cancel") => {
+                    return Ok("Shared folder selection cancelled".into());
+                }
+                Some("ok") => {}
+                _ => {
+                    return Err(
+                        value.get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Could not read shared font folder")
+                            .into(),
+                    );
+                }
+            }
+
+            if value.get("kind").and_then(|v| v.as_str())
+                != Some("font_folder")
+            {
+                return Err("Unexpected shared folder response".into());
+            }
+
+            let paths = value.get("paths")
+                .and_then(|v| v.as_array())
+                .ok_or("Shared folder returned no font list")?;
+
+            let mut registered = 0usize;
+            let mut skipped = 0usize;
+
+            for item in paths {
+                let Some(path) = item.as_str() else {
+                    skipped += 1;
+                    continue;
+                };
+
+                let result = fs::read(path)
+                    .map_err(|e| e.to_string())
+                    .and_then(register_custom_font);
+
+                match result {
+                    Ok(families) => {
+                        registered += 1;
+                        log::info!("Shared font {path}: {:?}", families);
+                    }
+                    Err(error) => {
+                        skipped += 1;
+                        log::warn!("Skipping shared font {path}: {error}");
+                    }
+                }
+            }
+
+            Ok(format!(
+                "Shared fonts loaded: {registered}; skipped: {skipped}"
+            ))
+        })();
+
+        *self.shared_font_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) =
+            result.unwrap_or_else(|error| {
+                format!("Shared fonts: {error}")
+            });
+    }
+
+fn process_font_result(
+        &self,
+        bridge: &AndroidFileBridge,
+        id: u64,
+        value: &serde_json::Value,
+    ) {
+        let result = (|| -> Result<String, String> {
+            match value.get("status").and_then(|v| v.as_str()) {
+                Some("cancel") => return Ok("Font import cancelled".into()),
+                Some("ok") => {}
+                _ => return Err(
+                    value.get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("File picker failed")
+                        .into()
+                ),
+            }
+
+            if value.get("kind").and_then(|v| v.as_str()) != Some("open") {
+                return Err("Unexpected picker response".into());
+            }
+
+            let source = value.get("paths")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .ok_or("No font file selected")?;
+
+            let path = Path::new(source);
+            let extension = path.extension()
+                .and_then(|v| v.to_str())
+                .ok_or("Select a .ttf or .otf file")?;
+
+            if !extension.eq_ignore_ascii_case("ttf")
+                && !extension.eq_ignore_ascii_case("otf")
+            {
+                return Err("Only .ttf and .otf files are supported".into());
+            }
+
+            let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+
+            if meta.len() == 0 || meta.len() > 32 * 1024 * 1024 {
+                return Err("Font must be between 1 byte and 32 MB".into());
+            }
+
+            let bytes = fs::read(path).map_err(|e| e.to_string())?;
+            let families = register_custom_font(bytes.clone())?;
+
+            let dir = bridge.files_dir()?.join("custom-fonts");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+            let destination = dir.join(format!(
+                "imported-{id}.{}",
+                extension.to_ascii_lowercase()
+            ));
+
+            fs::write(&destination, &bytes)
+                .map_err(|e| e.to_string())?;
+
+            Ok(format!("Imported: {}", families.join(", ")))
+        })();
+
+        *self.font_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) =
+            result.unwrap_or_else(|error| format!("Import failed: {error}"));
+    }
+
     fn launch(
         &self,
         bridge: &AndroidFileBridge,
@@ -273,6 +614,37 @@ impl PickerState {
                 log::error!("Android picker result has no request id: {raw}");
                 continue;
             };
+            
+            let is_font = {
+                let mut pending = self.font_request.lock().unwrap_or_else(|e| e.into_inner());
+                if *pending == Some(id) {
+                    *pending = None;
+                    true
+                } else {
+                    false
+                }
+            };
+            if is_font {
+                self.process_font_result(bridge, id, &value);
+                ctx.request_repaint();
+                continue;
+            }
+
+            let is_shared_font = {
+                let mut pending = self.shared_font_request.lock().unwrap_or_else(|e| e.into_inner());
+                if *pending == Some(id) {
+                    *pending = None;
+                    true
+                } else {
+                    false
+                }
+            };
+            if is_shared_font {
+                self.process_shared_font_result(&value);
+                ctx.request_repaint();
+                continue;
+            }
+
             let Some(reply) = self
                 .replies
                 .lock()
@@ -522,10 +894,20 @@ fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput
 }
 
 
+#[derive(Default)]
+struct UpdateDialogState {
+    open: bool,
+    checking: bool,
+    message: String,
+    release_url: Option<String>,
+}
+
+
 struct PhotoCraftAndroidApp {
     inner: PhotocraftApp,
     bridge: AndroidFileBridge,
     picker: Arc<PickerState>,
+    updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -657,6 +1039,67 @@ impl PhotoCraftAndroidApp {
 impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.picker.poll(&self.bridge, ctx);
+
+        if self.updates.checking {
+            match self.bridge.poll_update_result() {
+                Ok(Some(raw)) => {
+                    self.updates.checking = false;
+
+                    match serde_json::from_str::<serde_json::Value>(&raw) {
+                        Ok(result) => {
+                            self.updates.release_url = result.get("url")
+                                .and_then(serde_json::Value::as_str)
+                                .filter(|url| url.starts_with(
+                                    "https://github.com/KosmosSG/artcraft-android/releases/"
+                                ))
+                                .map(str::to_owned);
+
+                            let installed = result.get("installed_version")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("unknown");
+                            let latest = result.get("latest_version")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("unknown");
+
+                            self.updates.message = match result.get("state")
+                                .and_then(serde_json::Value::as_str) {
+                                Some("update_available") => format!(
+                                    "Update available: {latest} (installed: {installed})"
+                                ),
+                                Some("up_to_date") => format!(
+                                    "You're up to date (installed: {installed}; latest: {latest})."
+                                ),
+                                Some("no_release") =>
+                                    "No published PhotoCraft release found.".into(),
+                                _ => format!(
+                                    "Update check failed: {}",
+                                    result.get("message")
+                                        .and_then(serde_json::Value::as_str)
+                                        .unwrap_or("Unknown response from Android")
+                                ),
+                            };
+                        }
+                        Err(error) => {
+                            self.updates.message =
+                                format!("Invalid update response: {error}");
+                        }
+                    }
+                    ctx.request_repaint();
+                }
+                Ok(None) => {
+                    ctx.request_repaint_after(
+                        std::time::Duration::from_millis(250)
+                    );
+                }
+                Err(error) => {
+                    self.updates.checking = false;
+                    self.updates.message =
+                        format!("Update checker unavailable: {error}");
+                    ctx.request_repaint();
+                }
+            }
+        }
+
         // Deliver any file the system asked us to open through the app's own inbox.
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
@@ -666,7 +1109,111 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui, _frame);
-    }
+    
+    
+        let update_request_id =
+            egui::Id::new("artcraft.check_updates_requested");
+
+        let update_requested = ui.ctx().data_mut(|data| {
+            let requested = data
+                .get_temp::<bool>(update_request_id)
+                .unwrap_or(false);
+
+            if requested {
+                data.insert_temp(update_request_id, false);
+            }
+
+            requested
+        });
+
+        if update_requested {
+            self.updates.open = true;
+            self.updates.release_url = None;
+            self.updates.message = "Checking GitHub releases...".into();
+
+            if !self.updates.checking {
+                match self.bridge.check_for_updates() {
+                    Ok(()) => self.updates.checking = true,
+                    Err(error) => {
+                        self.updates.message =
+                            format!("Could not start update check: {error}");
+                    }
+                }
+            }
+        }
+
+        if self.updates.open {
+            egui::Window::new("PhotoCraft Updates")
+                .open(&mut self.updates.open)
+                .show(ui.ctx(), |ui| {
+                    ui.label(&self.updates.message);
+
+                    if self.updates.checking {
+                        ui.spinner();
+                    } else if let Some(url) =
+                        self.updates.release_url.as_deref()
+                    {
+                        if ui.button("Open official GitHub release").clicked() {
+                            if let Err(error) =
+                                self.bridge.open_update_page(url)
+                            {
+                                log::warn!(
+                                    "Could not open release page: {error}"
+                                );
+                            }
+                        }
+                    }
+                });
+        }
+
+        let custom_fonts_open = ui.ctx().data(|data| {
+            data.get_temp::<bool>(
+                egui::Id::new("artcraft.custom_fonts_visible")
+            )
+        }).unwrap_or(false);
+
+        if custom_fonts_open {
+            egui::Window::new("Custom Fonts")
+                .default_pos([24.0, 100.0])
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    if ui.button("Import Font (.ttf / .otf)").clicked() {
+                        self.picker.launch_font(&self.bridge);
+                    }
+
+                    ui.separator();
+                    ui.label("Shared ArtCraft font library");
+
+                    if ui.button("Select Shared Font Folder").clicked() {
+                        self.picker.launch_shared_fonts(&self.bridge, false);
+                    }
+
+                    if ui.button("Refresh Shared Fonts").clicked() {
+                        self.picker.launch_shared_fonts(&self.bridge, true);
+                    }
+
+                    let shared_status = self.picker.shared_font_status
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+
+                    if !shared_status.is_empty() {
+                        ui.label(shared_status);
+                    }
+
+                    ui.separator();
+
+                    let status = self.picker.font_status
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+
+                    if !status.is_empty() {
+                        ui.label(status);
+                    }
+                });
+        }
+}
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
@@ -772,6 +1319,7 @@ fn android_main(android_app: AndroidApp) {
 
             Ok(Box::new(PhotoCraftAndroidApp {
                 inner: app,
+                updates: UpdateDialogState::default(),
                 bridge: app_bridge.clone_for_services(),
                 picker: app_picker.clone(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),

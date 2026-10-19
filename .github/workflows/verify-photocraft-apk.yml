@@ -118,6 +118,13 @@ jobs:
 
           echo "=== PACKAGE AND VERSION ==="
           "$AAPT" dump badging "$APK" | grep '^package:'
+          echo "=== INTERNET PERMISSION ==="
+          "$AAPT" dump permissions "$APK" | tee /tmp/photocraft-permissions.txt
+          if ! grep -Fq 'android.permission.INTERNET' /tmp/photocraft-permissions.txt; then
+            echo "FAIL: PhotoCraft APK is missing INTERNET permission."
+            exit 1
+          fi
+          echo "PASS: Android INTERNET permission is present."
 
           echo "=== APK SHA256 ==="
           sha256sum "$APK"

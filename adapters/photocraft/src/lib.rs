@@ -1241,6 +1241,7 @@ fn android_main(android_app: AndroidApp) {
             return;
         }
     };
+    load_custom_fonts(&files_dir);
     let prefs_path = files_dir.join("PhotoCraft").join("preferences.json");
     if let Some(parent) = prefs_path.parent() {
         if let Err(error) = fs::create_dir_all(parent) {

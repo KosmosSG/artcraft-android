@@ -39,17 +39,20 @@ theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
 icon = "@drawable/ic_launcher"
 
 [[package.metadata.android.application.activity]]
-name = ".PhotoCraftActivity"
+ = ".PhotoCraftActivity"
 config_changes = "orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|density|layoutDirection"
 label = "PhotoCraft"
 launch_mode = "singleTask"
 orientation = "sensor"
 exported = true
-# cargo-apk2 does NOT add a default MAIN/LAUNCHER filter when an activity is named, so declare it
+# cargo-apk2 does NOT add a default MAIN/LAUNCHER filter when an activity is d, so declare it
 # here: without it the APK has no launcher activity and cannot be started from the home screen.
 # Keep it inline: cargo-apk2's serde `flatten` rejects an `[[...activity.intent_filter]]` table.
 intent_filter = [{ actions = ["android.intent.action.MAIN"], categories = ["android.intent.category.LAUNCHER"] }]
 
 [[package.metadata.android.application.activity.meta_data]]
-name = "android.app.lib_name"
+ = "android.app.lib_"
 value = "photocraft_android"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"

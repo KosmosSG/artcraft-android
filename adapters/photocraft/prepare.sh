@@ -51,4 +51,21 @@ import file_associations
 file_associations.patch_cargo_toml(path, app)
 tomllib.loads(path.read_text())
 PY
+
+# Restore PhotoCraft's Android Custom Fonts and Check for Updates menus.
+MENU_PATCH="$ROOT/patches/photocraft-menus.patch"
+if [[ ! -f "$MENU_PATCH" ]]; then
+  echo "Missing PhotoCraft menu patch: $MENU_PATCH" >&2
+  exit 1
+fi
+
+if git -C "$SRC_ABS" apply --reverse --check "$MENU_PATCH" 2>/dev/null; then
+  echo "PhotoCraft Android menu patch is already applied."
+elif git -C "$SRC_ABS" apply --check "$MENU_PATCH"; then
+  git -C "$SRC_ABS" apply "$MENU_PATCH"
+  echo "Applied PhotoCraft Android menu patch."
+else
+  echo "PhotoCraft menu patch does not match upstream source. Build stopped safely." >&2
+  exit 1
+fi
 echo "Installed PhotoCraft SAF adapter in $DEST (upstream PhotoCraft crates were not edited)."

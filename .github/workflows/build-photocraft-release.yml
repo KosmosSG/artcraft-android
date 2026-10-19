@@ -2,18 +2,49 @@ name: Build PhotoCraft Release APK
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish a GitHub Release after all APK update checks pass?'
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: 'New version tag. Must match APK versionName (e.g. v0.10.2).'
+        required: true
+        type: string
+        default: 'v0.10.2'
 
+# Required only when publishing; builds without a release still upload an Actions artifact.
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: photocraft-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-
     steps:
-      - name: Checkout source
+      - name: Checkout source from selected branch
         uses: actions/checkout@v5
+
+      - name: Ensure this source contains the GPU fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=adapters/photocraft/src/lib.rs
+          test -f "$FILE"
+          grep -Fq 'renderer: eframe::Renderer::Wgpu' "$FILE" || {
+            echo 'WGPU renderer setting is absent. Build from the branch with the GPU fix.' >&2
+            exit 1
+          }
+          grep -Fq 'app.set_wgpu(rs)' "$FILE" || {
+            echo 'PhotoCraft GPU compositor hookup is absent.' >&2
+            exit 1
+          }
+          echo "Building source commit: ${GITHUB_SHA}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -35,7 +66,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)
           if [ -z "$SDKMANAGER" ]; then
-            echo "Android SDK command-line tools not found."
+            echo 'Android SDK command-line tools not found.' >&2
             exit 1
           fi
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
@@ -45,24 +76,121 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;27.2.12479018"
+          sdkmanager --install 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Build optimized PhotoCraft APK
         shell: bash
         run: bash build.sh -photocraft
 
-      - name: Report APK size
+      - name: Verify output APK and report identity
         shell: bash
         run: |
           set -euo pipefail
-          ls -lh output/*.apk
-          du -h output/*.apk
-          sha256sum output/*.apk
+          mapfile -d '' apks < <(find output -maxdepth 1 -type f -name '*.apk' -print0)
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "Expected one APK in output/, got ${#apks[@]}." >&2
+            exit 1
+          fi
+          APK="${apks[0]}"
+          echo "BUILT_APK=$APK" >> "$GITHUB_ENV"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -n "$APKSIGNER" && test -n "$AAPT"
+          echo '=== APK certificate ==='
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo '=== Package ID and versions ==='
+          "$AAPT" dump badging "$APK" | grep '^package:'
+          echo '=== SHA256 ==='
+          sha256sum "$APK"
+          {
+            echo '### PhotoCraft APK built from this commit'
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo '- Package identity:'
+            "$AAPT" dump badging "$APK" | grep '^package:' | sed 's/^/  - /'
+            echo '- Signing certificate SHA256:'
+            "$APKSIGNER" verify --print-certs "$APK" | grep -m1 'certificate SHA-256 digest' | sed 's/^/  - /'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload release APK
+      - name: Upload APK as Actions artifact
         uses: actions/upload-artifact@v5
         with:
           name: PhotoCraft-Android-Release
           path: output/*.apk
           if-no-files-found: error
+
+      # The following steps only run after the user explicitly checks
+      # 'publish_release'. They refuse to publish if the APK cannot update
+      # the existing released app (version, package ID, and signing identity).
+      - name: Confirm release version and signing identity
+        if: ${{ inputs.publish_release }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo 'Publish only from main. Merge tested enhancements/GPU fix first.' >&2
+            exit 1
+          fi
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo 'release_tag must look like v0.10.2' >&2
+            exit 1
+          }
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -1)"
+          mkdir -p previous-release
+          # A prior release APK is required to prove the new build can update it.
+          gh release download --pattern '*.apk' --dir previous-release
+          mapfile -d '' old_apks < <(find previous-release -type f -name '*.apk' -print0)
+          if [ "${#old_apks[@]}" -ne 1 ]; then
+            echo 'Exactly one APK asset is required in the latest GitHub Release.' >&2
+            exit 1
+          fi
+          python3 - "$BUILT_APK" "${old_apks[0]}" "$AAPT" "$APKSIGNER" "$RELEASE_TAG" <<'PY'
+          import re, subprocess, sys
+          new_apk, old_apk, aapt, apksigner, tag = sys.argv[1:]
+          def identity(apk):
+              text = subprocess.check_output([aapt, 'dump', 'badging', apk], text=True)
+              match = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text, re.M)
+              if not match:
+                  raise RuntimeError(f'Cannot read Android package/version metadata for {apk}')
+              cert_text = subprocess.check_output([apksigner, 'verify', '--print-certs', apk], text=True)
+              cert = re.search(r'Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)', cert_text)
+              if not cert:
+                  raise RuntimeError(f'Cannot read APK signing certificate for {apk}')
+              return match.group(1), int(match.group(2)), match.group(3), cert.group(1).lower()
+          new = identity(new_apk)
+          old = identity(old_apk)
+          print('New APK (package, code, name, signer):', new)
+          print('Old APK (package, code, name, signer):', old)
+          if new[0] != old[0]:
+              raise SystemExit('STOP: package ID differs; this is not an in-place update.')
+          if new[3] != old[3]:
+              raise SystemExit('STOP: signing certificate differs; Android cannot upgrade this APK.')
+          if new[1] <= old[1]:
+              raise SystemExit('STOP: versionCode must be higher than the old release.')
+          if new[2] != tag.removeprefix('v'):
+              raise SystemExit('STOP: APK versionName must match the new release tag. Update version metadata in the source/build script first.')
+          print('Release checks passed. Note: versionCode must also exceed the version on the actual tablet.')
+          PY
+
+      - name: Publish new GitHub Release (does not overwrite earlier releases)
+        if: ${{ inputs.publish_release }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" "$BUILT_APK" \
+            --title "PhotoCraft Android $RELEASE_TAG" \
+            --target "$GITHUB_SHA" \
+            --notes "PhotoCraft Android update built from commit $GITHUB_SHA. Includes GPU initialization changes. GPU functionality must still be confirmed on device after installation."

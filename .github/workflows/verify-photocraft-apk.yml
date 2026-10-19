@@ -146,7 +146,7 @@ jobs:
 
           ACTUAL_CERT="$(
             "$APKSIGNER" verify --print-certs "$APK" |
-            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            sed -nE 's/^Signer #1 certificate SHA-256 digest:[[:space:]]*([[:xdigit:]]+).*$/\1/p' |
             head -1 |
             tr '[:upper:]' '[:lower:]'
           )"

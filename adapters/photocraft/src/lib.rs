@@ -683,7 +683,6 @@ impl AndroidFileBridge {
 /// `ModifiersChanged` handling and suppresses the text character that would otherwise be emitted
 /// alongside a Ctrl/Command shortcut.
 fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput) {
-    let before = *state;
     let mut kept: Vec<egui::Event> = Vec::with_capacity(raw.events.len());
     for mut event in raw.events.drain(..) {
         match &mut event {
@@ -695,6 +694,7 @@ fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput
                 ..
             } => {
                 let tracked = physical_key.unwrap_or(*key);
+                let previous = *state;
                 match tracked {
                     egui::Key::ShiftLeft | egui::Key::ShiftRight => state.shift = *pressed,
                     egui::Key::ControlLeft | egui::Key::ControlRight => state.ctrl = *pressed,
@@ -703,6 +703,9 @@ fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput
                 }
                 state.mac_cmd = false;
                 state.command = state.ctrl;
+                if *state != previous {
+                    kept.push(egui::Event::ModifiersChanged(*state));
+                }
                 *modifiers = *state;
                 kept.push(event);
             }
@@ -719,17 +722,13 @@ fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput
             }
             egui::Event::WindowFocused(false) => {
                 *state = egui::Modifiers::default();
+                kept.push(egui::Event::ModifiersChanged(*state));
                 kept.push(event);
             }
             _ => kept.push(event),
         }
     }
     raw.events = kept;
-    if *state != before {
-        // `RawInput` has no modifier field in this egui version: `InputState.modifiers` is driven
-        // purely by this event (plus its own per-event copies), so it must be emitted on change.
-        raw.events.push(egui::Event::ModifiersChanged(*state));
-    }
 }
 
 

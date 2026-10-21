@@ -39,7 +39,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     rust = replace_exact(rust, "mod ime_bridge;", "mod ime_bridge;\nmod gridcraft_tools;")
     rust = replace_exact(rust, "probe: InputProbe,", "probe: InputProbe,\n    tools: gridcraft_tools::GridCraftTools,")
     rust = replace_exact(rust, "let ime = ime_bridge::ime::ImeBridge::new(&app);",
-                         "let tools = gridcraft_tools::GridCraftTools::new(&app);\\n        let ime = ime_bridge::ime::ImeBridge::new(&app);".replace("\\\\n", "\\n"))
+                         "let tools = gridcraft_tools::GridCraftTools::new(&app);" + chr(10) + "        let ime = ime_bridge::ime::ImeBridge::new(&app);")
     rust = replace_exact(rust, "probe: InputProbe::default(),",
                          "probe: InputProbe::default(), tools,")
     rust = replace_exact(rust, "self.poll_file_picker();", "self.poll_file_picker();\n        self.tools.poll();")

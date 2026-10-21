@@ -1,0 +1,59 @@
+# Install only as .github/workflows/bootstrap.yml in KosmosSG/designcraft-signing-private.
+# Requires DESIGNCRAFT_RECOVERY_PASSPHRASE, also backed up independently by the owner.
+name: Establish dedicated DesignCraft signing identity
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: designcraft-permanent-identity
+  cancel-in-progress: false
+jobs:
+  establish:
+    if: github.repository == 'KosmosSG/designcraft-signing-private' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Establish once, encrypt backup and verify restoration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_PASSPHRASE: ${{ secrets.DESIGNCRAFT_RECOVERY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(gh api repos/KosmosSG/designcraft-signing-private --jq .private)" = true
+          test -n "$RECOVERY_PASSPHRASE" || { echo 'Set the dedicated DesignCraft recovery secret first'; exit 1; }
+          test "${#RECOVERY_PASSPHRASE}" -ge 24 || { echo 'Recovery passphrase must contain at least 24 characters'; exit 1; }
+          test ! -e designcraft-backup.gpg && test ! -e designcraft-identity.json || { echo 'Existing identity preserved; refusing to generate a replacement'; exit 1; }
+          WORK=$(mktemp -d "$RUNNER_TEMP/designcraft-key.XXXXXX")
+          trap 'rm -rf "$WORK"' EXIT
+          export STORE_PASSWORD
+          STORE_PASSWORD=$(openssl rand -base64 32)
+          echo "::add-mask::$STORE_PASSWORD"
+          printf '%s' "$STORE_PASSWORD" > "$WORK/store-password"
+          keytool -genkeypair -noprompt -keystore "$WORK/designcraft.p12" -storetype PKCS12 -storepass:env STORE_PASSWORD -keypass:env STORE_PASSWORD -alias designcraft -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=DesignCraft Android, OU=Independent Android Builds, O=KosmosSG'
+          keytool -exportcert -rfc -keystore "$WORK/designcraft.p12" -storepass:env STORE_PASSWORD -alias designcraft > designcraft-certificate.pem
+          tar -C "$WORK" -cf "$WORK/backup.tar" designcraft.p12 store-password
+          printf '%s' "$RECOVERY_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 --output designcraft-backup.gpg "$WORK/backup.tar"
+          mkdir "$WORK/restore"
+          printf '%s' "$RECOVERY_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --decrypt designcraft-backup.gpg > "$WORK/restored.tar"
+          tar -C "$WORK/restore" -xf "$WORK/restored.tar"
+          cmp "$WORK/designcraft.p12" "$WORK/restore/designcraft.p12"
+          cmp "$WORK/store-password" "$WORK/restore/store-password"
+          keytool -exportcert -rfc -keystore "$WORK/restore/designcraft.p12" -storepass:env STORE_PASSWORD -alias designcraft > "$WORK/restored-certificate.pem"
+          cmp designcraft-certificate.pem "$WORK/restored-certificate.pem"
+          openssl x509 -in designcraft-certificate.pem -noout -fingerprint -sha256 > "$WORK/fingerprint"
+          python3 - "$WORK/fingerprint" <<'PY'
+          import json, pathlib, sys
+          fingerprint = pathlib.Path(sys.argv[1]).read_text().strip().split('=', 1)[1].replace(':', '').lower()
+          pathlib.Path('designcraft-identity.json').write_text(json.dumps({'package':'com.artcraft.designcraft', 'alias':'designcraft', 'certificate_sha256':fingerprint, 'backup_restore_verified':True, 'highest_production_version_code':0}, indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add designcraft-backup.gpg designcraft-certificate.pem designcraft-identity.json
+          git commit -m 'Establish dedicated DesignCraft signing identity and verified encrypted backup'
+          gh auth setup-git
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          echo 'Dedicated DesignCraft identity established. Encrypted backup restoration verified. Keep an independent copy of the encrypted backup and recovery passphrase.' >> "$GITHUB_STEP_SUMMARY"

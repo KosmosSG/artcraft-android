@@ -1,0 +1,22 @@
+name: DesignCraft official upstream report
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Resolve latest stable official DesignCraft release
+        run: python3 tools/designcraft_tracking.py > designcraft-upstream.json
+      - run: cat designcraft-upstream.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: designcraft-official-upstream-report
+          path: designcraft-upstream.json
+          retention-days: 30

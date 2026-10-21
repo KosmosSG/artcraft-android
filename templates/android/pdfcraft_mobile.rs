@@ -155,7 +155,7 @@ impl Mobile {
         }
     }
     pub fn toolbar(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("pdfcraft_android_mobile_tools").resizable(false).show(ctx, |ui| {
+        egui::Window::new("PDFCraft Android tools").anchor(egui::Align2::LEFT_BOTTOM, [8.0, -8.0]).resizable(false).collapsible(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;

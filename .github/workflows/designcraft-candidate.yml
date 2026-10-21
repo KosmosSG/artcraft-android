@@ -1,0 +1,92 @@
+name: DesignCraft ARM64 candidate
+on:
+  push:
+    branches: [designcraft-android-candidate]
+    paths: ['tools/designcraft/**', '.github/workflows/designcraft-candidate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-candidate
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION_NAME: 0.10.0-android.1
+      VERSION_CODE: '16800001'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/designcraft
+          ref: 15a2f3c8c88ae2e011e5912149ac67460ea6d949
+          path: builder/source/designcraft
+          persist-credentials: false
+      - name: Verify release provenance and prepare isolated Android integration
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          git -C builder/source/designcraft fetch --depth=1 origin refs/tags/v0.10.0:refs/tags/v0.10.0
+          test "$(git -C builder/source/designcraft rev-parse 'v0.10.0^{commit}')" = 15a2f3c8c88ae2e011e5912149ac67460ea6d949
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/designcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          pip install pillow
+          python3 tools/designcraft/make_icon.py builder/dc-icon.png
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK and build tools
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build candidate using disposable signing key only
+        run: bash builder/build.sh -designcraft -appname='DesignCraft Test' -packagename=com.artcraft.designcraft.candidate -appicon="$GITHUB_WORKSPACE/builder/dc-icon.png"
+      - name: Verify candidate signature, version, launcher and ARM64 library
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APK=$(find builder/output -maxdepth 1 -name '*.apk' -type f)
+          test -f "$APK"
+          CERT=$($APKSIGNER verify --print-certs "$APK" | sed -n 's/Signer #1 certificate SHA-256 digest: //p')
+          python3 tools/designcraft/verify_apk.py "$APK" "$AAPT" "$APKSIGNER" "$VERSION_NAME" "$VERSION_CODE" "$CERT" > candidate/verification.json
+          cp "$APK" "candidate/DesignCraft-$VERSION_NAME-arm64-candidate.apk"
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          cat candidate/verification.json >> "$GITHUB_STEP_SUMMARY"
+          echo 'Candidate only. Disposable certificate; tablet testing pending. No production secrets used. No release published.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: DesignCraft-0.10.0-android.1-arm64-candidate
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: designcraft-build-diagnostics
+          path: |
+            builder/logs/
+            builder/source/designcraft/apps/designcraft-android/src/
+            builder/source/designcraft/apps/designcraft-android/Cargo.toml
+          retention-days: 7
+      - name: Destroy disposable key
+        if: always()
+        run: rm -rf builder/keys

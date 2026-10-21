@@ -102,7 +102,7 @@ private File pdfCopyFont(Uri uri, String name) throws Exception {
     File dir = new File(appStorageDir(), "pdfcraft-document-fonts");
     if (!dir.isDirectory() && !dir.mkdirs())
         throw new java.io.IOException("Could not create font cache");
-    File target = new File(dir, safeName(name));
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
     File temporary = File.createTempFile("font-", ".tmp", dir);
     boolean accepted = false;
     try (InputStream in = getContentResolver().openInputStream(uri);
@@ -116,6 +116,7 @@ private File pdfCopyFont(Uri uri, String name) throws Exception {
             if (total > 16L * 1024 * 1024)
                 throw new java.io.IOException("Font exceeds 16 MB size limit");
             out.write(bytes, 0, length);
+            digest.update(bytes, 0, length);
         }
         if (total <= 0) throw new java.io.IOException("Empty font file");
     } catch (Exception error) {
@@ -123,10 +124,18 @@ private File pdfCopyFont(Uri uri, String name) throws Exception {
         throw error;
     }
     try {
-        // Keep an existing font if it has the same bytes; never leave half-written data.
+        // Content-addressed names avoid overwriting other apps' or older imported fonts.
+        StringBuilder hash = new StringBuilder();
+        byte[] bits = digest.digest();
+        for (int i = 0; i < 12; i++) {
+            hash.append(Character.forDigit((bits[i] >> 4) & 15, 16));
+            hash.append(Character.forDigit(bits[i] & 15, 16));
+        }
+        File target = new File(dir, hash + "-" + safeName(name));
         if (target.exists()) {
-            File alternate = new File(dir, "new-" + safeName(name));
-            target = alternate;
+            temporary.delete();
+            accepted = true;
+            return target;
         }
         if (!temporary.renameTo(target))
             throw new java.io.IOException("Could not safely save selected font");

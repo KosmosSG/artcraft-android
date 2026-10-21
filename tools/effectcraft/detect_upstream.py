@@ -19,7 +19,7 @@ def get(url):
 candidates = [
     release for release in get(API + "releases?per_page=100")
     if not release.get("draft") and not release.get("prerelease")
-    and re.fullmatch(r"v\\d+\\.\\d+\\.\\d+", release.get("tag_name", ""))
+    and re.fullmatch(r"v[0-9]+[.][0-9]+[.][0-9]+", release.get("tag_name", ""))
 ]
 if not candidates:
     raise SystemExit("No official stable semver release found (fail closed).")

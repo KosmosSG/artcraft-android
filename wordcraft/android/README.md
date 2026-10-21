@@ -33,6 +33,14 @@ Status: **candidate / NOT released**. No permanent signing key created, no APK d
 | Updates | No WordCraft native updater or upstream watcher has been implemented here. Future checks must compare **official stable tags resolved to commits**, not arbitrary pushes |
 | GPU | Do not claim Vulkan/Adreno acceleration: test actual graphics backend, report renderer and fallback accurately, no fabricated GPU diagnostics |
 
+## PhotoCraft parity: WordCraft-native font import (candidate patch)
+
+The upstream **v0.9.0** engine already implements `font.add` and validates TTF/OTF, plus TTC/OTC/WOFF/WOFF2. Its UI sends Android-picked font bytes from `open_async` / Inbox to `font.add` and updates font lists without a floating Custom Fonts window. The reference Android launcher did **not** initialize WordCraft's persistent `FontDb` directory; fonts could disappear on restart.
+
+The isolated `patch_builder.py` integrates WordCraft's own `wordcraft-fonts::FontDb::load_user_fonts` before app creation and stores newly imported fonts in the WordCraft-only app-private `files/fonts` folder. It removes the Android **All files access** permission/prompt for this WordCraft candidate, relying on user-selected documents through SAF. These code paths need compilation plus tablet tests for import, restart, Montserrat and PDF embedding.
+
+**Not implemented yet:** PhotoCraft-style SAF shared `ArtCraft-Fonts` document-tree selection/refresh (must use persisted URI grants and scoped reads without assuming primary storage); a WordCraft-specific manual/startup update-check UI and saved preference; configurable Android Shortcut Pad; stylus refinements and verified GPU diagnostics. Those features require additional WordCraft-only code and testing before any release.
+
 ## Release blockers
 1. Candidate must compile; verify tag/commit, source patch scope, package, ABI, versionName/versionCode, certificate fingerprint, SHA-256 and actual packaged Wc icon.
 2. Existing WordCraft signing identity must be reconciled with any external/local keys or installed APKs. No dedicated key or encrypted recovery backup has been established. **Never** borrow another ArtCraft application's certificate.

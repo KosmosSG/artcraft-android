@@ -125,6 +125,13 @@ jobs:
           git -C builder/source/wordcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
 
+      - name: Integrate WordCraft persistent font import (isolated builder only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py
+          python3 wordcraft/android/patch_builder.py builder
+
       - name: Compile candidate with per-run temporary builder key
         shell: bash
         timeout-minutes: 60
@@ -149,12 +156,21 @@ jobs:
               names = archive.namelist()
               libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
               assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
-              assert any('mipmap-' in n and n.endswith('/ic_launcher.png') for n in names), 'Wc icon resource missing'
+              assert any(n.startswith('res/') and n.lower().endswith(('.png', '.webp')) for n in names), 'Packaged raster resources missing'
               assert any(n.endswith('/ic_launcher.xml') for n in names), 'Adaptive Wc icon missing'
               assert 'classes.dex' in names, 'Android Java bridge missing'
           print('Archive checks: ARM64 libraries, icon resources, Java DEX found')
           PY
+          # AAPT2 may rename/optimize packaged PNG paths; assert the generated
+          # source artwork AND compiled resource-table identifiers instead.
+          icon_res="builder/source/wordcraft/apps/wordcraft-android/res"
+          test -s "$icon_res/mipmap-xxxhdpi/ic_launcher.png"
+          test -s "$icon_res/drawable-xxxhdpi/ic_launcher_foreground.png"
+          test -s "$icon_res/mipmap-anydpi-v26/ic_launcher.xml"
           aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          "$aapt2" dump resources "$apk" > /tmp/wordcraft-packed-resources.txt
+          grep -F "mipmap/ic_launcher" /tmp/wordcraft-packed-resources.txt
+          grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
           badging="$("$aapt2" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft'"
           printf '%s\n' "$badging" | grep -F "versionCode='100000001'"

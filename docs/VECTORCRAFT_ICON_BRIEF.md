@@ -10,3 +10,7 @@ User requested on 21 October 2026: apply this icon direction in a future Android
 - Preserve the established permanent signing certificate and existing app enhancements. Apply after the first baseline build; no version or workflow changes are requested for the running build.
 
 Status: design brief saved; preview generation requested. The running APK has not been changed to use this artwork.
+
+## Approved sample
+
+User approved the generated orange Vc sample and requested retaining this exact artwork for future app enhancements. Master artwork: `assets/branding/vectorcraft/vc-glass-approved.png`. Preserve this approved file; derive launcher densities and adaptive-icon assets later. It is not wired into the running baseline build.

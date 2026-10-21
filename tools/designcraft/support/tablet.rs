@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use super::{saf, SafState, saf_next_id, ImportRequest};
 
 static GPU: OnceLock<String> = OnceLock::new();
-static FONT_RESULT: Mutex<Option<Result<(), String>>> = Mutex::new(None);
+static FONT_RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 
 pub fn record_gpu(cc: &eframe::CreationContext<'_>) {
     let text = match &cc.wgpu_render_state {
@@ -16,7 +16,7 @@ pub fn record_gpu(cc: &eframe::CreationContext<'_>) {
     let _ = GPU.set(text);
 }
 
-pub fn font_result(result: Result<(), String>) {
+pub fn font_result(result: Result<String, String>) {
     *FONT_RESULT.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
 }
 
@@ -43,33 +43,78 @@ pub fn install_font(name: &str, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Default)]
 pub struct Tablet {
     dock: bool,
     diagnostics: bool,
 }
 
+fn shortcut_setting() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|p|
+        std::path::PathBuf::from(p).join(".local/share/designcraft/android-shortcuts-enabled"))
+}
+
+impl Default for Tablet {
+    fn default() -> Self {
+        let dock = shortcut_setting().and_then(|p| std::fs::read(p).ok())
+            .is_some_and(|value| value == b"enabled\n");
+        Self { dock, diagnostics: false }
+    }
+}
+
 impl Tablet {
+    fn save_shortcuts(&mut self, enabled: bool) -> Result<(), String> {
+        let path = shortcut_setting().ok_or("App-private settings path is unavailable")?;
+        let dir = path.parent().ok_or("Invalid app-private settings path")?;
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let pending = path.with_extension("tmp");
+        std::fs::write(&pending, if enabled { b"enabled\n".as_slice() } else { b"disabled\n".as_slice() })
+            .map_err(|e| e.to_string())?;
+        std::fs::rename(pending, path).map_err(|e| e.to_string())?;
+        self.dock = enabled;
+        Ok(())
+    }
+
+    fn import_font(app: &mut designcraft_ui_egui::DesignApp, bridge: &saf::Bridge, state: &SafState) {
+        let id = saf_next_id(state);
+        state.requests.lock().unwrap_or_else(|e| e.into_inner())
+            .insert(id, ImportRequest { purpose: "android-font".into(), target: None });
+        if let Err(error) = bridge.request_open(id, true) {
+            state.requests.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+            app.status_error("Import font", error);
+        }
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut designcraft_ui_egui::DesignApp, bridge: &saf::Bridge, state: &SafState) {
         if let Some(result) = FONT_RESULT.lock().unwrap_or_else(|e| e.into_inner()).take() {
             match result {
-                Ok(()) => match app.run("font.reload", serde_json::json!({})) {
-                    Ok(_) => app.status("Font imported and catalog reloaded"),
+                Ok(message) => match app.run("font.reload", serde_json::json!({})) {
+                    Ok(_) => app.status(&format!("{message}; font catalog reloaded")),
                     Err(error) => app.status_error("Reload fonts", error),
                 },
                 Err(error) => app.status_error("Import font", error),
+            }
+        }
+        // Queued by the reviewed Android-only Type, Window and Help commands.
+        let actions = designcraft_ui_egui::menus::artcraft_take_android_actions();
+        if actions & 1 != 0 { Self::import_font(app, bridge, state); }
+        for (mask, label, code) in [
+            (2, "Select shared font folder", 1), (4, "Refresh shared fonts", 2),
+            (8, "Check for updates", 3), (16, "Update settings", 4)
+        ] {
+            if actions & mask != 0 {
+                if let Err(error) = bridge.tablet_action(code) { app.status_error(label, error); }
+            }
+        }
+        if actions & 32 != 0 {
+            if let Err(error) = self.save_shortcuts(!self.dock) {
+                app.status_error("Touch shortcuts", error);
             }
         }
         egui::Panel::bottom("designcraft-android-controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.menu_button("Android", |ui| {
                     if ui.button("Import TTF / OTF…").clicked() {
-                        let id = saf_next_id(state);
-                        state.requests.lock().unwrap_or_else(|e| e.into_inner()).insert(id, ImportRequest { purpose: "android-font".into(), target: None });
-                        if let Err(error) = bridge.request_open(id, true) {
-                            state.requests.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-                            app.status_error("Import font", error);
-                        }
+                        Self::import_font(app, bridge, state);
                     }
                     if ui.button("Reload fonts").clicked() {
                         if let Err(error) = app.run("font.reload", serde_json::json!({})) { app.status_error("Reload fonts", error); }
@@ -80,16 +125,33 @@ impl Tablet {
                         }
                     }
                     ui.label("Shared fonts are cached locally; refresh adds or updates files. Startup network checks default to off.");
-                    ui.checkbox(&mut self.dock, "Touch shortcuts");
+                    if ui.checkbox(&mut self.dock, "Touch shortcuts").changed() {
+                        let enabled = self.dock;
+                        if let Err(error) = self.save_shortcuts(enabled) {
+                            self.dock = !enabled;
+                            app.status_error("Touch shortcuts", error);
+                        }
+                    }
                     ui.checkbox(&mut self.diagnostics, "GPU diagnostics");
                     ui.label("Customize keys: Edit → Keyboard Shortcuts");
                 });
                 if self.dock {
-                    for (label, command) in [("Undo", "edit.undo"), ("Redo", "edit.redo"), ("Save", "file.save")] {
-                        if ui.button(label).clicked() {
-                            if let Err(error) = app.run(command, serde_json::json!({})) { app.status_error(label, error); }
-                        }
-                    }
+                    egui::ScrollArea::horizontal().id_salt("designcraft-android-shortcut-scroll").show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            for (label, command) in [
+                                ("Undo", "edit.undo"), ("Redo", "edit.redo"), ("Save", "file.save")
+                            ] {
+                                let enabled = !ui.ctx().text_edit_focused();
+                                if ui.add_enabled(enabled,
+                                    egui::Button::new(label).min_size(egui::vec2(56.0, 44.0))).clicked()
+                                {
+                                    if let Err(error) = app.run(command, serde_json::json!({})) {
+                                        app.status_error(label, error);
+                                    }
+                                }
+                            }
+                        });
+                    });
                 }
             });
         });

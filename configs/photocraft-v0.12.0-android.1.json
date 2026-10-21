@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "app": "photocraft",
+  "upstream_repository": "https://github.com/storytold/photocraft.git",
+  "upstream_tag": "v0.12.0",
+  "upstream_commit": "6a2d027ee2e7ca12afd248544ed2262b0fa078dd",
+  "upstream_workspace_version": "0.12.0",
+  "upstream_rust_toolchain": "1.95.0",
+  "android_version_name": "0.12.0-android.1",
+  "android_package": "com.artcraft.photocraft",
+  "android_target": "aarch64-linux-android",
+  "android_min_sdk": 28,
+  "android_target_sdk": 35,
+  "existing_signed_version_code_floor_exclusive": 16790001,
+  "approved_icon_sha256": "1a6495c214ae4536b432a34feff9b7001b612d4df1e79bf784b00d5b393f8a9b",
+  "production_signing_allowed": false,
+  "apk_build_allowed": false,
+  "publishing_allowed": false
+}

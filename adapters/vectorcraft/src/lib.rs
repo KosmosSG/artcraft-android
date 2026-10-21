@@ -745,6 +745,7 @@ struct VectorCraftAndroidApp {
     picks: Arc<PickState>,
     fonts: FontUiState,
     android_tools_open: bool,
+    touch_dock: bool,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
@@ -971,6 +972,10 @@ impl eframe::App for VectorCraftAndroidApp {
         let mut select_shared = false;
         let mut refresh_shared = false;
         let mut check_updates = false;
+        let mut customize_shortcuts = false;
+        let mut dock_undo = false;
+        let mut dock_redo = false;
+        let previous_touch_dock = self.touch_dock;
         egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
             .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
             .show(ctx, |ui| {
@@ -996,11 +1001,51 @@ impl eframe::App for VectorCraftAndroidApp {
                         ui.label(&self.fonts.shared_status);
                     }
                     ui.separator();
+                    ui.heading("Keyboard & Touch");
+                    if ui.button("Customize Keyboard Shortcuts").clicked() {
+                        customize_shortcuts = true;
+                    }
+                    ui.checkbox(&mut self.touch_dock, "Show Touch Shortcut Dock");
+                    ui.small("Uses VectorCraft's existing shortcut editor and undo/redo commands.");
+                    ui.separator();
+                    ui.heading("Graphics (read-only)");
+                    ui.label("Configured UI backend: eframe/wgpu.");
+                    ui.small("Actual GPU device/backend and CPU fallback are not measured by this shell.");
+                    ui.separator();
                     if ui.button("Check for VectorCraft Updates").clicked() {
                         check_updates = true;
                     }
                     ui.small("Checks published, signed-candidate release listings; never installs automatically.");
                 });
+        }
+        if self.touch_dock {
+            egui::Area::new(egui::Id::new("vectorcraft.touch_shortcut_dock"))
+                .anchor(egui::Align2::LEFT_BOTTOM, [12.0, -12.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Undo").clicked() { dock_undo = true; }
+                        if ui.button("Redo").clicked() { dock_redo = true; }
+                        if ui.button("Shortcuts").clicked() { customize_shortcuts = true; }
+                    });
+                });
+        }
+        if self.touch_dock != previous_touch_dock {
+            if let Some(dir) = self.persist.as_ref() {
+                if let Err(error) = fs::write(dir.join("touch_dock.enabled"),
+                    if self.touch_dock { "1" } else { "0" }) {
+                    log::warn!("Could not save shortcut dock preference: {error}");
+                }
+            }
+        }
+        for (pressed, command) in [(dock_undo, "edit.undo"),
+                                   (dock_redo, "edit.redo"),
+                                   (customize_shortcuts, "edit.keyboardShortcuts")] {
+            if pressed {
+                if let Err(error) = self.inner.run(command, serde_json::json!({})) {
+                    log::warn!("VectorCraft Android shortcut {command} failed: {error}");
+                }
+                ctx.request_repaint();
+            }
         }
         if import { self.fonts.import(&self.picks, &self.bridge); }
         if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
@@ -1090,12 +1135,16 @@ fn android_main(android_app: AndroidApp) {
             if let Some(dir) = &persist {
                 persist_load(&mut app, dir);
             }
+            let touch_dock = persist.as_ref()
+                .and_then(|dir| fs::read_to_string(dir.join("touch_dock.enabled")).ok())
+                .is_some_and(|value| value.trim() == "1");
             Ok(Box::new(VectorCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
                 picks: app_picks.clone(),
                 fonts: std::mem::take(&mut initial_fonts),
                 android_tools_open: false,
+                touch_dock,
                 updates: {
                     let mut state = UpdateDialogState::default();
                     // Nonblocking, read-only startup check as in PhotoCraft.

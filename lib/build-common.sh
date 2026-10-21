@@ -1977,6 +1977,29 @@ try:
         else:
             shutil.copy2(icon, out_dir / "ic_launcher.png")
 
+    # PDFCraft-only adaptive icon resources, based on the approved uploaded artwork.
+    # The input PNG comes from the GitHub candidate preparation step. Fail closed.
+    if app == "pdfcraft" and appicon:
+        fg = root / "assets" / "pdfcraft" / "approved-foreground.png"
+        if not fg.is_file():
+            raise SystemExit(f"Missing PDFCraft adaptive foreground: {fg}")
+        drawable = staging_dir / "res" / "drawable-nodpi"
+        drawable.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(fg, drawable / "pdfcraft_foreground.png")
+        anydpi = staging_dir / "res" / "mipmap-anydpi-v26"
+        anydpi.mkdir(parents=True, exist_ok=True)
+        (anydpi / "ic_launcher.xml").write_text(
+            '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+            '  <background android:drawable="@color/pdfcraft_bg" />\n'
+            '  <foreground android:drawable="@drawable/pdfcraft_foreground" />\n'
+            '</adaptive-icon>\n'
+        )
+        values = staging_dir / "res" / "values"
+        values.mkdir(parents=True, exist_ok=True)
+        (values / "pdfcraft_colors.xml").write_text(
+            '<resources><color name="pdfcraft_bg">#080405</color></resources>\n'
+        )
+
     serde_dep = 'serde_json = { workspace = true }\n' if (saf or _persist) else ''
     # The SAF bridge for rfd-driven apps (pdfcraft) calls `rfd::artcraft_saf` from the launcher, so
     # the launcher needs rfd as a direct dependency. The app's workspace patches it to the vendored
@@ -2082,6 +2105,14 @@ theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
 icon = "@mipmap/ic_launcher"
 
 {activity_block}'''
+    # PDFCraft Android prerelease name applies to the launcher crate alone.
+    # Do not bump the upstream workspace's internally pinned crate versions.
+    if app == "pdfcraft":
+        display_version = __import__("os").environ.get("PDFCRAFT_ANDROID_VERSION_NAME", "")
+        if display_version:
+            if not re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*", display_version):
+                raise SystemExit("Invalid PDFCraft Android versionName")
+            manifest = manifest.replace("version.workspace = true", f'version = "{display_version}"', 1)
     (staging_dir / "Cargo.toml").write_text(manifest)
 
     if saf:

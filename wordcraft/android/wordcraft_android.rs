@@ -15,7 +15,7 @@ const ACTIONS: [(&str, &str); 9] = [
     ("Italic", "format.italic"),
     ("Zoom in", "view.zoomIn"),
     ("Zoom out", "view.zoomOut"),
-    ("Select all", "edit.selectAll"),
+    ("Select all", "select.all"),
     ("Print", "file.print"),
 ];
 
@@ -251,6 +251,12 @@ impl Tools {
                     }
                     ui.separator();
                     ui.checkbox(&mut self.show_pad, "Show Shortcut Pad");
+                    if ui.button("Customize physical keyboard").clicked() {
+                        match app.run("tools.customizeKeyboard", serde_json::json!({})) {
+                            Ok(_) => self.status = "Customize Keyboard dialog opened".into(),
+                            Err(error) => self.status = format!("Keyboard customization: {error}"),
+                        }
+                    }
                     if let Some(render) = frame.wgpu_render_state() {
                         let info = render.adapter.get_info();
                         ui.label(format!("GPU: {} ({:?})", info.name, info.backend));

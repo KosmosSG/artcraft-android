@@ -60,7 +60,7 @@ impl Tablet {
                 Err(error) => app.status_error("Import font", error),
             }
         }
-        egui::TopBottomPanel::bottom("designcraft-android-controls").show(ui, |ui| {
+        egui::Panel::bottom("designcraft-android-controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.menu_button("Android", |ui| {
                     if ui.button("Import TTF / OTF…").clicked() {
@@ -74,6 +74,12 @@ impl Tablet {
                     if ui.button("Reload fonts").clicked() {
                         if let Err(error) = app.run("font.reload", serde_json::json!({})) { app.status_error("Reload fonts", error); }
                     }
+                    for (label, action) in [("Select shared font folder…", 1), ("Refresh shared fonts", 2), ("Check for updates", 3), ("Startup update settings…", 4)] {
+                        if ui.button(label).clicked() {
+                            if let Err(error) = bridge.tablet_action(action) { app.status_error(label, error); }
+                        }
+                    }
+                    ui.label("Shared fonts are cached locally; refresh adds or updates files. Startup network checks default to off.");
                     ui.checkbox(&mut self.dock, "Touch shortcuts");
                     ui.checkbox(&mut self.diagnostics, "GPU diagnostics");
                     ui.label("Customize keys: Edit → Keyboard Shortcuts");

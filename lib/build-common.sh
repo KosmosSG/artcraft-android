@@ -2113,6 +2113,15 @@ icon = "@mipmap/ic_launcher"
             if not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+-android[.][1-9][0-9]*", display_version):
                 raise SystemExit("Invalid PDFCraft Android versionName")
             manifest = manifest.replace("version.workspace = true", f'version = "{display_version}"', 1)
+    if app == "pdfcraft":
+        permission = '''[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"
+
+'''
+        header = "[package.metadata.android.application]"
+        if manifest.count(header) != 1:
+            raise SystemExit("PDFCraft Android manifest section missing")
+        manifest = manifest.replace(header, permission + header, 1)
     (staging_dir / "Cargo.toml").write_text(manifest)
 
     if saf:
@@ -2123,6 +2132,17 @@ icon = "@mipmap/ic_launcher"
             .replace("__CLASS__", saf["activity"])
             .replace("__TAG__", saf["activity"])
         )
+        if app == "pdfcraft":
+            extension = (root / "templates" / "android" / "pdfcraft_mobile_java.txt").read_text()
+            marker = "public String safPoll() { return results.poll(); }"
+            if java_src.count(marker) != 1:
+                raise SystemExit("Cannot safely extend PDFCraft Activity: SAF poll anchor changed")
+            java_src = java_src.replace(marker, marker + "\n" + extension, 1)
+            callback = "super.onActivityResult(requestCode, resultCode, data);"
+            if java_src.count(callback) != 1:
+                raise SystemExit("Cannot install PDFCraft font picker callback")
+            java_src = java_src.replace(callback, callback +
+                "\n        if (pdfHandlePicker(requestCode, resultCode, data)) return;", 1)
         java_dir = staging_dir / "java" / Path(*pkg.split("."))
         java_dir.mkdir(parents=True, exist_ok=True)
         (java_dir / f"{saf['activity']}.java").write_text(java_src)
@@ -2135,6 +2155,8 @@ icon = "@mipmap/ic_launcher"
     # the Activity's IME events into egui. Its presence is also what keeps the vendored
     # android-activity (which forwards show/hide to the Activity's imeShow/imeHide) in step.
     imports.append("mod ime_bridge;")
+    if app == "pdfcraft":
+        imports.append("mod pdfcraft_mobile;")
     if re.search(r"\bSession\b", construct):
         imports.append(f"use {engine_ident}::Session;")
     services_syms = [s for s in ("NoServices", "Services") if re.search(r"\b" + s + r"\b", (SAF_RECIPES.get(app) or {}).get("construct_expr") or construct)]
@@ -2617,6 +2639,20 @@ impl eframe::App for AndroidShell {{
 {persist_on_exit}}}
 '''
 
+    if app == "pdfcraft":
+        # PDFCraft-only; the document-font cache is separate from UI system-font fallbacks.
+        checks = [
+            ("    probe: InputProbe,", "    probe: InputProbe,\n    pdf_mobile: pdfcraft_mobile::Mobile,"),
+            ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
+             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
+            ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
+            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        self.pdf_mobile.poll(ctx);"),
+            ("        self.inner.ui(ui, frame);", "        self.inner.ui(ui, frame);\n        self.pdf_mobile.toolbar(ui.ctx());"),
+        ]
+        for needle, replacement in checks:
+            if shell.count(needle) != 1:
+                raise SystemExit("PDFCraft native shell API drift: " + needle)
+            shell = shell.replace(needle, replacement, 1)
     # Install fonts before the first pass. Some apps (figcraft) lay out text with a named font family
     # ("semibold") that only exists after their theme installs the fonts, and egui applies `set_fonts`
     # at the *next* pass: installing from the app's own first frame is one pass too late, so the frame
@@ -2715,6 +2751,20 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         src_audio = src / "apps" / app / "src" / filename
         if src_audio.is_file():
             shutil.copy2(src_audio, staging_dir / "src" / filename)
+    if app == "pdfcraft":
+        marker = "    let saf_bridge = saf::Bridge::new(&android_app);"
+        if entry.count(marker) != 1:
+            raise SystemExit("PDFCraft environment initialization anchor changed")
+        entry = entry.replace(marker, """
+    // Document font imports are limited to this app's private cache; no PDF bytes are modified.
+    if let Some(folder) = android_app.external_data_path().or_else(|| android_app.internal_data_path()) {
+        let path = folder.join("pdfcraft-document-fonts");
+        let _ = std::fs::create_dir_all(&path);
+        unsafe { std::env::set_var("PDFCRAFT_ANDROID_FONT_DIR", path); }
+    }
+""" + marker, 1)
+        shutil.copy2(root / "templates" / "android" / "pdfcraft_mobile.rs",
+                     staging_dir / "src" / "pdfcraft_mobile.rs")
     (staging_dir / "src" / "lib.rs").write_text(entry)
     (staging_dir / ".artcraft-android-builder-generated").write_text(
         GENERATOR_VERSION + "\n"

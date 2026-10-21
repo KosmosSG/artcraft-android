@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""FilmCraft-only generated Android shell overlay; refuses unexpected templates.
+
+No shared templates, official source, keystores or other apps are mutated.
+Run only for APP=filmcraft after the generic launcher has been generated.
+"""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+
+def require_once(source: str, old: str, new: str, label: str) -> str:
+    if new in source:
+        return source
+    if source.count(old) != 1:
+        raise RuntimeError(f"{label}: expected one stable source anchor, found {source.count(old)}")
+    return source.replace(old, new, 1)
+
+
+def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[str, str, str]:
+    if 'struct AndroidShell {' not in rust or 'fn android_main(' not in rust:
+        raise RuntimeError("Refusing to patch an unknown FilmCraft Android launcher")
+    if 'public final class FilmCraftActivity extends NativeActivity' not in java:
+        raise RuntimeError("Expected FilmCraft's own SAF/IME Java activity")
+    if 'package = "com.artcraft.filmcraft"' not in manifest:
+        raise RuntimeError("FilmCraft package identity differs; inspect before porting features")
+    if 'java_sources = "java"' not in manifest:
+        raise RuntimeError("FilmCraft Java SAF bridge is missing")
+
+    rust = require_once(
+        rust, 'mod system_fonts;', 'mod system_fonts;\nmod filmcraft_features;',
+        "Rust feature module")
+    rust = require_once(
+        rust, '    probe: InputProbe,',
+        '    probe: InputProbe,\n    features: filmcraft_features::FilmcraftFeatures,',
+        "Feature shell field")
+    rust = require_once(
+        rust, 'let ime = ime_bridge::ime::ImeBridge::new(&app);',
+        'let ime = ime_bridge::ime::ImeBridge::new(&app);\n'
+        '        let fc_features = filmcraft_features::FilmcraftFeatures::new(&app);',
+        "Feature shell constructor")
+    rust = require_once(
+        rust, 'probe: InputProbe::default(),',
+        'probe: InputProbe::default(), features: fc_features,',
+        "Feature shell initialization")
+    rust = require_once(
+        rust, '        self.inner.logic(ctx, frame);',
+        '        self.features.poll(ctx);\n        self.inner.logic(ctx, frame);',
+        "Feature event polling")
+    rust = require_once(
+        rust, '        system_fonts::install_system_fonts(ui.ctx());',
+        '        system_fonts::install_system_fonts(ui.ctx());\n'
+        '        self.features.toolbar(ui.ctx());',
+        "Docked FilmCraft controls")
+
+    java = require_once(
+        java,
+        '        super.onActivityResult(requestCode, resultCode, data);',
+        '        super.onActivityResult(requestCode, resultCode, data);\n'
+        '        if (fcHandleActivityResult(requestCode, resultCode, data)) return;',
+        "FilmCraft-specific SAF results")
+    if 'private static final int FC_FONT_PICK' not in java:
+        if not java.rstrip().endswith('}'):
+            raise RuntimeError("Java activity is not a complete class")
+        pos = java.rfind('}')
+        java = java[:pos] + '\n' + java_overlay + '\n' + java[pos:]
+
+    manifest = require_once(
+        manifest,
+        '[dependencies]\n',
+        '[dependencies]\nfilmcraft-text = { path = "../../crates/text" }\n',
+        "FilmCraft text registry dependency")
+    if 'name = "android.permission.INTERNET"' not in manifest:
+        first_permission = '[[package.metadata.android.uses_permission]]'
+        manifest = require_once(
+            manifest, first_permission,
+            first_permission + '\nname = "android.permission.INTERNET"\n\n' + first_permission,
+            "FilmCraft update network permission")
+    return rust, java, manifest
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("android_dir", type=Path)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    overlay = Path(__file__).with_name("FilmCraftActivity.features.java.inc").read_text()
+    if args.self_test:
+        # A real staging fixture is not available in this branch-only audit.
+        # These assertions check that the injected Java bridge matches the Rust caller.
+        from pathlib import Path
+        rust = Path(__file__).with_name("filmcraft_features.rs").read_text()
+        assert 'filmcraft_text::fonts::add_font_data(bytes)' in rust
+        for name in ("fcRequestFontImport", "fcRequestSharedFontFolder",
+                     "fcRefreshSharedFonts", "fcFeaturePoll", "fcCheckForUpdates",
+                     "fcStartupUpdatesEnabled", "fcSetStartupUpdatesEnabled",
+                     "fcOpenUpdatePage", "fcFeatureFilesDir"):
+            assert name in overlay, name
+            assert name in rust, name
+        assert 'filmcraft-v[0-9]+' in overlay
+        print("FilmCraft overlay static API contract: PASS (not a compile/device test)")
+        return
+
+    project = args.android_dir.resolve()
+    if project.name != "filmcraft-android":
+        raise SystemExit("Refusing to change anything except generated filmcraft-android")
+    if not (project / ".artcraft-android-builder-generated").is_file():
+        raise SystemExit("Not a builder-owned generated FilmCraft crate")
+    src = project / "src" / "lib.rs"
+    java = project / "java/com/artcraft/filmcraft/FilmCraftActivity.java"
+    manifest = project / "Cargo.toml"
+    if not all(path.is_file() for path in (src, java, manifest)):
+        raise SystemExit("Incomplete FilmCraft SAF launcher; no changes made")
+    original = [file.read_text() for file in (src, java, manifest)]
+    patched = patch_text(*original, overlay)
+    # Only after all guards pass is any file written.
+    for file, text in zip((src, java, manifest), patched):
+        if file.read_text() != text:
+            file.write_text(text)
+    (project / "src" / "filmcraft_features.rs").write_text(
+        Path(__file__).with_name("filmcraft_features.rs").read_text())
+    print("FilmCraft native font/update integration overlaid on generated crate")
+
+
+if __name__ == "__main__":
+    main()

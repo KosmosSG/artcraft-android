@@ -37,9 +37,11 @@ fn validate_sfnt_bytes(bytes: &[u8]) -> Result<(), String> {
     if bytes.len() < 12 {
         return Err("Font is too short to contain a valid SFNT header".into());
     }
-    match &bytes[..4] {
-        [0, 1, 0, 0] | b"OTTO" | b"true" | b"typ1" => Ok(()),
-        _ => Err("Not a supported TrueType or OpenType SFNT font".into()),
+    let tag = &bytes[..4];
+    if tag == [0, 1, 0, 0] || tag == b"OTTO" || tag == b"true" || tag == b"typ1" {
+        Ok(())
+    } else {
+        Err("Not a supported TrueType or OpenType SFNT font".into())
     }
 }
 

@@ -92,7 +92,6 @@ def main() -> None:
     if args.self_test:
         # A real staging fixture is not available in this branch-only audit.
         # These assertions check that the injected Java bridge matches the Rust caller.
-        from pathlib import Path
         rust = Path(__file__).with_name("filmcraft_features.rs").read_text()
         assert 'filmcraft_text::fonts::add_font_data(bytes)' in rust
         for name in ("fcRequestFontImport", "fcRequestSharedFontFolder",

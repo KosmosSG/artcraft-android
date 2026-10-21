@@ -73,16 +73,19 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         "FilmCraft text registry dependency")
     if 'name = "android.permission.INTERNET"' not in manifest:
         first_permission = '[[package.metadata.android.uses_permission]]'
-        manifest = require_once(
-            manifest, first_permission,
-            first_permission + '\nname = "android.permission.INTERNET"\n\n' + first_permission,
-            "FilmCraft update network permission")
+        if first_permission not in manifest:
+            raise RuntimeError("FilmCraft manifest lacks the standard Android permission section")
+        manifest = manifest.replace(
+            first_permission,
+            first_permission + '\nname = "android.permission.INTERNET"\n\n',
+            1,
+        )
     return rust, java, manifest
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("android_dir", type=Path)
+    parser.add_argument("android_dir", type=Path, nargs="?")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     overlay = Path(__file__).with_name("FilmCraftActivity.features.java.inc").read_text()
@@ -102,6 +105,8 @@ def main() -> None:
         print("FilmCraft overlay static API contract: PASS (not a compile/device test)")
         return
 
+    if args.android_dir is None:
+        parser.error("android_dir is required except with --self-test")
     project = args.android_dir.resolve()
     if project.name != "filmcraft-android":
         raise SystemExit("Refusing to change anything except generated filmcraft-android")

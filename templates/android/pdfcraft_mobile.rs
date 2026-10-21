@@ -181,7 +181,7 @@ impl Mobile {
                     }
                 });
                 ui.label(&self.font_status);
-                ui.small("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.");
+                ui.label(egui::RichText::new("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.").small());
             }
             if self.updates_open {
                 ui.separator();
@@ -200,7 +200,7 @@ impl Mobile {
                         self.update_status = format!("Could not save startup preference: {error}");
                     }
                 }
-                ui.small("Checks only published PDFCraft Android APKs; never installs automatically.");
+                ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
             }
         });
     }

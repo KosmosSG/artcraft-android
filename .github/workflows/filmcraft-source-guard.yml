@@ -27,6 +27,11 @@ jobs:
       - name: Validate local pin and safety gates
         run: |
           python3 tools/filmcraft/upstream_guard.py
+      - name: Validate FilmCraft feature overlay without an APK build
+        run: |
+          python3 -m py_compile tools/filmcraft/runtime_patch.py tools/filmcraft/upstream_guard.py
+          python3 tools/filmcraft/runtime_patch.py --self-test
+          rustfmt --edition 2024 --emit stdout tools/filmcraft/filmcraft_features.rs > /dev/null
       - name: Verify official stable release and immutable tag
         run: |
           set -euo pipefail

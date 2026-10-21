@@ -80,9 +80,81 @@ def main() -> None:
         '    (staging_dir / "src" / "lib.rs").write_text(entry)',
         "avoid Android all-files access prompt in WordCraft",
     )
+    # Add an isolated Java Activity extension. The source builder and other apps
+    # never receive these methods, permissions, or saved preferences.
+    java_template = root / "templates" / "android" / "SafActivity.java"
+    java = java_template.read_text(encoding="utf-8")
+    java = exactly_once(
+        java,
+        "        super.onActivityResult(requestCode, resultCode, data);\n",
+        "        super.onActivityResult(requestCode, resultCode, data);\n"
+        "        if (requestCode == WC_FONT_FOLDER_REQUEST) {\n"
+        "            wcHandleFontFolderResult(resultCode, data);\n"
+        "            return;\n"
+        "        }\n",
+        "route the WordCraft SAF tree picker",
+    )
+    if not java.endswith("}\n"):
+        raise SystemExit("Unexpected Activity template closing brace")
+    extension = Path(__file__).with_name("WordCraftExtension.java.inc").read_text(encoding="utf-8")
+    java = java[:-2] + extension + "\n}\n"
+    java_template.write_text(java, encoding="utf-8")
+    import shutil
+    shutil.copy2(
+        Path(__file__).with_name("wordcraft_android.rs"),
+        root / "templates" / "android" / "wordcraft_android.rs",
+    )
+
+    # Inject the WordCraft-specific JNI tools into the generated shell. The
+    # Android candidate still builds the unmodified upstream engine and UI.
+    patched = exactly_once(
+        patched,
+        "    shell = f'''",
+        "    wc_fields = '\\n    wc: wordcraft_android::Tools,' if app == 'wordcraft' else ''\n"
+        "    wc_new_init = ', wc: wordcraft_android::Tools::new(&app)' if app == 'wordcraft' else ''\n"
+        "    wc_logic = '        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_ui = '        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
+        "    shell = f'''",
+        "initialize WordCraft-only shell fields",
+    )
+    for before, after, purpose in (
+        ("bars_theme: Option<bool>,{saf_fields}",
+         "bars_theme: Option<bool>,{wc_fields}{saf_fields}",
+         "add WordCraft tools field"),
+        ("bars_theme: None{saf_new_init}",
+         "bars_theme: None{wc_new_init}{saf_new_init}",
+         "initialize WordCraft tools"),
+        ("{intent_logic}{saf_logic_poll}{persist_logic}",
+         "{intent_logic}{saf_logic_poll}{wc_logic}{persist_logic}",
+         "poll WordCraft Java results"),
+        ("        {inner_ui}\n    }}",
+         "        {inner_ui}\n{wc_ui}    }}",
+         "show WordCraft tools and shortcut pad"),
+    ):
+        patched = exactly_once(patched, before, after, purpose)
+
+    patched = exactly_once(
+        patched,
+        '    (staging_dir / "src" / "lib.rs").write_text(entry)',
+        '    if app == "wordcraft":\n'
+        '        if entry.count("mod system_fonts;") != 1:\n'
+        '            raise SystemExit("WordCraft module insertion anchor changed")\n'
+        '        entry = entry.replace("mod system_fonts;", "mod wordcraft_android;\\nmod system_fonts;", 1)\n'
+        '        shutil.copy2(root / "templates" / "android" / "wordcraft_android.rs", staging_dir / "src" / "wordcraft_android.rs")\n'
+        '    (staging_dir / "src" / "lib.rs").write_text(entry)',
+        "install WordCraft Rust module into generated launcher",
+    )
+    patched = exactly_once(
+        patched,
+        '        manifest = manifest.replace(\'[[package.metadata.android.uses_permission]]\\nname = "android.permission.MANAGE_EXTERNAL_STORAGE"\\n\', "")',
+        '        manifest = manifest.replace(\'[[package.metadata.android.uses_permission]]\\nname = "android.permission.MANAGE_EXTERNAL_STORAGE"\\n\', "")\n'
+        '        manifest += \'\\n[[package.metadata.android.uses_permission]]\\nname = "android.permission.INTERNET"\\n\'',
+        "permit WordCraft-only read-only GitHub update checks",
+    )
+
     source.write_text(patched, encoding="utf-8")
     print("Applied WordCraft font persistence and scoped-storage overlay to isolated builder")
-    print("Shared SAF folder and updater: not installed by this overlay")
+    print("WordCraft SAF shared font folder, manual/opt-in updater, shortcut pad and GPU info installed; device testing pending")
 
 
 if __name__ == "__main__":

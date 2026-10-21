@@ -46,6 +46,44 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, java)
 
+
+    def test_photocraft_style_font_and_updater_bridge_is_packaged(self):
+        manifest = (ROOT / "adapters/vectorcraft/Cargo.toml").read_text()
+        rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()
+        java = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+        extras = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
+        workflow = WORKFLOW.read_text()
+        for marker in ("vectorcraft-text", "android.permission.INTERNET", "com.artcraft.vectorcraft"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, manifest)
+        for marker in ("vectorcraft_text::set_app_font_dir", '"text.rescanFonts"',
+                       "vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
+                       "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
+                       "Import Font (.ttf / .otf)", "Select Shared Font Folder",
+                       "Refresh Shared Fonts", "Check for VectorCraft Updates"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, rust)
+        for marker in ("vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
+                       "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
+                       "extras.handleActivityResult"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, java)
+        for marker in ("Intent.ACTION_OPEN_DOCUMENT_TREE", "takePersistableUriPermission",
+                       "getPersistedUriPermissions", "Fonts", "Imported", "Shared",
+                       "MAX_FONT = 32L * 1024 * 1024", "MAX_FONTS = 200",
+                       "MAX_FOLDERS = 1000", "vectorcraft-v", "HttpURLConnection",
+                       "update_available", "up_to_date", "No published VectorCraft Android",
+                       "VERSION.matcher", "RELEASE_PREFIX"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, extras)
+        for marker in ("cp -a adapters/vectorcraft builder/adapters/vectorcraft",
+                       "VectorCraftExtras.java", "javac -source 17"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, workflow)
+        # Font scans have no external write permission; update checker opens verified release pages only.
+        self.assertNotIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", extras)
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", extras)
+
     def test_signing_guards_still_required_and_no_release_published(self):
         workflow = WORKFLOW.read_text()
         for marker in ("VECTORCRAFT_KEYSTORE_BASE64", "VECTORCRAFT_CERT_SHA256",

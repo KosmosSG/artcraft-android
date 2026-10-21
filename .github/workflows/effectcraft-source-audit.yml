@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tools/effectcraft/**'
+      - 'adapters/effectcraft/**'
       - '.github/workflows/effectcraft-source-audit.yml'
   workflow_dispatch:
 
@@ -21,6 +22,12 @@ jobs:
           persist-credentials: false
       - name: Verify pinned EffectCraft release and identity guards (read-only)
         run: python3 tools/effectcraft/verify_upstream.py
+      - name: Run EffectCraft-only updater selection regression tests
+        run: python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+      - name: Verify EffectCraft-only private font importer safeguards
+        run: |
+          rustc --edition=2021 --test adapters/effectcraft/src/font_library.rs -o "$RUNNER_TEMP/effectcraft-font-tests"
+          "$RUNNER_TEMP/effectcraft-font-tests"
       - name: Discover newer official stable release without making changes
         run: python3 tools/effectcraft/detect_upstream.py | tee effectcraft-upstream-status.json
       - name: Include source audit in job summary

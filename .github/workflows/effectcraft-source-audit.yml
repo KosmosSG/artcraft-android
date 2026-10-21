@@ -26,6 +26,6 @@ jobs:
       - name: Include source audit in job summary
         run: |
           echo '### EffectCraft upstream (read-only)' >> "$GITHUB_STEP_SUMMARY"
-          echo '\`\`\`json' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat effectcraft-upstream-status.json >> "$GITHUB_STEP_SUMMARY"
-          echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

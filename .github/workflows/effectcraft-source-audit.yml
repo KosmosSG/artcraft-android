@@ -19,5 +19,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Read-only pinned EffectCraft release and identity policy verification
+      - name: Verify pinned EffectCraft release and identity guards (read-only)
         run: python3 tools/effectcraft/verify_upstream.py
+      - name: Discover newer official stable release without making changes
+        run: python3 tools/effectcraft/detect_upstream.py | tee effectcraft-upstream-status.json
+      - name: Include source audit in job summary
+        run: |
+          echo '### EffectCraft upstream (read-only)' >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`json' >> "$GITHUB_STEP_SUMMARY"
+          cat effectcraft-upstream-status.json >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"

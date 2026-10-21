@@ -2731,7 +2731,7 @@ print(f"Generated NativeActivity wrapper for {title}.")
 print(f"  Engine crate: {engine_pkg}")
 print(f"  UI crate: {ui_pkg}")
 print(f"  UI app type: {app_type}")
-print(f"  Icon: {icon.relative_to(src)}")
+print(f"  Icon: {icon.relative_to(src) if icon.is_relative_to(src) else icon}")
 print("  Orientation: sensor (allows portrait and landscape rotation)")
 PY
 fi

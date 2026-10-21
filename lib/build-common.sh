@@ -2110,7 +2110,7 @@ icon = "@mipmap/ic_launcher"
     if app == "pdfcraft":
         display_version = __import__("os").environ.get("PDFCRAFT_ANDROID_VERSION_NAME", "")
         if display_version:
-            if not re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*", display_version):
+            if not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+-android[.][1-9][0-9]*", display_version):
                 raise SystemExit("Invalid PDFCraft Android versionName")
             manifest = manifest.replace("version.workspace = true", f'version = "{display_version}"', 1)
     (staging_dir / "Cargo.toml").write_text(manifest)

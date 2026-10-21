@@ -64,6 +64,17 @@ public final class VectorCraftActivity extends NativeActivity {
     private final Map<Long, String> suggestedNames = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
+    // Optional PhotoCraft-style features, isolated from the existing open/save bridge.
+    private final VectorCraftExtras extras = new VectorCraftExtras(this);
+
+    void vcOfferExtraResult(String json) { results.offer(json); }
+    public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
+    public void vcRequestFontFolder(long id) { extras.requestFontFolder(id); }
+    public void vcRefreshFontFolder(long id) { extras.refreshFontFolder(id); }
+    public void vcCheckForUpdates() { extras.checkForUpdates(); }
+    public String vcPollUpdateResult() { return extras.pollUpdate(); }
+    public void vcOpenUpdatePage(String url) { extras.openRelease(url); }
+
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real
     // InputConnection, so the keyboard shows/dismisses on request and every commit/composition
@@ -412,6 +423,7 @@ public final class VectorCraftActivity extends NativeActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (extras.handleActivityResult(requestCode, resultCode, data)) return;
         if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) {
             return;
         }

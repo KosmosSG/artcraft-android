@@ -307,8 +307,22 @@ if app == "photocraft":
     ):
         fixed.append("crates/engine/src/presets/mod.rs")
 
+if app == "pdfcraft":
+    # Android's document-font cache is app-private; this guarded, exact-source patch lets
+    # PDFCraft's *own embeddability validator* discover imported/shared TTF/OTF faces.
+    # It does not alter how PDF fonts are embedded or how existing documents render.
+    scanner = src / "crates/engine/src/text_fonts.rs"
+    needle = '            dirs.extend([home.join(".local/share/fonts"), home.join(".fonts")]);\\n'
+    addition = '            if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR") { dirs.push(PathBuf::from(folder)); }\\n'
+    if not scanner.is_file() or scanner.read_text().count(needle) != 1:
+        raise SystemExit("PDFCraft font-scanner API changed; refusing an unreviewed port")
+    original = scanner.read_text()
+    if addition not in original:
+        scanner.write_text(original.replace(needle, needle + addition, 1))
+        fixed.append("crates/engine/src/text_fonts.rs")
+
 if fixed:
-    print(f"  Repaired upstream compile errors still present in {title}: {', '.join(fixed)}")
+    print(f"  Patched app-specific Android integration: {', '.join(fixed)}")
 PY
 
 say 4 "Preparing the NativeActivity launcher..."

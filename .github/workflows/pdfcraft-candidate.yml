@@ -8,6 +8,8 @@ on:
       - .github/workflows/pdfcraft-candidate.yml
       - lib/build-common.sh
       - assets/pdfcraft/**
+      - templates/android/pdfcraft_mobile.rs
+      - templates/android/pdfcraft_mobile_java.txt
   workflow_dispatch:
 
 permissions:

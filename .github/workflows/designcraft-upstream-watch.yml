@@ -1,22 +1,102 @@
-name: DesignCraft official upstream report
+name: DesignCraft official upstream watch (guarded)
 on:
   schedule:
     - cron: '30 2 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/designcraft-upstream-watch.yml
+      - tools/designcraft_tracking.py
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+concurrency:
+  group: designcraft-official-upstream-watch
+  cancel-in-progress: false
 jobs:
   report:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Resolve latest stable official DesignCraft release
-        run: python3 tools/designcraft_tracking.py > designcraft-upstream.json
-      - run: cat designcraft-upstream.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Resolve official stable release without modifying app source
+        run: |
+          set -euo pipefail
+          python3 tools/designcraft_tracking.py > designcraft-upstream.json
+          cat designcraft-upstream.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Determine whether a guarded source-review proposal is needed
+        id: release
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('designcraft-upstream.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('review_required=' + str(data['review_required']).lower() + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('DESIGNCRAFT_TAG=' + data['tag'] + '\n')
+              out.write('DESIGNCRAFT_COMMIT=' + data['commit'] + '\n')
+          PY
+      - uses: actions/checkout@v5
+        if: steps.release.outputs.review_required == 'true'
+        with:
+          ref: designcraft-android-candidate
+          path: candidate
+          persist-credentials: false
+      - name: Open one draft review PR if official release changes
+        if: steps.release.outputs.review_required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: KosmosSG/artcraft-android
+        run: |
+          set -euo pipefail
+          BRANCH="automation/designcraft-upstream-${DESIGNCRAFT_TAG}"
+          EXISTING=$(gh pr list --repo "$GH_REPO" --head "$BRANCH" --state all --json number --jq 'length')
+          if [ "$EXISTING" != 0 ]; then
+            echo "A PR already exists for this official tag. Existing review preserved." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "Existing proposal branch found; refusing to overwrite." >&2
+            exit 1
+          fi
+          git -C candidate config user.name 'github-actions[bot]'
+          git -C candidate config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C candidate switch -c "$BRANCH"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          tag = os.environ['DESIGNCRAFT_TAG']
+          sha = os.environ['DESIGNCRAFT_COMMIT']
+          dest = Path('candidate/tools/designcraft/upstream-proposals') / (tag + '.md')
+          dest.parent.mkdir(parents=True, exist_ok=True)
+          dest.write_text(
+              '# DesignCraft upstream review: ' + tag + '\n\n'
+              + 'Official source: storytold/designcraft\n\n'
+              + 'Official release: https://github.com/storytold/designcraft/releases/tag/' + tag + '\n\n'
+              + 'Resolved official commit: ' + sha + '\n\n'
+              + 'Current approved Android source pin: 15a2f3c8c88ae2e011e5912149ac67460ea6d949\n\n'
+              + 'Review the upstream diff, Android APIs, existing enhancements, versionName/versionCode, '
+                'launcher/icon, fonts, SAF, keyboard, graphics, signing continuity and tablet tests.\n\n'
+              + 'This is a metadata-only draft. Do not automatically merge or publish. '
+                'The permanent DesignCraft signing key has not been established.\n'
+          )
+          PY
+          git -C candidate add "tools/designcraft/upstream-proposals/${DESIGNCRAFT_TAG}.md"
+          git -C candidate commit -m "Review official DesignCraft ${DESIGNCRAFT_TAG} upstream"
+          gh auth setup-git
+          git -C candidate push origin "$BRANCH"
+          gh pr create --repo "$GH_REPO" --base designcraft-android-candidate --head "$BRANCH" --draft \
+            --title "Review DesignCraft ${DESIGNCRAFT_TAG} official upstream" \
+            --body "Guarded source-review proposal for official DesignCraft ${DESIGNCRAFT_TAG} (${DESIGNCRAFT_COMMIT}). Metadata only: no Android source pins or features replaced, no APK built or published, no signing keys touched. Check the upstream APIs and preserve all enhancements before any promotion."
       - uses: actions/upload-artifact@v5
+        if: always()
         with:
           name: designcraft-official-upstream-report
           path: designcraft-upstream.json
+          if-no-files-found: warn
           retention-days: 30

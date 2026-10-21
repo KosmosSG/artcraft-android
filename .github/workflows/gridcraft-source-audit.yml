@@ -24,6 +24,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Test GridCraft-only Android overlay (no APK, no key)
+        run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
       - name: Validate GridCraft source lock and no-release gate
         run: python3 tools/gridcraft/verify_source.py
       - name: Verify official release, immutable tag and source version

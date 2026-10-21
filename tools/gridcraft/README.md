@@ -46,3 +46,28 @@ The uploaded binary **has not yet been committed** to this repository. Do not us
 6. Later, add read-only upstream polling and review PRs first. Promote only compatibility-checked changes; do not activate schedules on main, replace source history, move tags, force-push, or erase app enhancements merely to pass CI.
 
 This PR's GitHub Actions check is **read-only source provenance only**: no APK compilation, key creation, release publication or scheduling.
+
+## PhotoCraft-parity Android source staged on this GridCraft-only draft branch
+
+The following code is now present, **not yet compiled into an APK or device-tested**:
+- `android_addons/GridCraftJavaMethods.java.inc`: Android SAF TTF/OTF single-font picker; validated size (32 MiB limit) and sfnt signatures; persisted app-private font location; Android document-tree permission and bounded nested-folder refresh (up to 200 directories / 200 imported fonts) to a private shared cache; release-feed parsing for public `gridcraft-vX.Y.Z-android.N` tags only; manual checks, saved opt-in startup preference, errors/no-public-release feedback and allowlisted browser links.
+- `android_addons/gridcraft_tools.rs`: a collapsible, **non-floating** GridCraft Android controls section, with import/select/refresh buttons, update preference and safe release link. An optional in-session touch Shortcut Pad runs GridCraft commands `edit.undo`, `edit.redo`, `sheet.previous`, `sheet.next` and `view.zoom`.
+- `android_addons/overlay.py` and `install_overlay.py`: staging-only code insertion into the **GridCraft** generated Rust/Java launcher in a disposable copy of the pinned Android builder. Other app sources and workflows must not be modified. The overlay adds Android `INTERNET` permission for opt-in read-only GitHub checks.
+- `test_overlay.py`: offline checks to protect app isolation, expected insertion points, appropriate SAF Java methods and no production signing/release actions.
+
+### Behavior and limits
+
+GridCraft v0.9.0's font catalogue uses a process-lifetime `OnceLock`; both direct import and shared-folder refresh require **restarting GridCraft** before the imported families appear in its font menus. The shared Android Files folder is selected *per app* (Android SAF permissions are per application) even when several ArtCraft apps point at the same underlying folder.
+
+The update checker is **Android APK release** specific. It does not mean a newly published upstream GridCraft desktop release is already available as a compatible Android APK. GitHub API failures and no published Android releases are separate statuses. **No auto-download/installation**.
+
+The Shortcut Pad is an in-app proof of concept with GridCraft-native commands; it does not currently persist its show/hide state, expose customizable hardware-key mapping, create a fully docked independent widget, or replace GridCraft's existing shortcuts. GPU information is intentionally labelled unverified; no Adreno/Vulkan claim is made without a runtime adapter report.
+
+### Before a candidate or release can be claimed
+
+1. Verify the overlay against the pinned upstream/ref-builder source by compiling a disposable-key, isolated-package ARM64 candidate. The current CI runs only Python audits, not Java/Rust/NDK compilation.
+2. Verify generated manifest, activity, SAF picker result dispatch, font load after restart, preference persistence, scanner limits, updater response types and separate release URL allowlist.
+3. Verify formulas, recalc, formatting, ranges, XLSX/CSV/PDF, clipboard/IME/hardware modifier keys with synthetic workbooks; do not claim Excel macro/round-trip compatibility.
+4. Validate UI layout on MagicPad 4, then refine Shortcut Pad placement and customization and GPU backend reporting from actual runtime data.
+5. Integrate the exact user-uploaded Xc launcher artwork (matching source SHA in lock); **the binary has not been uploaded into GitHub**, so APK branding remains unverified.
+6. Only then verify permanent signing identity, certified versionCode continuity, reversible encrypted key backup and separate signed release workflow. Do not publish or enable main-branch schedules from this draft.

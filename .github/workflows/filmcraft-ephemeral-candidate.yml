@@ -43,6 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C filmcraft-builder rev-parse HEAD)" = 'ac54d62d9d2d6f663295a4afd8972a7a3e79f9af'
+          mkdir -p filmcraft-builder/source
           git clone --depth 1 --branch v0.10.0 https://github.com/storytold/filmcraft.git filmcraft-builder/source/filmcraft
           test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = 'cdf43fd366e378da266cb6d3c94549a45244be1f'
           grep -Fq 'version = "0.10.0"' filmcraft-builder/source/filmcraft/Cargo.toml
@@ -113,13 +114,13 @@ jobs:
           import re
           from pathlib import Path
           text = Path('filmcraft-badging.txt').read_text()
-          m = re.search(r"^package: name='([^']+)' versionCode='(\\d+)' versionName='([^']+)'", text, re.M)
+          m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text, re.M)
           if not m or m.groups() != ('com.artcraft.filmcraft', '1000001', '0.10.0-android.1'):
               raise SystemExit('STOP: Android package/version identity not as expected')
           if 'application-icon-' not in text:
               raise SystemExit('STOP: Android launcher icon was not packaged')
           PY
-          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\\.so$'
+          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
           sha256sum "$APK" | tee filmcraft-sha256.txt
           echo '### NON-RELEASE FilmCraft ARM64 candidate (ephemeral signer)' >> "$GITHUB_STEP_SUMMARY"
           echo '- Android version: `0.10.0-android.1`, provisional code `1000001`' >> "$GITHUB_STEP_SUMMARY"

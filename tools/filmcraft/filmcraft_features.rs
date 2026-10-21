@@ -93,7 +93,7 @@ impl FilmcraftFeatures {
                     &[JValue::Bool(toggle)],
                 )?; },
                 "open_release" => {
-                    let url = arg.ok_or(jni::errors::Error::NullPtr("release URL"))?;
+                    let Some(url) = arg else { return Ok(()); };
                     let jurl = JObject::from(env.new_string(url)?);
                     env.call_method(
                         activity, jni_str!("fcOpenUpdatePage"),

@@ -111,7 +111,7 @@ def main() -> None:
         patched,
         "    shell = f'''",
         "    wc_fields = '\\n    wc: wordcraft_android::Tools,' if app == 'wordcraft' else ''\n"
-        "    wc_new_setup = '        let wc_tools = wordcraft_android::Tools::new(&app);\n' if app == 'wordcraft' else ''\n"
+        "    wc_new_setup = '        let wc_tools = wordcraft_android::Tools::new(&app);\\n' if app == 'wordcraft' else ''\n"
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
         "    wc_logic = '        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"

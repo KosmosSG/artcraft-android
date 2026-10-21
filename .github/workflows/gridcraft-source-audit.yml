@@ -1,0 +1,40 @@
+name: GridCraft pinned official source audit (draft only)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/gridcraft/**'
+      - '.github/workflows/gridcraft-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gridcraft-source-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-provenance:
+    if: github.repository == 'KosmosSG/artcraft-android' && ((github.event_name == 'pull_request' && startsWith(github.head_ref, 'review/gridcraft-')) || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/review/gridcraft-')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout review branch (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate GridCraft source lock and no-release gate
+        run: python3 tools/gridcraft/verify_source.py
+      - name: Verify official release, immutable tag and source version
+        run: python3 tools/gridcraft/verify_source.py --online | tee gridcraft-source-audit.json
+      - name: Add auditable result to workflow summary
+        if: always()
+        run: |
+          echo '### GridCraft source-only review' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f gridcraft-source-audit.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat gridcraft-source-audit.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'No build, no keys, no signed APK, no release, no schedule.' >> "$GITHUB_STEP_SUMMARY"

@@ -39,7 +39,36 @@ The upstream **v0.9.0** engine already implements `font.add` and validates TTF/O
 
 The isolated `patch_builder.py` integrates WordCraft's own `wordcraft-fonts::FontDb::load_user_fonts` before app creation and stores newly imported fonts in the WordCraft-only app-private `files/fonts` folder. It removes the Android **All files access** permission/prompt for this WordCraft candidate, relying on user-selected documents through SAF. These code paths need compilation plus tablet tests for import, restart, Montserrat and PDF embedding.
 
-**Not implemented yet:** PhotoCraft-style SAF shared `ArtCraft-Fonts` document-tree selection/refresh (must use persisted URI grants and scoped reads without assuming primary storage); a WordCraft-specific manual/startup update-check UI and saved preference; configurable Android Shortcut Pad; stylus refinements and verified GPU diagnostics. Those features require additional WordCraft-only code and testing before any release.
+**Staged in candidate code, not verified:** SAF shared font-folder selection/refresh, manual/opt-in update checker, optional configurable Shortcut Pad and renderer information. Stylus behavior and tablet acceptance remain unverified.
+
+## WordCraft Android parity extensions — staged for CI, not device-verified
+
+The isolated candidate now carries a **WordCraft-only** Java Activity extension and Rust UI module, injected into the **pinned reference builder's temporary checkout** by \`patch_builder.py\`. The suite main builder and all other ArtCraft apps remain untouched.
+
+| Capability | Candidate implementation | Still needs validation |
+|---|---|---|
+| Imported fonts | WordCraft native \`font.add\` with private persistent \`FontDb\` directory; Android picker supports native formats | Montserrat TTF/OTF, app restart, duplicate import, PDF font embedding |
+| Shared ArtCraft font folder | SAF \`ACTION_OPEN_DOCUMENT_TREE\`, persistent **read-only** URI grant, nested-folder scan, bounded private staging (150 files, 20 MB/file, 200 MB total), startup/explicit refresh; no all-files-access permission | Tablet folder provider behavior, revoked grant, cancellation, nested fonts, performance, memory, no duplicate corruption |
+| Updates | Read-only GitHub published release query, only \`wordcraft-vX.Y.Z-android.N\` tags with exactly matching APK assets, manual button, optional startup preference **off by default**, browser link only | Offline/error handling, update version comparison, proper release URL, installed signature identity (no auto-install) |
+| Shortcut Pad | Optional six-slot touch panel; per-slot command choice persisted through private Android preferences | Correct WordCraft command IDs, focus, text selection, undo/redo/save/formatting, landscape/portrait layout |
+| Input and stylus | Retains reference Android IME, physical modifier/clipboard bridge and native WordCraft ink tools | Physical keyboard, composition, clipboard, mouse, stylus pressure and palm rejection on MagicPad |
+| GPU diagnostics | Displays eframe/wgpu adapter information when exposed by renderer, configured Vulkan/GL fallback | Actual backend on device, driver behavior, rendering stability |
+| Printing / PDF | Retains reference WordCraft Android native print bridge | PrintManager preview, PDF export, page breaks, fonts, margins |
+| DOCX fidelity | Official stable WordCraft v0.9.0 engine unchanged | DOCX open/save/reopen, tables, tracked changes, images, lists, multilingual documents |
+
+**Important:** These are code-level candidate integrations, not a green CI result or proof of functioning features on a tablet. There is **no published WordCraft APK**, no permanent signing identity verified, no automatic update installation, no upstream auto-release trigger and no installed-version migration tested.
+
+The extension deliberately avoids Android's broad \`MANAGE_EXTERNAL_STORAGE\` permission and uses an \`INTERNET\` permission only for the opt-in/manual release check. No other app's signing secrets or workflows are accessed.
+
+### Device acceptance checklist (blocked until safe signed build is ready)
+
+1. Install the correctly signed WordCraft APK on HONOR MagicPad 4 / MagicOS 10; record package, versionCode, signing SHA-256 and APK SHA-256.
+2. Open a test DOCX, edit text, format bold/italic, insert a table/picture, save via SAF, reopen and compare formatting.
+3. Import Montserrat TTF and OTF, restart, verify both are selectable and embedded in PDF where permitted.
+4. Choose a shared ArtCraft font directory with nested folders, refresh, revoke and restore SAF access, verify no all-files-access prompt.
+5. Try update checks with network online/offline and startup preference disabled/enabled; never install a release without checking its certificate.
+6. Exercise the six-slot Shortcut Pad, keyboard modifiers, Android IME, stylus, rotation, printing/PDF and graphics renderer diagnostics.
+7. Test large and multilingual DOCX files; document failures before considering publication.
 
 ## Release blockers
 1. Candidate must compile; verify tag/commit, source patch scope, package, ABI, versionName/versionCode, certificate fingerprint, SHA-256 and actual packaged Wc icon.

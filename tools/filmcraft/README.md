@@ -39,6 +39,33 @@ VectorCraft, DesignCraft or their private signing repositories.
 - The present builder also follows upstream versionName instead of this policy.
   **Do not run it as a production FilmCraft signed-release workflow.**
 
+## Ported candidate source code (not APK-verified)
+
+FilmCraft-only source overlay now exists on this branch:
+
+- `tools/filmcraft/FilmCraftActivity.features.java.inc`: Android SAF picker for
+  TTF/OTF, persisted shared tree-URI permission (recursively scans subfolders),
+  app-private cache, guarded GitHub FilmCraft release check and saved opt-in
+  startup update preference.
+- `tools/filmcraft/filmcraft_features.rs`: registers fonts with
+  `filmcraft_text::fonts::add_font_data`, restores private fonts at startup,
+  loads/refreshes shared fonts, draws a docked non-floating feature toolbar
+  and reports update/error states without silent APK installation.
+- `tools/filmcraft/runtime_patch.py`: fail-closed FilmCraft-only wiring into
+  the builder-generated Java, Rust and Cargo manifest. Adds INTERNET solely to
+  FilmCraft. `lib/build-common.sh` conditionally invokes it only when
+  `APP=filmcraft` after generation. The source guard validates static API
+  names, Python syntax and Rust syntax.
+
+The toolbar currently provides direct access to the FilmCraft-only features
+instead of modifying the upstream Help menu. An optional Help-menu entry can
+follow after versioned upstream UI API integration.
+
+**Source staged ≠ Android build passing ≠ device behavior confirmed.**
+No compile/build/device test has yet demonstrated this feature overlay works.
+Do not describe these as working on MagicPad until a bounded Android build and
+the user's on-device tests pass.
+
 ## Actual upstream interfaces and port priority
 
 1. **Preserve** `filmcraft_ui_egui::FilmcraftApp::new(Session::default())` and

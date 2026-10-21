@@ -983,6 +983,20 @@ impl eframe::App for VectorCraftAndroidApp {
                     self.android_tools_open = !self.android_tools_open;
                 }
             });
+        let gpu_details = if self.android_tools_open {
+            match _frame.wgpu_render_state() {
+                Some(state) => {
+                    let info = state.adapter.get_info();
+                    format!(
+                        "UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
+                        info.name, info.backend, info.device_type,
+                        info.driver, info.driver_info,
+                        state.device.limits().max_texture_dimension_2d
+                    )
+                }
+                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
+            }
+        } else { String::new() };
         if self.android_tools_open {
             egui::Window::new("VectorCraft Android Tools")
                 .open(&mut self.android_tools_open)
@@ -1009,8 +1023,8 @@ impl eframe::App for VectorCraftAndroidApp {
                     ui.small("Uses VectorCraft's existing shortcut editor and undo/redo commands.");
                     ui.separator();
                     ui.heading("Graphics (read-only)");
-                    ui.label("Configured UI backend: eframe/wgpu.");
-                    ui.small("Actual GPU device/backend and CPU fallback are not measured by this shell.");
+                    ui.monospace(&gpu_details);
+                    ui.small("Reports the actual egui/wgpu UI adapter when available; this does not imply that VectorCraft's document compositor uses the GPU. No renderer settings are changed.");
                     ui.separator();
                     if ui.button("Check for VectorCraft Updates").clicked() {
                         check_updates = true;

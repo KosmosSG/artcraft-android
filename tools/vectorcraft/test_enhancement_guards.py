@@ -60,7 +60,9 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
                        "vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
                        "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
                        "Import Font (.ttf / .otf)", "Select Shared Font Folder",
-                       "Refresh Shared Fonts", "Check for VectorCraft Updates"):
+                       "Refresh Shared Fonts", "Check for VectorCraft Updates",
+                       "edit.keyboardShortcuts", "touch_dock.enabled",
+                       "wgpu_render_state", "get_info()", "device.limits()"):
             with self.subTest(marker=marker):
                 self.assertIn(marker, rust)
         for marker in ("vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",

@@ -29,6 +29,8 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertIn('"-appicon=$ICON"', workflow)
         self.assertIn("0.14.0-android.2", workflow)
         self.assertIn("vectorcraft-photocraft-parity-20261021", workflow)
+        # Exact user-supplied artwork must be staged before an APK can build.
+        self.assertIn("291c7768cabaf4419082abfbd100a17668e9c7c4ca8a57fa45667f0f7233dbc2", workflow)
 
     def test_existing_android_features_are_preserved(self):
         rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()

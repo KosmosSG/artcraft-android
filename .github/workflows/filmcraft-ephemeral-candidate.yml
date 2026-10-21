@@ -84,6 +84,15 @@ jobs:
           sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Install launcher icon renderer in isolated Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$GITHUB_WORKSPACE/.filmcraft-build-python"
+          "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -c 'from PIL import Image; print("Pillow PNG renderer available")'
+          echo "$GITHUB_WORKSPACE/.filmcraft-build-python/bin" >> "$GITHUB_PATH"
+
       - name: Build temporary FilmCraft ARM64 APK with unique disposable signer
         shell: bash
         env:

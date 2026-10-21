@@ -1,0 +1,306 @@
+//! WordCraft-only Android UI and JNI extensions.
+//! No signing, APK downloading, silent installs or broad storage permissions.
+use android_activity::AndroidApp;
+use eframe::egui;
+use jni::{JavaVM, jni_sig, objects::{JObject, JString, JValue}};
+use serde_json::Value;
+use std::collections::VecDeque;
+use std::sync::Arc;
+
+const ACTIONS: [(&str, &str); 9] = [
+    ("Undo", "edit.undo"),
+    ("Redo", "edit.redo"),
+    ("Save", "file.save"),
+    ("Bold", "format.bold"),
+    ("Italic", "format.italic"),
+    ("Zoom in", "view.zoomIn"),
+    ("Zoom out", "view.zoomOut"),
+    ("Select all", "edit.selectAll"),
+    ("Print", "file.print"),
+];
+
+pub struct Tools {
+    app: AndroidApp,
+    vm: Arc<JavaVM>,
+    show_tools: bool,
+    show_pad: bool,
+    startup_updates: bool,
+    status: String,
+    release_url: Option<String>,
+    pending_fonts: VecDeque<String>,
+    imported: usize,
+    failed: usize,
+    slots: [usize; 6],
+}
+
+impl Tools {
+    pub fn new(app: &AndroidApp) -> Self {
+        // SAFETY: AndroidApp owns the JavaVM for the Activity's lifetime.
+        let vm = Arc::new(unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) });
+        let mut tools = Self {
+            app: app.clone(), vm, show_tools: false, show_pad: false,
+            startup_updates: false, status: "Ready".to_owned(),
+            release_url: None, pending_fonts: VecDeque::new(),
+            imported: 0, failed: 0, slots: [0, 1, 2, 3, 4, 5],
+        };
+        tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
+        if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {
+            for (i, id) in saved.split(',').take(6).enumerate() {
+                if let Some(index) = ACTIONS.iter().position(|(_, command)| *command == id) {
+                    tools.slots[i] = index;
+                }
+            }
+        }
+        if tools.startup_updates {
+            let _ = tools.call_void("wcCheckForUpdates");
+        }
+        if tools.call_bool("wcHasFontFolder").unwrap_or(false) {
+            let _ = tools.call_void("wcRefreshFontFolder");
+        }
+        tools
+    }
+
+    fn call_void(&self, method: &'static str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            // SAFETY: AndroidApp retains the global Activity reference.
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, method, jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+
+    fn call_bool(&self, method: &'static str) -> Result<bool, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, method, jni_sig!("()Z"), &[])?.z()
+        }).map_err(|error| error.to_string())
+    }
+
+    fn call_string(&self, method: &'static str) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(
+                &*activity, method, jni_sig!("()Ljava/lang/String;"), &[],
+            )?.l()?;
+            if value.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, value)?;
+            Ok(Some(value.try_to_string(env)?))
+        }).map_err(|error| error.to_string())
+    }
+
+    fn call_bool_arg(&self, method: &'static str, value: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(
+                &*activity, method, jni_sig!("(Z)V"),
+                &[JValue::Bool(value as u8)],
+            )?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+
+    fn call_string_arg(&self, method: &'static str, value: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let string = JObject::from(env.new_string(value)?);
+            env.call_method(
+                &*activity, method, jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&string)],
+            )?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+
+    fn save_pad(&mut self) {
+        let choices = self.slots.iter()
+            .map(|i| ACTIONS[*i].1).collect::<Vec<_>>().join(",");
+        if let Err(error) = self.call_string_arg("wcSetShortcutPad", &choices) {
+            self.status = format!("Could not save shortcut choices: {error}");
+        }
+    }
+
+    pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        for _ in 0..2 {
+            match self.call_string("wcPollFontResult") {
+                Ok(Some(raw)) => {
+                    if let Ok(result) = serde_json::from_str::<Value>(&raw) {
+                        match result["state"].as_str().unwrap_or("") {
+                            "ok" => {
+                                self.imported = 0;
+                                self.failed = 0;
+                                self.pending_fonts.clear();
+                                if let Some(paths) = result["paths"].as_array() {
+                                    for path in paths.iter().filter_map(Value::as_str) {
+                                        self.pending_fonts.push_back(path.to_owned());
+                                    }
+                                }
+                                self.status = format!(
+                                    "Shared folder: {} font files staged; importing...",
+                                    self.pending_fonts.len()
+                                );
+                                ctx.request_repaint();
+                            }
+                            "cancelled" => self.status = "Font folder selection cancelled".into(),
+                            _ => self.status = result["message"].as_str()
+                                .unwrap_or("Shared font folder could not be read").to_owned(),
+                        }
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => { self.status = format!("Font folder bridge error: {error}"); break; }
+            }
+        }
+        for _ in 0..2 {
+            let Some(path) = self.pending_fonts.pop_front() else { break };
+            match app.run("font.add", serde_json::json!({"path": path})) {
+                Ok(_) => self.imported += 1,
+                Err(error) => {
+                    self.failed += 1;
+                    log::info!("WordCraft shared font already available or rejected: {error}");
+                }
+            }
+            if self.pending_fonts.is_empty() {
+                self.status = format!(
+                    "Shared fonts: {} imported, {} already available or skipped",
+                    self.imported, self.failed
+                );
+                app.status(self.status.clone());
+            } else {
+                ctx.request_repaint();
+            }
+        }
+        match self.call_string("wcPollUpdateResult") {
+            Ok(Some(raw)) => {
+                if let Ok(result) = serde_json::from_str::<Value>(&raw) {
+                    self.release_url = None;
+                    match result["state"].as_str().unwrap_or("") {
+                        "update_available" => {
+                            let latest = result["latest"].as_str().unwrap_or("unknown");
+                            self.release_url = result["url"].as_str().map(str::to_owned);
+                            self.status = format!("WordCraft Android update available: {latest}");
+                        }
+                        "up_to_date" => self.status = "WordCraft Android is up to date".into(),
+                        "no_release" => self.status = "No published WordCraft Android APK release yet".into(),
+                        _ => self.status = result["message"].as_str()
+                            .unwrap_or("Could not check WordCraft Android releases").to_owned(),
+                    }
+                    app.status(self.status.clone());
+                }
+            }
+            Ok(None) => {}
+            Err(error) => self.status = format!("Update-check bridge error: {error}"),
+        }
+    }
+
+    pub fn ui(
+        &mut self,
+        app: &mut wordcraft_ui_egui::WordApp,
+        ctx: &egui::Context,
+        frame: &mut eframe::Frame,
+    ) {
+        egui::Area::new(egui::Id::new("wc_android_menu"))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 48.0))
+            .show(ctx, |ui| {
+                if ui.button("ArtCraft tools").clicked() {
+                    self.show_tools = !self.show_tools;
+                }
+            });
+        if self.show_tools {
+            let mut open = self.show_tools;
+            egui::Window::new("WordCraft Android tools")
+                .id(egui::Id::new("wc_android_tools"))
+                .open(&mut open)
+                .default_width(330.0)
+                .show(ctx, |ui| {
+                    if ui.button("Choose shared font folder").clicked() {
+                        self.status = match self.call_void("wcRequestFontFolder") {
+                            Ok(()) => "Choose your ArtCraft shared font folder in Android Files".into(),
+                            Err(error) => format!("Folder picker error: {error}"),
+                        };
+                    }
+                    if ui.button("Refresh shared fonts").clicked() {
+                        self.status = match self.call_void("wcRefreshFontFolder") {
+                            Ok(()) => "Refreshing shared fonts...".into(),
+                            Err(error) => format!("Font refresh error: {error}"),
+                        };
+                    }
+                    ui.label("TTF / OTF / TTC / OTC in nested folders. Imported fonts are saved in WordCraft.");
+                    ui.separator();
+                    if ui.button("Check for Updates").clicked() {
+                        self.status = match self.call_void("wcCheckForUpdates") {
+                            Ok(()) => "Checking published WordCraft Android APK releases...".into(),
+                            Err(error) => format!("Update check error: {error}"),
+                        };
+                    }
+                    if ui.checkbox(&mut self.startup_updates, "Check updates on startup").changed() {
+                        if let Err(error) = self.call_bool_arg("wcSetStartupUpdates", self.startup_updates) {
+                            self.status = format!("Could not save update preference: {error}");
+                        }
+                    }
+                    if let Some(url) = self.release_url.clone() {
+                        if ui.button("View published release").clicked() {
+                            if let Err(error) = self.call_string_arg("wcOpenUpdatePage", &url) {
+                                self.status = format!("Could not open release page: {error}");
+                            }
+                        }
+                    }
+                    ui.separator();
+                    ui.checkbox(&mut self.show_pad, "Show Shortcut Pad");
+                    if let Some(render) = frame.wgpu_render_state() {
+                        let info = render.adapter.get_info();
+                        ui.label(format!("GPU: {} ({:?})", info.name, info.backend));
+                    } else {
+                        ui.label("GPU: renderer information not available");
+                    }
+                    ui.label("Graphics configured: Vulkan first, OpenGL fallback.");
+                    ui.separator();
+                    ui.label(&self.status);
+                });
+            self.show_tools = open;
+        }
+        if self.show_pad {
+            let mut open = self.show_pad;
+            egui::Window::new("WordCraft Shortcut Pad")
+                .id(egui::Id::new("wc_shortcut_pad"))
+                .open(&mut open)
+                .default_width(290.0)
+                .show(ctx, |ui| {
+                    ui.label("Tap a command; change each slot with the dropdown.");
+                    for row in 0..3 {
+                        ui.horizontal(|ui| {
+                            for col in 0..2 {
+                                let slot = row * 2 + col;
+                                let mut selected = self.slots[slot];
+                                egui::ComboBox::from_id_salt(("wc_pad_slot", slot))
+                                    .selected_text(ACTIONS[selected].0)
+                                    .width(95.0)
+                                    .show_ui(ui, |ui| {
+                                        for (index, (label, _)) in ACTIONS.iter().enumerate() {
+                                            ui.selectable_value(&mut selected, index, *label);
+                                        }
+                                    });
+                                if selected != self.slots[slot] {
+                                    self.slots[slot] = selected;
+                                    self.save_pad();
+                                }
+                                if ui.button("Run").clicked() {
+                                    let (label, command) = ACTIONS[self.slots[slot]];
+                                    match app.run(command, serde_json::json!({})) {
+                                        Ok(_) => self.status = format!("{label} executed"),
+                                        Err(error) => self.status = format!("{label}: {error}"),
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    ui.label(&self.status);
+                });
+            self.show_pad = open;
+        }
+    }
+}

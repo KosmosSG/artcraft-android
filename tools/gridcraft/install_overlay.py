@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 import shutil
 
-TRIGGER = '(staging_dir / "src" / "lib.rs").write_text(entry)'
+TRIGGER = '    (staging_dir / "src" / "lib.rs").write_text(entry)'
 MARKER = 'GRIDCRAFT_OVERLAY_HOOK_V1'
 SNIPPET = '''    # GRIDCRAFT_OVERLAY_HOOK_V1: GridCraft only, never other apps.
     if app == "gridcraft":
@@ -44,7 +44,7 @@ def install(builder: Path, additions: Path):
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):
         shutil.copyfile(additions / item, dest / item)
-    source.write_text(text.replace(TRIGGER, SNIPPET + "    " + TRIGGER, 1))
+    source.write_text(text.replace(TRIGGER, SNIPPET + TRIGGER, 1))
     print("Installed isolated GridCraft source overlay in disposable builder checkout.")
 
 if __name__ == "__main__":

@@ -2707,6 +2707,12 @@ fi
 
 [[ -f "$ANDROID_DIR/Cargo.toml" && -f "$ANDROID_DIR/src/lib.rs" ]] || fail "Android wrapper is incomplete at $ANDROID_DIR. See the build log and adapters/README.md."
 
+# FilmCraft-only parity overlay after generator output. Never modifies other apps or upstream.
+# Fail closed on unknown shell/Java templates; do not silently strip Android enhancements.
+if [[ "$APP" == "filmcraft" ]]; then
+    python3 "$ROOT/tools/filmcraft/runtime_patch.py" "$ANDROID_DIR" || fail "FilmCraft feature overlay rejected the generated launcher"
+fi
+
 # egui-winit's stock Android build gates its `arboard` clipboard backend behind
 # `cfg(not(target_os = "android"))`, so on Android its `Clipboard` is only an in-app
 # `String` — copy/paste never reaches the system clipboard. Vendor the builder's

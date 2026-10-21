@@ -1,0 +1,26 @@
+# PhotoCraft upstream automation safety policy
+#
+# This document is a staging contract, not an enabled release pipeline.
+# Do not merge or activate automatic publishing until every gate is implemented
+# and validated against the actual existing Android signing workflow.
+upstream:
+  repository: storytold/photocraft
+  release_source: github_releases
+  require_immutable_tag_commit: true
+android:
+  source_branch: photocraft-v0.10.5-development
+  preserve_existing_enhancements: true
+  architecture: arm64-v8a
+  version_name_pattern: '<official-version>-android.<revision>'
+  require_monotonic_version_code: true
+release:
+  require_signed_apk: true
+  require_existing_signing_certificate_match: true
+  require_existing_package_id_match: true
+  require_existing_install_version_code_increase: true
+  require_all_tests_pass: true
+  require_source_and_enhancement_diff_review: true
+  reject_unported_upstream_changes: true
+  reject_existing_tag_overwrite: true
+  fail_closed_if_any_check_unavailable: true
+  publishing_enabled: false

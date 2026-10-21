@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import re
 import shutil
+from menu_overlay import apply as install_android_menus
 
 
 def prepare(root: Path, version: str, code: int):
@@ -28,6 +29,7 @@ def prepare(root: Path, version: str, code: int):
         raise ValueError("Launcher completion hook changed")
     source = source.replace(hook, 'python3 "$ROOT/designcraft-support/patch_launcher.py" "$ANDROID_DIR"\n\n' + hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
+    install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
     fonts = root / "templates/android/system_fonts.rs"
     text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
     fonts.write_text(text)

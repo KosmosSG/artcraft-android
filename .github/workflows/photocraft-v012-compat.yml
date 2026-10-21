@@ -45,8 +45,9 @@ jobs:
               assert cfg[field] is False, f"Unsafe review config: {field}"
           workflow = Path(".github/workflows/photocraft-v012-compat.yml").read_text()
           forbidden = ("pull_request_target:", "secrets.", "build.sh -photocraft", "build-debug.sh -photocraft", "cargo apk", "gh release create", "upload-release-asset")
+          operational_lines = [line for line in workflow.splitlines() if not line.lstrip().startswith("forbidden = ")]
           for token in forbidden:
-              assert token not in workflow, f"Forbidden review-workflow operation: {token}"
+              assert not any(token in line for line in operational_lines), f"Forbidden review-workflow operation: {token}"
           print("PASS: no signing, APK building, release publishing, or privileged PR event.")
           PY
 

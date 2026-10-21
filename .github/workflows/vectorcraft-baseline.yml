@@ -2,7 +2,7 @@ name: VectorCraft Android baseline
 on:
   push:
     branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021]
-    paths: ['tools/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
+    paths: ['tools/vectorcraft/**', 'adapters/vectorcraft/**', 'assets/branding/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
       version_code:
@@ -26,6 +26,24 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile VectorCraft Android Java bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
+            "$SDKMANAGER" --install 'platforms;android-35'
+          fi
+          mkdir -p "$RUNNER_TEMP/vectorcraft-java-check"
+          javac -source 17 -target 17 \
+            -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d "$RUNNER_TEMP/vectorcraft-java-check" \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
   build:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
     needs: validate
@@ -75,6 +93,15 @@ jobs:
           test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$SOURCE_SHA"
           git -C builder/source/vectorcraft fetch --depth=1 origin "refs/tags/$SOURCE_TAG:refs/tags/$SOURCE_TAG"
           test "$(git -C builder/source/vectorcraft rev-parse "$SOURCE_TAG^{commit}")" = "$SOURCE_SHA"
+          # The pinned reference is a reviewed toolchain only. Ship this branch's
+          # independently reviewed VectorCraft adapter, never the reference's older shell.
+          test -s adapters/vectorcraft/src/lib.rs
+          test -s adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+          rm -rf builder/adapters/vectorcraft
+          cp -a adapters/vectorcraft builder/adapters/vectorcraft
+          cmp adapters/vectorcraft/src/lib.rs builder/adapters/vectorcraft/src/lib.rs
+          cmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
+              builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
           python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
       - uses: actions/setup-java@v4
         with:

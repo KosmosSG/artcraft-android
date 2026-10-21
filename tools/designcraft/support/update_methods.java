@@ -32,7 +32,24 @@
 
     // Read-only release discovery. Downloads and installation always stay with the user.
     private void dcCheckUpdates(boolean manual) {
+        // The disposable-key candidate is a different Android package and cannot update
+        // over the permanent production certificate. Never present it as compatible.
+        if (!"com.artcraft.designcraft".equals(getPackageName())) {
+            if (manual) runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                new android.app.AlertDialog.Builder(this)
+                    .setTitle("DesignCraft updates")
+                    .setMessage("This is a separately signed DesignCraft test build. Production updates require the permanent production package and certificate.")
+                    .setPositiveButton("Close", null).show();
+            });
+            return;
+        }
         if (!dcChecking.compareAndSet(false, true)) return;
+        if (manual) runOnUiThread(() -> {
+            if (!isFinishing() && !isDestroyed())
+                android.widget.Toast.makeText(this, "Checking DesignCraft releases…",
+                    android.widget.Toast.LENGTH_SHORT).show();
+        });
         dcUpdateIo.execute(() -> {
             java.net.HttpURLConnection connection = null;
             try {
@@ -78,7 +95,7 @@
                 if (manual || tag != null) runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this).setTitle("DesignCraft updates")
-                        .setMessage(tag == null ? "No newer published DesignCraft ARM64 release was found. Candidate builds do not form a production update chain." : "Available: " + tag + "\nOpen the release page to review it. This test package is separate from production.")
+                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer published DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nConfirm the production signing identity before installation.")
                         .setNegativeButton("Close", null);
                     if (url != null) dialog.setPositiveButton("View release", (d, w) -> {
                         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }

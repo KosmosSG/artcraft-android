@@ -1,7 +1,7 @@
 name: VectorCraft Android baseline
 on:
   push:
-    branches: [vectorcraft-android-baseline]
+    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021]
     paths: ['tools/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - run: python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
   build:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-android-baseline'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -35,7 +35,7 @@ jobs:
       BUILDER_SHA: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
       SOURCE_SHA: ad0566943ab9741e6356bbc9b53c3cc09895068d
       SOURCE_TAG: v0.14.0
-      VERSION_NAME: 0.14.0-android.1
+      VERSION_NAME: 0.14.0-android.2
       VERSION_CODE: ${{ inputs.version_code }}
       PREVIOUS_CODE: ${{ inputs.previous_version_code }}
     steps:
@@ -90,8 +90,13 @@ jobs:
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
           "$SDKMANAGER" --install 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Build VectorCraft candidate with disposable local key
-        run: bash builder/build.sh -vectorcraft
+      - name: Build VectorCraft candidate with approved Vc icon and disposable local key
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
+          test -s "$ICON"
+          bash builder/build.sh -vectorcraft "-appicon=$ICON"
       - name: Export unsigned payload only
         shell: bash
         run: |
@@ -122,7 +127,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     env:
-      VERSION_NAME: 0.14.0-android.1
+      VERSION_NAME: 0.14.0-android.2
       VERSION_CODE: ${{ inputs.version_code }}
     steps:
       - uses: actions/checkout@v5
@@ -166,7 +171,7 @@ jobs:
           printf '\nDevice testing remains pending: install, font import, files, keyboard and lifecycle.\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         with:
-          name: vectorcraft-0.14.0-android.1-verified
+          name: vectorcraft-0.14.0-android.2-verified
           path: verified/
           if-no-files-found: error
           retention-days: 14

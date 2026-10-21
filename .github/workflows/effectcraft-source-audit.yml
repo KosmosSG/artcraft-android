@@ -1,0 +1,23 @@
+name: EffectCraft pinned-source audit (draft only)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/effectcraft/**'
+      - '.github/workflows/effectcraft-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'review/effectcraft-'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read-only pinned EffectCraft release and identity policy verification
+        run: python3 tools/effectcraft/verify_upstream.py

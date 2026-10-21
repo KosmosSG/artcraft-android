@@ -44,6 +44,63 @@ jobs:
             -d "$RUNNER_TEMP/vectorcraft-java-check" \
             adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
             adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+  compile:
+    # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Install reviewed VectorCraft Android adapter for compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = ad0566943ab9741e6356bbc9b53c3cc09895068d
+          mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
+          cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
+          cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
+          cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK for ARM64 native checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Check VectorCraft ARM64 Rust shell without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$NDK_BIN" >> "$GITHUB_PATH"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android28-clang"
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --target aarch64-linux-android
+
   build:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
     needs: validate

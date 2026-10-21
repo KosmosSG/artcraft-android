@@ -52,17 +52,24 @@ file_associations.patch_cargo_toml(path, app)
 tomllib.loads(path.read_text())
 PY
 
-# Set the Android PhotoCraft release version without changing upstream crates.
-python3 - "$DEST/Cargo.toml" <<'PY'
+# Set an explicit reviewed Android-only versionName without changing upstream crates.
+# Keep the original 0.10.1 default for older workflows; do not access signing keys here.
+ANDROID_VERSION_NAME="${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-0.10.1}"
+python3 - "$DEST/Cargo.toml" "$ANDROID_VERSION_NAME" <<'PY'
 from pathlib import Path
+import re
 import sys
 import tomllib
 
 path = Path(sys.argv[1])
+version = sys.argv[2]
+if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-android\.[1-9]\d*)?", version):
+    raise SystemExit(f"Invalid PhotoCraft Android versionName: {version!r}")
 text = path.read_text()
 old = "version.workspace = true"
-assert text.count(old) == 1, "Expected one inherited version setting"
-text = text.replace(old, 'version = "0.10.1"', 1)
+if text.count(old) != 1:
+    raise SystemExit("Expected exactly one inherited adapter version setting")
+text = text.replace(old, f'version = "{version}"', 1)
 tomllib.loads(text)
 path.write_text(text)
 PY

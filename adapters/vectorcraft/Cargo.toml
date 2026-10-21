@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 vectorcraft-engine = { path = "../../crates/engine" }
+vectorcraft-text = { path = "../../crates/text" }
 vectorcraft-ui-egui = { path = "../../crates/ui-egui" }
 eframe = { workspace = true, features = ["wgpu", "persistence"] }
 egui = { workspace = true }
@@ -25,6 +26,9 @@ apk_name = "vectorcraft"
 build_targets = ["aarch64-linux-android"]
 resources = "res"
 java_sources = "java"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"
 
 [package.metadata.android.sdk]
 min_sdk_version = 28

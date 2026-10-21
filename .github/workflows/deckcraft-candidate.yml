@@ -20,9 +20,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
-      DECKCRAFT_UPSTREAM_COMMIT: 22db9261f9d1a214c296fd390173130c45d76d66
+      DECKCRAFT_UPSTREAM_COMMIT: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
       DECKCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
-      DECKCRAFT_VERSION_NAME: 0.8.0-android.1
+      DECKCRAFT_VERSION_NAME: 0.9.0-android.1
       DECKCRAFT_CANDIDATE_VERSION_CODE: "100000001"
       DECKCRAFT_PACKAGE: com.artcraft.deckcraft
 
@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: storytold/deckcraft
-          ref: 22db9261f9d1a214c296fd390173130c45d76d66
+          ref: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
           path: builder/source/deckcraft
           persist-credentials: false
 
@@ -55,10 +55,10 @@ jobs:
           test "$(git -C builder rev-parse HEAD)" = "$DECKCRAFT_BUILDER_COMMIT"
           test "$(git -C builder/source/deckcraft rev-parse HEAD)" = "$DECKCRAFT_UPSTREAM_COMMIT"
           test -z "$(git -C builder/source/deckcraft status --porcelain)"
-          tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.8.0 | awk '{print $1}')"
+          tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.9.0 | awk '{print $1}')"
           test "$tag_commit" = "$DECKCRAFT_UPSTREAM_COMMIT"
           base64 --decode deckcraft/android/icon/deckcraft-approved-192.webp.b64 > deckcraft/android/icon/deckcraft-approved-192.webp
-          echo 'abe5ca50dd86c1ecf1ce5916692c0f273bec9187f7ad03fdbb07c989cbf4f6fa  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
+          echo 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
 
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
@@ -97,7 +97,7 @@ jobs:
           from PIL import Image
           import hashlib
           src = Path('deckcraft/android/icon/deckcraft-approved-192.webp')
-          assert hashlib.sha256(src.read_bytes()).hexdigest() == 'abe5ca50dd86c1ecf1ce5916692c0f273bec9187f7ad03fdbb07c989cbf4f6fa'
+          assert hashlib.sha256(src.read_bytes()).hexdigest() == 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61'
           with Image.open(src) as artwork:
               assert artwork.size == (192, 192) and artwork.format == 'WEBP'
               artwork.convert('RGBA').save(src.with_suffix('.png'), optimize=True)
@@ -113,15 +113,15 @@ jobs:
           # These changes are confined to ephemeral checkouts, never upstream or suite main.
           source = Path('builder/source/deckcraft/Cargo.toml')
           s = source.read_text()
-          old = 'version = "0.8.0"'
+          old = 'version = "0.9.0"'
           assert s.count(old) == 1, 'Review new upstream manifest before changing version'
-          source.write_text(s.replace(old, 'version = "0.8.0-android.1"', 1))
+          source.write_text(s.replace(old, 'version = "0.9.0-android.1"', 1))
           project = Path('builder/lib/android_project.py')
           p = project.read_text()
           formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert p.count(formula) == 1, 'Version-code override location changed: stop'
           project.write_text(p.replace(formula, 'return 100000001', 1))
-          print('Candidate metadata set: 0.8.0-android.1 / 100000001')
+          print('Candidate metadata set: 0.9.0-android.1 / 100000001')
           PY
           git -C builder/source/deckcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
@@ -135,13 +135,13 @@ jobs:
           set -euo pipefail
           cd builder
           bash build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
-          test -s output/deckcraft-0.8.0-android.1.apk
+          test -s output/deckcraft-0.9.0-android.1.apk
 
       - name: Check compiled APK package, ARM64, version, icon, signature and hash
         shell: bash
         run: |
           set -euo pipefail
-          apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.8.0-android.1.apk"
+          apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
           test -s "$apk"
           python3 - "$apk" <<'PY'
           import sys, zipfile
@@ -159,7 +159,7 @@ jobs:
           badging="$("$aapt2" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "name='com.artcraft.deckcraft'"
           printf '%s\n' "$badging" | grep -F "versionCode='100000001'"
-          printf '%s\n' "$badging" | grep -F "versionName='0.8.0-android.1'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.9.0-android.1'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."

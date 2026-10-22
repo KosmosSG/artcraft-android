@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: lightcraft-candidate-${{ github.ref }}
+  group: lightcraft-enhancements-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

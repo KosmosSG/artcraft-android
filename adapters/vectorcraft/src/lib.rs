@@ -746,6 +746,7 @@ struct VectorCraftAndroidApp {
     fonts: FontUiState,
     android_tools_open: bool,
     touch_dock: bool,
+    startup_updates: bool,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
@@ -937,6 +938,9 @@ impl eframe::App for VectorCraftAndroidApp {
                         }
                         Err(error) => self.updates.message = format!("Invalid update result: {error}"),
                     }
+                    if self.updates.release_url.is_some() && self.updates.message.starts_with("Update available:") {
+                        self.updates.open = true;
+                    }
                     ctx.request_repaint();
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
@@ -976,6 +980,7 @@ impl eframe::App for VectorCraftAndroidApp {
         let mut dock_undo = false;
         let mut dock_redo = false;
         let previous_touch_dock = self.touch_dock;
+        let previous_startup_updates = self.startup_updates;
         egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
             .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
             .show(ctx, |ui| {
@@ -1016,6 +1021,7 @@ impl eframe::App for VectorCraftAndroidApp {
                     }
                     ui.separator();
                     ui.heading("Keyboard & Touch");
+                    ui.small("Illustrator-style keys are available in the Classic Defaults preset. Customize them in the shortcut editor; existing mappings are preserved.");
                     if ui.button("Customize Keyboard Shortcuts").clicked() {
                         customize_shortcuts = true;
                     }
@@ -1029,7 +1035,8 @@ impl eframe::App for VectorCraftAndroidApp {
                     if ui.button("Check for VectorCraft Updates").clicked() {
                         check_updates = true;
                     }
-                    ui.small("Checks published, signed-candidate release listings; never installs automatically.");
+                    ui.checkbox(&mut self.startup_updates, "Check for updates at startup");
+                    ui.small("Checks VectorCraft release listings. APK signatures are checked by Android during installation.");
                 });
         }
         if self.touch_dock {
@@ -1042,6 +1049,11 @@ impl eframe::App for VectorCraftAndroidApp {
                         if ui.button("Shortcuts").clicked() { customize_shortcuts = true; }
                     });
                 });
+        }
+        if self.startup_updates != previous_startup_updates {
+            if let Some(dir) = self.persist.as_ref() {
+                persist_write(dir, "startup_updates.enabled", if self.startup_updates { b"1" } else { b"0" });
+            }
         }
         if self.touch_dock != previous_touch_dock {
             if let Some(dir) = self.persist.as_ref() {
@@ -1152,6 +1164,9 @@ fn android_main(android_app: AndroidApp) {
             let touch_dock = persist.as_ref()
                 .and_then(|dir| fs::read_to_string(dir.join("touch_dock.enabled")).ok())
                 .is_some_and(|value| value.trim() == "1");
+            let startup_updates = persist.as_ref()
+                .and_then(|dir| fs::read_to_string(dir.join("startup_updates.enabled")).ok())
+                .is_some_and(|value| value.trim() == "1");
             Ok(Box::new(VectorCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
@@ -1159,10 +1174,11 @@ fn android_main(android_app: AndroidApp) {
                 fonts: std::mem::take(&mut initial_fonts),
                 android_tools_open: false,
                 touch_dock,
+                startup_updates,
                 updates: {
                     let mut state = UpdateDialogState::default();
                     // Nonblocking, read-only startup check as in PhotoCraft.
-                    if app_bridge.check_for_updates().is_ok() {
+                    if startup_updates && app_bridge.check_for_updates().is_ok() {
                         state.checking = true;
                         state.message = "Checking for VectorCraft updates…".into();
                     }

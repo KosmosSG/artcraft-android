@@ -1,7 +1,7 @@
 name: VectorCraft Android baseline
 on:
   push:
-    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021]
+    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021, development/vectorcraft-v014-20261023]
     paths: ['tools/vectorcraft/**', 'adapters/vectorcraft/**', 'assets/branding/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
             adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
   compile:
     # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023')
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 90

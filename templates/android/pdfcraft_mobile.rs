@@ -103,7 +103,7 @@ impl Mobile {
             Ok(())
         }).map_err(|err| err.to_string())
     }
-    fn do_update_check(&mut self) {
+    pub fn do_update_check(&mut self) {
         if self.checking { return; }
         self.update_url = None;
         self.update_status = "Checking published PDFCraft Android releases…".into();
@@ -189,7 +189,7 @@ impl Mobile {
                     ui.label(&self.update_status);
                     if self.checking { ui.spinner(); }
                     if let Some(url) = self.update_url.clone() {
-                        if ui.button("View verified GitHub release").clicked() {
+                        if ui.button("View GitHub release").clicked() {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }

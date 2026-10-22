@@ -245,7 +245,7 @@ public void pdfCheckForUpdates() {
                 boolean apkPresent = false;
                 if (assets != null) for (int j = 0; j < assets.length(); j++) {
                     JSONObject asset = assets.optJSONObject(j);
-                    if (asset != null && ("pdfcraft-" + candidate + ".apk")
+                    if (asset != null && ("PDFCraft-v" + candidate.split("-android\\.")[0] + "-arm64-release.apk")
                             .equals(asset.optString("name", ""))) apkPresent = true;
                 }
                 if (!apkPresent) continue;
@@ -257,10 +257,10 @@ public void pdfCheckForUpdates() {
             JSONObject reply = new JSONObject();
             reply.put("installed", installed);
             if (latest == null) {
-                reply.put("message", "No verified PDFCraft Android release found.");
+                reply.put("message", "No published PDFCraft Android APK release found.");
             } else {
                 reply.put("latest", latest);
-                reply.put("url", releaseUrl);
+                if (pdfCompareVersions(latest, installed) > 0) reply.put("url", releaseUrl);
                 reply.put("message", pdfCompareVersions(latest, installed) > 0
                         ? "New PDFCraft Android release: " + latest
                         : "PDFCraft Android is up to date: " + installed);

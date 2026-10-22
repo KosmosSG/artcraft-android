@@ -312,14 +312,40 @@ if app == "pdfcraft":
     # PDFCraft's *own embeddability validator* discover imported/shared TTF/OTF faces.
     # It does not alter how PDF fonts are embedded or how existing documents render.
     scanner = src / "crates/engine/src/text_fonts.rs"
-    needle = '            dirs.extend([home.join(".local/share/fonts"), home.join(".fonts")]);\n'
-    addition = '            if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR") { dirs.push(PathBuf::from(folder)); }\n'
+    needle = '            dirs.extend([home.join(".local/share/fonts"), home.join(".fonts")]);\n        }\n'
+    addition = '        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR") { dirs.push(PathBuf::from(folder)); }\n'
     if not scanner.is_file() or scanner.read_text().count(needle) != 1:
         raise SystemExit("PDFCraft font-scanner API changed; refusing an unreviewed port")
     original = scanner.read_text()
     if addition not in original:
         scanner.write_text(original.replace(needle, needle + addition, 1))
         fixed.append("crates/engine/src/text_fonts.rs")
+
+    updates = src / "crates/ui-egui/src/updates.rs"
+    old = "    pub fn check_for_updates(&mut self) {\n"
+    new = old + """        #[cfg(target_os = "android")]
+        {
+            ANDROID_UPDATE_REQUEST.store(true, std::sync::atomic::Ordering::Release);
+            return;
+        }
+"""
+    text = updates.read_text()
+    if "ANDROID_UPDATE_REQUEST" not in text:
+        if text.count(old) != 1:
+            raise SystemExit("PDFCraft Help update API changed")
+        text = text.replace(old, new, 1)
+        text += """
+#[cfg(target_os = "android")]
+static ANDROID_UPDATE_REQUEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+impl PdfCraftApp {
+    #[cfg(target_os = "android")]
+    pub fn take_android_update_request(&self) -> bool {
+        ANDROID_UPDATE_REQUEST.swap(false, std::sync::atomic::Ordering::AcqRel)
+    }
+}
+"""
+        updates.write_text(text)
+        fixed.append("crates/ui-egui/src/updates.rs")
 
 if fixed:
     print(f"  Patched app-specific Android integration: {', '.join(fixed)}")
@@ -346,7 +372,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "24"
+GENERATOR_VERSION = "25-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2660,7 +2686,7 @@ impl eframe::App for AndroidShell {{
             ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
              "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
-            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        self.pdf_mobile.poll(ctx);"),
+            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);"),
             ("        self.inner.ui(ui, frame);", "        self.inner.ui(ui, frame);\n        self.pdf_mobile.toolbar(ui.ctx());"),
         ]
         for needle, replacement in checks:

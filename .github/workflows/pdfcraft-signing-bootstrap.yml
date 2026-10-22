@@ -1,0 +1,122 @@
+name: PDFCraft permanent signing bootstrap (manual, encrypted backup)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdfcraft-signing-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  generate-once:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check prerequisites and refuse existing signing identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PDFCRAFT_SECRET_ADMIN_TOKEN }}
+          BACKUP_PASSWORD: ${{ secrets.PDFCRAFT_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "::error::Set PDFCRAFT_SECRET_ADMIN_TOKEN (fine-grained token with this repository's Secrets: read/write permission)."; exit 1; }
+          test "${#BACKUP_PASSWORD}" -ge 20 || { echo "::error::PDFCRAFT_BACKUP_PASSWORD must be a strong, independently saved passphrase of at least 20 characters."; exit 1; }
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          request=urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/secrets",headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],"User-Agent":"pdfcraft-signing-bootstrap"})
+          with urllib.request.urlopen(request,timeout=20) as r: names={s["name"] for s in json.load(r)["secrets"]}
+          protected={"PDFCRAFT_KEYSTORE_BASE64","PDFCRAFT_KEYSTORE_PASSWORD","PDFCRAFT_KEY_ALIAS","PDFCRAFT_KEY_PASSWORD","PDFCRAFT_CERT_SHA256"}
+          if names.intersection(protected):
+              raise SystemExit("STOP: PDFCraft signing secret(s) already exist; cannot generate or replace an identity.")
+          print("PASS: no existing PDFCraft release signing secrets; bootstrap may continue")
+          PY
+
+      - name: Generate Android app-specific keystore and encrypted offline backup
+        shell: bash
+        env:
+          BACKUP_PASSWORD: ${{ secrets.PDFCRAFT_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/pdfcraft-signing" "$RUNNER_TEMP/pdfcraft-backup"
+          cd "$RUNNER_TEMP/pdfcraft-signing"
+          openssl rand -base64 48 | tr -d '\n' > storepass
+          cp storepass keypass
+          printf '%s' 'pdfcraft-release' > alias
+          keytool -genkeypair -noprompt -keystore pdfcraft-release.p12 -storetype PKCS12 \
+            -alias pdfcraft-release -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname 'CN=PDFCraft Android Release, OU=ArtCraft Android, O=KosmosSG' \
+            -storepass:file storepass -keypass:file keypass
+          # PKCS12 commonly uses one password for both the container and its key.
+          cp storepass keypass
+          openssl rand -hex 24 > backup-id
+          tar -czf pdfcraft-private-backup.tar.gz pdfcraft-release.p12 storepass keypass alias backup-id
+          printf '%s' "$BACKUP_PASSWORD" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output "$RUNNER_TEMP/pdfcraft-backup/PDFCraft-signing-backup.tar.gz.gpg" pdfcraft-private-backup.tar.gz
+          chmod 600 "$RUNNER_TEMP/pdfcraft-backup/PDFCraft-signing-backup.tar.gz.gpg"
+          keytool -exportcert -rfc -keystore pdfcraft-release.p12 -storepass:file storepass \
+            -alias pdfcraft-release > certificate.pem
+          openssl x509 -in certificate.pem -noout -fingerprint -sha256 > "$RUNNER_TEMP/pdfcraft-backup/certificate-sha256.txt"
+          openssl x509 -in certificate.pem -outform DER | sha256sum | cut -d ' ' -f 1 > cert-sha256
+          echo 'Encrypted backup created. The backup password is not included in the artifact.'
+
+      - name: Upload encrypted backup before repository secret provisioning
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pdfcraft-encrypted-signing-backup
+          path: |
+            ${{ runner.temp }}/pdfcraft-backup/PDFCraft-signing-backup.tar.gz.gpg
+            ${{ runner.temp }}/pdfcraft-backup/certificate-sha256.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Configure PDFCraft-only GitHub Actions secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PDFCRAFT_SECRET_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/pdfcraft-nacl"
+          "$RUNNER_TEMP/pdfcraft-nacl/bin/pip" install --disable-pip-version-check 'PyNaCl==1.5.0'
+          "$RUNNER_TEMP/pdfcraft-nacl/bin/python" - <<'PY'
+          import base64,json,os,pathlib,urllib.request
+          from nacl.public import PublicKey,SealedBox
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"pdfcraft-signing"
+          repo=os.environ["GITHUB_REPOSITORY"]
+          h={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],"User-Agent":"pdfcraft-signing-bootstrap","X-GitHub-Api-Version":"2022-11-28"}
+          def request(url,method="GET",body=None):
+              data=None if body is None else json.dumps(body).encode()
+              with urllib.request.urlopen(urllib.request.Request(url,data=data,headers=h,method=method),timeout=20) as response:
+                  return json.load(response) if response.status != 204 else {}
+          base=f"https://api.github.com/repos/{repo}/actions/secrets"
+          present={s["name"] for s in request(base)["secrets"]}
+          secrets={
+              "PDFCRAFT_KEYSTORE_BASE64":base64.b64encode((root/"pdfcraft-release.p12").read_bytes()).decode(),
+              "PDFCRAFT_KEYSTORE_PASSWORD":(root/"storepass").read_text(),
+              "PDFCRAFT_KEY_ALIAS":(root/"alias").read_text(),
+              "PDFCRAFT_KEY_PASSWORD":(root/"keypass").read_text(),
+              "PDFCRAFT_CERT_SHA256":(root/"cert-sha256").read_text().strip(),
+          }
+          if any(n in present for n in secrets):
+              raise SystemExit("STOP: PDFCraft secrets appeared during bootstrap; refusing overwrite")
+          key=request(base+"/public-key")
+          box=SealedBox(PublicKey(base64.b64decode(key["key"])))
+          for name,value in secrets.items():
+              encrypted=base64.b64encode(box.encrypt(value.encode())).decode()
+              request(base+"/"+name,"PUT",{"encrypted_value":encrypted,"key_id":key["key_id"]})
+              print("Configured",name,"(encrypted; value withheld)")
+          print("Provisioned secrets. Download and independently preserve encrypted backup + passphrase; check fingerprint before release.")
+          PY
+
+      - name: Clean plaintext key material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/pdfcraft-signing"
+          echo 'Local temporary plaintext signing material cleaned.'

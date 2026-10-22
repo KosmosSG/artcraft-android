@@ -69,6 +69,23 @@ jobs:
           java -cp "$RUNNER_TEMP/pc-update-policy" \
             com.artcraft.photocraft.PhotoCraftUpdatePolicyTest
 
+      - name: Compile Android PhotoCraft activity against API 35 (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
+          if [[ ! -f "$ANDROID_JAR" ]]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+            test -n "$SDKMANAGER"
+            "$SDKMANAGER" --install 'platforms;android-35'
+          fi
+          test -f "$ANDROID_JAR"
+          javac -cp "$ANDROID_JAR" -d "$RUNNER_TEMP/pc-update-policy" \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+
+
   android-rust-check:
     name: Rust ARM64 adapter compatibility check (no APK)
     needs: preservation-guard

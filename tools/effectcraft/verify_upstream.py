@@ -13,7 +13,7 @@ assert lock["upstream_repository"] == "storytold/effectcraft"
 assert lock["reference_builder_commit"] == "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af"
 assert lock["android_revision"] == 1
 assert lock["android_version_name"] == "0.14.0-android.1"
-assert lock["candidate_apk_name"] == "EffectCraft-v0.14.0-arm64-release.apk"
+assert lock["candidate_apk_name"] == "EffectCraft-0.14.0-android.1-arm64-v8a.apk"
 assert lock["expected_abi"] == "arm64-v8a"
 assert lock["uploaded_icon_sha256"] == "376a9b60f3ca15174a8a4e07563d5f4402a03011bc86e56395134f3f8f88661b"
 assert lock["version_code"] is None and lock["signing_certificate_sha256"] is None

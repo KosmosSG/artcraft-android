@@ -5,15 +5,14 @@ import sys
 
 def draw_icon(path):
     size = 1024
-    image = Image.new('RGBA', (size, size))
-    draw = ImageDraw.Draw(image)
-    for y in range(size):
-        t = y / size
-        draw.line((0, y, size, y), fill=(int(48+65*t), int(10+8*t), int(80+64*t), 255))
+    # Keep the complete tile opaque: Android applies the rounded icon mask.
+    # A uniform edge colour also avoids seams in the builder's adaptive layers.
+    image = Image.new('RGBA', (size, size), (76, 8, 45, 255))
     glow = Image.new('RGBA', image.size)
     g = ImageDraw.Draw(glow)
-    g.ellipse((120, -240, 1050, 650), fill=(247, 72, 190, 160))
-    image = Image.alpha_composite(image, glow.filter(ImageFilter.GaussianBlur(100)))
+    # Keep the pink glass glow in the centre, away from the solid outer edge.
+    g.ellipse((200, 120, 824, 904), fill=(247, 72, 190, 125))
+    image = Image.alpha_composite(image, glow.filter(ImageFilter.GaussianBlur(72)))
     glass = Image.new('RGBA', image.size)
     draw = ImageDraw.Draw(glass)
     draw.rounded_rectangle((120, 120, 904, 904), radius=180, fill=(250, 210, 255, 30), outline=(255, 220, 255, 150), width=3)
@@ -22,9 +21,8 @@ def draw_icon(path):
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 410)
     draw.text((512, 500), 'Dc', font=font, anchor='mm', fill=(255, 184, 230, 255), stroke_width=1)
-    mask = Image.new('L', image.size)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, 1023, 1023), radius=225, fill=255)
-    image.putalpha(mask)
+    # Do not pre-clip to a rounded square. Modern Android launchers apply
+    # their own adaptive mask; transparent PNG corners produce dark borders.
     image.save(path)
 
 

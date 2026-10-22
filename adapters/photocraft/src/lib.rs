@@ -894,7 +894,10 @@ impl eframe::App for PhotoCraftAndroidApp {
                                 .and_then(serde_json::Value::as_str) {
                                 Some("update_available") => format!("Update available: {latest} (installed: {installed})"),
                                 Some("up_to_date") => format!("You're up to date (installed: {installed}; latest: {latest})."),
-                                Some("no_release") => "No published PhotoCraft release found.".into(),
+                                Some("no_release") => result.get("message")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("No compatible PhotoCraft APK release found.")
+                                    .to_owned(),
                                 _ => format!("Update check failed: {}", result.get("message")
                                     .and_then(serde_json::Value::as_str)
                                     .unwrap_or("Unknown response from Android")),

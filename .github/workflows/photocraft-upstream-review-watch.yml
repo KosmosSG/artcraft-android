@@ -1,0 +1,71 @@
+name: PhotoCraft upstream release watch (review only)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: photocraft-upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Detect official upstream release and create review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, urllib.request, urllib.parse
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['REPOSITORY']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': 'Bearer ' + token,
+              'User-Agent': 'photocraft-upstream-watch',
+              'X-GitHub-Api-Version': '2022-11-28',
+          }
+          def api(path, method='GET', payload=None):
+              url = 'https://api.github.com' + path
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          upstream = api('/repos/storytold/photocraft/releases/latest')
+          tag = upstream.get('tag_name', '')
+          if not re.fullmatch(r'v?\d+\.\d+\.\d+', tag):
+              raise SystemExit('STOP: unrecognized official PhotoCraft release tag')
+          tag_ref = api('/repos/storytold/photocraft/git/ref/tags/' + urllib.parse.quote(tag, safe=''))
+          obj = tag_ref.get('object') or {}
+          # Annotated tags must be peeled; do not guess a source SHA.
+          if obj.get('type') == 'tag':
+              obj = api('/repos/storytold/photocraft/git/tags/' + obj['sha']).get('object') or {}
+          if obj.get('type') != 'commit' or not re.fullmatch('[0-9a-f]{40}', obj.get('sha','')):
+              raise SystemExit('STOP: upstream tag does not resolve to a commit')
+          sha = obj['sha']
+          title = '[PhotoCraft upstream review] ' + tag
+          q = urllib.parse.quote('repo:' + repo + ' in:title "' + title + '"')
+          matches = api('/search/issues?q=' + q + '&per_page=100').get('items', [])
+          if any(item.get('title') == title for item in matches):
+              print('Existing review issue found; no duplicate created.')
+          else:
+              body = ('Official upstream release detected.\n\n'
+                      'Source: https://github.com/storytold/photocraft/releases/tag/' + tag + '\n'
+                      'Pinned commit: `' + sha + '`\n\n'
+                      '**Review required. This workflow does not build, sign, merge, or publish APKs.**\n'
+                      'Preserve GPU fallback, font import, SAF, updater, keyboard, icon, '
+                      'package ID and signing certificate. Validate monotonic Android versionCode '
+                      'and proposed `<official-version>-android.1` before any release.')
+              api('/repos/' + repo + '/issues', 'POST', {'title': title, 'body': body})
+              print('Created upstream review issue for ' + tag)
+          PY

@@ -53,7 +53,7 @@ def main(root: Path) -> None:
                 }
             }
         } else {
-            self.set_status("This host has no font file picker".into());
+            self.set_status("This host has no font file picker");
         }
     }
 

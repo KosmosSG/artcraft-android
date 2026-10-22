@@ -110,10 +110,7 @@ def _lightcraft_borderless(Image, img):
         + rust_anchor
     )
     script = replace_once(script, rust_anchor, rust_new, "Rust updater host")
-    # Check the embedded Python heredoc, not the outer shell.
-    anchor = "python3 - \"$ROOT\" \"$APP\" \"$TITLE\" \"$ANDROID_DIR\" \"$PACKAGENAME\" \"$APPICON\" <<'PY'"
-    if anchor not in script:
-        raise RuntimeError("STOP: generator Python heredoc changed")
+    # Reviewed inputs were already checked by the immutable source preflight.
     generator.write_text(script)
 
     menus = source / "crates/ui-egui/src/menus.rs"

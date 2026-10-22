@@ -57,6 +57,13 @@ jobs:
           python3 suite/tools/lightcraft/audit_source.py source builder android-reference suite > lightcraft-source-preflight.json
           cat lightcraft-source-preflight.json >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Set up Python for adaptive launcher icons
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow for Android adaptive launcher artwork
+        run: python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+
       - name: Java and Rust Android ARM64 toolchain
         uses: actions/setup-java@v4
         with:

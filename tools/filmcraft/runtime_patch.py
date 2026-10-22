@@ -102,7 +102,25 @@ def main() -> None:
             assert name in overlay, name
             assert name in rust, name
         assert 'filmcraft-v[0-9]+' in overlay
-        print("FilmCraft overlay static API contract: PASS (not a compile/device test)")
+        # Exercise the actual replacement logic against a minimal TOML fixture.
+        # Previously this silently replaced the first SAF permission instead of
+        # appending a new entry, resulting in a duplicate `name` TOML key.
+        import tomllib
+        permissions = (
+            '[[package.metadata.android.uses_permission]]\\n'
+            'name = "android.permission.READ_EXTERNAL_STORAGE"\\n'
+            'max_sdk_version = 32\\n'
+        )
+        patched = permissions.replace(
+            '[[package.metadata.android.uses_permission]]',
+            '[[package.metadata.android.uses_permission]]\\n'
+            'name = "android.permission.INTERNET"\\n\\n'
+            '[[package.metadata.android.uses_permission]]', 1)
+        parsed = tomllib.loads(patched)
+        names = [p['name'] for p in parsed['package']['metadata']['android']['uses_permission']]
+        assert names == ['android.permission.INTERNET',
+                         'android.permission.READ_EXTERNAL_STORAGE'], names
+        print("FilmCraft overlay static API + permission TOML: PASS (not an APK test)")
         return
 
     if args.android_dir is None:

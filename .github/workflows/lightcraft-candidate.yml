@@ -1,0 +1,145 @@
+name: LightCraft ARM64 candidate (no production signing or release)
+
+on:
+  push:
+    branches: [review/lightcraft-approved-icon-20261022]
+    paths:
+      - '.github/workflows/lightcraft-candidate.yml'
+      - 'tools/lightcraft/**'
+      - 'assets/lightcraft/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightcraft-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout reviewed suite (read only)
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Checkout immutable official LightCraft v0.11.0
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: ec0cda9a6f320e3b32f659f16718f7bce6c3f12f
+          path: source
+          persist-credentials: false
+      - name: Checkout reviewed Android builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout second Android reference for locked provenance
+        uses: actions/checkout@v4
+        with:
+          repository: morte2437/photocraft-android
+          ref: 71c919b768c6d70bc8231b92e3de6a81fb949996
+          path: android-reference
+          persist-credentials: false
+
+      - name: Validate immutable source, API and approved original icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s suite/tools/lightcraft -p 'test_*.py' -v
+          python3 suite/tools/lightcraft/audit_source.py source builder android-reference suite > lightcraft-source-preflight.json
+          cat lightcraft-source-preflight.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Java and Rust Android ARM64 toolchain
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.90.0'
+          targets: aarch64-linux-android
+          components: rustfmt
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          MANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$MANAGER"
+          echo "$(dirname "$MANAGER")" >> "$GITHUB_PATH"
+          "$MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Install isolated Rust Android build tooling
+        shell: bash
+        run: cargo install cargo-ndk --locked
+
+      - name: Build the full LightCraft app with the reviewed Android SAF bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builder/source
+          mv source builder/source/lightcraft
+          test "$(git -C builder/source/lightcraft rev-parse HEAD)" = 'ec0cda9a6f320e3b32f659f16718f7bce6c3f12f'
+          # The builder uses an automatically generated, disposable local key.
+          # This APK is NOT a production release and MUST NOT be published.
+          bash builder/build.sh -lightcraft \
+            -packagename=com.artcraft.lightcraft \
+            -appname=LightCraft \
+            "-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-approved.png"
+
+      - name: Verify candidate APK identity, signing and ARM64 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='builder/output/lightcraft-0.11.0.apk'
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          APKSIGNER="$SDK/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > candidate-certificate.txt
+          "$AAPT" dump badging "$APK" > candidate-badging.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.11.0'" candidate-badging.txt
+          grep -Fq "launchable-activity:" candidate-badging.txt
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
+          python3 - "$APK" candidate-badging.txt <<'PY'
+          import re,sys,zipfile
+          apk,badging=sys.argv[1:]
+          txt=open(badging).read()
+          code=int(re.search(r"versionCode='(\d+)'",txt).group(1))
+          expected=(1<<24)+(11<<8)
+          if code!=expected: raise SystemExit(f'Unexpected versionCode {code} (expected {expected})')
+          with zipfile.ZipFile(apk) as z:
+              names=z.namelist()
+              assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names), 'Missing ARM64 library'
+              assert any(n.endswith('.dex') for n in names), 'Missing Java Activity dex'
+          PY
+          mkdir -p verified
+          cp "$APK" verified/LightCraft-v0.11.0-arm64-CANDIDATE.apk
+          sha256sum verified/*.apk > verified/SHA256SUMS.txt
+          {
+            echo '### LightCraft v0.11.0 Android candidate — not a release'
+            echo 'Source: storytold/lightcraft @ ec0cda9a6f320e3b32f659f16718f7bce6c3f12f'
+            echo 'Package: com.artcraft.lightcraft'
+            echo 'Signing: disposable build key, NOT the permanent production identity'
+            echo 'Device tests and any in-app update enhancements: NOT verified'
+            echo 'APK hashes:'
+            cat verified/SHA256SUMS.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload candidate only (no release, no secrets)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-v0.11.0-arm64-UNVERIFIED-CANDIDATE
+          path: verified/
+          retention-days: 14
+          if-no-files-found: error

@@ -1,7 +1,7 @@
 name: DesignCraft ARM64 candidate
 on:
   push:
-    branches: [designcraft-android-candidate]
+    branches: [designcraft-android-candidate, review/designcraft-photocraft-parity-20261022]
     paths: ['tools/designcraft/**', '.github/workflows/designcraft-candidate.yml']
   workflow_dispatch:
 permissions:

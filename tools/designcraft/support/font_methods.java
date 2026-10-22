@@ -1,3 +1,18 @@
+    private final java.util.concurrent.atomic.AtomicBoolean dcStartupFontRefresh =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** Reload the persisted SAF folder automatically without asking for permission again. */
+    private void dcRestoreSharedFontsOnStartup() {
+        if (!dcStartupFontRefresh.compareAndSet(false, true)) return;
+        String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(FONT_FOLDER_PREF, null);
+        if (saved == null || saved.isEmpty()) return;
+        try {
+            scanFontFolder(0, Uri.parse(saved));
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Cannot restore shared font folder", error);
+        }
+    }
+
     /** Ask Android for read-only access to a user-selected shared font directory. */
     public void dcRequestFontFolder(long id) {
         runOnUiThread(() -> {
@@ -86,24 +101,57 @@
                                     documentId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
                                     .toString();
                             File target = new File(cache, "font-" + hash + extension);
+                            // Preserve the previous cached font until the new file is complete.
+                            File staged = new File(cache, "font-" + hash + extension + ".pending");
                             try (InputStream input = getContentResolver().openInputStream(fontUri);
-                                 OutputStream output = new FileOutputStream(target)) {
+                                 OutputStream output = new FileOutputStream(staged)) {
                                 if (input == null) throw new Exception("Cannot read font " + name);
+                                int first = input.read(), second = input.read(),
+                                        third = input.read(), fourth = input.read();
+                                boolean validHeader =
+                                        (first == 0 && second == 1 && third == 0 && fourth == 0)
+                                        || (first == 'O' && second == 'T'
+                                            && third == 'T' && fourth == 'O');
+                                if (!validHeader) throw new Exception("Invalid OpenType header: " + name);
+                                output.write(new byte[]{(byte) first, (byte) second,
+                                        (byte) third, (byte) fourth});
+                                long total = 4L;
+                                totalBytes += 4L;
+                                if (totalBytes > 128L * 1024 * 1024)
+                                    throw new Exception("Shared font refresh reached the 128 MB limit");
                                 byte[] buffer = new byte[64 * 1024];
                                 int n;
-                                long total = 0;
                                 while ((n = input.read(buffer)) != -1) {
                                     total += n;
                                     if (total > 32L * 1024 * 1024)
                                         throw new Exception("Font too large: " + name);
                                     totalBytes += n;
-                                    if (totalBytes > 128L * 1024 * 1024) throw new Exception("Shared font refresh reached the 128 MB limit");
+                                    if (totalBytes > 128L * 1024 * 1024)
+                                        throw new Exception("Shared font refresh reached the 128 MB limit");
                                     output.write(buffer, 0, n);
                                 }
-                                if (total == 0) throw new Exception("Empty font: " + name);
+                                output.flush();
                             } catch (Exception fontError) {
-                                target.delete();
+                                staged.delete();
                                 Log.w(TAG, "Skipping shared font " + name, fontError);
+                                continue;
+                            }
+                            try {
+                                java.nio.file.Files.move(staged.toPath(), target.toPath(),
+                                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                                try {
+                                    java.nio.file.Files.move(staged.toPath(), target.toPath(),
+                                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                } catch (Exception moveError) {
+                                    staged.delete();
+                                    Log.w(TAG, "Cannot commit refreshed font " + name, moveError);
+                                    continue;
+                                }
+                            } catch (Exception moveError) {
+                                staged.delete();
+                                Log.w(TAG, "Cannot commit refreshed font " + name, moveError);
                                 continue;
                             }
                             paths.put(target.getAbsolutePath());

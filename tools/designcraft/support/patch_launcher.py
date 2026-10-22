@@ -22,14 +22,14 @@ def patch(root):
                                     log::error!("Font import: {error}");
                                     tablet::font_result(Err(error));
                                 } else {
-                                    tablet::font_result(Ok(()));
+                                    tablet::font_result(Ok("Font imported".to_owned()));
                                 }
                             } else {
                                 ''' + old + '''
                             }''')
     source = replace_once(source, '            ("open", "ok") => {', '''            ("font_folder", status) => {
                 if status == "ok" {
-                    tablet::font_result(Ok(()));
+                    tablet::font_result(Ok(format!("Shared font folder refreshed ({} fonts)", value.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0))));
                 } else if status != "cancel" {
                     tablet::font_result(Err(value.get("message").and_then(serde_json::Value::as_str).unwrap_or("Shared font refresh failed").to_owned()));
                 }
@@ -49,7 +49,8 @@ def patch(root):
     java = next((root / "java").rglob("DesignCraftActivity.java"))
     text = java.read_text()
     text = replace_once(text, '        super.onCreate(savedInstanceState);', '''        super.onCreate(savedInstanceState);
-        if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false)) dcCheckUpdates(false);''')
+        if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false)) dcCheckUpdates(false);
+        dcRestoreSharedFontsOnStartup();''')
     text = replace_once(text, '        super.onActivityResult(requestCode, resultCode, data);', '''        super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_FONT_FOLDER) {
             requestIds.remove(REQ_FONT_FOLDER);

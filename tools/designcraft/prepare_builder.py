@@ -31,6 +31,27 @@ def prepare(root: Path, version: str, code: int):
     fonts = root / "templates/android/system_fonts.rs"
     text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
     fonts.write_text(text)
+    # The candidate uses the approved full-bleed glass artwork, not an
+    # auto-stripped/recreated adaptive foreground. Patch only DesignCraft.
+    icon_module = root / "lib/app_icons.py"
+    icon_source = icon_module.read_text()
+    adaptive_needle = (
+        "    stripped, _changed = _strip_background(work, pristine=pristine)\n"
+        "    foreground = _foreground(Image, stripped)"
+    )
+    if icon_source.count(adaptive_needle) != 1:
+        raise ValueError("Pinned builder adaptive icon code changed; review required")
+    icon_source = icon_source.replace(
+        adaptive_needle,
+        """    if app == "designcraft" and explicit is not None:
+        # Preserve approved opaque tile and glossy lettering edge-to-edge.
+        # Let the Android launcher mask the tile to its preferred shape.
+        foreground = pristine.resize((CANVAS_PX, CANVAS_PX), Image.LANCZOS)
+    else:
+        stripped, _changed = _strip_background(work, pristine=pristine)
+        foreground = _foreground(Image, stripped)""",
+    )
+    icon_module.write_text(icon_source)
     script.write_text(source)
     project.write_text(generated)
 

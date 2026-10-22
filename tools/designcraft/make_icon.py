@@ -1,30 +1,31 @@
-"""Original code-drawn glass Dc icon; no Adobe artwork or bundled font assets."""
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+"""Render the approved glossy DesignCraft 'Dc' launcher artwork.
+
+The source image is designcraft-specific and intentionally opaque. Never
+redraw the letters with a font or pre-round the image corners: Android's
+adaptive launcher icon supplies the rounded-square mask.
+"""
+from pathlib import Path
+from PIL import Image
+import hashlib
 import sys
+
+ARTWORK = Path(__file__).with_name("approved-dc.webp")
+ARTWORK_SHA256 = "3906b7071dc8827f4648cd842fc586704ef584d46939a59731da1d2da013fa5e"
 
 
 def draw_icon(path):
-    size = 1024
-    # Keep the complete tile opaque: Android applies the rounded icon mask.
-    # A uniform edge colour also avoids seams in the builder's adaptive layers.
-    image = Image.new('RGBA', (size, size), (76, 8, 45, 255))
-    glow = Image.new('RGBA', image.size)
-    g = ImageDraw.Draw(glow)
-    # Keep the pink glass glow in the centre, away from the solid outer edge.
-    g.ellipse((200, 120, 824, 904), fill=(247, 72, 190, 125))
-    image = Image.alpha_composite(image, glow.filter(ImageFilter.GaussianBlur(72)))
-    glass = Image.new('RGBA', image.size)
-    draw = ImageDraw.Draw(glass)
-    draw.rounded_rectangle((120, 120, 904, 904), radius=180, fill=(250, 210, 255, 30), outline=(255, 220, 255, 150), width=3)
-    draw.arc((145, 135, 875, 880), 190, 286, fill=(255, 225, 255, 220), width=5)
-    image = Image.alpha_composite(image, glass)
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 410)
-    draw.text((512, 500), 'Dc', font=font, anchor='mm', fill=(255, 184, 230, 255), stroke_width=1)
-    # Do not pre-clip to a rounded square. Modern Android launchers apply
-    # their own adaptive mask; transparent PNG corners produce dark borders.
-    image.save(path)
+    original = ARTWORK.read_bytes()
+    if hashlib.sha256(original).hexdigest() != ARTWORK_SHA256:
+        raise ValueError("Approved DesignCraft icon asset was modified or corrupted")
+    with Image.open(ARTWORK) as source:
+        if source.size != (256, 256):
+            raise ValueError("Unexpected approved DesignCraft icon dimensions")
+        image = source.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output, format="PNG")
+    return output
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     draw_icon(sys.argv[1])

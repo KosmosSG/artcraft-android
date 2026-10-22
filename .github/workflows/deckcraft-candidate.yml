@@ -151,6 +151,7 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: |
           set -euo pipefail
+          python3 deckcraft/android/adaptive_safe.py builder deckcraft
           cd builder
           bash build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
           test -s output/deckcraft-0.9.0-android.1.apk

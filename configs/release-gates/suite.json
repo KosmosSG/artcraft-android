@@ -151,11 +151,11 @@
     },
     "lightcraft": {
       "display_name": "LightCraft",
-      "android_package": null,
+      "android_package": "com.artcraft.lightcraft",
       "official_upstream": "storytold/lightcraft",
-      "private_signing_repository": null,
-      "verified_certificate_sha256": null,
-      "permanent_identity_known": false,
+      "private_signing_repository": "KosmosSG/lightcraft-signing-private",
+      "verified_certificate_sha256": "b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4",
+      "permanent_identity_known": true,
       "production_baseline_confirmed": false,
       "latest_public_approved_apk_sha256": null,
       "highest_verified_production_version_code": null,
@@ -165,7 +165,7 @@
       "updater_compatible": false,
       "public_release_enabled": false,
       "release_workflow_verified": false,
-      "notes": null
+      "notes": "Original dedicated LightCraft signing identity recovered and verified; isolated ARM64 candidate and private production-signed v0.11.0 artifact built. Private automated readiness auditing and backup monitoring configured. No HONOR MagicPad 4 device acceptance or authorized public release yet."
     },
     "soundcraft": {
       "display_name": "SoundCraft",

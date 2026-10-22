@@ -101,6 +101,7 @@ jobs:
           ARTCRAFT_TARGET_SDK: '35'
         run: |
           set -euo pipefail
+          python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
           python3 suite/tools/filmcraft/stage_variant.py filmcraft-builder/lib/android_project.py
           cd filmcraft-builder
           bash build.sh -filmcraft -packagename=com.artcraft.filmcraft -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-launcher-192.png"

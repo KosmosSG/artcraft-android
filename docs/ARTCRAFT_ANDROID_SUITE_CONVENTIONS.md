@@ -41,3 +41,16 @@ For each feature, keep a per-app draft checklist with one of these explicit stat
 The next PhotoCraft combined-APK checklist is in [draft PR15](https://github.com/KosmosSG/artcraft-android/pull/15). Its passing source checks do not demonstrate APK packaging. Equivalent per-app evidence must tie the intended enhancements to the exact candidate source and APK, relevant regression checks and packaged resources. Keep automated checks separate from user tablet acceptance.
 
 Retain every proven applicable enhancement through subsequent official upstream upgrades. A ready-to-install announcement still requires the established signing, reserved versionCode, source/hash/package/certificate and unchanged-payload gates. This requirement does not change signing identities, authorize merging drafts or activate unreviewed release workflows.
+
+## Required Android references — 22 October 2026
+
+The user explicitly requires both references to inform compatible enhancements across all 12 apps:
+
+- [MostafaXS1/artcraft-android](https://github.com/MostafaXS1/artcraft-android), reviewed starting commit `ac54d62d9d2d6f663295a4afd8972a7a3e79f9af`: suite packaging, per-app adapters and shared Android integration.
+- [morte2437/photocraft-android](https://github.com/morte2437/photocraft-android), reviewed `android-port` commit `71c919b768c6d70bc8231b92e3de6a81fb949996`: PhotoCraft Android UI/input reference, including touch controls, shortcut pad, pen handling, fonts and update UX for compatibility assessment.
+
+Inspect actual app-specific code, licenses/notices and exact official release APIs before porting. The Mostafa builder is MIT; morte's README/NOTICE describe MIT OR Apache-2.0 with third-party notices. Preserve applicable attribution and check each copied component. README claims and available reference APKs do not prove our implementation or tablet behavior.
+
+Official stable storytold tags pinned to immutable commits remain the app sources. Adapt compatible pieces to each app's command model, renderer and document/media workflows. Do not replace our apps with fork APKs, adopt their signing identities/update channels, or overwrite custom adapters wholesale. Preserve exact approved artwork, permanent certificates, package identity and all existing enhancements.
+
+Use the per-app checklist above to record implementation, source tests, packaged APK evidence and device validation separately. Record concrete reasons for inapplicable features; retain proven compatible enhancements across future upstream updates.

@@ -1,0 +1,50 @@
+name: LightCraft official upstream watch (review only)
+
+on:
+  schedule:
+    - cron: '15 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lightcraft-upstream-watch.yml'
+      - 'tools/lightcraft/watch_upstream.py'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: lightcraft-stable-upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main monitoring code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Read existing reviewed LightCraft source lock
+        uses: actions/checkout@v5
+        with:
+          ref: review/lightcraft-approved-icon-20261022
+          path: review
+          persist-credentials: false
+      - name: Check official stable upstream and open a review ticket only if newer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 tools/lightcraft/watch_upstream.py
+      - name: Retain upstream provenance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lightcraft-official-upstream-review
+          path: lightcraft-upstream-report.json
+          if-no-files-found: warn
+          retention-days: 30

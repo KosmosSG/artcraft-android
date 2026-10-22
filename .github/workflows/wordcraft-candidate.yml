@@ -139,6 +139,7 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: |
           set -euo pipefail
+          python3 wordcraft/android/adaptive_safe.py builder wordcraft
           cd builder
           bash build.sh -wordcraft -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
           test -s output/wordcraft-0.9.0-android.1.apk

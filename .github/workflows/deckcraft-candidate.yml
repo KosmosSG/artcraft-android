@@ -126,6 +126,24 @@ jobs:
           git -C builder/source/deckcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
 
+      - name: Apply DeckCraft-only individual-font import (session scope)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/patch_deckcraft_fonts.py builder/source/deckcraft
+          git -C builder/source/deckcraft diff --check
+          git -C builder/source/deckcraft diff --stat
+          # Require the patch to stay confined to the reviewed DeckCraft UI files and version metadata.
+          python3 - <<'PY'
+          import subprocess
+          changed = set(subprocess.check_output(
+              ['git', '-C', 'builder/source/deckcraft', 'diff', '--name-only'], text=True
+          ).splitlines())
+          expected = {'Cargo.toml', 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs'}
+          assert changed == expected, f'Unexpected source changes: {changed ^ expected}'
+          print('DeckCraft-only patch scope verified:', sorted(changed))
+          PY
+
       - name: Compile candidate with per-run temporary builder key
         shell: bash
         timeout-minutes: 60

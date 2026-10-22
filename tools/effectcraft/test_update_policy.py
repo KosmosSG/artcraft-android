@@ -8,7 +8,7 @@ def release(tag, apk=None, *, draft=False, prerelease=False, assets=None):
     if assets is None:
         if apk is None:
             parts = tag.removeprefix("effectcraft-v")
-            apk = f"effectcraft-{parts}.apk"
+            apk = f"EffectCraft-v{parts.split('-android.', 1)[0]}-arm64-release.apk"
         assets = [{"name": apk,
                    "browser_download_url": f"https://github.com/KosmosSG/artcraft-android/releases/download/{tag}/{apk}"}]
     return {"tag_name": tag, "draft": draft, "prerelease": prerelease, "assets": assets}
@@ -41,7 +41,7 @@ class UpdatePolicyTest(unittest.TestCase):
 
     def test_bad_asset_and_duplicate_release_rejected(self):
         tag = "effectcraft-v0.13.0-android.3"
-        name = "effectcraft-0.13.0-android.3.apk"
+        name = "EffectCraft-v0.13.0-arm64-release.apk"
         bad = release(tag, assets=[
             {"name": name, "browser_download_url": f"https://attacker.example/{name}"}
         ])

@@ -63,7 +63,7 @@ def preliminary_candidates(
         if value is None or value <= current or tag in seen:
             continue
         version = f"{value[0]}.{value[1]}.{value[2]}-android.{value[3]}"
-        target_name = f"effectcraft-{version}.apk"
+        target_name = f"EffectCraft-v{value[0]}.{value[1]}.{value[2]}-arm64-release.apk"
         expected_prefix = f"{RELEASE_PREFIX}{tag}/"
         assets = release.get("assets") or []
         matching = [

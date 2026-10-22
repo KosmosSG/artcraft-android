@@ -117,6 +117,11 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Verify exact approved launcher icon before expensive builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
       - name: Validate reserved version code
         shell: bash
         run: |

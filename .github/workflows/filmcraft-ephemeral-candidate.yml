@@ -101,6 +101,7 @@ jobs:
           mkdir -p filmcraft-builder/tools/filmcraft
           cp suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/filmcraft_features.rs suite/tools/filmcraft/FilmCraftActivity.features.java.inc filmcraft-builder/tools/filmcraft/
           python3 suite/tools/filmcraft/runtime_patch.py --self-test
+          python3 suite/tools/filmcraft/test_icon_reporting.py suite/lib/build-common.sh
           python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch.py
           bash -n filmcraft-builder/lib/build-common.sh
 

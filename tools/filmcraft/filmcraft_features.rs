@@ -26,7 +26,7 @@ impl FilmcraftFeatures {
     // following the existing ArtCraft SAF/IME bridges.
     fn with_env<T>(
         app: &AndroidApp,
-        fun: impl FnOnce(&mut jni::JNIEnv<'_>, &JObject<'_>) -> jni::errors::Result<T>,
+        fun: impl FnOnce(&mut jni::Env<'_>, &JObject<'_>) -> jni::errors::Result<T>,
     ) -> Result<T, String> {
         // SAFETY: AndroidApp owns the VM and global activity for its active lifetime.
         let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };

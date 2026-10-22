@@ -1,0 +1,117 @@
+name: DeckCraft permanent signing bootstrap (manual, encrypted backup)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deckcraft-signing-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  generate-once:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check prerequisites and refuse existing signing identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DECKCRAFT_SECRET_ADMIN_TOKEN }}
+          BACKUP_PASSWORD: ${{ secrets.DECKCRAFT_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "::error::Set DECKCRAFT_SECRET_ADMIN_TOKEN (fine-grained token with this repository's Secrets: read/write permission)."; exit 1; }
+          test "${#BACKUP_PASSWORD}" -ge 20 || { echo "::error::DECKCRAFT_BACKUP_PASSWORD must be a strong, independently saved passphrase of at least 20 characters."; exit 1; }
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          request=urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/secrets",headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],"User-Agent":"deckcraft-signing-bootstrap"})
+          with urllib.request.urlopen(request,timeout=20) as r: names={s["name"] for s in json.load(r)["secrets"]}
+          protected={"DECKCRAFT_KEYSTORE_BASE64","DECKCRAFT_KEYSTORE_PASSWORD","DECKCRAFT_KEY_ALIAS","DECKCRAFT_KEY_PASSWORD"}
+          if names.intersection(protected):
+              raise SystemExit("STOP: DeckCraft signing secret(s) already exist; cannot generate or replace an identity.")
+          print("PASS: no existing DeckCraft release signing secrets; bootstrap may continue")
+          PY
+
+      - name: Generate Android app-specific keystore and encrypted offline backup
+        shell: bash
+        env:
+          BACKUP_PASSWORD: ${{ secrets.DECKCRAFT_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/deckcraft-signing" "$RUNNER_TEMP/deckcraft-backup"
+          cd "$RUNNER_TEMP/deckcraft-signing"
+          openssl rand -base64 48 | tr -d '\n' > storepass
+          openssl rand -base64 48 | tr -d '\n' > keypass
+          printf '%s' 'deckcraft-release' > alias
+          keytool -genkeypair -noprompt -keystore deckcraft-release.p12 -storetype PKCS12 \
+            -alias deckcraft-release -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname 'CN=DeckCraft Android Release, OU=ArtCraft Android, O=KosmosSG' \
+            -storepass "$(cat storepass)" -keypass "$(cat keypass)"
+          # PKCS12 commonly uses one password for both the container and its key.
+          cp storepass keypass
+          openssl rand -hex 24 > backup-id
+          tar -czf deckcraft-private-backup.tar.gz deckcraft-release.p12 storepass keypass alias backup-id
+          printf '%s' "$BACKUP_PASSWORD" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output "$RUNNER_TEMP/deckcraft-backup/DeckCraft-signing-backup.tar.gz.gpg" deckcraft-private-backup.tar.gz
+          chmod 600 "$RUNNER_TEMP/deckcraft-backup/DeckCraft-signing-backup.tar.gz.gpg"
+          keytool -exportcert -rfc -keystore deckcraft-release.p12 -storepass "$(cat storepass)" \
+            -alias deckcraft-release > certificate.pem
+          openssl x509 -in certificate.pem -noout -fingerprint -sha256 > "$RUNNER_TEMP/deckcraft-backup/certificate-sha256.txt"
+          echo 'Encrypted backup created. The backup password is not included in the artifact.'
+
+      - name: Upload encrypted backup before repository secret provisioning
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deckcraft-encrypted-signing-backup
+          path: |
+            ${{ runner.temp }}/deckcraft-backup/DeckCraft-signing-backup.tar.gz.gpg
+            ${{ runner.temp }}/deckcraft-backup/certificate-sha256.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Configure four DeckCraft-only GitHub Actions secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DECKCRAFT_SECRET_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,json,os,pathlib,urllib.request
+          from nacl.public import PublicKey,SealedBox
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"deckcraft-signing"
+          repo=os.environ["GITHUB_REPOSITORY"]
+          h={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],"User-Agent":"deckcraft-signing-bootstrap","X-GitHub-Api-Version":"2022-11-28"}
+          def request(url,method="GET",body=None):
+              data=None if body is None else json.dumps(body).encode()
+              with urllib.request.urlopen(urllib.request.Request(url,data=data,headers=h,method=method),timeout=20) as response:
+                  return json.load(response) if response.status != 204 else {}
+          base=f"https://api.github.com/repos/{repo}/actions/secrets"
+          present={s["name"] for s in request(base)["secrets"]}
+          secrets={
+              "DECKCRAFT_KEYSTORE_BASE64":base64.b64encode((root/"deckcraft-release.p12").read_bytes()).decode(),
+              "DECKCRAFT_KEYSTORE_PASSWORD":(root/"storepass").read_text(),
+              "DECKCRAFT_KEY_ALIAS":(root/"alias").read_text(),
+              "DECKCRAFT_KEY_PASSWORD":(root/"keypass").read_text(),
+          }
+          if any(n in present for n in secrets):
+              raise SystemExit("STOP: DeckCraft secrets appeared during bootstrap; refusing overwrite")
+          key=request(base+"/public-key")
+          box=SealedBox(PublicKey(base64.b64decode(key["key"])))
+          for name,value in secrets.items():
+              encrypted=base64.b64encode(box.encrypt(value.encode())).decode()
+              request(base+"/"+name,"PUT",{"encrypted_value":encrypted,"key_id":key["key_id"]})
+              print("Configured",name,"(encrypted; value withheld)")
+          print("Provisioned secrets. Download and independently preserve encrypted backup + passphrase; check fingerprint before release.")
+          PY
+
+      - name: Clean plaintext key material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/deckcraft-signing"
+          echo 'Local temporary plaintext signing material cleaned.'

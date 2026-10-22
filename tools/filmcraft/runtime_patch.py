@@ -107,14 +107,14 @@ def main() -> None:
         # appending a new entry, resulting in a duplicate `name` TOML key.
         import tomllib
         permissions = (
-            '[[package.metadata.android.uses_permission]]\\n'
-            'name = "android.permission.READ_EXTERNAL_STORAGE"\\n'
-            'max_sdk_version = 32\\n'
+            '[[package.metadata.android.uses_permission]]\n'
+            'name = "android.permission.READ_EXTERNAL_STORAGE"\n'
+            'max_sdk_version = 32\n'
         )
         patched = permissions.replace(
             '[[package.metadata.android.uses_permission]]',
-            '[[package.metadata.android.uses_permission]]\\n'
-            'name = "android.permission.INTERNET"\\n\\n'
+            '[[package.metadata.android.uses_permission]]\n'
+            'name = "android.permission.INTERNET"\n\n'
             '[[package.metadata.android.uses_permission]]', 1)
         parsed = tomllib.loads(patched)
         names = [p['name'] for p in parsed['package']['metadata']['android']['uses_permission']]

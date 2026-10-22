@@ -17,6 +17,9 @@ def main(root: Path) -> None:
     ui = root / "crates/ui-egui/src/lib.rs"
     menus = root / "crates/ui-egui/src/menus.rs"
     src = ui.read_text()
+    src = replace_once(src, "        let audio_out = services.audio_out.take();\n",
+                       "        Self::restore_private_fonts();\n        let audio_out = services.audio_out.take();\n",
+                       "restore private Android fonts on app construction")
     src = replace_once(src, "enum FilePurpose {\n    Open,\n", "enum FilePurpose {\n    Open,\n    Font,\n", "font purpose enum")
     src = replace_once(src, '        "open" => FilePurpose::Open,\n',
                        '        "open" => FilePurpose::Open,\n        "font" => FilePurpose::Font,\n', "purpose dispatch")
@@ -27,8 +30,68 @@ def main(root: Path) -> None:
     src = replace_once(src, '            "app.openDialog" => self.pick_and_open(),\n',
                        '            "app.openDialog" => self.pick_and_open(),\n            "app.importFont" => self.import_font_dialog(),\n', "UI command")
     anchor = '    pub fn open_or_insert_bytes(&mut self, name: &str, bytes: &[u8]) {\n'
-    addition = r'''    /// Import an individual TTF/OTF/TTC using the existing host SAF picker.
-    /// This first candidate registers faces for the running session only.
+    addition = r'''    /// On Android the launcher provides private, update-persistent app storage.
+    /// Never use a world-writable shared directory or assume another app's SAF grant.
+    fn private_font_dir() -> Option<std::path::PathBuf> {
+        #[cfg(target_os = "android")]
+        {
+            let root = std::env::var_os("XDG_DATA_HOME").or_else(|| std::env::var_os("HOME"))?;
+            Some(std::path::PathBuf::from(root).join("DeckCraft").join("imported-fonts"))
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            None
+        }
+    }
+
+    /// Restore privately imported fonts before UI font menus and slide rendering initialize.
+    fn restore_private_fonts() {
+        let Some(dir) = Self::private_font_dir() else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten().take(256) {
+            if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+                continue;
+            }
+            let path = entry.path();
+            let supported = path.extension().and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ["ttf", "otf", "ttc"].contains(&ext.to_ascii_lowercase().as_str()));
+            if !supported { continue; }
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.len() < 12 || meta.len() > 20 * 1024 * 1024 { continue; }
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let header = &bytes[..4];
+            if !(header == b"OTTO" || header == b"ttcf" || header == b"true" || header == &[0, 1, 0, 0]) {
+                continue;
+            }
+            deckcraft_fonts::FontDb::global().add_font(bytes);
+        }
+    }
+
+    /// Use a content-derived filename, atomic rename and collision rejection.
+    /// The directory belongs only to DeckCraft and survives an in-place Android update.
+    fn save_private_font(name: &str, bytes: &[u8]) -> Result<(), String> {
+        let dir = Self::private_font_dir().ok_or("Persistent font storage unavailable")?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let ext = name.rsplit('.').next().unwrap_or("ttf").to_ascii_lowercase();
+        let digest = bytes.iter().fold(0xcbf29ce484222325_u64, |v, b| (v ^ u64::from(*b)).wrapping_mul(0x100000001b3));
+        let dest = dir.join(format!("font-{digest:016x}.{ext}"));
+        match std::fs::read(&dest) {
+            Ok(existing) if existing == bytes => return Ok(()),
+            Ok(_) => return Err("Font storage hash collision; existing font was preserved".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            Err(e) => return Err(e.to_string()),
+        }
+        let temp = dir.join(format!("font-{digest:016x}.{ext}.tmp"));
+        std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+        if let Err(error) = std::fs::rename(&temp, &dest) {
+            let _ = std::fs::remove_file(&temp);
+            return Err(error.to_string());
+        }
+        Ok(())
+    }
+
+    /// Import an individual TTF/OTF/TTC using the existing host SAF picker.
+    /// On Android, imported faces are also saved in private app storage.
     pub fn import_font_dialog(&mut self) {
         if self.services.open_async.is_some() {
             let id = self.begin_external_file("font");
@@ -76,7 +139,10 @@ def main(root: Path) -> None:
         if added == 0 {
             self.set_status(format!("{name}: no new usable font faces (invalid or already loaded)"));
         } else {
-            self.set_status(format!("Imported {added} face(s) from {name} for this session"));
+            match Self::save_private_font(name, bytes) {
+                Ok(()) => self.set_status(format!("Imported {added} font face(s) from {name}; saved across updates")),
+                Err(error) => self.set_status(format!("Imported {added} face(s) for this session only: {error}")),
+            }
         }
     }
 
@@ -94,7 +160,7 @@ def main(root: Path) -> None:
     ui.write_text(src)
     menus.write_text(menu)
     print("DeckCraft-only session font import patched: native picker, validation, FontDb registration, command palette")
-    print("Persistent font folders, shared SAF tree and updater are NOT implemented by this patch")
+    print("Private app font persistence is implemented; shared SAF tree and updater remain pending")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

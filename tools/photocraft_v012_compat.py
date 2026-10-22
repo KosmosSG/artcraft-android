@@ -111,9 +111,9 @@ def preflight() -> None:
         digest = hashlib.sha256(icon.read_bytes()).hexdigest()
         if digest != cfg["approved_icon_sha256"]:
             die("launcher Pc PNG exists but its SHA-256 does not match approved artwork")
-        print("Approved Pc icon verified (not yet integrated).")
+        print("Approved Pc icon checksum verified.")
     else:
-        print("NOTICE: approved Pc PNG is not in this branch; icon integration remains blocked.")
+        die("exact approved Pc icon is required for the v0.12 preservation branch")
     print("PASS: static feature-preservation markers, package, SDK, and source pin.")
 
 
@@ -235,6 +235,9 @@ def verify_prepared() -> None:
         die("PhotoCraft custom-font or updater menu did not survive port")
     if not (SOURCE / "apps/photocraft-android/src/lib.rs").exists():
         die("prepared Android shell missing")
+    staged_icon = SOURCE / "apps/photocraft-android/res/drawable/ic_launcher.png"
+    if hashlib.sha256(staged_icon.read_bytes()).hexdigest() != config()["approved_icon_sha256"]:
+        die("staged launcher icon differs from the approved original")
     print("PASS: prepared versionName, package, architecture and Android menus.")
 
 

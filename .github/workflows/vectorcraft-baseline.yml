@@ -43,7 +43,9 @@ jobs:
             -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
             -d "$RUNNER_TEMP/vectorcraft-java-check" \
             adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
-            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
+            tools/vectorcraft/FontContentTest.java
+          java -cp "$ANDROID_HOME/platforms/android-35/android.jar:$RUNNER_TEMP/vectorcraft-java-check" FontContentTest
   compile:
     # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023')

@@ -1,0 +1,21 @@
+name: ArtCraft Suite release safety audit (never publish)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'configs/release-gates/**'
+      - 'tools/release_gate_audit.py'
+      - '.github/workflows/suite-release-gates.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify every app has independent fail-closed release settings
+        run: python3 tools/release_gate_audit.py

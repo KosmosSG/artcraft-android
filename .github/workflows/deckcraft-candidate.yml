@@ -158,7 +158,7 @@ jobs:
               for identity in ('mipmap/ic_launcher', 'drawable/ic_launcher_foreground', 'drawable/ic_launcher_background'):
                   assert identity in resources, f'Android resource table missing {identity}'
               badging = subprocess.run([aapt2, 'dump', 'badging', apk], check=True, text=True, capture_output=True).stdout
-              paths = re.findall(r"application-icon-\\d+:'([^']+)'", badging)
+              paths = re.findall(r"application-icon-\d+:'([^']+)'", badging)
               if not paths:
                   paths = re.findall(r"application:.*?icon='([^']+)'", badging)
               assert paths, 'No launcher icon referenced by Android package badging'

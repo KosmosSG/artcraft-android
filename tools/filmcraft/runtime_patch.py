@@ -21,8 +21,11 @@ def require_once(source: str, old: str, new: str, label: str) -> str:
 def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[str, str, str]:
     if 'struct AndroidShell {' not in rust or 'fn android_main(' not in rust:
         raise RuntimeError("Refusing to patch an unknown FilmCraft Android launcher")
-    if 'public final class FilmCraftActivity extends NativeActivity' not in java:
+    if 'public final class FilmCraftActivity extends GameActivity' not in java:
         raise RuntimeError("Expected FilmCraft's own SAF/IME Java activity")
+    for bridge in ('safRequestOpen(', 'safRequestSave(', 'imeShow(', 'imeHide('):
+        if bridge not in java:
+            raise RuntimeError(f"FilmCraft SAF/IME bridge is missing: {bridge}")
     if 'package = "com.artcraft.filmcraft"' not in manifest:
         raise RuntimeError("FilmCraft package identity differs; inspect before porting features")
     if 'java_sources = "java"' not in manifest:

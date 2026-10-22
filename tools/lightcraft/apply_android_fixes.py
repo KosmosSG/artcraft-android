@@ -120,11 +120,11 @@ def _lightcraft_borderless(Image, img):
     txt = menus.read_text()
     txt = replace_once(txt,
         '    ("app.whatsNew", "What\'s New", None, "Help"),',
-        '    ("app.whatsNew", "What\'s New", None, "Help"),\n    #[cfg(target_os = "android")]\n    ("app.artcraftCheckUpdates", "Check for Updates", None, "Help"),',
+        '    ("app.whatsNew", "What\'s New", None, "Help"),\n    ("app.artcraftCheckUpdates", "Check for Updates", None, "Help"),',
         "LightCraft command registry")
     txt = replace_once(txt,
         '        "app.export" => crate::control::export_active(app, p),',
-        '        #[cfg(target_os = "android")]\n'
+        ''
         '        "app.artcraftCheckUpdates" => {\n'
         '            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.lightcraft.check_updates_requested"), true));\n'
         '            ctx.request_repaint();\n'
@@ -137,9 +137,13 @@ def _lightcraft_borderless(Image, img):
     lt = layout.read_text()
     lt = replace_once(lt,
         '            "app.whatsNew",\n            "app.shortcuts",',
-        '            "app.whatsNew",\n            #[cfg(target_os = "android")]\n            "app.artcraftCheckUpdates",\n            "app.shortcuts",',
+        '            "app.whatsNew",\n            "app.artcraftCheckUpdates",\n            "app.shortcuts",',
         "Help menu layout")
     layout.write_text(lt)
+    import shutil
+    templates = builder / "templates/android"
+    shutil.copy2(suite / "tools/lightcraft/lightcraft_updates.rs", templates / "lightcraft_updates.rs")
+    shutil.copy2(suite / "tools/lightcraft/lightcraft_updates.java.inc", templates / "lightcraft_updates.java.inc")
     # The Python builder's source-provenance check MUST run before this patch.
     print("LightCraft-only adaptive icon + Help/Android updater patch staged; no other app changed")
 

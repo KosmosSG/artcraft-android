@@ -1,0 +1,132 @@
+name: PhotoCraft v0.12 combined-feature Test APK
+
+on:
+  push:
+    branches: [development/photocraft-v012-preserve-gpu-input]
+    paths:
+      - '.github/workflows/photocraft-v012-candidate.yml'
+      - 'tools/photocraft_v012_candidate.py'
+      - 'tools/tests/test_photocraft_v012_candidate.py'
+      - 'adapters/photocraft/**'
+      - 'tools/photocraft_v012_compat.py'
+      - 'patches/photocraft-menus.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v012-ephemeral-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/photocraft-v012-preserve-gpu-input'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME: 0.12.0-android.1
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify official pin, full features and safe Test app staging
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v012_compat.py preflight
+          python3 -m unittest discover -s tools/tests -p 'test_photocraft_v012_candidate.py' -v
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android 35 and ARM64 toolchain
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+      - name: Test updater policy and compile Java SAF Activity
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/policy"
+          javac -d "$RUNNER_TEMP/policy" adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java tools/tests/PhotoCraftUpdatePolicyTest.java
+          java -cp "$RUNNER_TEMP/policy" com.artcraft.photocraft.PhotoCraftUpdatePolicyTest
+          javac -cp "$ANDROID_HOME/platforms/android-35/android.jar" -d "$RUNNER_TEMP/policy" \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+      - name: Rebase enhancements onto pinned upstream in disposable checkout
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v012_compat.py checkout
+          python3 tools/photocraft_v012_compat.py prepare
+          python3 tools/photocraft_v012_compat.py verify
+          python3 tools/photocraft_v012_candidate.py stage
+          python3 tools/photocraft_v012_candidate.py verify
+      - name: Compile full ARM64 APK with temporary Test-only certificate
+        timeout-minutes: 130
+        run: |
+          set -euo pipefail
+          test ! -e keys/artcraft-builder.jks
+          bash build.sh -photocraft
+          test "$(find output -maxdepth 1 -type f -name 'photocraft-*.apk' | wc -l)" -eq 1
+          mkdir -p candidate
+          cp "$(find output -maxdepth 1 -type f -name 'photocraft-*.apk' -print -quit)" candidate/PhotoCraft-0.12.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk
+      - name: Verify Java launcher, original Pc icon, ABI, package and APK signer
+        run: |
+          set -euo pipefail
+          APK=candidate/PhotoCraft-0.12.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
+          python3 - <<'PY'
+          import re,zipfile
+          from pathlib import Path
+          txt=Path('candidate/badging.txt').read_text()
+          match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",txt,re.M)
+          if not match or (match.group(1),match.group(3)) != ('com.artcraft.photocraft.candidate','0.12.0-android.1'):
+              raise SystemExit('STOP: test-only package or version mismatch')
+          if int(match.group(2)) < 1 or 'com.artcraft.photocraft.candidate.PhotoCraftActivity' not in txt:
+              raise SystemExit('STOP: versionCode or Java launcher missing')
+          with zipfile.ZipFile('candidate/PhotoCraft-0.12.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk') as z:
+              names=z.namelist()
+              if not any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names):
+                  raise SystemExit('STOP: ARM64 native library missing')
+              if any(n.startswith(('lib/x86/','lib/x86_64/','lib/armeabi-v7a/')) for n in names):
+                  raise SystemExit('STOP: unexpected non-ARM64 native library')
+              if not any(n.endswith('.dex') for n in names) or not any('ic_launcher' in n for n in names):
+                  raise SystemExit('STOP: Java Activity or icon resources missing')
+          print('PASS: isolated PhotoCraft Test APK contents')
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/certificate.txt
+          if grep -qi '45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef' candidate/certificate.txt; then
+            echo 'STOP: unexpected production signing identity' >&2
+            exit 1
+          fi
+          sha256sum "$APK" > candidate/SHA256SUMS.txt
+          echo 'TEST ONLY: temporary signing, separate package, no public release.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload ephemeral verified APK
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-v0.12.0-android.1-ARM64-Test
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Keep build errors for review
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-v012-test-build-diagnostics
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Discard temporary signer
+        if: always()
+        run: rm -f keys/artcraft-builder.jks keys/.keystore-password

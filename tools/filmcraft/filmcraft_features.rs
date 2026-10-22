@@ -254,10 +254,10 @@ impl FilmcraftFeatures {
     }
 
     /// A small non-floating Android bar; FilmCraft keeps its native timeline and menus.
-    pub fn toolbar(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("filmcraft_android_feature_bar")
+    pub fn toolbar(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::top("filmcraft_android_feature_bar")
             .resizable(false)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("FilmCraft Android");
                     ui.add_enabled_ui(!self.pending_font, |ui| {

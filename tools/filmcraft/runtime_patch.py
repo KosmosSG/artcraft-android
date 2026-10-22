@@ -54,7 +54,7 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
     rust = require_once(
         rust, '        system_fonts::install_system_fonts(ui.ctx());',
         '        system_fonts::install_system_fonts(ui.ctx());\n'
-        '        self.features.toolbar(ui.ctx());',
+        '        self.features.toolbar(ui);',
         "Docked FilmCraft controls")
 
     java = require_once(

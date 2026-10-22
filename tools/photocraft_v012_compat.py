@@ -84,6 +84,8 @@ def preflight() -> None:
         "IME and keyboard modifiers": ["mod ime_bridge;", "apply_android_modifiers("],
         "GPU diagnostics and compositor": ["app.perf.gpu_info.set_adapter(", "app.set_wgpu(rs)", "effective_rendering_mode()", "PHOTOCRAFT_CPU_CANVAS"],
         "Both hardware modifier sides": ["mod android_modifiers;", "modifiers: AndroidModifiers"],
+        "Touch Shortcut Pad": ["mod shortcut_pad;", "shortcut_pad: shortcut_pad::ShortcutPad", "artcraft_shortcut_pad_allowed"],
+        "Native font/update menus": ["native_message(", "startup_update_enabled(", 'take("artcraft.shared_fonts_select")'],
         "Android shell": ["PhotoCraftAndroidApp", "impl eframe::App for PhotoCraftAndroidApp"],
     }
     for feature, tokens in features.items():
@@ -103,7 +105,7 @@ def preflight() -> None:
     if not list((ROOT / "adapters/photocraft/java").rglob("*.java")):
         die("Android Java SAF Activity missing")
     patch = (ROOT / "patches/photocraft-menus.patch").read_text()
-    for token in ("window.artcraftCustomFonts", "help.artcraftCheckUpdates"):
+    for token in ("window.artcraftCustomFonts", "help.artcraftCheckUpdates", "window.artcraftTouchShortcutPad", "help.artcraftUpdateSettings"):
         if token not in patch:
             die(f"existing Android menu feature missing: {token}")
     icon = ROOT / "assets/photocraft/launcher-pc.png"

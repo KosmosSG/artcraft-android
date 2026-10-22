@@ -192,6 +192,36 @@ impl AndroidFileBridge {
             .map_err(|e| e.to_string())
     }
 
+    // JNI bridge for native font/status UI and optional startup update checks.
+    fn native_ui_call(&self, action: &str) -> Result<(), String> {
+        if action != "settings" { return Err("Unsupported native UI action".into()); }
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcUpdateSettings"), jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn native_message(&self, message: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let text = JObject::from(env.new_string(message)?);
+            env.call_method(&*activity, jni_str!("pcShowMessage"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&text)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn startup_update_enabled(&self) -> Result<bool, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcStartupUpdatesEnabled"), jni_sig!("()Z"), &[])?.z()
+        }).map_err(|e| e.to_string())
+    }
+
     // JNI methods supplied by PhotoCraftActivity.java for the manual updater.
     fn check_for_updates(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -674,6 +704,7 @@ impl AndroidFileBridge {
 }
 
 mod android_modifiers;
+mod shortcut_pad;
 use android_modifiers::{AndroidModifiers, apply_android_modifiers};
 
 
@@ -692,6 +723,7 @@ struct PhotoCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    shortcut_pad: shortcut_pad::ShortcutPad,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
     // finished its own start-up, and goes negative (stop polling) if the host has no intent bridge.
@@ -868,14 +900,53 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+        let inner = &self.inner;
+        let editing_text = inner.ui.text_edit.is_some();
+        let hidden = photocraft_ui_egui::menus::artcraft_shortcut_pad_chrome_hidden(inner);
+        let action = self.shortcut_pad.show(ui, editing_text, hidden,
+            |id| photocraft_ui_egui::menus::artcraft_shortcut_pad_allowed(inner, id));
+        if let Some(action) = action {
+            match action {
+                shortcut_pad::Action::Hide => {
+                    if let Err(error) = self.shortcut_pad.set_enabled(false) {
+                        self.inner.ui.status = format!("Could not save Shortcut Pad setting: {error}");
+                        self.inner.ui.status_error = true;
+                    }
+                }
+                shortcut_pad::Action::Command(id) => {
+                    if photocraft_ui_egui::menus::artcraft_shortcut_pad_allowed(&self.inner, id) {
+                        if let Err(error) = photocraft_ui_egui::menus::invoke(
+                            &mut self.inner, ui.ctx(), id, serde_json::json!({})) {
+                            self.inner.ui.status = error;
+                            self.inner.ui.status_error = true;
+                        }
+                    }
+                }
+            }
+        }
         self.inner.ui(ui, _frame);
-        let update_request_id = egui::Id::new("artcraft.check_updates_requested");
-        let update_requested = ui.ctx().data_mut(|data| {
-            let requested = data.get_temp::<bool>(update_request_id).unwrap_or(false);
-            if requested { data.insert_temp(update_request_id, false); }
+        let take = |key: &str| ui.ctx().data_mut(|data| {
+            let id = egui::Id::new(key);
+            let requested = data.get_temp::<bool>(id).unwrap_or(false);
+            if requested { data.insert_temp(id, false); }
             requested
         });
-        if update_requested {
+        if take("artcraft.shortcut_pad_toggle") {
+            if let Err(error) = self.shortcut_pad.set_enabled(!self.shortcut_pad.enabled()) {
+                self.inner.ui.status = format!("Could not save Shortcut Pad setting: {error}");
+                self.inner.ui.status_error = true;
+            }
+            ui.ctx().request_repaint();
+        }
+        if take("artcraft.custom_fonts_visible") { self.picker.launch_font(&self.bridge); }
+        if take("artcraft.shared_fonts_select") { self.picker.launch_shared_fonts(&self.bridge, false); }
+        if take("artcraft.shared_fonts_refresh") { self.picker.launch_shared_fonts(&self.bridge, true); }
+        if take("artcraft.update_settings") {
+            if let Err(error) = self.bridge.native_ui_call("settings") {
+                log::warn!("Could not open native update settings: {error}");
+            }
+        }
+        if take("artcraft.check_updates_requested") {
             self.updates.open = true;
             self.updates.release_url = None;
             self.updates.message = "Checking GitHub releases…".into();
@@ -902,34 +973,12 @@ impl eframe::App for PhotoCraftAndroidApp {
                     }
                 });
         }
-        // The upstream Window menu toggles this egui flag.
-        let custom_fonts_open = ui.ctx().data(|d| d.get_temp::<bool>(
-            egui::Id::new("artcraft.custom_fonts_visible")
-        )).unwrap_or(false);
-        if custom_fonts_open {
-        egui::Window::new("Custom Fonts")
-            .default_pos([24.0, 100.0])
-            .resizable(false)
-            .show(ui.ctx(), |ui| {
-                if ui.button("Import Font (.ttf / .otf)").clicked() {
-                    self.picker.launch_font(&self.bridge);
-                }
-                ui.separator();
-                ui.label("Shared ArtCraft font library");
-                if ui.button("Select Shared Font Folder").clicked() {
-                    self.picker.launch_shared_fonts(&self.bridge, false);
-                }
-                if ui.button("Refresh Shared Fonts").clicked() {
-                    self.picker.launch_shared_fonts(&self.bridge, true);
-                }
-                let shared_status = self.picker.shared_font_status.lock()
-                    .unwrap_or_else(|e| e.into_inner()).clone();
-                if !shared_status.is_empty() { ui.label(shared_status); }
-                ui.separator();
-                let status = self.picker.font_status.lock()
-                    .unwrap_or_else(|e| e.into_inner()).clone();
-                if !status.is_empty() { ui.label(status); }
-            });
+        for status in [&self.picker.font_status, &self.picker.shared_font_status] {
+            let mut message = status.lock().unwrap_or_else(|e| e.into_inner());
+            if !message.is_empty() {
+                let _ = self.bridge.native_message(&message);
+                message.clear();
+            }
         }
     }
 
@@ -1030,21 +1079,24 @@ fn android_main(android_app: AndroidApp) {
                 updates: {
     let mut state = UpdateDialogState::default();
 
-    match app_bridge.check_for_updates() {
-        Ok(()) => {
-            state.checking = true;
-            state.message = "Checking for PhotoCraft updates…".into();
-            log::info!("PhotoCraft startup update check started");
-        }
-        Err(error) => {
-            log::warn!("Could not start automatic update check: {error}");
-        }
+    match app_bridge.startup_update_enabled() {
+        Ok(true) => match app_bridge.check_for_updates() {
+            Ok(()) => {
+                state.checking = true;
+                state.message = "Checking for PhotoCraft updates…".into();
+                log::info!("PhotoCraft opted-in startup update check started");
+            }
+            Err(error) => log::warn!("Startup update check failed: {error}"),
+        },
+        Ok(false) => log::info!("Startup update check disabled in PhotoCraft settings"),
+        Err(error) => log::warn!("Startup update setting unavailable: {error}"),
     }
 
     state
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

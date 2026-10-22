@@ -1,25 +1,55 @@
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
-@@ -18,6 +18,10 @@
+@@ -16,7 +16,26 @@
+     (app.ui.dialogs.is_empty() && app.discard.is_none()) || crate::shortcuts::NAV_COMMANDS.contains(&id)
  }
  
++
++/// Android command pad uses the same gates as official menu/control dispatch.
++#[cfg(target_os = "android")]
++pub fn artcraft_shortcut_pad_allowed(app: &PhotocraftApp, id: &str) -> bool {
++    modal_allows(app, id) && is_enabled(app, id)
++}
++
++#[cfg(target_os = "android")]
++pub fn artcraft_shortcut_pad_chrome_hidden(app: &PhotocraftApp) -> bool {
++    app.ui.view.hides_chrome()
++}
++
  /// Top-level menus in Photoshop order.
 +// Android-only menu state, shared with the Android wrapper via egui context.
-+static CUSTOM_FONTS_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 +const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
++const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";
++const SHARED_REFRESH_ID: &str = "window.artcraftSharedFontsRefresh";
++const UPDATE_SETTINGS_ID: &str = "help.artcraftUpdateSettings";
 +const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
++const SHORTCUT_PAD_ID: &str = "window.artcraftTouchShortcutPad";
  pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Select", "Filter", "View", "Window", "Help"];
  
  /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
-@@ -75,6 +79,17 @@
+@@ -74,6 +93,31 @@
          authorize(id, &params)?;
      }
      if crate::discard_ui::intercept(app, id, &params) {
 +        return Ok(Value::Null);
 +    }
++    if id == SHORTCUT_PAD_ID {
++        ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.shortcut_pad_toggle"), true));
++        ctx.request_repaint();
++        return Ok(Value::Null);
++    }
 +    if id == CUSTOM_FONTS_ID {
-+        let was_visible = CUSTOM_FONTS_VISIBLE.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.custom_fonts_visible"), !was_visible));
++        ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.custom_fonts_visible"), true));
++        ctx.request_repaint();
++        return Ok(Value::Null);
++    }
++    if matches!(id, SHARED_SELECT_ID | SHARED_REFRESH_ID | UPDATE_SETTINGS_ID) {
++        let key = match id {
++            SHARED_SELECT_ID => "artcraft.shared_fonts_select",
++            SHARED_REFRESH_ID => "artcraft.shared_fonts_refresh",
++            _ => "artcraft.update_settings",
++        };
++        ctx.data_mut(|d| d.insert_temp(egui::Id::new(key), true));
 +        ctx.request_repaint();
 +        return Ok(Value::Null);
 +    }
@@ -29,33 +59,33 @@
          return Ok(Value::Null);
      }
      let r = invoke_unguarded(app, ctx, id, params)?;
-@@ -696,6 +711,7 @@
+@@ -695,6 +739,7 @@
          return e;
      }
      match id {
-+        CUSTOM_FONTS_ID | CHECK_UPDATES_ID => true,
++        CUSTOM_FONTS_ID | CHECK_UPDATES_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID | UPDATE_SETTINGS_ID | SHORTCUT_PAD_ID => true,
          "window.panel.activate" | "window.panel.layout" => true,
          "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
          "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
-@@ -756,6 +772,9 @@
+@@ -755,6 +800,9 @@
  
  /// Is a UI-level panel toggle currently on (for checkmarks)?
  fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
 +    if id == CUSTOM_FONTS_ID {
-+        return Some(CUSTOM_FONTS_VISIBLE.load(std::sync::atomic::Ordering::Relaxed));
++        return None;
 +    }
      if let Some(checked) = crate::panel_docking::checked(app, id) {
          return Some(checked);
      }
-@@ -886,6 +905,7 @@
+@@ -885,6 +933,7 @@
  /// Is `id` implemented by the engine or the shell (a live menu item)? Shared by the menus and
  /// the parity report ([`crate::parity`]).
  pub fn is_live(id: &str) -> bool {
-+    if id == CUSTOM_FONTS_ID || id == CHECK_UPDATES_ID { return true; }
++    if matches!(id, CUSTOM_FONTS_ID | CHECK_UPDATES_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID | UPDATE_SETTINGS_ID | SHORTCUT_PAD_ID) { return true; }
      static UI_IDS: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
      photocraft_engine::commands::find(id).is_some()
          || crate::tool_shortcuts::tool(id).is_some()
-@@ -965,6 +985,27 @@
+@@ -964,6 +1013,31 @@
              }
              let at = after.or_else(|| items.iter().rposition(|i| i.path.first() == top.as_ref())).map_or(items.len(), |p| p + 1);
              items.insert(at, e);
@@ -65,7 +95,11 @@
 +    #[cfg(target_os = "android")]
 +    {
 +        for (id, label, menu, checked_state) in [
-+            (CUSTOM_FONTS_ID, "Custom Fonts", "Window", checked(app, CUSTOM_FONTS_ID)),
++            (CUSTOM_FONTS_ID, "Import Font…", "Type", None),
++            (SHARED_SELECT_ID, "Select Shared Font Folder…", "Type", None),
++            (SHARED_REFRESH_ID, "Refresh Shared Fonts", "Type", None),
++            (SHORTCUT_PAD_ID, "Touch Shortcut Pad", "Window", None),
++            (UPDATE_SETTINGS_ID, "Update Settings…", "Help", None),
 +            (CHECK_UPDATES_ID, "Check for Updates", "Help", None),
 +        ] {
 +            let entry = MenuItem {

@@ -342,6 +342,30 @@ public final class PhotoCraftActivity extends NativeActivity {
         return intentPaths.poll();
     }
 
+    // Keep the existing versionCode-based updater. Native Android handles preferences only.
+    public boolean pcStartupUpdatesEnabled() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean("check_updates_at_startup", true);
+    }
+    public void pcUpdateSettings() {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("PhotoCraft Updates")
+                    .setMultiChoiceItems(new String[]{"Check for updates at startup"},
+                            new boolean[]{pcStartupUpdatesEnabled()}, (dialog, which, checked) ->
+                                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                                            .putBoolean("check_updates_at_startup", checked).apply())
+                    .setPositiveButton("Done", null).show();
+        });
+    }
+    public void pcShowMessage(String message) {
+        runOnUiThread(() -> {
+            if (!isFinishing() && !isDestroyed())
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show();
+        });
+    }
+
     /** JNI: begin a manual, read-only check of published PhotoCraft GitHub releases. */
     public void pcCheckForUpdates() {
         updateIo.execute(() -> {

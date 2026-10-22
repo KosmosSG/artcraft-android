@@ -1,0 +1,145 @@
+name: EffectCraft v0.14.0 ARM64 candidate (ephemeral; never publish)
+
+on:
+  push:
+    branches: [review/effectcraft-v0.13.0-android1-20261022]
+    paths:
+      - 'tools/effectcraft/**'
+      - 'adapters/effectcraft/**'
+      - '.github/workflows/effectcraft-candidate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-v014-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/review/effectcraft-v0.13.0-android1-20261022'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout candidate branch and suite builder
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check upstream lock and staged feature tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('tools/effectcraft/upstream-lock.json').read_text())
+          assert p['official_tag']=='v0.14.0'
+          assert p['official_commit']=='26b40199b72121aa7f4e55a63718e1b4dd48a859'
+          assert p['android_version_name']=='0.14.0-android.1'
+          assert p['expected_abi']=='arm64-v8a'
+          assert p['proposed_package']=='com.artcraft.effectcraft'
+          assert p['permanent_signing_ready'] is False
+          assert p['public_release_enabled'] is False
+          PY
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          python3 -m py_compile tools/effectcraft/prepare_candidate.py
+          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+          rustc --edition=2021 --test adapters/effectcraft/src/font_library.rs -o "$RUNNER_TEMP/effectcraft-font-tests"
+          "$RUNNER_TEMP/effectcraft-font-tests"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Rust 1.95 ARM64
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK 35 and NDK 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$ANDROID_HOME"
+          test -d "$SDK/cmdline-tools"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Checkout immutable upstream EffectCraft v0.14.0 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          git clone --depth 1 --branch v0.14.0 https://github.com/storytold/effectcraft.git source/effectcraft
+          test "$(git -C source/effectcraft rev-parse HEAD)" = '26b40199b72121aa7f4e55a63718e1b4dd48a859'
+          grep -Fq 'version = "0.14.0"' source/effectcraft/Cargo.toml
+          grep -Fq 'rust-version = "1.95"' source/effectcraft/Cargo.toml
+          grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
+          echo "Pinned source $(git -C source/effectcraft rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply guarded EffectCraft-only launcher patch in runner
+        run: python3 tools/effectcraft/prepare_candidate.py .
+
+      - name: Build disposable-key ARM64 candidate (never publish)
+        shell: bash
+        env:
+          ARTCRAFT_TARGET_SDK: '35'
+        run: |
+          set -euo pipefail
+          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft
+          test -s output/effectcraft-0.14.0.apk
+          mv output/effectcraft-0.14.0.apk output/EffectCraft-v0.14.0-arm64-release.apk
+
+      - name: Verify signed APK package, version, launcher, ABI and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=output/EffectCraft-v0.14.0-arm64-release.apk
+          SDK="$ANDROID_HOME/build-tools/35.0.0"
+          "$SDK/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/signer.txt"
+          "$SDK/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
+          python3 - "$APK" "$RUNNER_TEMP/badging.txt" <<'PY'
+          import re,sys,zipfile
+          from pathlib import Path
+          apk,txt=sys.argv[1:]
+          text=Path(txt).read_text()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",text,re.M)
+          if not m or m.group(1)!='com.artcraft.effectcraft' or m.group(3)!='0.14.0-android.1' or int(m.group(2))<1:
+              raise SystemExit('STOP: incorrect package/version metadata')
+          if 'launchable-activity:' not in text:
+              raise SystemExit('STOP: no launcher Activity')
+          with zipfile.ZipFile(apk) as z:
+              names=z.namelist()
+              libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
+              if not libs or any(not x.startswith('lib/arm64-v8a/') for x in libs):
+                  raise SystemExit('STOP: mixed or missing native ARM64 libraries')
+              if not any(x.endswith('.dex') for x in names):
+                  raise SystemExit('STOP: missing Java Activity DEX')
+          print('Verified CI structure, not device compatibility')
+          PY
+          sha256sum "$APK" | tee "$RUNNER_TEMP/sha256.txt"
+          {
+            echo '### EffectCraft v0.14.0 NON-PRODUCTION candidate'
+            echo 'Disposable signing key only. Do not distribute as a permanent update.'
+            grep -m1 '^package:' "$RUNNER_TEMP/badging.txt"
+            grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/signer.txt"
+            cat "$RUNNER_TEMP/sha256.txt"
+            echo 'Pending: permanent EffectCraft signing, Ec icon, SAF font picker, updater UI, device tests.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload short-lived Actions artifact (not a GitHub release)
+        uses: actions/upload-artifact@v5
+        with:
+          name: EffectCraft-v0.14.0-arm64-EPHEMERAL-NOT-RELEASE
+          path: output/EffectCraft-v0.14.0-arm64-release.apk
+          retention-days: 7
+          if-no-files-found: error

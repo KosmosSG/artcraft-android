@@ -4,13 +4,13 @@ This is an **isolated draft**. Do not merge, tag, publish, activate any schedule
 
 ## Audited source and proposed identity
 
-- Official stable upstream `storytold/effectcraft` release: [v0.13.0](https://github.com/storytold/effectcraft/releases/tag/v0.13.0), announced 2026-10-21.
-- Verified immutable tag target: `de3fec28ed7a3d7a700a9d8ea307779dcda99a8e`.
+- Official stable upstream `storytold/effectcraft` release: [v0.14.0](https://github.com/storytold/effectcraft/releases/tag/v0.14.0), announced 2026-10-21.
+- Verified immutable tag target: `26b40199b72121aa7f4e55a63718e1b4dd48a859`.
 - Reference Android builder: `MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af`.
 - Actual suite starting point: `KosmosSG/artcraft-android@7b46f87aba112fff93380e01379045733f09f8b3` (do not replace its enhancements with the reference repository).
 - Upstream workspace version: `0.13.0`, Rust 1.95+, edition 2024, license `MIT OR Apache-2.0`. Review NOTICE/ATTRIBUTION and transitive licensing before distribution.
 - Target: MagicOS 10, ARM64 / `arm64-v8a`.
-- **Proposed, not yet emitted in an APK**: versionName `0.13.0-android.1`; asset `effectcraft-0.13.0-android.1.apk`; package `com.artcraft.effectcraft`, pending any previously installed identity check.
+- **Proposed, not yet emitted in an APK**: versionName `0.14.0-android.1`; asset `EffectCraft-v0.14.0-arm64-release.apk`; package `com.artcraft.effectcraft`, pending any previously installed identity check.
 - **VersionCode is deliberately unassigned**. Compare with all previous signed, installed and published EffectCraft APKs *before* reserving a value.
 - EffectCraft's permanent certificate and encrypted keystore backup could **not** be established by read-only repository inspection; no existing dedicated signing repository appeared in the linked repository list. This is not proof no prior keystore exists outside GitHub. Do not create or rotate a production key until verified.
 - Candidate APKs must be ephemeral-key signed, labeled **not upgrade-compatible**, and kept as private CI artifacts only. **No release** until a separately verified permanent signing flow, immutable payload comparison, and a recorded SHA-256 + certificate fingerprint are checked.
@@ -42,3 +42,7 @@ Use the exact **Ec** (capital E, lowercase c) user-supplied artwork for **Effect
 ## Repository safety
 
 No push to main; no auto-merge; no schedule activated; no other app workflow edits; no signing material or secrets copied; no APK published by this review.
+
+## v0.14.0 candidate status
+
+Upstream source is now pinned to the October 21 official stable v0.14.0. The separately guarded candidate workflow is intentionally non-publishing and produces only an ephemeral-key Actions artifact, if compilation and integrity checks succeed. `effectcraft_host::session()` is required to preserve import/export and expression services. User-approved Ec artwork, Android SAF font picker UI, in-app updater UI, permanent dedicated key and encrypted backup, signed update continuity and tablet tests remain pending. Do not distribute a temporary-key build.

@@ -1,0 +1,150 @@
+name: PhotoCraft v0.12.0 Android compatibility (no signing)
+
+on:
+  push:
+    branches:
+      - development/photocraft-v012-preserve-gpu-input
+    paths:
+      - '.github/workflows/photocraft-v012-preservation.yml'
+      - 'configs/photocraft-v0.12.0-android.1.json'
+      - 'tools/photocraft_v012_compat.py'
+      - 'tools/tests/PhotoCraftUpdatePolicyTest.java'
+      - 'adapters/photocraft/**'
+      - 'patches/photocraft-menus.patch'
+      - 'templates/android/**'
+      - 'vendor/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v012-review-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preservation-guard:
+    name: Source pin and Android feature-preservation guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout review branch without retained credentials
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate pinned release, Android identity, and feature markers
+        run: python3 tools/photocraft_v012_compat.py preflight
+      - name: Reject signing and publishing configuration in this review workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          cfg = json.loads(Path("configs/photocraft-v0.12.0-android.1.json").read_text())
+          for field in ("production_signing_allowed", "apk_build_allowed", "publishing_allowed"):
+              assert cfg[field] is False, f"Unsafe review config: {field}"
+          workflow = Path(".github/workflows/photocraft-v012-preservation.yml").read_text()
+          forbidden = ("pull_request_target:", "secrets.", "build.sh -photocraft", "build-debug.sh -photocraft", "cargo apk", "gh release create", "upload-release-asset")
+          operational_lines = [line for line in workflow.splitlines() if not line.lstrip().startswith("forbidden = ")]
+          for token in forbidden:
+              assert not any(token in line for line in operational_lines), f"Forbidden review-workflow operation: {token}"
+          print("PASS: no signing, APK building, release publishing, or privileged PR event.")
+          PY
+
+      - name: Set up Java 17 for updater policy tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run Android update-policy unit tests (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pc-update-policy"
+          javac -d "$RUNNER_TEMP/pc-update-policy" \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java \
+            tools/tests/PhotoCraftUpdatePolicyTest.java
+          java -cp "$RUNNER_TEMP/pc-update-policy" \
+            com.artcraft.photocraft.PhotoCraftUpdatePolicyTest
+
+      - name: Compile Android PhotoCraft activity against API 35 (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
+          if [[ ! -f "$ANDROID_JAR" ]]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+            test -n "$SDKMANAGER"
+            "$SDKMANAGER" --install 'platforms;android-35'
+          fi
+          test -f "$ANDROID_JAR"
+          javac -cp "$ANDROID_JAR" -d "$RUNNER_TEMP/pc-update-policy" \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+
+
+  android-rust-check:
+    name: Rust ARM64 adapter compatibility check (no APK)
+    needs: preservation-guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout review branch without retained credentials
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain and Android ARM64 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Prepare Android NDK for native build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          NDK_VERSION="27.2.12479018"
+          NDK="$SDK_ROOT/ndk/$NDK_VERSION"
+          if [[ ! -d "$NDK" ]]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+            test -n "$SDKMANAGER"
+            "$SDKMANAGER" --install "ndk;$NDK_VERSION"
+          fi
+          test -d "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Clone and verify immutable official v0.12.0 source
+        run: python3 tools/photocraft_v012_compat.py checkout
+
+      - name: Apply existing Android enhancements to pinned source
+        run: python3 tools/photocraft_v012_compat.py prepare
+
+      - name: Validate generated package and Android-only versionName
+        run: python3 tools/photocraft_v012_compat.py verify
+
+      - name: Check Android Rust crate against official v0.12.0 APIs
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          cargo metadata --manifest-path source/photocraft/Cargo.toml --no-deps --format-version 1 >/dev/null
+          cargo check --manifest-path source/photocraft/Cargo.toml \
+            --package photocraft-android --target aarch64-linux-android
+
+      - name: Summarize source-only compatibility result
+        if: success()
+        run: |
+          echo "PASS: Android Rust adapter type-checks against pinned PhotoCraft v0.12.0."
+          echo "No APK, signing material, or published release was created."

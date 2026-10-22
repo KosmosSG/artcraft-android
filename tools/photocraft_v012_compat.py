@@ -82,6 +82,8 @@ def preflight() -> None:
         "SAF open/save": ["request_open(", "request_save(", "commit_if_mapped("],
         "in-app update check": ["check_for_updates(", "poll_update_result(", "open_update_page("],
         "IME and keyboard modifiers": ["mod ime_bridge;", "apply_android_modifiers("],
+        "GPU diagnostics and compositor": ["app.perf.gpu_info.set_adapter(", "app.set_wgpu(rs)", "effective_rendering_mode()", "PHOTOCRAFT_CPU_CANVAS"],
+        "Both hardware modifier sides": ["mod android_modifiers;", "modifiers: AndroidModifiers"],
         "Android shell": ["PhotoCraftAndroidApp", "impl eframe::App for PhotoCraftAndroidApp"],
     }
     for feature, tokens in features.items():

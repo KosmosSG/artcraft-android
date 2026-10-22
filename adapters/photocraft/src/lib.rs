@@ -673,63 +673,8 @@ impl AndroidFileBridge {
     }
 }
 
-/// Reconstruct egui's modifier state on Android.
-///
-/// winit's Android backend delivers `KeyboardInput` events but never emits `ModifiersChanged`
-/// (it discards the `KeyEvent`'s meta state), so egui's modifier state stays empty and
-/// `Ctrl`/`Alt` shortcuts are ignored while plain keys continue to work. Physical modifier keys
-/// do arrive as `Event::Key` events (`Key::ControlLeft`, `Key::AltLeft`, ...), so we track them
-/// and stamp the resulting state onto this frame's events. This mirrors `egui-winit`'s
-/// `ModifiersChanged` handling and suppresses the text character that would otherwise be emitted
-/// alongside a Ctrl/Command shortcut.
-fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput) {
-    let mut kept: Vec<egui::Event> = Vec::with_capacity(raw.events.len());
-    for mut event in raw.events.drain(..) {
-        match &mut event {
-            egui::Event::Key {
-                key,
-                physical_key,
-                pressed,
-                modifiers,
-                ..
-            } => {
-                let tracked = physical_key.unwrap_or(*key);
-                let previous = *state;
-                match tracked {
-                    egui::Key::ShiftLeft | egui::Key::ShiftRight => state.shift = *pressed,
-                    egui::Key::ControlLeft | egui::Key::ControlRight => state.ctrl = *pressed,
-                    egui::Key::AltLeft | egui::Key::AltRight => state.alt = *pressed,
-                    _ => {}
-                }
-                state.mac_cmd = false;
-                state.command = state.ctrl;
-                if *state != previous {
-                    kept.push(egui::Event::ModifiersChanged(*state));
-                }
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::PointerButton { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::MouseWheel { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::Text(_) if state.ctrl || state.command || state.mac_cmd => {
-                // Suppress text emitted with a modifier chord.
-            }
-            egui::Event::WindowFocused(false) => {
-                *state = egui::Modifiers::default();
-                kept.push(egui::Event::ModifiersChanged(*state));
-                kept.push(event);
-            }
-            _ => kept.push(event),
-        }
-    }
-    raw.events = kept;
-}
+mod android_modifiers;
+use android_modifiers::{AndroidModifiers, apply_android_modifiers};
 
 
 #[derive(Default)]
@@ -746,7 +691,7 @@ struct PhotoCraftAndroidApp {
     picker: Arc<PickerState>,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
-    modifiers: egui::Modifiers,
+    modifiers: AndroidModifiers,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
     // finished its own start-up, and goes negative (stop polling) if the host has no intent bridge.
@@ -1026,13 +971,20 @@ fn android_main(android_app: AndroidApp) {
     // Missing or revoked permission is nonfatal; private imported fonts remain available.
     picker.launch_shared_fonts(&bridge, true);
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("PhotoCraft")
             .with_drag_and_drop(true),
+        renderer: eframe::Renderer::Wgpu,
         android_app: Some(android_app),
         ..Default::default()
     };
+    // Request limits from the chosen adapter; keep GLES available beside Vulkan.
+    photocraft_ui_egui::gpu_canvas::use_adapter_limits(&mut options.wgpu_options.wgpu_setup);
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
+        create.instance_descriptor.backends =
+            eframe::wgpu::Backends::VULKAN | eframe::wgpu::Backends::GL;
+    }
     let app_bridge = bridge.clone_for_services();
     let app_picker = picker.clone();
     let app_intent_inbox = intent_inbox.clone();
@@ -1041,7 +993,7 @@ fn android_main(android_app: AndroidApp) {
         options,
         Box::new(move |cc| {
             PhotocraftApp::setup_context(&cc.egui_ctx, photocraft_ui_egui::theme::ThemeKind::Pro);
-            let app = PhotocraftApp::new(
+            let mut app = PhotocraftApp::new(
                 Session::new(),
                 services(
                     app_bridge.clone_for_services(),
@@ -1050,6 +1002,27 @@ fn android_main(android_app: AndroidApp) {
                     app_intent_inbox.clone(),
                 ),
             );
+            // Record the real window adapter even when the image compositor stays on CPU.
+            if let Some(rs) = cc.wgpu_render_state.clone() {
+                let info = rs.adapter.get_info();
+                log::info!("PhotoCraft Android wgpu adapter: {} ({:?})", info.name, info.backend);
+                app.perf.gpu_info.set_adapter(&info);
+                let hardware = info.device_type != eframe::wgpu::DeviceType::Cpu;
+                let performance = &app.session.prefs().performance;
+                let cpu_requested = performance.effective_rendering_mode()
+                    == photocraft_engine::prefs::RenderingMode::Cpu
+                    || performance.gpu_backend == photocraft_engine::prefs::GpuBackend::Cpu
+                    || std::env::var_os("PHOTOCRAFT_CPU_CANVAS").is_some();
+                if hardware && !cpu_requested {
+                    // Upstream set_wgpu catches canvas initialization panics and retains CPU fallback.
+                    app.set_wgpu(rs);
+                } else {
+                    let _ = photocraft_ui_egui::gpu_canvas::DeviceHealth::watch(&rs.device);
+                    log::info!("PhotoCraft Android image compositor remains on CPU (requested={}, software adapter={})", cpu_requested, !hardware);
+                }
+            } else {
+                log::warn!("PhotoCraft Android has no wgpu render state; retaining CPU compositor");
+            }
             Ok(Box::new(PhotoCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
@@ -1071,7 +1044,7 @@ fn android_main(android_app: AndroidApp) {
     state
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
-                modifiers: egui::Modifiers::default(),
+                modifiers: AndroidModifiers::default(),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

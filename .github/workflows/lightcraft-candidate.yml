@@ -90,6 +90,16 @@ jobs:
         shell: bash
         run: cargo install cargo-ndk --locked
 
+      - name: Apply isolated LightCraft borderless launcher and Help update-check patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile suite/tools/lightcraft/apply_android_fixes.py
+          python3 suite/tools/lightcraft/apply_android_fixes.py \
+            --builder builder --source source --suite suite
+          test -s builder/templates/android/lightcraft_updates.rs
+          test -s builder/templates/android/lightcraft_updates.java.inc
+
       - name: Build the full LightCraft app with the reviewed Android SAF bridge
         shell: bash
         run: |

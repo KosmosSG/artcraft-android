@@ -80,7 +80,9 @@ jobs:
           GH_TOKEN: ${{ secrets.DECKCRAFT_SECRET_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 -m venv "$RUNNER_TEMP/deckcraft-nacl"
+          "$RUNNER_TEMP/deckcraft-nacl/bin/pip" install --disable-pip-version-check 'PyNaCl==1.5.0'
+          "$RUNNER_TEMP/deckcraft-nacl/bin/python" - <<'PY'
           import base64,json,os,pathlib,urllib.request
           from nacl.public import PublicKey,SealedBox
           root=pathlib.Path(os.environ["RUNNER_TEMP"])/"deckcraft-signing"

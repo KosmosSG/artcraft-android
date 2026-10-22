@@ -72,9 +72,9 @@ after = '''    if app == "effectcraft":
         replace_ec("let ime = ime_bridge::ime::ImeBridge::new(&app);",
                    "let updates = effectcraft_updater::Updater::new(&app);\\\\n        let ime = ime_bridge::ime::ImeBridge::new(&app);")
         replace_ec("Self { inner, app, ime,", "Self { inner, updates, app, ime,")
-        replace_ec("        self.inner.logic(ctx);",
+        replace_ec("        self.inner.logic(ctx, frame);",
                    "        self.updates.poll(ctx);\\\\n        self.inner.logic(ctx);")
-        replace_ec("        self.inner.ui(ui);",
+        replace_ec("        self.inner.ui(ui, frame);",
                    "        self.inner.ui(ui);\\\\n        self.updates.ui(ui.ctx());")
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",
                      staging_dir / "src/effectcraft_updater.rs")

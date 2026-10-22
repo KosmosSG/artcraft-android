@@ -180,10 +180,14 @@ jobs:
               if not paths:
                   paths = re.findall(r"application:.*?icon='([^']+)'", badging)
               assert paths, 'No launcher icon referenced by Android package badging'
+              # API 26+ adaptive launcher entries are compiled binary XML, not raster images.
+              raster_paths = [p for p in paths if p.lower().endswith(('.png', '.webp', '.jpg', '.jpeg'))]
+              print('Manifest icon references:', paths, flush=True)
+              assert raster_paths, 'No raster legacy icon advertised by the manifest'
               with Image.open(approved) as original:
                   expected = original.convert('RGB')
                   best = None
-                  for path in paths:
+                  for path in raster_paths:
                       assert path in names, f'Manifest icon entry missing from APK: {path}'
                       with Image.open(io.BytesIO(archive.read(path))) as packaged:
                           actual = packaged.convert('RGB')

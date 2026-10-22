@@ -82,6 +82,10 @@ def preflight() -> None:
         "SAF open/save": ["request_open(", "request_save(", "commit_if_mapped("],
         "in-app update check": ["check_for_updates(", "poll_update_result(", "open_update_page("],
         "IME and keyboard modifiers": ["mod ime_bridge;", "apply_android_modifiers("],
+        "GPU diagnostics and compositor": ["app.perf.gpu_info.set_adapter(", "app.set_wgpu(rs)", "effective_rendering_mode()", "PHOTOCRAFT_CPU_CANVAS"],
+        "Both hardware modifier sides": ["mod android_modifiers;", "modifiers: AndroidModifiers"],
+        "Touch Shortcut Pad": ["mod shortcut_pad;", "shortcut_pad: shortcut_pad::ShortcutPad", "artcraft_shortcut_pad_allowed"],
+        "Native font/update menus": ["native_message(", "startup_update_enabled(", 'take("artcraft.shared_fonts_select")'],
         "Android shell": ["PhotoCraftAndroidApp", "impl eframe::App for PhotoCraftAndroidApp"],
     }
     for feature, tokens in features.items():
@@ -101,7 +105,7 @@ def preflight() -> None:
     if not list((ROOT / "adapters/photocraft/java").rglob("*.java")):
         die("Android Java SAF Activity missing")
     patch = (ROOT / "patches/photocraft-menus.patch").read_text()
-    for token in ("window.artcraftCustomFonts", "help.artcraftCheckUpdates"):
+    for token in ("window.artcraftCustomFonts", "help.artcraftCheckUpdates", "window.artcraftTouchShortcutPad", "help.artcraftUpdateSettings"):
         if token not in patch:
             die(f"existing Android menu feature missing: {token}")
     icon = ROOT / "assets/photocraft/launcher-pc.png"
@@ -109,9 +113,9 @@ def preflight() -> None:
         digest = hashlib.sha256(icon.read_bytes()).hexdigest()
         if digest != cfg["approved_icon_sha256"]:
             die("launcher Pc PNG exists but its SHA-256 does not match approved artwork")
-        print("Approved Pc icon verified (not yet integrated).")
+        print("Approved Pc icon checksum verified.")
     else:
-        print("NOTICE: approved Pc PNG is not in this branch; icon integration remains blocked.")
+        die("exact approved Pc icon is required for the v0.12 preservation branch")
     print("PASS: static feature-preservation markers, package, SDK, and source pin.")
 
 
@@ -233,6 +237,9 @@ def verify_prepared() -> None:
         die("PhotoCraft custom-font or updater menu did not survive port")
     if not (SOURCE / "apps/photocraft-android/src/lib.rs").exists():
         die("prepared Android shell missing")
+    staged_icon = SOURCE / "apps/photocraft-android/res/drawable/ic_launcher.png"
+    if hashlib.sha256(staged_icon.read_bytes()).hexdigest() != config()["approved_icon_sha256"]:
+        die("staged launcher icon differs from the approved original")
     print("PASS: prepared versionName, package, architecture and Android menus.")
 
 

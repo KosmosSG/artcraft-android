@@ -34,6 +34,21 @@ final class PhotoCraftUpdatePolicy {
         }
     }
 
+
+    /**
+     * Do not trust a repository-wide release's arbitrary APK asset. Both the
+     * PhotoCraft-specific tag and the APK filename must identify the SAME version.
+     * Covers legacy photocraft-0.10.4.apk and PhotoCraft.Android.v0.10.1.apk
+     * as well as PhotoCraft-v0.12.0-android.1-arm64-release.apk.
+     */
+    static boolean isPhotoCraftApkAsset(String tag, String assetName) {
+        String version = versionFromTag(tag);
+        if (version == null || assetName == null) return false;
+        return Pattern.compile("(?i)^photocraft(?:[.-][a-z0-9]+)*[.-]v?"
+                + Pattern.quote(version) + "(?:[.-][a-z0-9]+)*\\.apk$")
+                .matcher(assetName).matches();
+    }
+
     static boolean isNewer(long candidateCode, long installedCode) {
         return installedCode > 0 && candidateCode > installedCode;
     }

@@ -67,7 +67,23 @@ def _lightcraft_borderless(Image, img):
     bottom = min(h, max(v[1] for v in y_ranges) - 1)
     if not (0.64*w < right-left < 0.96*w and 0.64*h < bottom-top < 0.96*h):
         raise RuntimeError("STOP: Lc border crop exceeds accepted geometry")
-    return img.crop((left, top, right, bottom)).resize((w, h), Image.Resampling.LANCZOS)
+    derived = img.crop((left, top, right, bottom)).resize(
+        (w, h), Image.Resampling.LANCZOS)
+    # HONOR launchers expose the whole middle edge on both legacy and adaptive
+    # shapes. Stretch only the *outer* blue edge texture out to the canvas border;
+    # the inner Lc lettering and specular glass highlights remain unchanged.
+    # This also removes thin antialiased pale pixels the geometric crop misses.
+    band = int(min(w, h) * 0.13)
+    sample = derived.load()
+    safe = derived.copy()
+    pixels = safe.load()
+    for y in range(h):
+        for x in range(w):
+            if x < band or x >= w-band or y < band or y >= h-band:
+                sx = min(max(x, band), w-band-1)
+                sy = min(max(y, band), h-band-1)
+                pixels[x, y] = sample[sx, sy]
+    return safe
 
 '''
     original = replace_once(original, anchor, "\n"+algorithm+anchor, "icon helper")

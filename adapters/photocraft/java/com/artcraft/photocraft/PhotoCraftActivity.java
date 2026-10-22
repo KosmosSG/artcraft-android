@@ -371,34 +371,67 @@ public final class PhotoCraftActivity extends NativeActivity {
                     bytes = buffer.toByteArray();
                 }
                 JSONArray releases = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
-                String installedVersion = getPackageManager()
-                        .getPackageInfo(getPackageName(), 0).versionName;
-                if (installedVersion == null) installedVersion = "0.0.0";
+                android.content.pm.PackageInfo installed = getPackageManager()
+                        .getPackageInfo(getPackageName(), 0);
+                String installedVersion = installed.versionName;
+                if (installedVersion == null) installedVersion = "unknown";
+                long installedCode = installed.getLongVersionCode();
+
+                // GitHub release ordering and upstream semver are NOT Android upgrade ordering.
+                // Only offer a public PhotoCraft APK whose release notes declare an Android
+                // versionCode greater than the one actually installed. Missing metadata fails
+                // closed; do not suggest an APK that Android would reject as a downgrade.
                 String latestVersion = null;
                 String latestUrl = null;
+                long latestCode = -1;
                 for (int i = 0; i < releases.length(); i++) {
                     JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft")
                             || release.optBoolean("prerelease")) continue;
-                    String tag = release.optString("tag_name", "");
-                    if (!tag.startsWith("photocraft-v")) continue;
-                    String version = tag.substring("photocraft-v".length());
-                    if (!version.matches("[0-9]+\\.[0-9]+\\.[0-9]+")) continue;
-                    if (latestVersion == null || compareVersions(version, latestVersion) > 0) {
-                        latestVersion = version;
-                        latestUrl = release.optString("html_url", RELEASES_PAGE);
+                    String version = PhotoCraftUpdatePolicy.versionFromTag(
+                            release.optString("tag_name", ""));
+                    if (version == null) continue;
+                    long candidateCode = PhotoCraftUpdatePolicy.declaredVersionCode(
+                            release.optString("body", ""));
+                    if (candidateCode <= 0 || candidateCode <= latestCode) continue;
+
+                    JSONArray assets = release.optJSONArray("assets");
+                    boolean hasApk = false;
+                    if (assets != null) {
+                        for (int a = 0; a < assets.length(); a++) {
+                            JSONObject asset = assets.optJSONObject(a);
+                            if (asset != null && asset.optString("name", "")
+                                    .toLowerCase(java.util.Locale.ROOT).endsWith(".apk")) {
+                                hasApk = true;
+                                break;
+                            }
+                        }
                     }
+                    if (!hasApk) continue;
+                    String releaseUrl = release.optString("html_url", "");
+                    if (!releaseUrl.startsWith(
+                            "https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v"))
+                        continue;
+                    latestCode = candidateCode;
+                    latestVersion = version;
+                    latestUrl = releaseUrl;
                 }
                 JSONObject result = new JSONObject();
                 result.put("status", "ok");
                 result.put("installed_version", installedVersion);
-                if (latestVersion == null) {
+                result.put("installed_version_code", installedCode);
+                if (installedCode <= 0) {
+                    result.put("state", "error");
+                    result.put("message", "Cannot determine installed Android versionCode");
+                } else if (latestVersion == null) {
                     result.put("state", "no_release");
-                    result.put("message", "No published PhotoCraft release was found");
+                    result.put("message",
+                            "No published PhotoCraft APK with declared versionCode was found");
                 } else {
                     result.put("latest_version", latestVersion);
+                    result.put("latest_version_code", latestCode);
                     result.put("url", latestUrl);
-                    result.put("state", compareVersions(latestVersion, installedVersion) > 0
+                    result.put("state", PhotoCraftUpdatePolicy.isNewer(latestCode, installedCode)
                             ? "update_available" : "up_to_date");
                 }
                 updateResults.offer(result.toString());

@@ -83,6 +83,27 @@ def _lightcraft_borderless(Image, img):
                 sx = min(max(x, band), w-band-1)
                 sy = min(max(y, band), h-band-1)
                 pixels[x, y] = sample[sx, sy]
+    # The original Lc photo also contains separate opaque white edge highlights
+    # that geometric cropping cannot remove. Neutralise only nearly-neutral
+    # whites in the *outer* launcher band, never the cyan Lc glass lettering.
+    from collections import Counter
+    interior = [
+        (r // 16 * 16, g // 16 * 16, b // 16 * 16)
+        for y in range(h // 4, h * 3 // 4, 8)
+        for x in range(w // 4, w * 3 // 4, 8)
+        for (r,g,b,a) in [pixels[x,y]]
+        if a > 230 and b > r * 1.35 and b > 70 and r < 120
+    ]
+    if not interior:
+        raise RuntimeError("STOP: approved Lc dark blue background missing")
+    (r0,g0,b0), _ = Counter(interior).most_common(1)[0]
+    for y in range(h):
+        for x in range(w):
+            if min(x, y, w-1-x, h-1-y) >= int(min(w,h) * 0.18):
+                continue
+            r,g,b,a = pixels[x,y]
+            if a > 170 and min(r,g,b) > 155 and max(r,g,b)-min(r,g,b) < 80:
+                pixels[x,y] = (r0,g0,b0,255)
     return safe
 
 '''

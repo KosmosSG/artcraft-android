@@ -77,7 +77,8 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
             raise RuntimeError("FilmCraft manifest lacks the standard Android permission section")
         manifest = manifest.replace(
             first_permission,
-            first_permission + '\nname = "android.permission.INTERNET"\n\n',
+            first_permission + '\nname = "android.permission.INTERNET"\n\n'
+            + first_permission,
             1,
         )
     return rust, java, manifest

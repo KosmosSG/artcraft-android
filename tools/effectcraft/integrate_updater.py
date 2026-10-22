@@ -65,8 +65,8 @@ after = '''    if app == "effectcraft":
             if entry.count(old) != 1:
                 raise SystemExit("STOP: EffectCraft UI launcher template changed: " + old[:60])
             entry = entry.replace(old, new, 1)
-        replace_ec("use android_activity::AndroidApp;",
-                   "mod effectcraft_updater;\\\\nuse android_activity::AndroidApp;")
+        replace_ec("mod system_fonts;",
+                   "mod effectcraft_updater;\\\\nmod system_fonts;")
         replace_ec("    inner: EffectcraftApp,\\\\n    app: AndroidApp,",
                    "    inner: EffectcraftApp,\\\\n    updates: effectcraft_updater::Updater,\\\\n    app: AndroidApp,")
         replace_ec("let ime = ime_bridge::ime::ImeBridge::new(&app);",

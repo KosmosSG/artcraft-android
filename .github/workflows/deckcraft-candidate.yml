@@ -176,27 +176,31 @@ jobs:
               for identity in ('mipmap/ic_launcher', 'drawable/ic_launcher_foreground', 'drawable/ic_launcher_background'):
                   assert identity in resources, f'Android resource table missing {identity}'
               badging = subprocess.run([aapt2, 'dump', 'badging', apk], check=True, text=True, capture_output=True).stdout
-              paths = re.findall(r"application-icon-\d+:'([^']+)'", badging)
-              if not paths:
-                  paths = re.findall(r"application:.*?icon='([^']+)'", badging)
-              assert paths, 'No launcher icon referenced by Android package badging'
-              # API 26+ adaptive launcher entries are compiled binary XML, not raster images.
-              raster_paths = [p for p in paths if p.lower().endswith(('.png', '.webp', '.jpg', '.jpeg'))]
-              print('Manifest icon references:', paths, flush=True)
-              assert raster_paths, 'No raster legacy icon advertised by the manifest'
+              # On Android 26+, badging advertises adaptive XML at every density.
+              # AAPT2 retains legacy PNGs under opaque res/<id>.png paths.
+              icon_refs = re.findall(r"application-icon-\d+:'([^']+)'", badging)
+              assert icon_refs and all(p in names for p in icon_refs), 'Manifest adaptive launcher reference missing'
+              print('Manifest icon references:', icon_refs, flush=True)
               with Image.open(approved) as original:
                   expected = original.convert('RGB')
                   best = None
-                  for path in raster_paths:
-                      assert path in names, f'Manifest icon entry missing from APK: {path}'
-                      with Image.open(io.BytesIO(archive.read(path))) as packaged:
-                          actual = packaged.convert('RGB')
-                          resized = expected.resize(actual.size, Image.Resampling.LANCZOS)
-                          delta = ImageStat.Stat(ImageChops.difference(resized, actual)).mean
-                          score = sum(delta) / len(delta)
-                          best = score if best is None else min(best, score)
-                          print(f'Packaged launcher {path} {actual.size}: mean RGB difference {score:.2f}', flush=True)
-                  assert best is not None and best < 28, f'Launcher art differs from approved Dk upload (score={best})'
+                  best_path = None
+                  candidates = [p for p in names if p.startswith('res/') and p.lower().endswith(('.png', '.webp'))]
+                  for path in candidates:
+                      try:
+                          with Image.open(io.BytesIO(archive.read(path))) as packaged:
+                              if packaged.width not in (48, 72, 96, 144, 192) or packaged.height != packaged.width:
+                                  continue
+                              actual = packaged.convert('RGB')
+                              resized = expected.resize(actual.size, Image.Resampling.LANCZOS)
+                              delta = ImageStat.Stat(ImageChops.difference(resized, actual)).mean
+                              score = sum(delta) / len(delta)
+                              if best is None or score < best:
+                                  best, best_path = score, path
+                      except (OSError, ValueError):
+                          continue
+                  print(f'Closest packaged Dk legacy raster: {best_path} (mean RGB difference {best})', flush=True)
+                  assert best is not None and best < 28, 'Approved Dk artwork not found in packaged legacy icon rasters'
               print('PASS: ARM64-only, DEX, AAPT2 launcher/adaptive resource IDs, approved Dk artwork', flush=True)
           PY
           aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"

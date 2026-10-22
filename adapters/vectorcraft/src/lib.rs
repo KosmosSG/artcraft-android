@@ -177,6 +177,79 @@ impl AndroidFileBridge {
             .map_err(|e| e.to_string())
     }
 
+
+    // Read-only Android SAF font library and official GitHub update checker.
+    fn request_font_import(&self, id: u64) -> Result<(), String> {
+        self.call_id("vcRequestFontImport", id)
+    }
+
+    fn request_font_folder(&self, id: u64, refresh: bool) -> Result<(), String> {
+        self.call_id(if refresh { "vcRefreshFontFolder" } else { "vcRequestFontFolder" }, id)
+    }
+
+    fn call_id(&self, method: &str, id: u64) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            // JNI signatures are fixed; no dynamically derived method name escapes this match.
+            let result = match method {
+                "vcRequestFontImport" => env.call_method(&*activity,
+                    jni_str!("vcRequestFontImport"), jni_sig!("(J)V"), &[JValue::Long(id as i64)]),
+                "vcRefreshFontFolder" => env.call_method(&*activity,
+                    jni_str!("vcRefreshFontFolder"), jni_sig!("(J)V"), &[JValue::Long(id as i64)]),
+                _ => env.call_method(&*activity,
+                    jni_str!("vcRequestFontFolder"), jni_sig!("(J)V"), &[JValue::Long(id as i64)]),
+            };
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn check_for_updates(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity,
+                jni_str!("vcCheckForUpdates"), jni_sig!("()V"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn poll_update_result(&self) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("vcPollUpdateResult"),
+                jni_sig!("()Ljava/lang/String;"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            let value = result?.l()?;
+            if value.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, value)?;
+            Ok(Some(value.try_to_string(env)?))
+        }).map_err(|e| e.to_string())
+    }
+
+    fn open_update_page(&self, url: &str) -> Result<(), String> {
+        const PREFIX: &str =
+            "https://github.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v";
+        if !url.starts_with(PREFIX) {
+            return Err("Not a VectorCraft release link".into());
+        }
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let url_obj = JObject::from(env.new_string(url)?);
+            let result = env.call_method(&*activity, jni_str!("vcOpenUpdatePage"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&url_obj)]);
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn files_dir(&self) -> Result<String, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<String> {
@@ -253,6 +326,68 @@ impl PickState {
     }
 }
 
+
+#[derive(Default)]
+struct FontUiState {
+    pending_import: Option<u64>,
+    pending_shared: Option<u64>,
+    import_status: String,
+    shared_status: String,
+}
+
+impl FontUiState {
+    fn import(&mut self, picks: &PickState, bridge: &AndroidFileBridge) {
+        if self.pending_import.is_some() { return; }
+        let id = picks.next_id();
+        match bridge.request_font_import(id) {
+            Ok(()) => {
+                self.pending_import = Some(id);
+                self.import_status = "Choose a .ttf or .otf file".into();
+            }
+            Err(error) => self.import_status = format!("Font picker unavailable: {error}"),
+        }
+    }
+
+    fn shared(&mut self, picks: &PickState, bridge: &AndroidFileBridge, refresh: bool) {
+        if self.pending_shared.is_some() { return; }
+        let id = picks.next_id();
+        match bridge.request_font_folder(id, refresh) {
+            Ok(()) => {
+                self.pending_shared = Some(id);
+                self.shared_status = if refresh { "Refreshing shared fonts…" }
+                    else { "Select ArtCraft-Fonts in Android Files…" }.into();
+            }
+            Err(error) => self.shared_status = format!("Shared folder unavailable: {error}"),
+        }
+    }
+
+    /// Returns true only when VectorCraft should rescan its registered Fonts directory.
+    fn consume(&mut self, id: u64, value: &serde_json::Value) -> Option<bool> {
+        let font_import = self.pending_import == Some(id);
+        let font_folder = self.pending_shared == Some(id);
+        if !font_import && !font_folder { return None; }
+        let success = value.get("status").and_then(serde_json::Value::as_str) == Some("ok");
+        let message = value.get("message").and_then(serde_json::Value::as_str)
+            .unwrap_or(if success { "Fonts loaded" } else { "Could not load fonts" });
+        if font_import {
+            self.pending_import = None;
+            self.import_status = message.into();
+        } else {
+            self.pending_shared = None;
+            self.shared_status = message.into();
+        }
+        Some(success)
+    }
+}
+
+#[derive(Default)]
+struct UpdateDialogState {
+    open: bool,
+    checking: bool,
+    message: String,
+    release_url: Option<String>,
+}
+
 /// A MIME type for an open dialog, from its first file-type filter (every file when it has none).
 fn mime_for_filters(pick: &FilePick) -> String {
     pick.filters
@@ -325,7 +460,9 @@ fn start_pick(
 }
 
 /// Each frame: read every picker answer Android queued and send it to the request that asked.
-fn poll_answers(state: &Arc<PickState>, bridge: &AndroidFileBridge, ctx: &egui::Context) {
+fn poll_answers(state: &Arc<PickState>, bridge: &AndroidFileBridge, ctx: &egui::Context,
+    fonts: &mut FontUiState) -> bool {
+    let mut rescan = false;
     // Each answer is one short JSON object queued by VectorCraftActivity after picker I/O ends.
     for _ in 0..8 {
         let raw = match bridge.poll_result() {
@@ -347,6 +484,11 @@ fn poll_answers(state: &Arc<PickState>, bridge: &AndroidFileBridge, ctx: &egui::
             log::error!("Android picker result has no request id: {raw}");
             continue;
         };
+        if let Some(changed) = fonts.consume(id, &value) {
+            rescan |= changed;
+            ctx.request_repaint();
+            continue;
+        }
         let Some(sender) = state.remove(id) else {
             log::warn!("Ignoring stale Android picker reply {id}");
             continue;
@@ -379,6 +521,7 @@ fn poll_answers(state: &Arc<PickState>, bridge: &AndroidFileBridge, ctx: &egui::
         let _ = sender.send(paths);
         ctx.request_repaint();
     }
+    rescan
 }
 
 /// Write `bytes` to `path`, then copy them to the selected SAF document when `path` is staged.
@@ -600,6 +743,10 @@ struct VectorCraftAndroidApp {
     inner: VectorcraftApp,
     bridge: AndroidFileBridge,
     picks: Arc<PickState>,
+    fonts: FontUiState,
+    android_tools_open: bool,
+    touch_dock: bool,
+    updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
     persist: Option<std::path::PathBuf>,
@@ -754,7 +901,51 @@ impl eframe::App for VectorCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Deliver picker answers before the app's own logic runs, so `picks::poll` resumes the
         // entry that asked in this same frame.
-        poll_answers(&self.picks, &self.bridge, ctx);
+        if poll_answers(&self.picks, &self.bridge, ctx, &mut self.fonts) {
+            // VectorCraft's built-in rescan refreshes available text faces and redraws type.
+            if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
+                log::warn!("Android font rescan failed: {error}");
+                self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
+            }
+        }
+        if self.updates.checking {
+            match self.bridge.poll_update_result() {
+                Ok(Some(raw)) => {
+                    self.updates.checking = false;
+                    match serde_json::from_str::<serde_json::Value>(&raw) {
+                        Ok(result) => {
+                            self.updates.release_url = result.get("url")
+                                .and_then(serde_json::Value::as_str)
+                                .filter(|url| url.starts_with(
+                                    "https://github.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v"))
+                                .map(str::to_owned);
+                            let installed = result.get("installed_version")
+                                .and_then(serde_json::Value::as_str).unwrap_or("unknown");
+                            let latest = result.get("latest_version")
+                                .and_then(serde_json::Value::as_str).unwrap_or("unknown");
+                            self.updates.message = match result.get("state")
+                                .and_then(serde_json::Value::as_str) {
+                                Some("update_available") => format!(
+                                    "Update available: {latest} (installed: {installed})"),
+                                Some("up_to_date") => format!(
+                                    "You're up to date (installed: {installed}; latest: {latest})."),
+                                Some("no_release") => "No published VectorCraft Android APK yet.".into(),
+                                _ => format!("Update check failed: {}",
+                                    result.get("message").and_then(serde_json::Value::as_str)
+                                        .unwrap_or("Unknown response")),
+                            };
+                        }
+                        Err(error) => self.updates.message = format!("Invalid update result: {error}"),
+                    }
+                    ctx.request_repaint();
+                }
+                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
+                Err(error) => {
+                    self.updates.checking = false;
+                    self.updates.message = format!("Update checker unavailable: {error}");
+                }
+            }
+        }
         // Then deliver any file the system asked us to open, through the same inbox.
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
@@ -774,6 +965,134 @@ impl eframe::App for VectorCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui);
+
+        // Small Android-only entry point: no upstream menus or desktop preferences are changed.
+        let ctx = ui.ctx();
+        let mut import = false;
+        let mut select_shared = false;
+        let mut refresh_shared = false;
+        let mut check_updates = false;
+        let mut customize_shortcuts = false;
+        let mut dock_undo = false;
+        let mut dock_redo = false;
+        let previous_touch_dock = self.touch_dock;
+        egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
+            .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
+            .show(ctx, |ui| {
+                if ui.button("Android Tools").clicked() {
+                    self.android_tools_open = !self.android_tools_open;
+                }
+            });
+        let gpu_details = if self.android_tools_open {
+            match _frame.wgpu_render_state() {
+                Some(state) => {
+                    let info = state.adapter.get_info();
+                    format!(
+                        "UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
+                        info.name, info.backend, info.device_type,
+                        info.driver, info.driver_info,
+                        state.device.limits().max_texture_dimension_2d
+                    )
+                }
+                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
+            }
+        } else { String::new() };
+        if self.android_tools_open {
+            egui::Window::new("VectorCraft Android Tools")
+                .open(&mut self.android_tools_open)
+                .default_pos([24.0, 95.0])
+                .show(ctx, |ui| {
+                    ui.heading("Fonts");
+                    if ui.button("Import Font (.ttf / .otf)").clicked() { import = true; }
+                    if !self.fonts.import_status.is_empty() {
+                        ui.label(&self.fonts.import_status);
+                    }
+                    ui.separator();
+                    ui.label("Shared ArtCraft-Fonts library (read-only)");
+                    if ui.button("Select Shared Font Folder").clicked() { select_shared = true; }
+                    if ui.button("Refresh Shared Fonts").clicked() { refresh_shared = true; }
+                    if !self.fonts.shared_status.is_empty() {
+                        ui.label(&self.fonts.shared_status);
+                    }
+                    ui.separator();
+                    ui.heading("Keyboard & Touch");
+                    if ui.button("Customize Keyboard Shortcuts").clicked() {
+                        customize_shortcuts = true;
+                    }
+                    ui.checkbox(&mut self.touch_dock, "Show Touch Shortcut Dock");
+                    ui.small("Uses VectorCraft's existing shortcut editor and undo/redo commands.");
+                    ui.separator();
+                    ui.heading("Graphics (read-only)");
+                    ui.monospace(&gpu_details);
+                    ui.small("Reports the actual egui/wgpu UI adapter when available; this does not imply that VectorCraft's document compositor uses the GPU. No renderer settings are changed.");
+                    ui.separator();
+                    if ui.button("Check for VectorCraft Updates").clicked() {
+                        check_updates = true;
+                    }
+                    ui.small("Checks published, signed-candidate release listings; never installs automatically.");
+                });
+        }
+        if self.touch_dock {
+            egui::Area::new(egui::Id::new("vectorcraft.touch_shortcut_dock"))
+                .anchor(egui::Align2::LEFT_BOTTOM, [12.0, -12.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Undo").clicked() { dock_undo = true; }
+                        if ui.button("Redo").clicked() { dock_redo = true; }
+                        if ui.button("Shortcuts").clicked() { customize_shortcuts = true; }
+                    });
+                });
+        }
+        if self.touch_dock != previous_touch_dock {
+            if let Some(dir) = self.persist.as_ref() {
+                if let Err(error) = fs::write(dir.join("touch_dock.enabled"),
+                    if self.touch_dock { "1" } else { "0" }) {
+                    log::warn!("Could not save shortcut dock preference: {error}");
+                }
+            }
+        }
+        for (pressed, command) in [(dock_undo, "edit.undo"),
+                                   (dock_redo, "edit.redo"),
+                                   (customize_shortcuts, "edit.keyboardShortcuts")] {
+            if pressed {
+                if let Err(error) = self.inner.run(command, serde_json::json!({})) {
+                    log::warn!("VectorCraft Android shortcut {command} failed: {error}");
+                }
+                ctx.request_repaint();
+            }
+        }
+        if import { self.fonts.import(&self.picks, &self.bridge); }
+        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
+        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
+        if check_updates {
+            self.updates.open = true;
+            self.updates.release_url = None;
+            self.updates.message = "Checking GitHub releases…".into();
+            if !self.updates.checking {
+                match self.bridge.check_for_updates() {
+                    Ok(()) => self.updates.checking = true,
+                    Err(error) => self.updates.message = format!("Could not check releases: {error}"),
+                }
+            }
+        }
+        if self.updates.open {
+            let mut open = self.updates.open;
+            egui::Window::new("VectorCraft Updates").open(&mut open)
+                .default_pos([50.0, 170.0])
+                .show(ctx, |ui| {
+                    ui.label(&self.updates.message);
+                    if self.updates.checking {
+                        ui.spinner();
+                    } else if let Some(url) = self.updates.release_url.as_deref() {
+                        if ui.button("Open official GitHub release").clicked() {
+                            if let Err(error) = self.bridge.open_update_page(url) {
+                                log::warn!("Cannot open VectorCraft release: {error}");
+                            }
+                        }
+                    }
+                });
+            self.updates.open = open;
+        }
     }
 
     fn on_exit(&mut self) {
@@ -796,8 +1115,17 @@ fn android_main(android_app: AndroidApp) {
     };
     if let Ok(dir) = bridge.files_dir() {
         log::info!("VectorCraft app-private storage: {dir}");
+        let fonts = PathBuf::from(dir).join("Fonts");
+        if let Err(error) = fs::create_dir_all(&fonts) {
+            log::warn!("Could not create persistent VectorCraft Fonts folder: {error}");
+        }
+        // Must run before VectorcraftApp::new catalogs installed fonts.
+        vectorcraft_text::set_app_font_dir(fonts);
     }
     let picks = Arc::new(PickState::default());
+    let mut initial_fonts = FontUiState::default();
+    // Restore a previously authorized shared library on startup; missing access is nonfatal.
+    initial_fonts.shared(&picks, &bridge, true);
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -821,10 +1149,25 @@ fn android_main(android_app: AndroidApp) {
             if let Some(dir) = &persist {
                 persist_load(&mut app, dir);
             }
+            let touch_dock = persist.as_ref()
+                .and_then(|dir| fs::read_to_string(dir.join("touch_dock.enabled")).ok())
+                .is_some_and(|value| value.trim() == "1");
             Ok(Box::new(VectorCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
                 picks: app_picks.clone(),
+                fonts: std::mem::take(&mut initial_fonts),
+                android_tools_open: false,
+                touch_dock,
+                updates: {
+                    let mut state = UpdateDialogState::default();
+                    // Nonblocking, read-only startup check as in PhotoCraft.
+                    if app_bridge.check_for_updates().is_ok() {
+                        state.checking = true;
+                        state.message = "Checking for VectorCraft updates…".into();
+                    }
+                    state
+                },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
                 persist,

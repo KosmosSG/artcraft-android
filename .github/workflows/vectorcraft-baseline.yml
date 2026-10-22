@@ -1,8 +1,8 @@
 name: VectorCraft Android baseline
 on:
   push:
-    branches: [vectorcraft-android-baseline]
-    paths: ['tools/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
+    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021]
+    paths: ['tools/vectorcraft/**', 'adapters/vectorcraft/**', 'assets/branding/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
       version_code:
@@ -26,8 +26,83 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile VectorCraft Android Java bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
+            "$SDKMANAGER" --install 'platforms;android-35'
+          fi
+          mkdir -p "$RUNNER_TEMP/vectorcraft-java-check"
+          javac -source 17 -target 17 \
+            -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d "$RUNNER_TEMP/vectorcraft-java-check" \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+  compile:
+    # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Install reviewed VectorCraft Android adapter for compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = ad0566943ab9741e6356bbc9b53c3cc09895068d
+          mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
+          cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
+          cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
+          cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK for ARM64 native checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Check VectorCraft ARM64 Rust shell without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$NDK_BIN" >> "$GITHUB_PATH"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android28-clang"
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --target aarch64-linux-android
+
   build:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-android-baseline'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021'
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -35,13 +110,18 @@ jobs:
       BUILDER_SHA: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
       SOURCE_SHA: ad0566943ab9741e6356bbc9b53c3cc09895068d
       SOURCE_TAG: v0.14.0
-      VERSION_NAME: 0.14.0-android.1
+      VERSION_NAME: 0.14.0-android.2
       VERSION_CODE: ${{ inputs.version_code }}
       PREVIOUS_CODE: ${{ inputs.previous_version_code }}
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Verify exact approved launcher icon before expensive builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
       - name: Validate reserved version code
         shell: bash
         run: |
@@ -75,6 +155,16 @@ jobs:
           test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$SOURCE_SHA"
           git -C builder/source/vectorcraft fetch --depth=1 origin "refs/tags/$SOURCE_TAG:refs/tags/$SOURCE_TAG"
           test "$(git -C builder/source/vectorcraft rev-parse "$SOURCE_TAG^{commit}")" = "$SOURCE_SHA"
+          # The pinned reference is a reviewed toolchain only. Ship this branch's
+          # independently reviewed VectorCraft adapter, never the reference's older shell.
+          test -s adapters/vectorcraft/src/lib.rs
+          test -s adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+          rm -rf builder/adapters/vectorcraft
+          cp -a adapters/vectorcraft builder/adapters/vectorcraft
+          cmp adapters/vectorcraft/src/lib.rs builder/adapters/vectorcraft/src/lib.rs
+          cmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
+              builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+          python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
           python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
       - uses: actions/setup-java@v4
         with:
@@ -90,8 +180,15 @@ jobs:
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
           "$SDKMANAGER" --install 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Build VectorCraft candidate with disposable local key
-        run: bash builder/build.sh -vectorcraft
+      - name: Build VectorCraft candidate with approved Vc icon and disposable local key
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
+          test -s "$ICON"
+          # Fail closed until the exact original 1254x1254 RGBA PNG is committed.
+          python3 tools/vectorcraft/verify_approved_icon.py "$ICON"
+          bash builder/build.sh -vectorcraft "-appicon=$ICON"
       - name: Export unsigned payload only
         shell: bash
         run: |
@@ -122,7 +219,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     env:
-      VERSION_NAME: 0.14.0-android.1
+      VERSION_NAME: 0.14.0-android.2
       VERSION_CODE: ${{ inputs.version_code }}
     steps:
       - uses: actions/checkout@v5
@@ -166,7 +263,7 @@ jobs:
           printf '\nDevice testing remains pending: install, font import, files, keyboard and lifecycle.\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         with:
-          name: vectorcraft-0.14.0-android.1-verified
+          name: vectorcraft-0.14.0-android.2-verified
           path: verified/
           if-no-files-found: error
           retention-days: 14

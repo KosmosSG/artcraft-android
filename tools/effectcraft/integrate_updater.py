@@ -54,6 +54,7 @@ after = '''    if app == "effectcraft":
 # Python string above is injected into another Python program. Write literal
 # backslash-n escapes to the generator, not physical newlines inside the quote.
 after = after.replace("'\\\\\\\\n", "'\\\\n").replace("permission]]\\\\\\\\n", "permission]]\\\\n")
+after = after.replace(chr(92) * 2 + "n", chr(92) + "n")
 b = once(b, before, after, "Android manifest generator")
 
 before = '    (staging_dir / "src" / "lib.rs").write_text(entry)'
@@ -80,6 +81,7 @@ after = '''    if app == "effectcraft":
     (staging_dir / "src" / "lib.rs").write_text(entry)'''
 # Ensure the injected generator sees backslash-n escapes, not newlines within quotes.
 after = after.replace("\\\\\\\\n", "\\\\n")
+after = after.replace(chr(92) * 2 + "n", chr(92) + "n")
 b = once(b, before, after, "EffectCraft launcher generation")
 builder.write_text(b)
 print("Prepared EffectCraft Help > Check for Updates, JNI updater, INTERNET permission and guarded official release links.")

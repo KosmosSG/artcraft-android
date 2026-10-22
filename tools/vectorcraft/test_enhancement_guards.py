@@ -34,6 +34,9 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         verifier = (ROOT / "tools/vectorcraft/verify_approved_icon.py").read_text()
         self.assertIn("291c7768cabaf4419082abfbd100a17668e9c7c4ca8a57fa45667f0f7233dbc2", verifier)
         self.assertIn("APPROVED_SIZE = (1254, 1254)", verifier)
+        self.assertIn("Verify exact approved launcher icon before expensive builds", workflow)
+        self.assertLess(workflow.index("Verify exact approved launcher icon before expensive builds"),
+                        workflow.index("Install NDK"))
 
     def test_existing_android_features_are_preserved(self):
         rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()

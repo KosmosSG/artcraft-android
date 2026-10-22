@@ -143,27 +143,45 @@ jobs:
           set -euo pipefail
           apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
           test -s "$apk"
-          python3 - "$apk" <<'PY'
-          import sys, zipfile
-          apk = sys.argv[1]
+          # AAPT2 optimizes resource filenames to res/<opaque>.png/.xml in final APKs.
+          # Check resource-table identities and the actual launcher pixels, not ZIP filenames.
+          python3 - "$apk" "$ANDROID_HOME/build-tools/35.0.0/aapt2" "$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png" <<'PY'
+          import hashlib, io, re, subprocess, sys, zipfile
+          from PIL import Image, ImageChops, ImageStat
+          apk, aapt2, approved = sys.argv[1:]
           with zipfile.ZipFile(apk) as archive:
               names = archive.namelist()
               libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
               assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
-              # Android packaging can compile/rename resource paths; first log evidence.
-              icon_entries = [n for n in names if 'launcher' in n.lower() or 'mipmap' in n.lower() or 'foreground' in n.lower()]
-              print('APK icon-related entries:', icon_entries[:100], flush=True)
-              print('APK res entries sample:', [n for n in names if n.startswith('res/')][:80], flush=True)
-              assert any('mipmap-' in n and n.endswith('/ic_launcher.png') for n in names), 'Dk legacy icon resource missing; inspect resource table'
-              assert any(n.endswith('/ic_launcher.xml') for n in names), 'Adaptive Dk icon missing; inspect resource table'
               assert 'classes.dex' in names, 'Android Java bridge missing'
-          print('Archive checks: ARM64 libraries, icon resources, Java DEX found')
+              resources = subprocess.run([aapt2, 'dump', 'resources', apk], check=True, text=True, capture_output=True).stdout
+              for identity in ('mipmap/ic_launcher', 'drawable/ic_launcher_foreground', 'drawable/ic_launcher_background'):
+                  assert identity in resources, f'Android resource table missing {identity}'
+              badging = subprocess.run([aapt2, 'dump', 'badging', apk], check=True, text=True, capture_output=True).stdout
+              paths = re.findall(r"application-icon-\\d+:'([^']+)'", badging)
+              if not paths:
+                  paths = re.findall(r"application:.*?icon='([^']+)'", badging)
+              assert paths, 'No launcher icon referenced by Android package badging'
+              with Image.open(approved) as original:
+                  expected = original.convert('RGB')
+                  best = None
+                  for path in paths:
+                      assert path in names, f'Manifest icon entry missing from APK: {path}'
+                      with Image.open(io.BytesIO(archive.read(path))) as packaged:
+                          actual = packaged.convert('RGB')
+                          resized = expected.resize(actual.size, Image.Resampling.LANCZOS)
+                          delta = ImageStat.Stat(ImageChops.difference(resized, actual)).mean
+                          score = sum(delta) / len(delta)
+                          best = score if best is None else min(best, score)
+                          print(f'Packaged launcher {path} {actual.size}: mean RGB difference {score:.2f}', flush=True)
+                  assert best is not None and best < 28, f'Launcher art differs from approved Dk upload (score={best})'
+              print('PASS: ARM64-only, DEX, AAPT2 launcher/adaptive resource IDs, approved Dk artwork', flush=True)
           PY
           aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
           badging="$("$aapt2" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "name='com.artcraft.deckcraft'"
-          printf '%s\n' "$badging" | grep -F "versionCode='100000001'"
-          printf '%s\n' "$badging" | grep -F "versionName='0.9.0-android.1'"
+          [[ "$badging" == *"name='com.artcraft.deckcraft'"* ]] || { echo "::error::DeckCraft package mismatch"; exit 1; }
+          [[ "$badging" == *"versionCode='100000001'"* ]] || { echo "::error::DeckCraft versionCode mismatch"; exit 1; }
+          [[ "$badging" == *"versionName='0.9.0-android.1'"* ]] || { echo "::error::DeckCraft versionName mismatch"; exit 1; }
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."

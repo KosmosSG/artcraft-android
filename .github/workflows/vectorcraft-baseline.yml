@@ -164,6 +164,7 @@ jobs:
           cmp adapters/vectorcraft/src/lib.rs builder/adapters/vectorcraft/src/lib.rs
           cmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
               builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+          python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
           python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
       - uses: actions/setup-java@v4
         with:

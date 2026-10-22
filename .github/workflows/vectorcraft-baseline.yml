@@ -180,11 +180,8 @@ jobs:
           set -euo pipefail
           ICON="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
           test -s "$ICON"
-          # Do not package a different Vc graphic in place of the exact user-approved upload.
-          printf "%s  %s\n" "291c7768cabaf4419082abfbd100a17668e9c7c4ca8a57fa45667f0f7233dbc2" "$ICON" | sha256sum --check --status || {
-            echo "The Github Vc asset does not match the user-approved 1254px PNG. Refusing candidate APK build." >&2
-            exit 1
-          }
+          # Fail closed until the exact original 1254x1254 RGBA PNG is committed.
+          python3 tools/vectorcraft/verify_approved_icon.py "$ICON"
           bash builder/build.sh -vectorcraft "-appicon=$ICON"
       - name: Export unsigned payload only
         shell: bash

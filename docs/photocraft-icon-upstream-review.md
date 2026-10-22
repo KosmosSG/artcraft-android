@@ -2,10 +2,11 @@
 
 **Review-only; do not enable automatic builds or publishing.**
 
-## Proposed next Android version
-- Official upstream target: `storytold/photocraft` release `0.11.1`, only after verifying its tag and immutable commit.
-- Proposed Android versionName: `0.11.1-android.1`.
-- Proposed APK filename: `photocraft-0.11.1-android.1.apk`.
+## Current upstream target (supersedes the older v0.11.1 proposal)
+- Latest verified stable upstream: `storytold/photocraft@v0.12.0`, exact commit `6a2d027ee2e7ca12afd248544ed2262b0fa078dd`.
+- **Reuse existing draft PR #14**, `development/photocraft-v0.12.0-android.1`, for the source/Android compatibility work. Do not create a duplicate v0.11.1 branch.
+- Proposed Android versionName: `0.12.0-android.1` (not yet published).
+- Proposed APK filename: `photocraft-0.12.0-android.1.apk` (not yet built).
 - Enforce Android `versionCode` strictly greater than the highest previously distributed APK; validate with `aapt` and an update-install test.
 - The existing private signed workflow currently resolves plain numeric versions and must be adapted and tested before any release.
 
@@ -34,4 +35,4 @@
 - Its `.github/photocraft-upstream-automation-policy.yml` is a staging contract and explicitly disables publishing.
 - Its release workflow is not a safe drop-in replacement for the private signed workflow.
 
-**This file is a plan only; it changes no production code or workflow.**
+**This file is a review plan only. PR #14 contains the separate implementation and source checks. Neither PR is approved to merge, production-sign, build a release APK, or publish.**

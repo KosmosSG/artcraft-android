@@ -2,7 +2,7 @@
 //! No signing, APK downloading, silent installs or broad storage permissions.
 use android_activity::AndroidApp;
 use eframe::egui;
-use jni::{JavaVM, jni_sig, objects::{JObject, JString, JValue}};
+use jni::{JavaVM, jni_sig, strings::JNIString, objects::{JObject, JString, JValue}};
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -65,7 +65,7 @@ impl Tools {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             // SAFETY: AndroidApp retains the global Activity reference.
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, method, jni_sig!("()V"), &[])?;
+            env.call_method(&*activity, JNIString::new(method), jni_sig!("()V"), &[])?;
             Ok(())
         }).map_err(|error| error.to_string())
     }
@@ -74,7 +74,7 @@ impl Tools {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, method, jni_sig!("()Z"), &[])?.z()
+            env.call_method(&*activity, JNIString::new(method), jni_sig!("()Z"), &[])?.z()
         }).map_err(|error| error.to_string())
     }
 
@@ -83,7 +83,7 @@ impl Tools {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             let value = env.call_method(
-                &*activity, method, jni_sig!("()Ljava/lang/String;"), &[],
+                &*activity, JNIString::new(method), jni_sig!("()Ljava/lang/String;"), &[],
             )?.l()?;
             if value.is_null() { return Ok(None); }
             let value = JString::cast_local(env, value)?;
@@ -96,8 +96,8 @@ impl Tools {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(
-                &*activity, method, jni_sig!("(Z)V"),
-                &[JValue::Bool(value as u8)],
+                &*activity, JNIString::new(method), jni_sig!("(Z)V"),
+                &[JValue::Bool(value)],
             )?;
             Ok(())
         }).map_err(|error| error.to_string())
@@ -109,7 +109,7 @@ impl Tools {
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             let string = JObject::from(env.new_string(value)?);
             env.call_method(
-                &*activity, method, jni_sig!("(Ljava/lang/String;)V"),
+                &*activity, JNIString::new(method), jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&string)],
             )?;
             Ok(())

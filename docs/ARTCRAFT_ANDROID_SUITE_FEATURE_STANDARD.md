@@ -30,6 +30,6 @@
 
 PhotoCraft, VectorCraft, DesignCraft, FilmCraft, EffectCraft, PDFCraft, WordCraft, DeckCraft, LightCraft, SoundCraft, CADCraft, FigCraft, and GridCraft, plus any future app added to the suite.
 
-**GridCraft** is the public app name, despite earlier "ExcelCraft" conversational shorthand. Preserve owner-approved Xc branding if the exact artwork is supplied and verified; do not substitute Microsoft trademarks/assets.
+**GridCraft** is the public app name, despite earlier "ExcelCraft" conversational shorthand. The owner approved the new glossy green **Gc** app icon on 23 October 2026 (replacing the earlier Xc choice); use its exact uploaded PNG only after its SHA-256 is verified against the GridCraft source lock. Do not substitute Microsoft trademarks/assets.
 
 This standard is a continuing requirement for future commits, upstream merges, branches, builds and releases, **not** permission to automatically synchronize upstream or publish unverified APKs.

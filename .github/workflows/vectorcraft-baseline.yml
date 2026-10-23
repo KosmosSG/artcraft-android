@@ -1,7 +1,7 @@
 name: VectorCraft Android baseline
 on:
   push:
-    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021, development/vectorcraft-v014-20261023]
+    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021, development/vectorcraft-v014-20261023, development/vectorcraft-v014-android4-ui-20261023]
     paths: ['tools/vectorcraft/**', 'adapters/vectorcraft/**', 'assets/branding/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
@@ -48,7 +48,7 @@ jobs:
           java -cp "$ANDROID_HOME/platforms/android-35/android.jar:$RUNNER_TEMP/vectorcraft-java-check" FontContentTest
   compile:
     # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023' || github.ref == 'refs/heads/development/vectorcraft-v014-android4-ui-20261023')
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -79,6 +79,10 @@ jobs:
           cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
           cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
           python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vectorcraft-inapp-vc.png"
+          python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vectorcraft-inapp-vc.png"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

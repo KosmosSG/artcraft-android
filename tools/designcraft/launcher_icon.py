@@ -36,6 +36,14 @@ def tile_from_source(source):
         for nx, ny in ((x-1, y), (x+1, y), (x, y-1), (x, y+1)):
             if 0 <= nx < w and 0 <= ny < h and not seen[ny * w + nx]:
                 queue.append((nx, ny))
+    # Remove a few near-black interior compression specks as well. Even four
+    # opaque black pixels can show as a dark halo on MagicOS adaptive masks.
+    # The original magenta glass lettering and burgundy tile remain intact.
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = pixels[x, y]
+            if a and max(r, g, b) <= 40:
+                pixels[x, y] = (r, g, b, 0)
     bounds = tile.getchannel("A").getbbox()
     if bounds is None:
         raise ValueError("Approved launcher tile is empty")

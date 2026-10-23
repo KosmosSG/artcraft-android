@@ -251,13 +251,18 @@
                         String tag = release.optString("tag_name", "");
                         if (!tag.matches("wordcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+")) continue;
                         String version = tag.substring("wordcraft-v".length());
-                        String expectedApk = "wordcraft-" + version + ".apk";
+                        // Match the suite's production ARM64 filename, with exact
+                        // legacy naming only for backwards-compatible releases.
+                        String expectedApk = "WordCraft-v" + version + "-arm64-v8a.apk";
+                        String legacyApk = "wordcraft-" + version + ".apk";
                         boolean hasApk = false;
                         JSONArray assets = release.optJSONArray("assets");
                         if (assets != null) {
                             for (int j = 0; j < assets.length(); j++) {
                                 JSONObject asset = assets.optJSONObject(j);
-                                if (asset != null && expectedApk.equals(asset.optString("name", ""))) {
+                                if (asset != null && (expectedApk.equals(asset.optString("name", ""))
+                                        || legacyApk.equals(asset.optString("name", "")))
+                                        && asset.optLong("size", 0) > 0) {
                                     hasApk = true;
                                     break;
                                 }
@@ -292,6 +297,14 @@
                 } catch (Exception ignored) { }
             }
         });
+    }
+
+    // Immediate, native Android feedback; editor confirmation remains in its
+    // persistent non-floating status strip, including errors and release links.
+    public void wcShowUpdateMessage(String message) {
+        if (message == null || message.isEmpty()) return;
+        runOnUiThread(() -> android.widget.Toast.makeText(
+                this, message, android.widget.Toast.LENGTH_LONG).show());
     }
 
     public String wcPollUpdateResult() { return wcUpdateEvents.poll(); }

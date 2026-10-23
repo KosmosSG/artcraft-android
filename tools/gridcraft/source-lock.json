@@ -11,9 +11,9 @@
   "production_package": "com.artcraft.gridcraft",
   "target_abi": "arm64-v8a",
   "implementation_reference": "MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
-  "icon_original_name": "Glossy Green Xc App Icon(1).png",
-  "icon_source_sha256": "8c0db50831bd715812212c04f156029cfeabd1be82cf5bd777c9db5547063d19",
-  "icon_lettering": "Xc",
+  "icon_original_name": "Glossy Green Gc App Icon.png",
+  "icon_source_sha256": "b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06",
+  "icon_lettering": "Gc",
   "icon_intended_repository_path": "assets/gridcraft/launcher-source.png",
   "icon_committed": false,
   "version_code_reserved": null,
@@ -29,5 +29,9 @@
     "visible_update_status": true,
     "approved_icon_required": true,
     "per_app_signing_required": true
-  }
+  },
+  "icon_source_dimensions": [
+    1254,
+    1254
+  ]
 }

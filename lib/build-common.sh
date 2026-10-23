@@ -2037,7 +2037,7 @@ try:
         values = staging_dir / "res" / "values"
         values.mkdir(parents=True, exist_ok=True)
         (values / "pdfcraft_colors.xml").write_text(
-            '<resources><color name="pdfcraft_bg">#080405</color></resources>\n'
+            '<resources><color name="pdfcraft_bg">#980006</color></resources>\n'
         )
 
     serde_dep = 'serde_json = { workspace = true }\n' if (saf or _persist) else ''

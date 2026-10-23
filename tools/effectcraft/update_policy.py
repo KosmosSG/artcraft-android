@@ -40,11 +40,12 @@ def parse_tag(tag: str) -> tuple[int, int, int, int] | None:
 
 
 def preliminary_candidates(
-    releases: Sequence[Mapping], installed_version_name: str
+    releases: Sequence[Mapping], installed_version_name: str, *, include_preview: bool = True
 ) -> list[Candidate]:
     """Filter metadata without trusting it as a signed update.
 
-    Excludes upstream desktop tags, other apps, draft/prerelease records,
+    Excludes upstream desktop tags, other apps and drafts; prereleases are
+    included only in the selected preview channel. Rejects
     duplicate or missing exact APK filenames and untrusted download hosts.
     No release metadata can bypass APK hash and certificate verification.
     """
@@ -56,7 +57,7 @@ def preliminary_candidates(
     for release in releases:
         if not isinstance(release, Mapping):
             continue
-        if release.get("draft") or release.get("prerelease"):
+        if release.get("draft") or (release.get("prerelease") and not include_preview):
             continue
         tag = release.get("tag_name", "")
         value = parse_tag(tag)

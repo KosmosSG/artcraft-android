@@ -359,6 +359,27 @@ final class VectorCraftExtras {
         if (!folder.delete()) Log.w(TAG, "Could not clear temporary font file " + folder);
     }
 
+    private static final String UPDATE_PREFS = "vectorcraft.android.updates";
+
+    void showUpdateChannelSettings() {
+        activity.runOnUiThread(() -> {
+            boolean includePreview = activity.getSharedPreferences(UPDATE_PREFS, android.content.Context.MODE_PRIVATE)
+                .getBoolean("include_preview_releases", true);
+            new android.app.AlertDialog.Builder(activity)
+                .setTitle("VectorCraft Update Channel")
+                .setSingleChoiceItems(
+                    new String[]{"Stable Releases Only", "Stable + Preview Releases"},
+                    includePreview ? 1 : 0,
+                    (dialog, selected) -> {
+                        activity.getSharedPreferences(UPDATE_PREFS, android.content.Context.MODE_PRIVATE)
+                            .edit().putBoolean("include_preview_releases", selected == 1).apply();
+                        dialog.dismiss();
+                    })
+                .setNegativeButton("Cancel", null)
+                .show();
+        });
+    }
+
     void checkForUpdates() {
         updateIo.execute(() -> {
             HttpURLConnection connection = null;
@@ -387,11 +408,13 @@ final class VectorCraftExtras {
                 String installed = activity.getPackageManager()
                         .getPackageInfo(activity.getPackageName(), 0).versionName;
                 if (installed == null) installed = "0.0.0";
+                boolean includePreview = activity.getSharedPreferences(UPDATE_PREFS, android.content.Context.MODE_PRIVATE)
+                    .getBoolean("include_preview_releases", true);
                 String latest = null, releaseUrl = null;
                 for (int i = 0; i < releases.length(); i++) {
                     JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft")
-                            || release.optBoolean("prerelease")) continue;
+                            || (!includePreview && release.optBoolean("prerelease"))) continue;
                     String tag = release.optString("tag_name", "");
                     if (!tag.startsWith(TAG_PREFIX)) continue;
                     String version = tag.substring(TAG_PREFIX.length());

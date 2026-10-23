@@ -26,6 +26,18 @@ def patch(builder: Path):
 #[cfg(target_os = "android")]
 static ANDROID_MENU_BITS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
+#[cfg(target_os = "android")]
+static ANDROID_TOUCH_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+static ANDROID_STARTUP_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+pub fn set_android_preferences(touch: bool, startup: bool) {
+    use std::sync::atomic::Ordering::Release;
+    ANDROID_TOUCH_ENABLED.store(touch, Release);
+    ANDROID_STARTUP_ENABLED.store(startup, Release);
+}
 
 #[cfg(target_os = "android")]
 pub fn take_android_menu_bits() -> u32 {
@@ -50,6 +62,7 @@ pub fn take_android_menu_bits() -> u32 {
             "android.vectorcraft.updates" => 8,
             "android.vectorcraft.startupUpdates" => 16,
             "android.vectorcraft.touchPad" => 32,
+            "android.vectorcraft.diagnostics" => 64,
             _ => 0,
         };
         if bit != 0 {
@@ -58,6 +71,16 @@ pub fn take_android_menu_bits() -> u32 {
         }
     }
 """)
+    s=insert_once(s,
+        'pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {\\n',
+        '''pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
+    #[cfg(target_os = "android")]
+    match id {
+        "android.vectorcraft.touchPad" => return Some(ANDROID_TOUCH_ENABLED.load(std::sync::atomic::Ordering::Acquire)),
+        "android.vectorcraft.startupUpdates" => return Some(ANDROID_STARTUP_ENABLED.load(std::sync::atomic::Ordering::Acquire)),
+        _ => (),
+    }
+''')
     s=insert_once(s,
         '            "Type",\n            vec![\n                sub("Font", font_items(english_names)),',
         """            "Type",
@@ -72,7 +95,8 @@ pub fn take_android_menu_bits() -> u32 {
         """            "Help",
             vec![
                 c("Check for VectorCraft Updates", "android.vectorcraft.updates"),
-                c("Toggle Automatic Startup Update Check", "android.vectorcraft.startupUpdates"),
+                c("Check for Updates at Startup", "android.vectorcraft.startupUpdates"),
+                c("Graphics Diagnostics…", "android.vectorcraft.diagnostics"),
                 Sep,
                 c("Join Our Discord", "help.discord"),""")
     s=insert_once(s,

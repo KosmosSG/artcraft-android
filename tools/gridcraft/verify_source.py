@@ -11,7 +11,7 @@ from pathlib import Path
 LOCK = Path(__file__).with_name("source-lock.json")
 UPSTREAM = "storytold/gridcraft"
 REF_BUILDER = "MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af"
-ICON_SHA = "8c0db50831bd715812212c04f156029cfeabd1be82cf5bd777c9db5547063d19"
+ICON_SHA = "b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06"
 
 def validate(data):
     assert data["app"] == "gridcraft"
@@ -32,10 +32,11 @@ def validate(data):
                     "per_app_signing_required"):
         assert parity.get(feature) is True, "Missing mandatory ArtCraft feature requirement: " + feature
     assert data["implementation_reference"] == REF_BUILDER
-    assert data["icon_original_name"] == "Glossy Green Xc App Icon(1).png"
+    assert data["icon_original_name"] == "Glossy Green Gc App Icon.png"
     assert data["icon_source_sha256"] == ICON_SHA
-    assert data["icon_lettering"] == "Xc"
+    assert data["icon_lettering"] == "Gc"
     assert data["icon_intended_repository_path"] == "assets/gridcraft/launcher-source.png"
+    assert data["icon_source_dimensions"] == [1254, 1254]
     assert type(data["icon_committed"]) is bool
     if data["icon_committed"]:
         import hashlib

@@ -42,6 +42,14 @@ Future signed-APK release gate: `python3 tools/suite_feature_parity.py
   `appname-vX.Y.Z-android.N` and its exact signed APK asset. Support
   previous published legacy filenames if an installed older app requires one,
   without weakening the identity checks.
+- Offer a **persisted Update Channel** selector: **Stable Releases Only** or
+  **Stable + Preview Releases**, initially selecting **Stable + Preview** as
+  specifically requested by the suite owner. This is independent of the startup
+  check preference. The choice survives in-place APK updates. The preview
+  channel admits eligible GitHub prereleases but NEVER draft releases, other
+  Craft APKs, missing/unuploaded assets, or older versions. Clearly label
+  preview builds as potentially untested and never auto-install them. An
+  eligible preview is not falsely described as a stable release.
 - Offer a persisted **Check for updates at startup** option, **OFF by default**.
   Manual checks always remain available. Startup/network errors never block
   opening or editing documents. Offline, rate limit and missing-release
@@ -72,7 +80,9 @@ These are **required tasks**, not claims of completion:
 4. Put font controls at the bottom of **Type** (when present) and update
    controls under **Help**, immediately below About. Keep every upstream
    command and PhotoCraft-style UI layout consistent.
-5. Automated CI checks must cover source integration, Android package
+5. Automated CI checks must cover a saved stable/preview selector (including
+   behavior against eligible prereleases, drafts, unrelated apps and older
+   releases), source integration, Android package
    permissions, font persistence/error-handling, updater version/security
    filters, and release metadata.
 6. Verify the **exact permanently signed APK** on target HONOR MagicPad 4:

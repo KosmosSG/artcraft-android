@@ -1103,9 +1103,9 @@ impl eframe::App for VectorCraftAndroidApp {
         }
         if self.updates.open {
             let mut open = self.updates.open;
-            egui::Window::new("VectorCraft Updates").open(&mut open)
-                .default_pos([50.0, 170.0])
-                .show(ctx, |ui| {
+            egui::Panel::bottom("vectorcraft.android.update_status")
+                .resizable(false)
+                .show(ui, |ui| {
                     ui.label(&self.updates.message);
                     if self.updates.checking {
                         ui.spinner();
@@ -1116,6 +1116,7 @@ impl eframe::App for VectorCraftAndroidApp {
                             }
                         }
                     }
+                    if ui.small_button("Dismiss").clicked() { open = false; }
                 });
             self.updates.open = open;
         }

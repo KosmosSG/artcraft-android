@@ -119,7 +119,7 @@ def main() -> None:
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
         "    wc_logic = '        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
-        "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        ' if app == 'wordcraft' else ''\n"
+        "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui.ctx());\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",
         "initialize WordCraft-only shell fields",
     )

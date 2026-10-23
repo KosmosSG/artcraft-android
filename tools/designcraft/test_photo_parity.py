@@ -21,6 +21,9 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('"Type" => &["app.artcraftImportFont"', after)
             self.assertIn('"Help" => &["help.artcraftCheckUpdates"', after)
             self.assertIn('"Window" => &["window.artcraftShortcutPad"', after)
+            self.assertIn('entries.extend(ids.iter().map(|id| cmd_item(id, Value::Null)))', after)
+            self.assertIn('entries.push(Item::Sep)', after)
+            self.assertNotIn('entries.splice(0..0, android)', after)
             with self.assertRaises(ValueError):
                 apply(edited)
 

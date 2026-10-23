@@ -38,7 +38,8 @@ from suite_feature_parity import read_contract, APP_IDS, FEATURE_IDS
 feature_contract=read_contract()
 assert feature_contract['reference_app']=='photocraft'
 assert len(feature_contract['app_status'])==len(APP_IDS)==13
-assert len(FEATURE_IDS)==10
+assert len(FEATURE_IDS)==11
+assert 'update_channel_selection' in FEATURE_IDS
 
 expected=["photocraft","vectorcraft","designcraft","filmcraft","pdfcraft","wordcraft","deckcraft","effectcraft","lightcraft","soundcraft","cadcraft","figcraft","gridcraft"]
 apps=d.get("apps",{})

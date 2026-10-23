@@ -20,8 +20,10 @@ def apply(builder: Path, source: Path, suite: Path):
     # Do not crop, repaint, neutralize its highlights or recolor the LC glass.
     # The original icon is a complete blue rounded-square tile, NOT a
     # foreground glyph to background-strip and shrink to 66dp.
-    # Render the original pixel artwork as a comfortably inset full icon on
-    # Android's 108dp adaptive canvas. Its background uses the actual blue
+    # Keep the full source tile intact, but draw it at 70% of the 108dp
+    # adaptive canvas; that brings the LC letters into the guaranteed central
+    # 72dp launcher's safe region even on HONOR MagicOS's aggressive mask.
+    # Android's background uses the actual blue
     # from an interior sample so MagicOS never shows the wrong teal surround.
     icons = builder / "lib/app_icons.py"
     original = icons.read_text()
@@ -34,7 +36,8 @@ def apply(builder: Path, source: Path, suite: Path):
         "        sample = pristine.getpixel((WORK_PX // 2, WORK_PX // 4))\n"
         "        color = '#%02X%02X%02X' % sample[:3]\n"
         "        # Preserve every original pixel; only scale and center the full tile.\n"
-        "        side = round(CANVAS_PX * 0.85)\n"
+        "        # Keep original tile centered; avoid MagicOS launcher clipping.\n"
+        "        side = round(CANVAS_PX * 0.70)\n"
         "        icon = pristine.resize((side, side), Image.Resampling.LANCZOS)\n"
         "        foreground = Image.new('RGBA', (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))\n"
         "        foreground.alpha_composite(icon, ((CANVAS_PX-side)//2, (CANVAS_PX-side)//2))\n"

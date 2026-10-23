@@ -1,0 +1,132 @@
+name: PDFCraft verified permanent signing and release (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: Successful PDFCraft v0.12.0 candidate run ID
+        required: true
+      candidate_sha:
+        description: Exact reviewed candidate commit SHA (40 hex characters)
+        required: true
+      publish:
+        description: Publish the verified APK to GitHub Releases
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pdfcraft-production-release
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Validate successful candidate source and download APK
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.candidate_run }}
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
+          jq -e --arg sha "$EXPECTED_SHA" '.conclusion == "success" and .head_sha == $sha and .head_branch == "pdfcraft-v0.10.1-android1-candidate" and .path == ".github/workflows/pdfcraft-candidate.yml"' run.json
+          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n PDFCraft-0.12.0-android.1-EPHEMERAL-NOT-UPDATE -D candidate
+          test -f candidate/pdfcraft-0.12.0-android.1.apk
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Sign and verify with the permanent PDFCraft identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PDFCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PDFCRAFT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PDFCRAFT_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PDFCRAFT_KEY_ALIAS }}
+          CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" && test -n "$KEY_ALIAS"
+          [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pdfcraft.p12"
+          trap 'rm -f "$RUNNER_TEMP/pdfcraft.p12"' EXIT
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/apksigner"
+          mkdir release
+          APK=release/PDFCraft-v0.12.0-arm64-release.apk
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 candidate/pdfcraft-0.12.0-android.1.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/pdfcraft.p12" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$APK" aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > release/signature.txt
+          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/signature.txt)"
+          test "${ACTUAL,,}" = "${CERT_SHA256,,}"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" > release/package.txt
+          grep -q "package: name='com.artcraft.pdfcraft'" release/package.txt
+          grep -q "versionName='0.12.0-android.1'" release/package.txt
+          grep -q "versionCode='16780288'" release/package.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          python3 - <<'PY'
+          import zipfile
+          before=zipfile.ZipFile('candidate/pdfcraft-0.12.0-android.1.apk')
+          after=zipfile.ZipFile('release/PDFCraft-v0.12.0-arm64-release.apk')
+          def payload(z):
+              return {n:z.read(n) for n in z.namelist() if not n.startswith('META-INF/')}
+          assert payload(before)==payload(after), 'Signing changed application payload'
+          libs=[n for n in after.namelist() if n.startswith('lib/') and n.endswith('.so')]
+          assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+          assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in after.namelist())
+          PY
+          (cd release && sha256sum PDFCraft-v0.12.0-arm64-release.apk > SHA256SUMS.txt)
+      - name: Retain verified signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFCraft-v0.12.0-permanently-signed
+          path: release/
+          retention-days: 90
+          if-no-files-found: error
+  publish:
+    needs: sign
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: PDFCraft-v0.12.0-permanently-signed
+          path: release
+      - name: Publish a new release without replacing any existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.sign.outputs.sha }}
+        run: |
+          set -euo pipefail
+          TAG=pdfcraft-v0.12.0-android.1
+          # Listing must succeed; network/permission errors never mean a tag is absent.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/git/refs/tags" > tags.json
+          if jq -e --arg ref "refs/tags/$TAG" '.[] | select(.ref == $ref)' tags.json >/dev/null; then
+            echo 'Release tag already exists; refusing overwrite'; exit 1
+          fi
+          cat > notes.md <<'EOF'
+          Unofficial Android ARM64 port of PDFCraft v0.12.0 (upstream commit 39844f06b58bc96bae72d3fb56faaa3b6201c945).
+
+          Includes Android document-picker integration, font import/shared font folder, and GitHub release checking with an opt-in startup setting. The in-app checker opens the GitHub release page. Download the APK there and open it with Android's package installer; direct in-app downloading/installing is not implemented.
+
+          Build checks verify package com.artcraft.pdfcraft, version 0.12.0-android.1 (16780288), ARM64 libraries, permanent PDFCraft certificate, and unchanged application payload after signing.
+
+          HONOR MagicPad 4 runtime behavior and PDF editing/save fidelity have not been physically verified. Back up documents before testing. This is not an official storytold distribution.
+          EOF
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$CANDIDATE_SHA" \
+            --title 'PDFCraft 0.12.0-android.1' --notes-file notes.md --latest release/*
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,assets

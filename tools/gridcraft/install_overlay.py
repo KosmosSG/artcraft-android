@@ -34,13 +34,30 @@ def install(builder: Path, additions: Path):
     required = ("if saf:", "GridCraftActivity", "mod ime_bridge;", "system_fonts::install_system_fonts(ui.ctx());")
     if any(item not in text for item in required):
         raise RuntimeError("Pinned builder lacks GridCraft SAF or font/keyboard infrastructure")
-    for file in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):
+    for file in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc", "GridCraftNativeMenu.rs.inc"):
         if not (additions / file).is_file():
             raise RuntimeError(f"Missing reviewed enhancement source {file}")
     dest = builder / "tools/gridcraft_android"
     if dest.exists():
         raise RuntimeError("A GridCraft overlay directory already exists; refusing overwrite")
-    # Do not touch source/<app>, keys, other app adapters or .github workflows.
+    # Patch only the pinned GridCraft checkout, never the suite or other apps.
+    # Its existing title bar provides a native anchored menu; the generated
+    # Android shell handles Java actions through egui Context data on next frame.
+    ribbon = builder / "source/gridcraft/crates/ui-egui/src/ribbon.rs"
+    if not ribbon.is_file():
+        raise RuntimeError("Pinned GridCraft UI ribbon not found")
+    ribbon_source = ribbon.read_text()
+    menu_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
+    menu_marker = "GRIDCRAFT_ANDROID_NATIVE_MENU_V1"
+    if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
+        raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
+    native_menu = (additions / "GridCraftNativeMenu.rs.inc").read_text()
+    if native_menu.count(menu_marker) != 1 or 'ui.menu_button("GridCraft Tools"' not in native_menu:
+        raise RuntimeError("GridCraft top menu contract missing")
+    patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
+    # Other projects, signing keys, upstream releases and publisher untouched.
+    ribbon.write_text(patched_ribbon)
+    # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):
         shutil.copyfile(additions / item, dest / item)
@@ -48,7 +65,7 @@ def install(builder: Path, additions: Path):
     # Inject immediately AFTER the generator writes lib.rs, before its
     # atomic staging-directory rename publishes the Android launcher.
     source.write_text(text.replace(TRIGGER, TRIGGER + "\n" + SNIPPET, 1))
-    print("Installed isolated GridCraft source overlay in disposable builder checkout.")
+    print("Installed isolated GridCraft native top Tools menu and Android source overlay.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

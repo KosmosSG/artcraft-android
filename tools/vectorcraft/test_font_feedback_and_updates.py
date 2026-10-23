@@ -76,6 +76,13 @@ class VectorCraftFeedbackTests(unittest.TestCase):
         self.assertIn('if (!tag.startsWith(TAG_PREFIX)) continue;', self.extras)
         self.assertIn('release.optBoolean("draft")', self.extras)
         self.assertIn('release.optBoolean("prerelease")', self.extras)
+        self.assertIn('(!includePreview && release.optBoolean("prerelease"))', self.extras)
+        self.assertIn('getBoolean("include_preview_releases", true)', self.extras)
+        self.assertIn('Stable + Preview Releases', self.extras)
+        self.assertIn('vcShowUpdateChannelSettings', self.java)
+        self.assertIn('vcShowUpdateChannelSettings', self.rust)
+        self.assertIn('"android.vectorcraft.updateChannel" => 128', self.menus)
+        self.assertIn('Update Channel…', self.menus)
         self.assertNotIn('ACTION_INSTALL_PACKAGE', self.extras)
         self.assertNotIn('INSTALL_PACKAGES', self.java)
 

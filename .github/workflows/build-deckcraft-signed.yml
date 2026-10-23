@@ -240,8 +240,9 @@ jobs:
           expected_cert="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]')"
           [[ "$actual_cert" == "$expected_cert" ]] || { echo "::error::Permanent signing key differs from original DeckCraft backup certificate"; exit 1; }
           apk_source="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
-          apk_final="$GITHUB_WORKSPACE/artifact/DeckCraft-v0.9.0-arm64-release.apk"
+          apk_final="$GITHUB_WORKSPACE/artifact/DeckCraft-v0.9.0-android.1-arm64-v8a.apk"
           test -s "$apk_source"
+          test "$(basename "$apk_final")" = "DeckCraft-v${DECKCRAFT_VERSION_NAME}-arm64-v8a.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
             --ks "$keyfile" --ks-type PKCS12 --ks-key-alias "$DECKCRAFT_KEY_ALIAS" \
             --ks-pass env:DECKCRAFT_KEYSTORE_PASSWORD --key-pass env:DECKCRAFT_KEY_PASSWORD \
@@ -271,15 +272,15 @@ jobs:
           assert libs and all(p.startswith('lib/arm64-v8a/') for p in libs), libs
           print('PASS: ARM64-only native libraries')
           PY
-          (cd artifact && sha256sum DeckCraft-v0.9.0-arm64-release.apk > SHA256SUMS.txt)
+          (cd artifact && sha256sum DeckCraft-v0.9.0-android.1-arm64-v8a.apk > SHA256SUMS.txt)
           printf '%s\n' "$actual_cert" > artifact/deckcraft-signing-certificate-sha256.txt
 
       - name: Retain verified, permanently signed APK for owner device testing
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: DeckCraft-v0.9.0-arm64-permanent-signed-device-test
+          name: DeckCraft-v0.9.0-android.1-arm64-permanent-signed-device-test
           path: |
-            artifact/DeckCraft-v0.9.0-arm64-release.apk
+            artifact/DeckCraft-v0.9.0-android.1-arm64-v8a.apk
             artifact/SHA256SUMS.txt
             artifact/deckcraft-signing-certificate-sha256.txt
           retention-days: 14

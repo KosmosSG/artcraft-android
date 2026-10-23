@@ -58,6 +58,9 @@ class LightCraftUpdatesSourceContract(unittest.TestCase):
         integration = (ROOT / "apply_android_fixes.py").read_text()
         self.assertIn("exact approved adaptive icon", integration)
         self.assertIn("foreground.alpha_composite(icon", integration)
+        self.assertIn("side = round(CANVAS_PX * 0.70)", integration)
+        self.assertNotIn("side = round(CANVAS_PX * 0.85)", integration)
+        self.assertIn("sample = pristine.getpixel", integration)
         self.assertNotIn("_lightcraft_borderless", integration)
         self.assertNotIn("pixels[x,y] =", integration)
 

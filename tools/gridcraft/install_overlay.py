@@ -44,7 +44,10 @@ def install(builder: Path, additions: Path):
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):
         shutil.copyfile(additions / item, dest / item)
-    source.write_text(text.replace(TRIGGER, SNIPPET + TRIGGER, 1))
+    # All generated files (Cargo.toml, Java Activity, Rust lib.rs) must exist first.
+    # Inject immediately AFTER the generator writes lib.rs, before its
+    # atomic staging-directory rename publishes the Android launcher.
+    source.write_text(text.replace(TRIGGER, TRIGGER + "\n" + SNIPPET, 1))
     print("Installed isolated GridCraft source overlay in disposable builder checkout.")
 
 if __name__ == "__main__":

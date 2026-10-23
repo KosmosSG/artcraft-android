@@ -104,6 +104,31 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertNotIn("gh release create", rust)
         self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
 
+    def test_bottom_tools_show_hide_persists_and_restores_without_floating_window(self):
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        # The native addon reads an app-private preference and provides a
+        # tiny anchored restore affordance when the full tools dock is hidden.
+        for expected in (
+            'gcToolsPanelVisible', 'gcSetToolsPanelVisible',
+            'panel_visible: bool', 'panel_loaded: bool',
+            'fn read_panel_visible(&self)', 'fn write_panel_visible(&self, visible: bool)',
+            'self.set_panel_visible(false)', 'self.set_panel_visible(true)',
+            'egui::Panel::bottom("gridcraft.android.suite_tools_restore")',
+            'egui::Panel::bottom("gridcraft.android.suite_tools_dock")',
+            'Show GridCraft Tools ▲', 'Hide Panel ▼',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, rust)
+        self.assertIn('getBoolean("bottom_tools_visible", false)', java)
+        self.assertIn('putBoolean("bottom_tools_visible", visible).apply()', java)
+        self.assertLess(rust.index('if !self.panel_visible {'), rust.index('// The spreadsheet uses a light workbook UI.'))
+        self.assertNotIn('egui::Window::new', rust)
+        # Showing/hiding tools must not interrupt the Java font or updater queues.
+        self.assertIn('self.tools.poll();', (SOURCE / "overlay.py").read_text())
+        self.assertIn('gcCheckForUpdates()', java)
+        self.assertIn('gcImportFont()', java)
+
     def test_other_app_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

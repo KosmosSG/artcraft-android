@@ -8,6 +8,7 @@ on:
       - 'configs/photocraft-v0.14.0-android.1.json'
       - 'tools/photocraft_v014_compat.py'
       - 'tools/photocraft_v014_menu_port.py'
+      - 'tools/photocraft_v014_brand_port.py'
       - 'adapters/photocraft/**'
       - 'templates/android/**'
   workflow_dispatch:

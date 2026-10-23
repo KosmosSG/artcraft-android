@@ -78,6 +78,7 @@ jobs:
           cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
           cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
           cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+          python3 tools/vectorcraft/patch_android_menus.py builder
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -167,6 +168,7 @@ jobs:
           cmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
               builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
           python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 tools/vectorcraft/patch_android_menus.py builder
           python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
       - uses: actions/setup-java@v4
         with:
@@ -186,10 +188,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ICON="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
-          test -s "$ICON"
-          # Fail closed until the exact original 1254x1254 RGBA PNG is committed.
-          python3 tools/vectorcraft/verify_approved_icon.py "$ICON"
+          ORIGINAL="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
+          test -s "$ORIGINAL"
+          python3 tools/vectorcraft/verify_approved_icon.py "$ORIGINAL"
+          # Do not change the approved source: only use a border-free derivative
+          # for Android's adaptive launcher, like the released PhotoCraft icon.
+          ICON="$GITHUB_WORKSPACE/vectorcraft-vc-no-border.png"
+          python3 tools/vectorcraft/clean_launcher_icon.py "$ORIGINAL" "$ICON"
           bash builder/build.sh -vectorcraft "-appicon=$ICON"
       - name: Export unsigned payload only
         shell: bash

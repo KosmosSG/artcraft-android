@@ -115,6 +115,34 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, rust)
 
+    def test_manual_update_checker_has_visible_docked_progress_and_results(self):
+        rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()
+        java = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
+        panel = 'egui::Panel::bottom("vectorcraft.android.update_status")'
+        editor = "self.inner.ui(ui);"
+        self.assertEqual(rust.count(panel), 1)
+        self.assertLess(rust.index(panel), rust.index(editor),
+                        "Update panel must reserve space before editor draws")
+        # The Help menu is consumed AFTER the editor, so explicitly repaint
+        # to make the new progress panel visible on the following frame.
+        click = rust[rust.index("        if check_updates {"):]
+        self.assertIn("self.updates.open = true;", click)
+        self.assertIn("ctx.request_repaint();", click.split("        if check_updates {", 1)[1])
+        self.assertIn('self.updates.message = "Checking GitHub releases…".into()', click)
+        self.assertIn('Some("up_to_date")', rust)
+        self.assertIn('Some("update_available")', rust)
+        self.assertIn('Some("no_release")', rust)
+        self.assertIn("Update check failed:", rust)
+        self.assertIn("Update check timed out.", rust)
+        self.assertIn("started_at: Option<std::time::Instant>", rust)
+        self.assertIn("ctx.request_repaint_after", rust)
+        self.assertIn('ui.small_button("Dismiss")', rust)
+        self.assertIn("ui.spinner()", rust)
+        self.assertIn('connection.setConnectTimeout(8000)', java)
+        self.assertIn('connection.setReadTimeout(8000)', java)
+        # Clicking Check for Updates does NOT silently download/install APKs.
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
+
     def test_signing_guards_still_required_and_no_release_published(self):
         workflow = WORKFLOW.read_text()
         for marker in ("VECTORCRAFT_KEYSTORE_BASE64", "VECTORCRAFT_CERT_SHA256",

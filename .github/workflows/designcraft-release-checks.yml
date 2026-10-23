@@ -29,7 +29,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Validate menus, icon masks and generated Android activity
+      - name: Validate menus, icon masks, launcher generation and update policy
         shell: bash
         run: |
           set -euo pipefail
@@ -39,12 +39,10 @@ jobs:
           python3 tools/designcraft/make_icon.py builder/dc-icon.png
           python3 tools/designcraft/stage_launcher.py builder
           mkdir -p "$RUNNER_TEMP/designcraft-java"
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
-          if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
-            "$SDKMANAGER" --install 'platforms;android-35'
-          fi
-          javac -source 17 -target 17 -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
+          # The complete private Gradle build compiles GameActivity and its AndroidX dependencies.
+          # This fast host test exercises the pure release policy independently of Android.
+          javac -source 17 -target 17 \
             -d "$RUNNER_TEMP/designcraft-java" \
-            builder/source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/*.java \
+            builder/source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftUpdatePolicy.java \
             tools/designcraft/DesignCraftUpdatePolicyTest.java
           java -cp "$RUNNER_TEMP/designcraft-java" com.artcraft.designcraft.DesignCraftUpdatePolicyTest

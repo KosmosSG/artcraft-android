@@ -18,6 +18,29 @@
             .putBoolean("check_at_startup", enabled).apply();
     }
 
+    // User-selected channel is app-private and survives in-place upgrades.
+    // This release enables previews because the owner opted in for all Craft apps.
+    // Individual users can switch back to stable-only without uninstalling.
+    public boolean lcGetIncludePreviewUpdates() {
+        return getSharedPreferences("lightcraft.android.updates", MODE_PRIVATE)
+            .getBoolean("include_preview_releases", true);
+    }
+
+    public void lcSetIncludePreviewUpdates(boolean enabled) {
+        getSharedPreferences("lightcraft.android.updates", MODE_PRIVATE).edit()
+            .putBoolean("include_preview_releases", enabled).apply();
+    }
+
+    public String lcGetInstalledVersion() {
+        try {
+            android.content.pm.PackageInfo info =
+                getPackageManager().getPackageInfo(getPackageName(), 0);
+            return info.versionName == null ? "unknown" : info.versionName;
+        } catch (Exception ignored) {
+            return "unknown";
+        }
+    }
+
     /** Initiate a bounded, asynchronous LightCraft-only GitHub check. */
     public void lcCheckForUpdates() {
         lcUpdateIo.execute(() -> {
@@ -52,13 +75,14 @@
                 String installedName = installed.versionName == null ? "unknown" : installed.versionName;
                 long installedCode = android.os.Build.VERSION.SDK_INT >= 28
                     ? installed.getLongVersionCode() : installed.versionCode;
+                final boolean includePreview = lcGetIncludePreviewUpdates();
                 long latestCode = -1L;
                 String latestName = null;
                 String latestPage = null;
                 for (int i = 0; i < releases.length(); i++) {
                     org.json.JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft") ||
-                        release.optBoolean("prerelease")) continue;
+                        (!includePreview && release.optBoolean("prerelease"))) continue;
                     String tag = release.optString("tag_name", "");
                     java.util.regex.Matcher m = java.util.regex.Pattern.compile(
                         "^lightcraft-v([0-9]+)\\.([0-9]+)\\.([0-9]+)-android\\.([1-9][0-9]*)$"
@@ -108,6 +132,7 @@
                 org.json.JSONObject result = new org.json.JSONObject();
                 result.put("installed_version", installedName);
                 result.put("installed_code", installedCode);
+                result.put("channel", includePreview ? "stable_and_preview" : "stable");
                 result.put("status", "ok");
                 if (latestName == null) {
                     result.put("state", "no_release");

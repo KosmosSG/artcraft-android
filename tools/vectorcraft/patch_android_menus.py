@@ -85,20 +85,35 @@ pub fn take_android_menu_bits() -> u32 {
         '            "Type",\n            vec![\n                sub("Font", font_items(english_names)),',
         """            "Type",
             vec![
+                sub("Font", font_items(english_names)),""")
+    # Preserve all upstream Type actions and append Android font commands after
+    # its existing Type Orientation submenu, at the very bottom.
+    s=insert_once(s,
+        '                sub("Type Orientation", vec![c("Horizontal", "type.orientation.horizontal"), c("Vertical", "type.orientation.vertical")]),\n            ],\n        ),\n        ("Select", {',
+        """                sub("Type Orientation", vec![c("Horizontal", "type.orientation.horizontal"), c("Vertical", "type.orientation.vertical")]),
+                Sep,
                 c("Import Font (.ttf / .otf)…", "android.vectorcraft.fontImport"),
                 c("Select Shared Font Folder…", "android.vectorcraft.fontFolder"),
                 c("Refresh Shared Fonts", "android.vectorcraft.fontRefresh"),
-                Sep,
-                sub("Font", font_items(english_names)),""")
+            ],
+        ),
+        ("Select", {""")
     s=insert_once(s,
         '            "Help",\n            vec![\n                c("Join Our Discord", "help.discord"),',
         """            "Help",
             vec![
-                c("Check for VectorCraft Updates", "android.vectorcraft.updates"),
-                c("Check for Updates at Startup", "android.vectorcraft.startupUpdates"),
                 c("Graphics Diagnostics…", "android.vectorcraft.diagnostics"),
                 Sep,
                 c("Join Our Discord", "help.discord"),""")
+    # Place update actions BELOW About VectorCraft, as requested.
+    s=insert_once(s,
+        '                c("About VectorCraft", "help.about"),\n            ],\n        ),\n    ]',
+        """                c("About VectorCraft", "help.about"),
+                c("Check for VectorCraft Updates", "android.vectorcraft.updates"),
+                c("Check for Updates at Startup", "android.vectorcraft.startupUpdates"),
+            ],
+        ),
+    ]""")
     s=insert_once(s,
         '            "Window",\n            vec![\n',
         """            "Window",

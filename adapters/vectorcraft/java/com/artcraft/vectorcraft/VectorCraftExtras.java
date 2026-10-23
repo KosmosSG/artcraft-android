@@ -213,18 +213,54 @@ final class VectorCraftExtras {
         }
     }
 
+    private static String fontDigest(File file) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (InputStream input = new FileInputStream(file)) {
+            byte[] block = new byte[65536];
+            int count;
+            while ((count = input.read(block)) != -1) digest.update(block, 0, count);
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest.digest()) hex.append(String.format(Locale.ROOT, "%02x", b & 255));
+        return hex.toString();
+    }
+
+    // Also recognizes legacy UUID filenames without renaming or deleting existing fonts.
+    private static boolean containsFont(File folder, String digest) throws Exception {
+        File[] children = folder.listFiles();
+        if (children == null) return false;
+        for (File child : children) {
+            if (child.isDirectory()) {
+                if (containsFont(child, digest)) return true;
+            } else if (extension(child.getName()) != null && fontDigest(child).equals(digest)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void importFont(long id, Uri uri) {
+        File target = null;
         try {
             String ext = extension(displayName(uri));
             if (ext == null) throw new java.io.IOException("Choose a .ttf or .otf font");
             File dest = new File(fonts(), "Imported");
             if (!dest.isDirectory() && !dest.mkdirs())
                 throw new java.io.IOException("Cannot create imported font folder");
-            File target = new File(dest, "font-" + UUID.randomUUID() + ext);
+            target = new File(files(), "pending-font-" + UUID.randomUUID());
             copyValidated(activity.getContentResolver().openInputStream(uri), target);
+            String digest = fontDigest(target);
+            if (containsFont(fonts(), digest)) {
+                report(id, "font_import", "ok", "This font is already available", 0);
+                return;
+            }
+            if (!target.renameTo(new File(dest, "font-" + digest + ext)))
+                throw new java.io.IOException("Cannot store imported font");
             report(id, "font_import", "ok", "Font imported to private Fonts/Imported folder", 1);
         } catch (Exception error) {
             report(id, "font_import", "error", error.toString(), 0);
+        } finally {
+            if (target != null) target.delete();
         }
     }
 
@@ -291,6 +327,9 @@ final class VectorCraftExtras {
                         Log.w(TAG, "Could not scan shared font subfolder", unreadableFolder);
                     }
                 }
+                // A partial scan must never evict previously usable fonts.
+                if (skipped > 0 || !pending.isEmpty() || count >= MAX_FONTS)
+                    throw new java.io.IOException("Incomplete shared font scan; previous fonts preserved");
                 File allFonts = fonts();
                 if (!allFonts.isDirectory() && !allFonts.mkdirs())
                     throw new java.io.IOException("Cannot create Fonts folder");

@@ -22,6 +22,11 @@ public final class DesignCraftUpdatePolicyTest {
         if (code != 16800003L || !DesignCraftUpdatePolicy.newer(16800002, code)
                 || DesignCraftUpdatePolicy.newer(code, code) || DesignCraftUpdatePolicy.newer(code, 16800002))
             throw new AssertionError("Version ordering failed");
+        String legacy = DesignCraftUpdatePolicy.REPOSITORY + "/releases/download/"
+                + TAG + "/DesignCraft-" + VERSION + "-arm64-v8a.apk";
+        if (validate(TAG, "com.artcraft.designcraft", 16800003L,
+                DesignCraftUpdatePolicy.CERT, legacy) != 16800003L)
+            throw new AssertionError("Previously installed DesignCraft updater compatibility lost");
         reject(() -> validate("photocraft-v" + VERSION, "com.artcraft.designcraft", code, DesignCraftUpdatePolicy.CERT, APK));
         reject(() -> validate(TAG, "com.artcraft.designcraft.candidate", code, DesignCraftUpdatePolicy.CERT, APK));
         reject(() -> validate(TAG, "com.artcraft.designcraft", code, "0".repeat(64), APK));

@@ -157,7 +157,7 @@ impl Mobile {
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
     pub fn toolbar(&mut self, parent: &mut egui::Ui) {
-        egui::TopBottomPanel::bottom("pdfcraft_android_tools").resizable(false).show_inside(parent, |ui| {
+        egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;

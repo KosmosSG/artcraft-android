@@ -73,8 +73,24 @@ jobs:
           echo 'CHECK: apksigner signing completed'
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > release/signature.txt
           echo 'CHECK: apksigner verification completed'
-          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/signature.txt)"
-          if [ -z "$ACTUAL" ]; then echo '::error::Could not parse certificate SHA-256 from apksigner output'; exit 1; fi
+          ACTUAL="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('release/signature.txt').read_text()
+          for line in text.splitlines():
+              if re.search(r'certificate\\s+SHA[- ]?256\\s+digest', line, re.I):
+                  match = re.search(r'(?i)\\b[0-9a-f]{64}\\b', line)
+                  if match:
+                      print(match.group(0).lower())
+                      break
+          PY
+          )"
+          if [ -z "$ACTUAL" ]; then
+            echo '::error::Could not locate certificate SHA-256 in apksigner report.'
+            echo 'Diagnostic certificate report keys (fingerprints withheld):'
+            grep -Ei 'cert|signer|SHA.?256' release/signature.txt | sed -E 's/[0-9a-fA-F]{64}/[digest withheld]/g' | head -25 || true
+            exit 1
+          fi
           if [ "${ACTUAL,,}" != "${CERT_SHA256,,}" ]; then echo '::error::Permanent certificate fingerprint does not match PDFCraft secret'; exit 1; fi
           echo 'CHECK: permanent certificate fingerprint matched'
           "$BUILD_TOOLS/aapt2" dump badging "$APK" > release/package.txt

@@ -157,6 +157,24 @@ def main(root: Path) -> None:
                         '("About DeckCraft", "app.about"), ("Command Palette", "app.palette")',
                         '("About DeckCraft", "app.about"), ("Import Font…", "app.importFont"), ("Command Palette", "app.palette")',
                         "Help catalogue")
+    # Surface frequently used Android actions in ordinary menus; no floating overlay.
+    menu = replace_once(menu,
+                        '("Open…", "app.openDialog"),',
+                        '("Open…", "app.openDialog"),\n                ("Import Font…", "app.importFont"),',
+                        "visible File menu font import")
+    src = replace_once(src,
+                       '    ("app.about", "About DeckCraft", None, "{}"),',
+                       '    ("app.about", "About DeckCraft", None, "{}"),\n    ("app.checkUpdates", "Check for Updates…", None, "{}"),',
+                       "update command registration")
+    src = replace_once(src,
+                       '"app.about" => self.dialog = Some(dialogs::Dialog::new("about")),',
+                       '"app.about" => self.dialog = Some(dialogs::Dialog::new("about")),\n            "app.checkUpdates" => {\n                self.open_url("https://github.com/KosmosSG/artcraft-android/releases?q=deckcraft");\n                self.notify("Opened DeckCraft release listings; install only verified signed APK updates");\n            },',
+                       "update command dispatch")
+    menu = replace_once(menu,
+                        '("Import Font…", "app.importFont"), ("Command Palette", "app.palette")',
+                        '("Import Font…", "app.importFont"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")',
+                        "visible Help update menu")
+    # The release-list link is intentionally NOT advertised as an automatic semantic-version checker.
     ui.write_text(src)
     menus.write_text(menu)
     print("DeckCraft-only session font import patched: native picker, validation, FontDb registration, command palette")

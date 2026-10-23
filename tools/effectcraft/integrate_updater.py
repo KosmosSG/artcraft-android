@@ -38,6 +38,22 @@ injected = anchor + """
                                     egui::Id::new("artcraft.effectcraft.update_settings_requested"), true));
                                 ui.close();
                             }
+                        }
+                        #[cfg(target_os = "android")]
+                        if label == "Window" {
+                            ui.separator();
+                            ui.menu_button("Fonts", |ui| {
+                                for (title, key) in [
+                                    ("Import Font (TTF/OTF)…", "artcraft.effectcraft.import_font"),
+                                    ("Select Shared Font Folder…", "artcraft.effectcraft.select_fonts"),
+                                    ("Refresh Shared Fonts", "artcraft.effectcraft.refresh_fonts"),
+                                ] {
+                                    if ui.button(title).clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(key), true));
+                                        ui.close();
+                                    }
+                                }
+                            });
                         }"""
 m = once(m, anchor, injected, "EffectCraft Help menu")
 menu.write_text(m)
@@ -46,7 +62,8 @@ j = java.read_text().rstrip()
 if not j.endswith("}") or "ecCheckForUpdates" in j:
     raise SystemExit("STOP: generated Java Activity template changed")
 # This temporary template is used solely to generate EffectCraft's Android Activity.
-j = j[:-1] + addon.read_text() + "\n}\n"
+j = j[:-1] + addon.read_text() + (root / "tools/effectcraft/FontsBridge.java.inc").read_text() + "\n}\n"
+j = once(j, "        super.onActivityResult(requestCode, resultCode, data);", "        super.onActivityResult(requestCode, resultCode, data);\n        if (ecFontActivityResult(requestCode, resultCode, data)) return;", "font picker callback")
 java.write_text(j)
 
 b = builder.read_text()
@@ -83,10 +100,14 @@ after = '''    if app == "effectcraft":
                    "        self.inner.ui(ui, frame);\\\\n        self.updates.ui(ui.ctx());")
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",
                      staging_dir / "src/effectcraft_updater.rs")
-    (staging_dir / "src" / "lib.rs").write_text(entry)'''
+        import runpy
+        runpy.run_path(str(root / "tools/effectcraft/launcher_icon.py"))["generate"](
+            root / "tools/effectcraft/icon/ec-approved-512.png", staging_dir / "res")
+    (staging_dir / "src" / "lib.rs").write_text(entry)''' 
 # Ensure the injected generator sees backslash-n escapes, not newlines within quotes.
 after = after.replace("\\\\\\\\n", "\\\\n")
 after = after.replace(chr(92) * 2 + "n", chr(92) + "n")
 b = once(b, before, after, "EffectCraft launcher generation")
 builder.write_text(b)
 print("Prepared EffectCraft Help > Check for Updates, JNI updater, INTERNET permission and guarded official release links.")
+

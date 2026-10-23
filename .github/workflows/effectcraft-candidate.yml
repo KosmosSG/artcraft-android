@@ -36,7 +36,7 @@ jobs:
           p=json.loads(Path('tools/effectcraft/upstream-lock.json').read_text())
           assert p['official_tag']=='v0.16.0'
           assert p['official_commit']=='9581b53c3f8945683252af0eb5fac79e0e43aed4'
-          assert p['android_version_name']=='0.16.0-android.1'
+          assert p['android_version_name']=='0.16.0-android.2'
           assert p['expected_abi']=='arm64-v8a'
           assert p['proposed_package']=='com.artcraft.effectcraft'
           assert p['permanent_signing_ready'] is False
@@ -96,18 +96,19 @@ jobs:
           ARTCRAFT_TARGET_SDK: '35'
         run: |
           set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
           python3 tools/effectcraft/integrate_updater.py .
           echo '548b40f2997037c5861c602fecfad71ef8bf3c78ad9e6189c8409d0a78629b0b  tools/effectcraft/icon/ec-approved-512.png' | sha256sum -c -
           cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
           bash build.sh -effectcraft -packagename=com.artcraft.effectcraft -appicon=source/effectcraft/ec-approved-512.png
           test -s output/effectcraft-0.16.0.apk
-          mv output/effectcraft-0.16.0.apk output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
+          mv output/effectcraft-0.16.0.apk output/EffectCraft-v0.16.0-android.2-arm64-v8a.apk
 
       - name: Verify signed APK package, version, launcher, ABI and SHA256
         shell: bash
         run: |
           set -euo pipefail
-          APK=output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
+          APK=output/EffectCraft-v0.16.0-android.2-arm64-v8a.apk
           SDK="$ANDROID_HOME/build-tools/35.0.0"
           "$SDK/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/signer.txt"
           "$SDK/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
@@ -118,7 +119,7 @@ jobs:
           apk,txt=sys.argv[1:]
           text=Path(txt).read_text()
           m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",text,re.M)
-          if not m or m.group(1)!='com.artcraft.effectcraft' or m.group(3)!='0.16.0-android.1' or int(m.group(2))<1:
+          if not m or m.group(1)!='com.artcraft.effectcraft' or m.group(3)!='0.16.0-android.2' or int(m.group(2))!=16781314:
               raise SystemExit('STOP: incorrect package/version metadata')
           if 'launchable-activity:' not in text:
               raise SystemExit('STOP: no launcher Activity')
@@ -138,13 +139,14 @@ jobs:
             grep -m1 '^package:' "$RUNNER_TEMP/badging.txt"
             grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/signer.txt"
             cat "$RUNNER_TEMP/sha256.txt"
-            echo 'Pending: permanent EffectCraft signing, Ec icon, SAF font picker, updater UI, device tests.'
+            echo 'Device validation pending: font import/restart, shared folder refresh, native updater and launcher icon. Permanent signing is validated separately in the private signing workflow.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload short-lived Actions artifact (not a GitHub release)
         uses: actions/upload-artifact@v5
         with:
-          name: EffectCraft-v0.16.0-android.1-arm64-EPHEMERAL-NOT-RELEASE
-          path: output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
+          name: EffectCraft-v0.16.0-android.2-arm64-EPHEMERAL-NOT-RELEASE
+          path: output/EffectCraft-v0.16.0-android.2-arm64-v8a.apk
           retention-days: 7
           if-no-files-found: error
+

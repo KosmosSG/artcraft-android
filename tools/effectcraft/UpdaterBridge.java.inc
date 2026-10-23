@@ -35,7 +35,14 @@
     }
 
     // Network I/O always happens on a worker, never Android UI/egui event thread.
-    public void ecCheckForUpdates() {
+    public void ecCheckForUpdates() { ecCheckUpdates(true); }
+    private final java.util.concurrent.atomic.AtomicBoolean ecUpdateBusy = new java.util.concurrent.atomic.AtomicBoolean();
+    private void ecCheckUpdates(boolean manual) {
+        if (!ecUpdateBusy.compareAndSet(false, true)) {
+            if (manual) ecFontMessage("Update check already running");
+            return;
+        }
+        if (manual) ecFontMessage("Checking EffectCraft updates…");
         ecUpdateExecutor.execute(() -> {
             try {
                 String installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
@@ -122,7 +129,7 @@
                         result.put("state", "up_to_date");
                     }
                 }
-                ecUpdateResults.offer(result.toString());
+                ecPresentUpdate(result, manual);
             } catch (Exception error) {
                 android.util.Log.w("EffectCraftUpdater", "Update check failed", error);
                 org.json.JSONObject result = new org.json.JSONObject();
@@ -130,8 +137,8 @@
                     result.put("state", "error");
                     result.put("message", error.getMessage() == null ? "GitHub unavailable" : error.getMessage());
                 } catch (org.json.JSONException ignored) {}
-                ecUpdateResults.offer(result.toString());
-            }
+                ecPresentUpdate(result, manual);
+            } finally { ecUpdateBusy.set(false); }
         });
     }
 
@@ -157,4 +164,28 @@
 
     public boolean ecStartupUpdatesEnabled() {
         return getSharedPreferences("effectcraft_updates", MODE_PRIVATE).getBoolean("startup", false);
+    }
+
+
+    private void ecPresentUpdate(org.json.JSONObject result, boolean manual) {
+        String state = result.optString("state");
+        if (!manual && !"update_available".equals(state)) return;
+        runOnUiThread(() -> {
+            String message;
+            switch (state) {
+                case "update_available": message = "New version: " + result.optString("latest_version") + "\nInstalled: " + result.optString("installed_version"); break;
+                case "up_to_date": message = "EffectCraft is up to date: " + result.optString("installed_version"); break;
+                case "no_release": message = "No published EffectCraft APK is available for your selected update channel yet. Your installed test build can still be used."; break;
+                default: message = "Unable to check updates: " + result.optString("message", "Network unavailable");
+            }
+            android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("EffectCraft Updates").setMessage(message).setNegativeButton("Close", null);
+            String link = result.optString("release_url");
+            if ("update_available".equals(state) && link.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/effectcraft-v"))
+                dialog.setPositiveButton("View Release", (d, w) -> {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link))); }
+                    catch (Exception e) { ecFontMessage("No browser available"); }
+                });
+            if (!isFinishing()) dialog.show();
+        });
     }

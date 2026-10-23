@@ -102,7 +102,15 @@ jobs:
         run: |
           set -euo pipefail
           # NEVER target the future production package or use an established signer.
-          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-source.png"
+          if [ -f "$ICON" ]; then
+            # Use exact user-approved Gc artwork, not generated/stock app icons.
+            echo "b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06  $ICON" | sha256sum -c -
+            bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
+          else
+            echo "::warning::Approved Gc artwork not yet committed: candidate keeps upstream stock icon and is NOT eligible for public release"
+            bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate
+          fi
       - name: Verify candidate package, ABI and compiled enhancement presence
         shell: bash
         run: |

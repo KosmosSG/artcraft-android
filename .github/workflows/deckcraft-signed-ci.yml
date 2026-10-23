@@ -105,6 +105,12 @@ jobs:
           print('Converted user-approved Dk art for builder density/adaptive generation')
           PY
 
+      - name: Normalize Dk icon black surround for Android launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/normalize_deckcraft_icon.py deckcraft/android/icon/deckcraft-approved-192.png
+
       - name: Apply isolated Android-only candidate version metadata
         shell: bash
         run: |

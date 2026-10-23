@@ -16,17 +16,24 @@ def generate(source, output):
     if image.width!=image.height or image.width<512:
         raise ValueError("Expected original high-resolution square Vc artwork")
     w=image.width
-    # Sample the area below the Vc letters but above the rounded-frame base.
-    # Prefer original artwork's brown/orange palette to preserve brand identity.
-    samples=[image.getpixel((int(w*x),int(w*y))) for x,y in
-        [(0.22,0.79),(0.38,0.79),(0.65,0.79),(0.78,0.79)]]
-    samples=[rgb for rgb in samples if rgb[3]>220 and
-        max(rgb[:3])>60 and rgb[0]>rgb[2]*1.3]
-    if not samples:
-        raise ValueError("Approved Vc art has no recognizable opaque orange matte")
-    background=tuple(sorted(color[i] for color in samples)[len(samples)//2] for i in range(3))
-    if min(background)<3 or max(background)<70:
-        raise ValueError("Unsafe dark/black launcher background")
+    # Determine the deep-orange brand matte from pixels across the APPROVED art,
+    # not one fixed scanline (some uploaded PNGs add transparent padding).
+    swatch=image.resize((80,80),Image.Resampling.BOX)
+    candidates=[]
+    for r,g,b,a in swatch.getdata():
+        if a<190 or r<85 or r<1.18*g or r<1.40*b: continue
+        if max(r,g,b)-min(r,g,b)<25: continue
+        # Exclude near-white glass letter highlights.
+        if r>245 and g>210 and b>180: continue
+        candidates.append((r,g,b))
+    if candidates:
+        background=tuple(sorted(px[i] for px in candidates)[len(candidates)//2] for i in range(3))
+    else:
+        # A fixed brown-orange matching the uploaded logo is safer than
+        # allowing black or an untrusted transparent fringe to be the matte.
+        background=(170,57,8)
+    if max(background)<85:
+        raise ValueError("Could not derive a non-black orange brand background")
 
     matte=Image.new("RGBA",(w,w),background+(255,))
     clean=image.copy()

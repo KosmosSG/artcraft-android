@@ -94,6 +94,15 @@ jobs:
           python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vc-no-border.png"
           python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vc-no-border.png"
           python3 tools/vectorcraft_font_feedback_source_check.py port builder/source/vectorcraft
+          # This untracked launcher was staged only for the verification above.
+          # The pinned builder must generate its own marked Android launcher,
+          # otherwise its fail-closed preparation rejects an unmarked directory.
+          TEST_LAUNCHER="builder/source/vectorcraft/apps/vectorcraft-android"
+          test -f "$TEST_LAUNCHER/src/lib.rs"
+          test -f "$TEST_LAUNCHER/Cargo.toml"
+          cmp builder/adapters/vectorcraft/src/lib.rs "$TEST_LAUNCHER/src/lib.rs"
+          test ! -e "$TEST_LAUNCHER/.artcraft-android-builder-generated"
+          rm -rf -- "$TEST_LAUNCHER"
       - name: Compile ARM64 Test APK using disposable builder key
         timeout-minutes: 135
         run: |

@@ -153,7 +153,8 @@ def apply(builder: Path, source: Path, suite: Path):
                             }
                             ui.small("Off by default. Update checks never block photo editing.");
                             let page = ctx.data(|d| d.get_temp::<String>(
-                                egui::Id::new("artcraft.lightcraft.release_page")));
+                                egui::Id::new("artcraft.lightcraft.release_page")))
+                                .filter(|url| !url.is_empty());
                             if page.is_some() && ui.button("Open GitHub Release").clicked() {
                                 ctx.data_mut(|d| d.insert_temp(
                                     egui::Id::new("artcraft.lightcraft.open_release_requested"), true));

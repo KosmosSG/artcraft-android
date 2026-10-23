@@ -1,0 +1,165 @@
+name: PDFCraft ARM64 ephemeral candidate (not a release)
+
+on:
+  push:
+    branches:
+      - pdfcraft-v0.10.1-android1-candidate
+    paths:
+      - .github/workflows/pdfcraft-candidate.yml
+      - lib/build-common.sh
+      - assets/pdfcraft/**
+      - templates/android/pdfcraft_modifiers.rs
+      - templates/android/pdfcraft_mobile.rs
+      - templates/android/pdfcraft_mobile_java.txt
+      - tools/test_pdfcraft_adapter.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdfcraft-ephemeral-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/pdfcraft-v0.10.1-android1-candidate'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.12.0-android.1
+      PDFCRAFT_REF: v0.12.0
+      PDFCRAFT_SHA: 39844f06b58bc96bae72d3fb56faaa3b6201c945
+      PDFCRAFT_ICON_SHA256: 06db604e8029f31be953d1c262964f0b23917b10ee6ec7d7779823605297a823
+      # Transient first-candidate cargo-apk2 code, NOT reserved for published or future Android revisions.
+      EXPECTED_EPHEMERAL_VERSION_CODE: '16780288'
+
+    steps:
+      - name: Checkout isolated candidate only
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Verify the exact stable upstream release tag and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE="https://github.com/storytold/pdfcraft.git"
+          ACTUAL="$(git ls-remote --tags "$REMOTE" "refs/tags/$PDFCRAFT_REF" | awk 'NR == 1 {print $1}')"
+          test "$ACTUAL" = "$PDFCRAFT_SHA" || { echo "::error::Official PDFCraft tag changed, missing, or not verified"; exit 1; }
+          git clone --depth 1 --branch "$PDFCRAFT_REF" "$REMOTE" source/pdfcraft
+          test "$(git -C source/pdfcraft rev-parse HEAD)" = "$PDFCRAFT_SHA"
+          test "$(git -C source/pdfcraft remote get-url origin)" = "$REMOTE"
+          echo "Official PDFCraft $PDFCRAFT_REF resolves to $PDFCRAFT_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Test guarded Android adapter generation
+        run: python3 tools/test_pdfcraft_adapter.py source/pdfcraft
+
+      - name: Prepare approved red PdfC image and density/adaptive inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$PDFCRAFT_ICON_SHA256  assets/pdfcraft/approved-icon.webp" | sha256sum --check
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -q
+            sudo apt-get install -y imagemagick
+          fi
+          # This WebP is a 192px packaging derivative of the approved 1254px upload.
+          # The source-approved PdfC lettering, glass lighting, and red background are retained.
+          convert assets/pdfcraft/approved-icon.webp -resize 512x512 assets/pdfcraft/approved-icon.png
+          convert assets/pdfcraft/approved-icon.webp -resize 278x278 \
+            -background none -gravity center -extent 432x432 \
+            assets/pdfcraft/approved-foreground.png
+          identify assets/pdfcraft/approved-icon.png assets/pdfcraft/approved-foreground.png
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Rust (upstream requires 1.95 or newer)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Test PhotoCraft-derived keyboard fix and PDF object read/write code
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pdfcraft-input-tests/src"
+          cp templates/android/pdfcraft_modifiers.rs "$RUNNER_TEMP/pdfcraft-input-tests/src/lib.rs"
+          cat > "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml" <<'EOF'
+          [package]
+          name = "pdfcraft-input-tests"
+          version = "0.1.0"
+          edition = "2024"
+          [dependencies]
+          egui = "=0.36.0"
+          EOF
+          cargo test --manifest-path "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml"
+          cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-cos --lib -j 2
+
+      - name: Configure Android SDK/NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Compile PDFCraft candidate with disposable builder key
+        shell: bash
+        run: |
+          set -euo pipefail
+          # WARNING: build-common.sh generates a transient builder keystore on this runner.
+          # This is never a PDFCraft permanent signing identity.
+          test ! -f keys/artcraft-builder.jks
+          bash build.sh -pdfcraft -appname=PdfCraft -appicon=assets/pdfcraft/approved-icon.png
+          test -f output/pdfcraft-0.12.0.apk
+          mv output/pdfcraft-0.12.0.apk output/pdfcraft-0.12.0-android.1.apk
+
+      - name: Verify packaged ABI, identity, version, icon and ephemeral signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="output/pdfcraft-0.12.0-android.1.apk"
+          SDK_ROOT="${ANDROID_HOME}"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
+          APKSIGNER="$SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner"
+          "$AAPT2" dump badging "$APK" | tee output/pdfcraft-badging.txt
+          grep -q "package: name='com.artcraft.pdfcraft'" output/pdfcraft-badging.txt
+          grep -q "versionName='0.12.0-android.1'" output/pdfcraft-badging.txt
+          grep -q "versionCode='$EXPECTED_EPHEMERAL_VERSION_CODE'" output/pdfcraft-badging.txt
+          unzip -Z1 "$APK" | tee output/pdfcraft-archive.txt
+          grep -q '^lib/arm64-v8a/.*\.so$' output/pdfcraft-archive.txt
+          if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' output/pdfcraft-archive.txt; then
+            echo "::error::Unexpected non-ARM64 native library"; exit 1
+          fi
+          grep -q 'ic_launcher.png' output/pdfcraft-archive.txt
+          grep -q 'pdfcraft_foreground.png' output/pdfcraft-archive.txt
+          grep -q 'ic_launcher.xml' output/pdfcraft-archive.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee output/pdfcraft-ephemeral-certificate.txt
+          sha256sum "$APK" | tee output/SHA256SUMS.txt
+          echo "CAUTION: transient-key candidate only; not an update or a public release" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hardware / PDF fidelity / SAF round-trip remain untested." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ephemeral candidate for inspection (not public release)
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PDFCraft-0.12.0-android.1-EPHEMERAL-NOT-UPDATE
+          path: |
+            output/pdfcraft-0.12.0-android.1.apk
+            output/pdfcraft-badging.txt
+            output/pdfcraft-archive.txt
+            output/pdfcraft-ephemeral-certificate.txt
+            output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

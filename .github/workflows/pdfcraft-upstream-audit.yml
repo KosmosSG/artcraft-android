@@ -1,0 +1,46 @@
+name: PDFCraft upstream stable-source audit (no build)
+
+on:
+  push:
+    branches:
+      - pdfcraft-v0.10.1-android1-candidate
+    paths:
+      - tools/pdfcraft_stable_audit.py
+      - .github/workflows/pdfcraft-upstream-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/pdfcraft-v0.10.1-android1-candidate'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Resolve official upstream stable release tag and exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/pdfcraft_stable_audit.py | tee pdfcraft-official-audit.json
+          echo '### PDFCraft official upstream — read-only audit' >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`json' >> "$GITHUB_STEP_SUMMARY"
+          cat pdfcraft-official-audit.json >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"
+          echo "Detection alone is not an Android build, verified update, or release." >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate audit JSON fields
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("pdfcraft-official-audit.json").read_text())
+          assert data["repository"] == "storytold/pdfcraft"
+          assert len(data["stable_commit"]) == 40
+          assert data["android_apk_built"] is False
+          assert data["android_release_created"] is False
+          print("Upstream audit ran without modifying or releasing any application.")
+          PY

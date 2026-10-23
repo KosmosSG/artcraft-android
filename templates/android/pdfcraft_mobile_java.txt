@@ -1,0 +1,310 @@
+// PDFCraft-only Android extensions appended inside generated PdfCraftActivity.
+// Not used by PhotoCraft or any other suite app. No APK installation occurs here.
+private static final int PDF_FONT_REQUEST = 0x5351;
+private static final int PDF_FONT_TREE_REQUEST = 0x5352;
+private static final String PDF_FONT_TREE_PREF = "pdfcraft.font.tree.uri";
+private static final String PDF_STARTUP_UPDATE_PREF = "pdfcraft.updater.startup";
+private static final String PDF_RELEASES_API =
+        "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=50";
+private final ConcurrentLinkedQueue<String> pdfFontResults = new ConcurrentLinkedQueue<>();
+private final ConcurrentLinkedQueue<String> pdfUpdateResults = new ConcurrentLinkedQueue<>();
+private final ExecutorService pdfBackground = Executors.newSingleThreadExecutor();
+
+public String pdfFontPoll() { return pdfFontResults.poll(); }
+public String pdfUpdatePoll() { return pdfUpdateResults.poll(); }
+public boolean pdfStartupUpdateEnabled() {
+    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, false);
+}
+public void pdfSetStartupUpdateEnabled(boolean enabled) {
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(PDF_STARTUP_UPDATE_PREF, enabled).apply();
+}
+public void pdfRequestFont() {
+    runOnUiThread(() -> {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");  // Providers label OTF/TTF differently.
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(intent, PDF_FONT_REQUEST);
+        } catch (Exception error) {
+            pdfFontMessage("Font picker error: " + error.getMessage());
+        }
+    });
+}
+public void pdfRequestFontFolder() {
+    runOnUiThread(() -> {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, PDF_FONT_TREE_REQUEST);
+        } catch (Exception error) {
+            pdfFontMessage("Folder picker error: " + error.getMessage());
+        }
+    });
+}
+public void pdfRefreshFontFolder() {
+    String stored = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getString(PDF_FONT_TREE_PREF, null);
+    if (stored == null) {
+        pdfFontMessage("Choose the shared ArtCraft-Fonts folder first");
+        return;
+    }
+    pdfScanFontFolder(Uri.parse(stored));
+}
+private void pdfFontMessage(String message) {
+    try {
+        JSONObject reply = new JSONObject();
+        reply.put("message", message);
+        pdfFontResults.offer(reply.toString());
+    } catch (Exception error) {
+        Log.e(TAG, "Font status could not be queued", error);
+    }
+}
+private boolean pdfHandlePicker(int requestCode, int resultCode, Intent data) {
+    if (requestCode != PDF_FONT_REQUEST && requestCode != PDF_FONT_TREE_REQUEST) return false;
+    if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+        pdfFontMessage("Font selection cancelled");
+        return true;
+    }
+    Uri uri = data.getData();
+    if (requestCode == PDF_FONT_TREE_REQUEST) {
+        try {
+            getContentResolver().takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString(PDF_FONT_TREE_PREF, uri.toString()).apply();
+            pdfScanFontFolder(uri);
+        } catch (Exception error) {
+            pdfFontMessage("Cannot access shared folder: " + error.getMessage());
+        }
+    } else {
+        pdfBackground.execute(() -> {
+            try {
+                String name = displayName(uri);
+                if (name == null) throw new java.io.IOException("Font name unavailable");
+                File target = pdfCopyFont(uri, name);
+                pdfFontMessage("Imported " + target.getName()
+                        + ". Reopen the PDF text-font selector to refresh.");
+            } catch (Exception error) {
+                pdfFontMessage("Font import failed: " + error.getMessage());
+            }
+        });
+    }
+    return true;
+}
+private File pdfCopyFont(Uri uri, String name) throws Exception {
+    String lower = name.toLowerCase(java.util.Locale.ROOT);
+    if (!(lower.endsWith(".ttf") || lower.endsWith(".otf")))
+        throw new java.io.IOException("Only TTF/OTF files are supported");
+    // Use app-owned storage, not the selected document itself. A PDF remains unmodified.
+    File dir = new File(appStorageDir(), "pdfcraft-document-fonts");
+    if (!dir.isDirectory() && !dir.mkdirs())
+        throw new java.io.IOException("Could not create font cache");
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+    File temporary = File.createTempFile("font-", ".tmp", dir);
+    boolean accepted = false;
+    try (InputStream in = getContentResolver().openInputStream(uri);
+         OutputStream out = new FileOutputStream(temporary)) {
+        if (in == null) throw new java.io.IOException("Font provider did not supply a stream");
+        byte[] bytes = new byte[16384];
+        long total = 0;
+        int length;
+        while ((length = in.read(bytes)) != -1) {
+            total += length;
+            if (total > 16L * 1024 * 1024)
+                throw new java.io.IOException("Font exceeds 16 MB size limit");
+            out.write(bytes, 0, length);
+            digest.update(bytes, 0, length);
+        }
+        if (total <= 0) throw new java.io.IOException("Empty font file");
+    } catch (Exception error) {
+        temporary.delete();
+        throw error;
+    }
+    try {
+        // Content-addressed names avoid overwriting other apps' or older imported fonts.
+        StringBuilder hash = new StringBuilder();
+        byte[] bits = digest.digest();
+        for (int i = 0; i < 12; i++) {
+            hash.append(Character.forDigit((bits[i] >> 4) & 15, 16));
+            hash.append(Character.forDigit(bits[i] & 15, 16));
+        }
+        File target = new File(dir, hash + "-" + safeName(name));
+        if (target.exists()) {
+            temporary.delete();
+            accepted = true;
+            return target;
+        }
+        if (!temporary.renameTo(target))
+            throw new java.io.IOException("Could not safely save selected font");
+        accepted = true;
+        return target;
+    } finally {
+        if (!accepted) temporary.delete();
+    }
+}
+private void pdfScanFontFolder(Uri tree) {
+    pdfBackground.execute(() -> {
+        try {
+            boolean allowed = false;
+            for (android.content.UriPermission perm : getContentResolver().getPersistedUriPermissions()) {
+                if (tree.equals(perm.getUri()) && perm.isReadPermission()) { allowed = true; break; }
+            }
+            if (!allowed) throw new SecurityException("Shared-folder grant expired; choose it again");
+            java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
+            java.util.HashSet<String> visited = new java.util.HashSet<>();
+            pending.add(DocumentsContract.getTreeDocumentId(tree));
+            int copied = 0;
+            int skipped = 0;
+            while (!pending.isEmpty() && copied < 200 && visited.size() < 1000) {
+                String parent = pending.removeFirst();
+                if (!visited.add(parent)) continue;
+                Uri list = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent);
+                try (Cursor cursor = getContentResolver().query(list,
+                        new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                                DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                    if (cursor == null) continue;
+                    while (cursor.moveToNext() && copied < 200) {
+                        String id = cursor.getString(0);
+                        String name = cursor.getString(1);
+                        String mime = cursor.getString(2);
+                        if (id == null || name == null) continue;
+                        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                            if (pending.size() + visited.size() < 1000) pending.addLast(id);
+                            continue;
+                        }
+                        String lower = name.toLowerCase(java.util.Locale.ROOT);
+                        if (!(lower.endsWith(".ttf") || lower.endsWith(".otf"))) continue;
+                        if (!cursor.isNull(3) && (cursor.getLong(3) <= 0
+                                || cursor.getLong(3) > 16L * 1024 * 1024)) {
+                            skipped++; continue;
+                        }
+                        try {
+                            Uri font = DocumentsContract.buildDocumentUriUsingTree(tree, id);
+                            pdfCopyFont(font, name);
+                            copied++;
+                        } catch (Exception error) {
+                            skipped++;
+                            Log.w(TAG, "A shared PDFCraft font could not be imported", error);
+                        }
+                    }
+                }
+            }
+            pdfFontMessage("Shared folder refreshed: " + copied + " imported; "
+                    + skipped + " skipped. Reopen text-font selector.");
+        } catch (Exception error) {
+            pdfFontMessage("Shared font folder: " + error.getMessage());
+        }
+    });
+}
+
+public void pdfCheckForUpdates() {
+    pdfBackground.execute(() -> {
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(PDF_RELEASES_API).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("User-Agent", "PDFCraft-Android-Update-Checker");
+            if (conn.getResponseCode() != 200)
+                throw new java.io.IOException("GitHub returned HTTP " + conn.getResponseCode());
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            try (InputStream input = conn.getInputStream()) {
+                byte[] bytes = new byte[8192];
+                int n;
+                while ((n = input.read(bytes)) != -1) {
+                    if (out.size() + n > 1024 * 1024)
+                        throw new java.io.IOException("GitHub response too large");
+                    out.write(bytes, 0, n);
+                }
+            }
+            JSONArray releases = new JSONArray(out.toString("UTF-8"));
+            String installed = getPackageManager().getPackageInfo(
+                    getPackageName(), 0).versionName;
+            if (installed == null) installed = "0.0.0-android.0";
+            String latest = null;
+            String releaseUrl = null;
+            for (int i = 0; i < releases.length(); i++) {
+                JSONObject release = releases.optJSONObject(i);
+                if (release == null || release.optBoolean("draft")
+                        || release.optBoolean("prerelease")) continue;
+                String tag = release.optString("tag_name", "");
+                if (!tag.startsWith("pdfcraft-v")) continue;
+                String candidate = tag.substring("pdfcraft-v".length());
+                if (!candidate.matches("[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+"))
+                    continue;
+                String url = release.optString("html_url", "");
+                if (!url.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/"))
+                    continue;
+                JSONArray assets = release.optJSONArray("assets");
+                boolean apkPresent = false;
+                if (assets != null) for (int j = 0; j < assets.length(); j++) {
+                    JSONObject asset = assets.optJSONObject(j);
+                    if (asset != null && ("PDFCraft-v" + candidate.split("-android\\.")[0] + "-arm64-release.apk")
+                            .equals(asset.optString("name", ""))) apkPresent = true;
+                }
+                if (!apkPresent) continue;
+                if (latest == null || pdfCompareVersions(candidate, latest) > 0) {
+                    latest = candidate;
+                    releaseUrl = url;
+                }
+            }
+            JSONObject reply = new JSONObject();
+            reply.put("installed", installed);
+            if (latest == null) {
+                reply.put("message", "No published PDFCraft Android APK release found.");
+            } else {
+                reply.put("latest", latest);
+                if (pdfCompareVersions(latest, installed) > 0) reply.put("url", releaseUrl);
+                reply.put("message", pdfCompareVersions(latest, installed) > 0
+                        ? "New PDFCraft Android release: " + latest
+                        : "PDFCraft Android is up to date: " + installed);
+            }
+            pdfUpdateResults.offer(reply.toString());
+        } catch (Exception error) {
+            try {
+                JSONObject reply = new JSONObject();
+                reply.put("message", "Update check failed: " + error.getMessage());
+                pdfUpdateResults.offer(reply.toString());
+            } catch (Exception ignored) { }
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    });
+}
+private static int pdfCompareVersions(String a, String b) {
+    int[] left = pdfVersionParts(a), right = pdfVersionParts(b);
+    for (int i = 0; i < 4; i++) {
+        if (left[i] != right[i]) return Integer.compare(left[i], right[i]);
+    }
+    return 0;
+}
+private static int[] pdfVersionParts(String value) {
+    int[] result = {0, 0, 0, 0};
+    String[] parts = value.split("[-.]");
+    for (int i = 0; i < 3 && i < parts.length; i++) {
+        try { result[i] = Integer.parseInt(parts[i]); }
+        catch (NumberFormatException ignored) { }
+    }
+    if (parts.length >= 5 && "android".equals(parts[3])) {
+        try { result[3] = Integer.parseInt(parts[4]); }
+        catch (NumberFormatException ignored) { }
+    }
+    return result;
+}
+public void pdfOpenReleasePage(String url) {
+    if (url == null || !url.startsWith(
+            "https://github.com/KosmosSG/artcraft-android/releases/tag/pdfcraft-v")) return;
+    runOnUiThread(() -> {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception error) {
+            Log.w(TAG, "Cannot open PDFCraft release page", error);
+        }
+    });
+}

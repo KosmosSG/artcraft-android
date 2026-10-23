@@ -78,10 +78,10 @@ jobs:
           from pathlib import Path
           text = Path('release/signature.txt').read_text()
           for line in text.splitlines():
-              if re.search(r'certificate\\s+SHA[- ]?256\\s+digest', line, re.I):
-                  match = re.search(r'(?i)\\b[0-9a-f]{64}\\b', line)
-                  if match:
-                      print(match.group(0).lower())
+              if 'certificate sha-256 digest:' in line.lower():
+                  digest = line.split('digest:', 1)[1].strip()
+                  if re.fullmatch('[0-9a-fA-F]{64}', digest):
+                      print(digest.lower())
                       break
           PY
           )"

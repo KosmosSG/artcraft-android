@@ -6,6 +6,9 @@ use jni::{JavaVM, jni_sig, strings::JNIString, objects::{JObject, JString, JValu
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
+mod refresh_feedback;
+use refresh_feedback::FontRefresh;
 
 const ACTIONS: [(&str, &str); 9] = [
     ("Undo", "edit.undo"),
@@ -27,8 +30,7 @@ pub struct Tools {
     status: String,
     release_url: Option<String>,
     pending_fonts: VecDeque<String>,
-    imported: usize,
-    failed: usize,
+    fonts: FontRefresh,
     slots: [usize; 6],
 }
 
@@ -40,7 +42,7 @@ impl Tools {
             app: app.clone(), vm, show_pad: false,
             startup_updates: false, status: "Ready".to_owned(),
             release_url: None, pending_fonts: VecDeque::new(),
-            imported: 0, failed: 0, slots: [0, 1, 2, 3, 4, 5],
+            fonts: FontRefresh::default(), slots: [0, 1, 2, 3, 4, 5],
         };
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
         if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {
@@ -54,7 +56,10 @@ impl Tools {
             let _ = tools.call_void("wcCheckForUpdates");
         }
         if tools.call_bool("wcHasFontFolder").unwrap_or(false) {
-            let _ = tools.call_void("wcRefreshFontFolder");
+            tools.status = tools.fonts.start();
+            if let Err(error) = tools.call_void("wcRefreshFontFolder") {
+                tools.status = tools.fonts.stop(format!("Font refresh error: {error}"));
+            }
         }
         tools
     }
@@ -127,51 +132,66 @@ impl Tools {
         for _ in 0..2 {
             match self.call_string("wcPollFontResult") {
                 Ok(Some(raw)) => {
-                    if let Ok(result) = serde_json::from_str::<Value>(&raw) {
-                        match result["state"].as_str().unwrap_or("") {
+                    match serde_json::from_str::<Value>(&raw) {
+                        Ok(result) => match result["state"].as_str().unwrap_or("") {
                             "ok" => {
-                                self.imported = 0;
-                                self.failed = 0;
                                 self.pending_fonts.clear();
                                 if let Some(paths) = result["paths"].as_array() {
                                     for path in paths.iter().filter_map(Value::as_str) {
                                         self.pending_fonts.push_back(path.to_owned());
                                     }
                                 }
-                                self.status = format!(
-                                    "Shared folder: {} font files staged; importing...",
-                                    self.pending_fonts.len()
+                                self.status = self.fonts.staged(
+                                    self.pending_fonts.len(),
+                                    result["skipped"].as_u64().unwrap_or(0) as usize,
+                                    result["limited"].as_bool().unwrap_or(false),
                                 );
-                                ctx.request_repaint();
                             }
-                            "cancelled" => self.status = "Font folder selection cancelled".into(),
-                            _ => self.status = result["message"].as_str()
-                                .unwrap_or("Shared font folder could not be read").to_owned(),
+                            "cancelled" => {
+                                self.pending_fonts.clear();
+                                self.status = self.fonts.stop("Font folder selection cancelled".into());
+                            }
+                            _ => {
+                                self.pending_fonts.clear();
+                                self.status = self.fonts.stop(result["message"].as_str()
+                                    .unwrap_or("Shared font folder could not be read").to_owned());
+                            }
+                        },
+                        Err(_) => {
+                            self.pending_fonts.clear();
+                            self.status = self.fonts.stop("Could not read the font refresh result".into());
                         }
                     }
+                    app.status(self.status.clone());
+                    ctx.request_repaint();
                 }
                 Ok(None) => break,
-                Err(error) => { self.status = format!("Font folder bridge error: {error}"); break; }
+                Err(error) => {
+                    self.pending_fonts.clear();
+                    self.status = self.fonts.stop(format!("Font folder bridge error: {error}"));
+                    app.status(self.status.clone());
+                    ctx.request_repaint();
+                    break;
+                }
             }
         }
         for _ in 0..2 {
             let Some(path) = self.pending_fonts.pop_front() else { break };
-            match app.run("font.add", serde_json::json!({"path": path})) {
-                Ok(_) => self.imported += 1,
+            let success = match app.run("font.add", serde_json::json!({"path": path})) {
+                Ok(_) => true,
                 Err(error) => {
-                    self.failed += 1;
                     log::info!("WordCraft shared font already available or rejected: {error}");
+                    false
                 }
-            }
-            if self.pending_fonts.is_empty() {
-                self.status = format!(
-                    "Shared fonts: {} imported, {} already available or skipped",
-                    self.imported, self.failed
-                );
-                app.status(self.status.clone());
-            } else {
-                ctx.request_repaint();
-            }
+            };
+            self.status = self.fonts.record(success);
+            app.status(self.status.clone());
+            ctx.request_repaint();
+        }
+        // Background SAF work cannot wake an idle egui frame by itself. Poll
+        // while refreshing so completion appears without another tap.
+        if self.fonts.busy {
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
         match self.call_string("wcPollUpdateResult") {
             Ok(Some(raw)) => {
@@ -204,6 +224,7 @@ impl Tools {
             "GPU: renderer information not available".to_owned()
         };
         ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("wc_menu_font_busy"), self.fonts.busy);
             d.insert_temp(egui::Id::new("wc_menu_startup"), self.startup_updates);
             d.insert_temp(egui::Id::new("wc_menu_pad"), self.show_pad);
             d.insert_temp(egui::Id::new("wc_menu_status"), self.status.clone());
@@ -225,14 +246,18 @@ impl Tools {
             value
         });
         match action.as_str() {
-            "font_folder" => self.status = match self.call_void("wcRequestFontFolder") {
-                Ok(()) => "Choose your shared font folder in Android Files".into(),
-                Err(error) => format!("Folder picker error: {error}"),
-            },
-            "font_refresh" => self.status = match self.call_void("wcRefreshFontFolder") {
-                Ok(()) => "Refreshing shared fonts...".into(),
-                Err(error) => format!("Font refresh error: {error}"),
-            },
+            "font_folder" | "font_refresh" if !self.fonts.busy => {
+                self.pending_fonts.clear();
+                self.status = self.fonts.start();
+                let method = if action == "font_folder" { "wcRequestFontFolder" } else { "wcRefreshFontFolder" };
+                if let Err(error) = self.call_void(method) {
+                    self.status = self.fonts.stop(format!("Font folder error: {error}"));
+                } else if action == "font_folder" {
+                    self.status = "Choose your shared font folder in Android Files".into();
+                }
+                app.status(self.status.clone());
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
             "check_updates" => self.status = match self.call_void("wcCheckForUpdates") {
                 Ok(()) => "Checking published WordCraft Android APK releases...".into(),
                 Err(error) => format!("Update check error: {error}"),

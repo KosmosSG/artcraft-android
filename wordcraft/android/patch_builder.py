@@ -104,6 +104,10 @@ def main() -> None:
         Path(__file__).with_name("wordcraft_android.rs"),
         root / "templates" / "android" / "wordcraft_android.rs",
     )
+    shutil.copy2(
+        Path(__file__).with_name("refresh_feedback.rs"),
+        root / "templates" / "android" / "refresh_feedback.rs",
+    )
 
     # Inject the WordCraft-specific JNI tools into the generated shell. The
     # Android candidate still builds the unmodified upstream engine and UI.
@@ -146,6 +150,8 @@ def main() -> None:
         '            raise SystemExit("WordCraft module insertion anchor changed")\n'
         '        entry = entry.replace("mod system_fonts;", "mod wordcraft_android;\\nmod system_fonts;", 1)\n'
         '        shutil.copy2(root / "templates" / "android" / "wordcraft_android.rs", staging_dir / "src" / "wordcraft_android.rs")\n'
+        '        (staging_dir / "src" / "wordcraft_android").mkdir(exist_ok=True)\n'
+        '        shutil.copy2(root / "templates" / "android" / "refresh_feedback.rs", staging_dir / "src" / "wordcraft_android" / "refresh_feedback.rs")\n'
         '    (staging_dir / "src" / "lib.rs").write_text(entry)',
         "install WordCraft Rust module into generated launcher",
     )

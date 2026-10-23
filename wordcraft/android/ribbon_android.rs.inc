@@ -5,14 +5,17 @@
 fn artcraft_android_menu(ui: &mut Ui) {
     ui.menu_button("ArtCraft", |ui| {
         ui.set_min_width(270.0);
+        let refreshing = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_font_busy"))).unwrap_or(false);
         for (label, action) in [
             ("Choose shared font folder…", "font_folder"),
             ("Refresh shared fonts", "font_refresh"),
             ("Check for Updates", "check_updates"),
         ] {
-            if ui.button(label).clicked() {
+            let font_action = action == "font_folder" || action == "font_refresh";
+            let label = if refreshing && action == "font_refresh" { "Refreshing fonts…" } else { label };
+            if ui.add_enabled(!font_action || !refreshing, egui::Button::new(label)).clicked() {
                 ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("wc_menu_action"), action.to_owned()));
-                ui.close();
+                if action != "font_refresh" { ui.close(); }
             }
         }
         let mut startup = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_startup"))).unwrap_or(false);

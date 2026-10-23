@@ -1,7 +1,7 @@
 """Scope approved suite launcher artwork to Android's adaptive safe area.
 
-The uploaded source image and legacy launcher mipmaps remain unchanged.
-Only the pinned disposable builder's adaptive foreground computation changes.
+The uploaded source image remains unchanged. VectorCraft's generated legacy and
+adaptive icons omit the outer black canvas; the other apps keep their prior path.
 No source-app, signing or production release file is modified.
 """
 import argparse
@@ -18,6 +18,18 @@ def patch(builder, app):
         raise ValueError("Unreviewed app; refusing builder modification")
     module = Path(builder) / "lib" / "app_icons.py"
     source = module.read_text()
+    if app == "vectorcraft":
+        anchor = "    Image, _ = _pillow()\n    source = pick_source(src, app, explicit)"
+        if source.count(anchor) != 1:
+            raise ValueError("Pinned icon generation entry point changed")
+        replacement = ("    if app == 'vectorcraft' and explicit is not None:\n"
+                       "        import vectorcraft_launcher\n"
+                       "        return vectorcraft_launcher.generate(explicit, res_dir)\n" + anchor)
+        module.write_text(source.replace(anchor, replacement, 1))
+        (Path(builder) / "lib/vectorcraft_launcher.py").write_bytes(
+            Path(__file__).with_name("launcher_icon.py").read_bytes())
+        print("PASS: Vc launcher excludes the black presentation canvas")
+        return
     if source.count(NEEDLE) != 1:
         raise ValueError("Pinned builder adaptive icon code changed: review required")
     injected = '''    if app == "APP_ID" and explicit is not None:

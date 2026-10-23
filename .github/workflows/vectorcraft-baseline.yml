@@ -25,7 +25,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - run: python3 -m pip install 'Pillow==11.3.0'
       - run: python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test Android menu dispatch
+        run: |
+          rustc --edition=2024 --test tools/vectorcraft/android_commands.rs -o /tmp/vectorcraft-menu-tests
+          /tmp/vectorcraft-menu-tests
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -74,6 +80,7 @@ jobs:
           set -euo pipefail
           test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
           test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = ad0566943ab9741e6356bbc9b53c3cc09895068d
+          python3 tools/vectorcraft/prepare_ui.py builder/source/vectorcraft
           mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
           cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
           cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
@@ -112,7 +119,7 @@ jobs:
       BUILDER_SHA: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
       SOURCE_SHA: ad0566943ab9741e6356bbc9b53c3cc09895068d
       SOURCE_TAG: v0.14.0
-      VERSION_NAME: 0.14.0-android.2
+      VERSION_NAME: 0.14.0-android.3
       VERSION_CODE: ${{ inputs.version_code }}
       PREVIOUS_CODE: ${{ inputs.previous_version_code }}
     steps:
@@ -166,6 +173,7 @@ jobs:
           cmp adapters/vectorcraft/src/lib.rs builder/adapters/vectorcraft/src/lib.rs
           cmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
               builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java
+          python3 tools/vectorcraft/prepare_ui.py builder/source/vectorcraft
           python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
           python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
       - uses: actions/setup-java@v4
@@ -221,7 +229,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     env:
-      VERSION_NAME: 0.14.0-android.2
+      VERSION_NAME: 0.14.0-android.3
       VERSION_CODE: ${{ inputs.version_code }}
     steps:
       - uses: actions/checkout@v5
@@ -265,7 +273,7 @@ jobs:
           printf '\nDevice testing remains pending: install, font import, files, keyboard and lifecycle.\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         with:
-          name: vectorcraft-0.14.0-android.2-verified
+          name: vectorcraft-0.14.0-android.3-verified
           path: verified/
           if-no-files-found: error
           retention-days: 14

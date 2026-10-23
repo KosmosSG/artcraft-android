@@ -27,7 +27,7 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         workflow = WORKFLOW.read_text()
         self.assertIn("assets/branding/vectorcraft/vc-glass-approved.png", workflow)
         self.assertIn('"-appicon=$ICON"', workflow)
-        self.assertIn("0.14.0-android.2", workflow)
+        self.assertIn("0.14.0-android.3", workflow)
         self.assertIn("vectorcraft-photocraft-parity-20261021", workflow)
         # Exact user-supplied artwork must be staged before an APK can build.
         self.assertIn("python3 tools/vectorcraft/verify_approved_icon.py \"$ICON\"", workflow)
@@ -65,8 +65,8 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         for marker in ("vectorcraft_text::set_app_font_dir", '"text.rescanFonts"',
                        "vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
                        "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
-                       "Import Font (.ttf / .otf)", "Select Shared Font Folder",
-                       "Refresh Shared Fonts", "Check for VectorCraft Updates",
+                       "android_ui::IMPORT_FONT", "android_ui::SELECT_FONT_FOLDER",
+                       "android_ui::REFRESH_FONTS", "Check for VectorCraft Updates",
                        "edit.keyboardShortcuts", "touch_dock.enabled",
                        "wgpu_render_state", "get_info()", "device.limits()"):
             with self.subTest(marker=marker):

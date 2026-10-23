@@ -26,6 +26,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use vectorcraft_engine::Session;
 use vectorcraft_ui_egui::picks::PickRequest;
+use vectorcraft_ui_egui::android_commands as android_ui;
 use vectorcraft_ui_egui::{FilePick, Inbox, Services, VectorcraftApp};
 
 // Shared with the generated launchers: brings the device's own system fonts into the egui fallback
@@ -902,12 +903,23 @@ impl eframe::App for VectorCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Deliver picker answers before the app's own logic runs, so `picks::poll` resumes the
         // entry that asked in this same frame.
+        let before_import = self.fonts.import_status.clone();
+        let before_shared = self.fonts.shared_status.clone();
         if poll_answers(&self.picks, &self.bridge, ctx, &mut self.fonts) {
             // VectorCraft's built-in rescan refreshes available text faces and redraws type.
             if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
                 log::warn!("Android font rescan failed: {error}");
                 self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
             }
+        }
+        if before_import != self.fonts.import_status {
+            self.inner.status(&self.fonts.import_status);
+        }
+        if before_shared != self.fonts.shared_status {
+            self.inner.status(&self.fonts.shared_status);
+        }
+        if self.fonts.pending_import.is_some() || self.fonts.pending_shared.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
         if self.updates.checking {
             match self.bridge.poll_update_result() {
@@ -968,20 +980,29 @@ impl eframe::App for VectorCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+        android_ui::set_startup(self.startup_updates);
         self.inner.ui(ui);
 
-        // Small Android-only entry point: no upstream menus or desktop preferences are changed.
+        // Native menu commands are queued by the Android-only upstream UI overlay.
         let ctx = ui.ctx();
-        let mut import = false;
-        let mut select_shared = false;
-        let mut refresh_shared = false;
-        let mut check_updates = false;
+        let requests = android_ui::take();
+        let import = requests & android_ui::IMPORT_FONT != 0;
+        let select_shared = requests & android_ui::SELECT_FONT_FOLDER != 0;
+        let refresh_shared = requests & android_ui::REFRESH_FONTS != 0;
+        let mut check_updates = requests & android_ui::CHECK_UPDATES != 0;
         let mut customize_shortcuts = false;
         let mut dock_undo = false;
         let mut dock_redo = false;
         let previous_touch_dock = self.touch_dock;
         let previous_startup_updates = self.startup_updates;
+        if requests & android_ui::TOGGLE_STARTUP != 0 {
+            self.startup_updates = !self.startup_updates;
+        }
+        if requests & android_ui::ANDROID_SETTINGS != 0 {
+            self.android_tools_open = true;
+        }
         egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
+            .order(egui::Order::Foreground)
             .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
             .show(ctx, |ui| {
                 if ui.button("Android Tools").clicked() {
@@ -1007,18 +1028,7 @@ impl eframe::App for VectorCraftAndroidApp {
                 .open(&mut self.android_tools_open)
                 .default_pos([24.0, 95.0])
                 .show(ctx, |ui| {
-                    ui.heading("Fonts");
-                    if ui.button("Import Font (.ttf / .otf)").clicked() { import = true; }
-                    if !self.fonts.import_status.is_empty() {
-                        ui.label(&self.fonts.import_status);
-                    }
-                    ui.separator();
-                    ui.label("Shared ArtCraft-Fonts library (read-only)");
-                    if ui.button("Select Shared Font Folder").clicked() { select_shared = true; }
-                    if ui.button("Refresh Shared Fonts").clicked() { refresh_shared = true; }
-                    if !self.fonts.shared_status.is_empty() {
-                        ui.label(&self.fonts.shared_status);
-                    }
+                    ui.label("Custom fonts: Type → Custom Fonts");
                     ui.separator();
                     ui.heading("Keyboard & Touch");
                     ui.small("Illustrator-style keys are available in the Classic Defaults preset. Customize them in the shortcut editor; existing mappings are preserved.");
@@ -1051,6 +1061,11 @@ impl eframe::App for VectorCraftAndroidApp {
                 });
         }
         if self.startup_updates != previous_startup_updates {
+            android_ui::set_startup(self.startup_updates);
+            self.inner.status(if self.startup_updates {
+                "Startup update checking enabled"
+            } else { "Startup update checking disabled" });
+            if self.startup_updates { check_updates = true; }
             if let Some(dir) = self.persist.as_ref() {
                 persist_write(dir, "startup_updates.enabled", if self.startup_updates { b"1" } else { b"0" });
             }
@@ -1073,9 +1088,19 @@ impl eframe::App for VectorCraftAndroidApp {
                 ctx.request_repaint();
             }
         }
-        if import { self.fonts.import(&self.picks, &self.bridge); }
-        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
-        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
+        if import {
+            self.fonts.import(&self.picks, &self.bridge);
+            self.inner.status(&self.fonts.import_status);
+        }
+        if select_shared {
+            self.fonts.shared(&self.picks, &self.bridge, false);
+            self.inner.status(&self.fonts.shared_status);
+        }
+        if refresh_shared {
+            self.fonts.shared(&self.picks, &self.bridge, true);
+            self.inner.status(&self.fonts.shared_status);
+        }
+        if requests != 0 { ctx.request_repaint(); }
         if check_updates {
             self.updates.open = true;
             self.updates.release_url = None;
@@ -1166,7 +1191,7 @@ fn android_main(android_app: AndroidApp) {
                 .is_some_and(|value| value.trim() == "1");
             let startup_updates = persist.as_ref()
                 .and_then(|dir| fs::read_to_string(dir.join("startup_updates.enabled")).ok())
-                .is_some_and(|value| value.trim() == "1");
+                .map_or(true, |value| value.trim() == "1");
             Ok(Box::new(VectorCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),

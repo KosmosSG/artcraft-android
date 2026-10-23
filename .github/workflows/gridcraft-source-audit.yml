@@ -1,0 +1,69 @@
+name: GridCraft pinned official source audit (draft only)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/gridcraft/**'
+      - '.github/workflows/gridcraft-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gridcraft-source-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-provenance:
+    if: github.repository == 'KosmosSG/artcraft-android' && ((github.event_name == 'pull_request' && startsWith(github.head_ref, 'review/gridcraft-')) || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/review/gridcraft-')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout review branch (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout exact Android reference into disposable directory
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Validate staging-only GridCraft hook against pinned generator
+        run: |
+          set -euo pipefail
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("builder/lib/build-common.sh").read_text()
+          assert source.count("GRIDCRAFT_OVERLAY_HOOK_V1") == 1
+          assert source.count("if app == \"gridcraft\":") >= 1
+          blocks = source.split("<<'PY'\n")
+          generators = [block.split("\nPY\n", 1)[0] for block in blocks[1:]
+                        if "staging_dir" in block.split("\nPY\n", 1)[0]]
+          assert generators, "Pinned builder Python generator not found"
+          assert any("GRIDCRAFT_OVERLAY_HOOK_V1" in x for x in generators)
+          for script in generators:
+              compile(script, "<pinned-builder-generator>", "exec")
+          assert Path("builder/tools/gridcraft_android/overlay.py").is_file()
+          print("Pinned reference checked; GridCraft-only hook installed; source generator syntax valid")
+          PY
+      - name: Test GridCraft-only Android overlay (no APK, no key)
+        run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
+      - name: Validate GridCraft source lock and no-release gate
+        run: python3 tools/gridcraft/verify_source.py
+      - name: Verify official release, immutable tag and source version
+        run: python3 tools/gridcraft/verify_source.py --online | tee gridcraft-source-audit.json
+      - name: Add auditable result to workflow summary
+        if: always()
+        run: |
+          echo '### GridCraft source-only review' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f gridcraft-source-audit.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat gridcraft-source-audit.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'No build, no keys, no signed APK, no release, no schedule.' >> "$GITHUB_STEP_SUMMARY"

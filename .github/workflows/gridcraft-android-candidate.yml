@@ -1,0 +1,138 @@
+name: GridCraft v0.11.1 Android ARM64 candidate (isolated, no public release)
+on:
+  push:
+    branches: [development/gridcraft-v0111-fonts-updates-20261023]
+    paths:
+      - 'tools/gridcraft/**'
+      - '.github/workflows/gridcraft-android-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gridcraft-v0111-android-candidate
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/gridcraft-v0111-fonts-updates-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Test GridCraft-only SAF fonts and update checker overlay
+        run: python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -v
+      - name: Validate pinned GridCraft v0.11.1 stable provenance
+        run: |
+          python3 tools/gridcraft/verify_source.py
+          python3 tools/gridcraft/verify_source.py --online
+      - name: Confirm no release signing approval
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lock=json.loads(Path('tools/gridcraft/source-lock.json').read_text())
+          assert lock['official_release_commit']=='ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9'
+          assert lock['version_name']=='0.11.1-android.1'
+          assert lock['target_abi']=='arm64-v8a'
+          assert lock['icon_committed'] is False
+          assert lock['permanent_signing_certificate_sha256'] is None
+          assert lock['permanent_key_backup_verified'] is False
+          assert lock['build_approved'] is False and lock['publish_approved'] is False
+          print('PASS: candidate only; no production icon, keystore, or release approval')
+          PY
+  candidate:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Checkout pinned Android builder
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout reviewed upstream GridCraft v0.11.1
+        uses: actions/checkout@v5
+        with:
+          repository: storytold/gridcraft
+          ref: ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - name: Validate exact source and stage GridCraft-only Android extensions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          source=Path('builder/source/gridcraft/Cargo.toml')
+          assert tomllib.loads(source.read_text())['workspace']['package']['version']=='0.11.1'
+          builder=Path('builder/lib/build-common.sh').read_text()
+          assert builder.count('GRIDCRAFT_OVERLAY_HOOK_V1')==1
+          assert Path('builder/tools/gridcraft_android/gridcraft_tools.rs').is_file()
+          print('PASS: pinned source and isolated font/updater overlay staged')
+          PY
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Install launcher image dependency
+        run: python3 -m pip install 'Pillow==11.3.0'
+      - name: Compile isolated GridCraft ARM64 package with disposable builder key
+        shell: bash
+        run: |
+          set -euo pipefail
+          # NEVER target the future production package or use an established signer.
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate
+      - name: Verify candidate package, ABI and compiled enhancement presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -name 'gridcraft-*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > candidate-badging.txt
+          grep -F "name='com.artcraft.gridcraft.candidate'" candidate-badging.txt
+          grep -F "versionName='0.11.1'" candidate-badging.txt
+          python3 - "$APK" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              assert any(name.startswith('lib/arm64-v8a/') and name.endswith('.so') for name in names)
+              assert not any(name.endswith(('.jks','.p12','.keystore')) for name in names)
+              assert 'classes.dex' in names
+          print('PASS: signed disposable candidate, native ARM64, Java code, no embedded signing key')
+          PY
+          mkdir -p candidate
+          cp "$APK" candidate/GridCraft-v0.11.1-CANDIDATE-NOT-FOR-UPGRADE.apk
+          (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
+      - name: Retain disposable-key candidate ONLY (not an install-over upgrade)
+        uses: actions/upload-artifact@v5
+        with:
+          name: GridCraft-v0.11.1-EPHEMERAL-NOT-PRODUCTION
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Discard disposable builder key and APK after run
+        if: always()
+        run: rm -rf builder/keys builder/output

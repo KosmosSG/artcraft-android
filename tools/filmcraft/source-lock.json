@@ -1,0 +1,36 @@
+{
+  "app": "filmcraft",
+  "official": {
+    "repo": "storytold/filmcraft",
+    "release_tag": "v0.10.0",
+    "version": "0.10.0",
+    "commit": "cdf43fd366e378da266cb6d3c94549a45244be1f",
+    "published_at": "2026-10-21T07:46:20Z"
+  },
+  "reviewed_android_reference": {
+    "repo": "MostafaXS1/artcraft-android",
+    "commit": "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af"
+  },
+  "candidate": {
+    "builder_repo": "KosmosSG/artcraft-android",
+    "parent_commit": "7b46f87aba112fff93380e01379045733f09f8b3",
+    "package_name": "com.artcraft.filmcraft",
+    "abi": "arm64-v8a",
+    "version_name": "0.10.0-android.1",
+    "requested_apk_name": "filmcraft-0.10.0-android.1.apk",
+    "version_code": null,
+    "signing_fingerprint": null,
+    "artifact_sha256": null,
+    "apk_built": false,
+    "tablet_tested": false
+  },
+  "gates": {
+    "upstream_commit_verified": true,
+    "reference_commit_verified": true,
+    "prior_signed_versioncodes_checked": false,
+    "permanent_signing_identity_verified": false,
+    "apk_content_checked": false,
+    "device_tested": false,
+    "release_approved": false
+  }
+}

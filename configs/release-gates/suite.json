@@ -222,9 +222,9 @@
       "notes": null
     },
     "gridcraft": {
-      "display_name": "GridCraft / ExcelCraft",
+      "display_name": "GridCraft",
       "android_package": null,
-      "official_upstream": null,
+      "official_upstream": "storytold/gridcraft",
       "private_signing_repository": null,
       "verified_certificate_sha256": null,
       "permanent_identity_known": false,
@@ -237,7 +237,7 @@
       "updater_compatible": false,
       "public_release_enabled": false,
       "release_workflow_verified": false,
-      "notes": "Identity between GridCraft and ExcelCraft must be resolved before Android packaging."
+      "notes": "GridCraft is the user-selected product name (earlier ExcelCraft shorthand); exact Xc icon and permanent GridCraft signing key remain unverified. Draft v0.11.1 Android font/updater work is NOT a production approval."
     }
   },
   "version_naming": {
@@ -250,5 +250,20 @@
     "upstream_stable_update": "use new official upstream MAJOR.MINOR.PATCH and start REVISION at 1",
     "legacy_releases_immutable": true,
     "signing_and_version_codes_unchanged_by_naming": true
+  },
+  "required_android_features": {
+    "policy_doc": "docs/ARTCRAFT_ANDROID_SUITE_FEATURE_STANDARD.md",
+    "apply_to_all_apps": true,
+    "photocraft_reference": true,
+    "ttf_otf_import_via_saf": true,
+    "optional_saf_shared_font_folder": true,
+    "manual_android_github_update_check": true,
+    "opt_in_startup_update_check": true,
+    "visible_nonfloating_update_status": true,
+    "verified_published_app_apk_only": true,
+    "preserve_installed_package_signer_data": true,
+    "feature_regression_tests_required": true,
+    "device_test_before_claiming_compatibility": true,
+    "automatically_consider_for_future_apps": true
   }
 }

@@ -19,7 +19,7 @@ FEATURE_IDS = (
     "custom_font_import","persistent_user_fonts","shared_font_folder",
     "font_refresh","font_menu_consistency","manual_update_check",
     "startup_update_opt_in","app_scoped_release_filter","updater_security",
-    "update_menu_consistency",
+    "update_menu_consistency","update_channel_selection",
 )
 APP_IDS = (
     "photocraft","vectorcraft","designcraft","filmcraft","pdfcraft",
@@ -50,6 +50,8 @@ def read_contract(path: Path = ROOT / "configs/feature-parity.json") -> dict:
             raise ValueError(f"{app}: invalid signed APK evidence digest")
         if any(s == "device_verified" for s in actual.values()) and not digest:
             raise ValueError(f"{app}: device verification without exact signed APK checksum")
+    if "Stable + Preview Releases" not in data.get("update_channels","") or "Exclude drafts" not in data["update_channels"]:
+        raise ValueError("Missing stable/preview channel requirement")
     if data.get("update_startup") != "Optional persisted startup update check, initially OFF":
         raise ValueError("Startup update checks must be opt-in and off by default")
     if data.get("font_extensions") != [".ttf",".otf"]:

@@ -58,7 +58,7 @@ impl Updater {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("lcSetStartupUpdateCheck"),
-                jni_sig!("(Z)V"), &[JValue::Bool(if enabled { 1 } else { 0 })])?;
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
             Ok(())
         }).map_err(|e| e.to_string())
     }

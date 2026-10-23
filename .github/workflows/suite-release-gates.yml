@@ -1,10 +1,19 @@
-name: ArtCraft Suite release safety audit (never publish)
+name: ArtCraft Suite release safety and naming audit (never publish)
 on:
   push:
     branches: [main]
     paths:
       - 'configs/release-gates/**'
       - 'tools/release_gate_audit.py'
+      - 'tools/artcraft_release_naming.py'
+      - 'tools/test_artcraft_release_naming.py'
+      - '.github/workflows/suite-release-gates.yml'
+  pull_request:
+    paths:
+      - 'configs/release-gates/**'
+      - 'tools/release_gate_audit.py'
+      - 'tools/artcraft_release_naming.py'
+      - 'tools/test_artcraft_release_naming.py'
       - '.github/workflows/suite-release-gates.yml'
   workflow_dispatch:
 permissions:
@@ -17,5 +26,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Verify every app has independent fail-closed release settings
+      - name: Verify independent fail-closed release settings for every app
         run: python3 tools/release_gate_audit.py
+      - name: Test upstream-plus-Android-revision naming across the suite
+        run: python3 tools/test_artcraft_release_naming.py -v
+      - name: Verify the standard release metadata and artifact filename
+        run: |
+          python3 tools/artcraft_release_naming.py verify \
+            --app vectorcraft --upstream v0.14.0 --revision 2 \
+            --version-name 0.14.0-android.2 \
+            --tag vectorcraft-v0.14.0-android.2 \
+            --title 'VectorCraft v0.14.0-android.2' \
+            --apk VectorCraft-v0.14.0-android.2-arm64-v8a.apk

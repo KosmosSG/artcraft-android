@@ -152,10 +152,14 @@ def _lightcraft_borderless(Image, img):
 
     menus = source / "crates/ui-egui/src/menus.rs"
     txt = menus.read_text()
+    # The Help menu remains LightCraft's native menu; these commands are
+    # Android-only and use an egui flag consumed by the Android host.
     txt = replace_once(txt,
-        '    ("app.whatsNew", "What\'s New", None, "Help"),',
-        '    ("app.whatsNew", "What\'s New", None, "Help"),\n    ("app.artcraftCheckUpdates", "Check for Updates", None, "Help"),',
-        "LightCraft command registry")
+        '    ("app.about", "About LightCraft", None, "Help"),',
+        '    ("app.about", "About LightCraft", None, "Help"),\n'
+        '    ("app.artcraftCheckUpdates", "Check for Updates", None, "Help"),\n'
+        '    ("app.artcraftStartupUpdateSettings", "Startup Update Settings", None, "Help"),',
+        "LightCraft Android Help command registry")
     txt = replace_once(txt,
         '        "app.export" => crate::control::export_active(app, p),',
         ''
@@ -164,15 +168,23 @@ def _lightcraft_borderless(Image, img):
         '            ctx.request_repaint();\n'
         '            Ok(Value::Null)\n'
         '        },\n'
+        '        "app.artcraftStartupUpdateSettings" => {\n'
+        '            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.lightcraft.startup_updates_requested"), true));\n'
+        '            ctx.request_repaint();\n'
+        '            Ok(Value::Null)\n'
+        '        },\n'
         '        "app.export" => crate::control::export_active(app, p),',
-        "LightCraft command handler")
+        "LightCraft Android Help command handler")
     menus.write_text(txt)
     layout = source / "crates/ui-egui/src/menubar.rs"
     lt = layout.read_text()
     lt = replace_once(lt,
-        '            "app.whatsNew",\n            "app.shortcuts",',
-        '            "app.whatsNew",\n            "app.artcraftCheckUpdates",\n            "app.shortcuts",',
-        "Help menu layout")
+        '            "app.about",\n        ],',
+        '            "app.about",\n'
+        '            "app.artcraftCheckUpdates",\n'
+        '            "app.artcraftStartupUpdateSettings",\n'
+        '        ],',
+        "Help menu layout directly under About LightCraft")
     layout.write_text(lt)
     import shutil
     templates = builder / "templates/android"

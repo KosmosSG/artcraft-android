@@ -12,7 +12,7 @@ def apply(path: Path):
         'pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[',
         '''pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     #[cfg(target_os = "android")]
-    ("app.artcraftImportFont", "Import Font (TTF/OTF)…", None, "{}"),
+    ("app.artcraftImportFont", "Custom Font Import (TTF/OTF)…", None, "{}"),
     #[cfg(target_os = "android")]
     ("app.artcraftSelectSharedFonts", "Select Shared Font Folder…", None, "{}"),
     #[cfg(target_os = "android")]
@@ -20,7 +20,7 @@ def apply(path: Path):
     #[cfg(target_os = "android")]
     ("help.artcraftCheckUpdates", "Check for Updates…", None, "{}"),
     #[cfg(target_os = "android")]
-    ("help.artcraftUpdateSettings", "Update Settings…", None, "{}"),
+    ("help.artcraftUpdateSettings", "Startup Update Settings…", None, "{}"),
     #[cfg(target_os = "android")]
     ("window.artcraftShortcutPad", "Toggle Touch Shortcut Pad", None, "{}"),''')
     text = replace_once(text, 'pub fn ui_label(id: &str) -> Option<(&',
@@ -66,8 +66,9 @@ pub fn ui_label(id: &str) -> Option<(&''')
             _ => &[],
         };
         if !ids.is_empty() {
-            entries.push(Item::Sep);
-            for id in ids { entries.push(cmd_item(id, Value::Null)); }
+            let mut android: Vec<Item> = ids.iter().map(|id| cmd_item(id, Value::Null)).collect();
+            android.push(Item::Sep);
+            entries.splice(0..0, android);
         }
     }
     tree
@@ -77,3 +78,4 @@ pub fn ui_label(id: &str) -> Option<(&''')
 if __name__ == "__main__":
     import sys
     apply(Path(sys.argv[1]))
+

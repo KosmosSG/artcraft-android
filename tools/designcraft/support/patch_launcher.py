@@ -70,9 +70,12 @@ def patch(root):
         methods += Path(__file__).with_name(filename).read_text() + '\n'
     index = text.rfind('}')
     java.write_text(text[:index] + methods + text[index:])
+    (java.parent / "DesignCraftUpdatePolicy.java").write_text(
+        Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text())
     manifest = root / 'Cargo.toml'
     manifest.write_text(manifest.read_text() + '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n')
 
 
 if __name__ == "__main__":
     patch(Path(sys.argv[1]))
+

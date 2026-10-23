@@ -1,0 +1,48 @@
+name: DesignCraft release checks
+on:
+  push:
+    branches: [development/designcraft-v012-20261023]
+    paths: ['tools/designcraft/**', '.github/workflows/designcraft-release-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/designcraft
+          ref: 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          path: builder/source/designcraft
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate menus, icon masks, launcher generation and update policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/designcraft/prepare_builder.py builder 0.12.0-android.1 16800002
+          python3 tools/designcraft/make_icon.py builder/dc-icon.png
+          python3 tools/designcraft/stage_launcher.py builder
+          mkdir -p "$RUNNER_TEMP/designcraft-java"
+          # The complete private Gradle build compiles GameActivity and its AndroidX dependencies.
+          # This fast host test exercises the pure release policy independently of Android.
+          javac -source 17 -target 17 \
+            -d "$RUNNER_TEMP/designcraft-java" \
+            builder/source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftUpdatePolicy.java \
+            tools/designcraft/DesignCraftUpdatePolicyTest.java
+          java -cp "$RUNNER_TEMP/designcraft-java" com.artcraft.designcraft.DesignCraftUpdatePolicyTest

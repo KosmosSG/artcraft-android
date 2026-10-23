@@ -1,5 +1,18 @@
 # GridCraft Android — isolated source audit (draft only)
 
+## Current upgrade work — 23 October 2026
+
+**The active development source lock has been advanced to official GridCraft v0.11.1** at commit `ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9`, with proposed Android name `0.11.1-android.1`. The previous v0.9.0 analysis below is retained as historical context, not the current release pin.
+
+The mandatory suite standard is `docs/ARTCRAFT_ANDROID_SUITE_FEATURE_STANDARD.md` on main. This GridCraft review keeps the existing SAF TTF/OTF font import and shared folder, manual and opt-in startup GitHub update checks, plus their non-floating UI. The controls now default open, show progress and a bounded timeout; Android release lookup requires an actual uploaded asset `GridCraft-v0.11.1-android.1-arm64-v8a.apk` (or an equivalent name for a later valid release).
+
+A new isolated GitHub Actions workflow `gridcraft-android-candidate.yml` compiles the real v0.11.1 Android ARM64 source and enhancement overlay with `com.artcraft.gridcraft.candidate` and a disposable builder key. **This is not a production APK, does not update an installed GridCraft app, and does not create a GitHub release.** Any compilation errors and upstream incompatibilities must be repaired before proceeding.
+
+**Known production blockers remain:** the exact owner-approved Xc icon is absent from repository history; no verified dedicated GridCraft permanent signer or recoverable backup exists in the connected account; no production versionCode is reserved; no device upgrade or spreadsheet fidelity test has been recorded. Do not reuse another app's signer, bypass these gates or claim a successful public release merely because CI passes.
+
+---
+
+
 This is **GridCraft**, the spreadsheet app previously called "ExcelCraft" in conversation. Do not rename the upstream project or touch any other app's branch, workflow, key, artifacts or releases.
 
 ## Verified input and Android target

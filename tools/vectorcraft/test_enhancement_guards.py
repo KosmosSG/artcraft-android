@@ -30,7 +30,8 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertIn("0.14.0-android.2", workflow)
         self.assertIn("vectorcraft-photocraft-parity-20261021", workflow)
         # Exact user-supplied artwork must be staged before an APK can build.
-        self.assertIn("python3 tools/vectorcraft/verify_approved_icon.py \"$ICON\"", workflow)
+        self.assertIn("python3 tools/vectorcraft/verify_approved_icon.py \"$ORIGINAL\"", workflow)
+        self.assertIn("install_android_brand.py", workflow)
         verifier = (ROOT / "tools/vectorcraft/verify_approved_icon.py").read_text()
         self.assertIn("291c7768cabaf4419082abfbd100a17668e9c7c4ca8a57fa45667f0f7233dbc2", verifier)
         self.assertIn("APPROVED_SIZE = (1254, 1254)", verifier)
@@ -65,12 +66,19 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         for marker in ("vectorcraft_text::set_app_font_dir", '"text.rescanFonts"',
                        "vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
                        "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
-                       "Import Font (.ttf / .otf)", "Select Shared Font Folder",
-                       "Refresh Shared Fonts", "Check for VectorCraft Updates",
                        "edit.keyboardShortcuts", "touch_dock.enabled",
                        "wgpu_render_state", "get_info()", "device.limits()"):
             with self.subTest(marker=marker):
                 self.assertIn(marker, rust)
+        native_menus = (ROOT / "tools/vectorcraft/patch_android_menus.py").read_text()
+        for marker in ("Import Font (.ttf / .otf)", "Select Shared Font Folder",
+                       "Refresh Shared Fonts", "Check for VectorCraft Updates",
+                       "Touch Shortcut Pad", "Graphics Diagnostics",
+                       "set_android_preferences"):
+            with self.subTest(native_menu=marker):
+                self.assertIn(marker, native_menus)
+        self.assertNotIn("vectorcraft.android_tools_button", rust)
+        self.assertIn("take_android_menu_bits", rust)
         for marker in ("vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
                        "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
                        "extras.handleActivityResult"):

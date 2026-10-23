@@ -12,6 +12,17 @@ assert d.get("schema_version")==1
 assert d.get("public_release_repository")=="KosmosSG/artcraft-android"
 assert d.get("enable_unattended_upstream_merges") is False
 assert d.get("enable_any_public_release") is False, "Global release switch cannot be enabled without per-app reviewed workflows"
+features=d.get("required_android_features", {})
+assert features.get("policy_doc")=="docs/ARTCRAFT_ANDROID_SUITE_FEATURE_STANDARD.md"
+assert Path(features["policy_doc"]).is_file(), "Suite feature standard missing"
+for key in ("apply_to_all_apps", "photocraft_reference", "ttf_otf_import_via_saf",
+            "optional_saf_shared_font_folder", "manual_android_github_update_check",
+            "opt_in_startup_update_check", "visible_nonfloating_update_status",
+            "verified_published_app_apk_only", "preserve_installed_package_signer_data",
+            "feature_regression_tests_required",
+            "device_test_before_claiming_compatibility",
+            "automatically_consider_for_future_apps"):
+    assert features.get(key) is True, "Required suite feature missing: "+key
 naming=d.get("version_naming",{})
 assert naming.get("scheme")=="upstream-semver-plus-android-revision-v1", "Unsupported suite naming scheme"
 assert naming.get("version_name")=="MAJOR.MINOR.PATCH-android.REVISION"

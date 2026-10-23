@@ -219,6 +219,16 @@
         if (!file.delete()) android.util.Log.w(TAG, "Cannot delete GridCraft temporary file " + file.getName());
     }
 
+    // Only GridCraft owns this preference. The small bottom Show button stays accessible.
+    public boolean gcToolsPanelVisible() {
+        return getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).getBoolean("bottom_tools_visible", false);
+    }
+
+    public void gcSetToolsPanelVisible(boolean visible) {
+        getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).edit()
+                .putBoolean("bottom_tools_visible", visible).apply();
+    }
+
     public boolean gcStartupChecksEnabled() {
         return getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).getBoolean("startup_update", false);
     }

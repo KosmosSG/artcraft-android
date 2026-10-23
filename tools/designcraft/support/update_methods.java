@@ -7,9 +7,14 @@
         else if (action == 3) dcCheckUpdates(true);
         else if (action == 4) runOnUiThread(() -> {
             boolean enabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false);
+            boolean includePreview = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean("dc_include_preview_releases", true);
             new android.app.AlertDialog.Builder(this).setTitle("Update checks")
-                .setMultiChoiceItems(new String[]{"Check GitHub at startup"}, new boolean[]{enabled},
-                    (dialog, which, checked) -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("dc_startup_check", checked).apply())
+                .setMultiChoiceItems(
+                    new String[]{"Check GitHub at startup", "Stable + Preview Releases (otherwise stable only)"},
+                    new boolean[]{enabled, includePreview},
+                    (dialog, which, checked) -> getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putBoolean(which == 0 ? "dc_startup_check" : "dc_include_preview_releases", checked).apply())
                 .setPositiveButton("Done", null).show();
         });
     }
@@ -39,6 +44,8 @@
                 android.content.pm.PackageInfo installedInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
                 String installed = installedInfo.versionName == null ? "unknown" : installedInfo.versionName;
                 long installedCode = installedInfo.getLongVersionCode();
+                boolean includePreview = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean("dc_include_preview_releases", true);
                 long bestCode = installedCode;
                 String bestTag = null, bestUrl = null;
                 int metadataRequests = 0;
@@ -52,7 +59,8 @@
                         if (android.os.SystemClock.elapsedRealtime() > deadline)
                             throw new java.io.IOException("Update check exceeded its time budget");
                         JSONObject release = releases.optJSONObject(i);
-                        if (release == null || release.optBoolean("draft") || release.optBoolean("prerelease")) continue;
+                        if (release == null || release.optBoolean("draft")
+                                || (!includePreview && release.optBoolean("prerelease"))) continue;
                         String tag = release.optString("tag_name", "");
                         if (!tag.matches("designcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*")) continue;
                         JSONArray assets = release.optJSONArray("assets");
@@ -91,7 +99,7 @@
                 if (manual || tag != null) runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this).setTitle("DesignCraft updates")
-                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer published DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nOpen the release to download. Android verifies the APK signature during installation.")
+                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer eligible DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nOpen the release to download. Android verifies the APK signature during installation.")
                         .setNegativeButton("Close", null);
                     if (url != null) dialog.setPositiveButton("View release", (d, w) -> {
                         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }

@@ -21,7 +21,7 @@ source checks or a GitHub workflow succeeded.
 | WordCraft | Pending app-specific integration, preserve WordCraft PR #11 | Not verified |
 | DeckCraft | Pending app-specific integration | Not verified |
 | EffectCraft | Staged: `review/effectcraft-v0.13.0-android1-20261022` | Not verified for channel |
-| LightCraft | Implemented: `review/lightcraft-approved-icon-20261022` | `v0.11.0-android.6` verified signed APK published as a regular GitHub Release; new channel UI device test pending |
+| LightCraft | Implemented: `review/lightcraft-approved-icon-20261022`; automatic signed-build prerelease publisher configured in the private signing repository | `v0.11.0-android.6` regular release published; owner reported device testing completed, but the exact-channel acceptance checklist and APK checksum were not independently recorded |
 | SoundCraft | Pending app-specific integration | Not verified |
 | CADCraft | Pending app-specific integration | Not verified |
 | FigCraft | Pending app-specific integration | Not verified |

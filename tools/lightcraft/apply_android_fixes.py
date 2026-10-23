@@ -110,6 +110,57 @@ def apply(builder: Path, source: Path, suite: Path):
         '        },\n'
         '        "app.export" => crate::control::export_active(app, p),',
         "LightCraft Android Help command handler")
+    # Replace the Android updater's separate floating windows with a tab of
+    # LightCraft's native Help > About dialog. Do not modify any upstream
+    # desktop build; this is applied only to the Android checkout in CI.
+    dialogs = source / "crates/ui-egui/src/panels/dialogs.rs"
+    dlg = dialogs.read_text()
+    dlg = replace_once(dlg,
+        'pub const ABOUT_TABS: &[(&str, &str)] = &[("about", "About"), ("contributors", "Contributors"), ("models", "Models")];',
+        'pub const ABOUT_TABS: &[(&str, &str)] = &[("about", "About"), ("contributors", "Contributors"), ("models", "Models"), ("updates", "Updates")];',
+        "About LightCraft Updates tab")
+    dlg = replace_once(dlg,
+        '                        2 => crate::credits::models_ui(ui),\n                        _ => {',
+        '''
+                        2 => crate::credits::models_ui(ui),
+                        3 => {
+                            ui.heading("LightCraft Updates");
+                            let ctx = ui.ctx().clone();
+                            let installed = format!("Installed: {}", env!("CARGO_PKG_VERSION"));
+                            ui.label(installed);
+                            let state_id = egui::Id::new("artcraft.lightcraft.update_status");
+                            let state = ctx.data(|d| d.get_temp::<String>(state_id))
+                                .unwrap_or_else(|| "Select Check for Updates to query GitHub Releases.".into());
+                            ui.label(state);
+                            if ui.button("Check for Updates").clicked() {
+                                ctx.data_mut(|d| d.insert_temp(
+                                    egui::Id::new("artcraft.lightcraft.check_updates_requested"), true));
+                                ctx.request_repaint();
+                            }
+                            ui.separator();
+                            let startup_id = egui::Id::new("artcraft.lightcraft.startup_enabled");
+                            let mut startup = ctx.data(|d| d.get_temp::<bool>(startup_id)).unwrap_or(false);
+                            if ui.checkbox(&mut startup, "Check for updates at startup").changed() {
+                                ctx.data_mut(|d| {
+                                    d.insert_temp(egui::Id::new("artcraft.lightcraft.startup_desired"), startup);
+                                    d.insert_temp(egui::Id::new("artcraft.lightcraft.startup_changed"), true);
+                                });
+                                ctx.request_repaint();
+                            }
+                            ui.small("Off by default. Update checks never block photo editing.");
+                            let page = ctx.data(|d| d.get_temp::<String>(
+                                egui::Id::new("artcraft.lightcraft.release_page")));
+                            if page.is_some() && ui.button("Open GitHub Release").clicked() {
+                                ctx.data_mut(|d| d.insert_temp(
+                                    egui::Id::new("artcraft.lightcraft.open_release_requested"), true));
+                                ctx.request_repaint();
+                            }
+                            ui.small("LightCraft-only GitHub Releases; updates must use the original app signature.");
+                        }
+                        _ => {''',
+        "native About dialog update controls")
+    dialogs.write_text(dlg)
+
     menus.write_text(txt)
     layout = source / "crates/ui-egui/src/menubar.rs"
     lt = layout.read_text()

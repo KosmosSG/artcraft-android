@@ -968,6 +968,7 @@ impl eframe::App for VectorCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+        vectorcraft_ui_egui::menus::set_android_preferences(self.touch_dock, self.startup_updates);
 
         // PhotoCraft-style dock: an actual bottom panel reserves editor space instead
         // of floating over canvas handles or intercepting drawing gestures.
@@ -1030,63 +1031,31 @@ impl eframe::App for VectorCraftAndroidApp {
         if menu & 8 != 0 { check_updates = true; }
         if menu & 16 != 0 { self.startup_updates = !self.startup_updates; }
         if menu & 32 != 0 { self.touch_dock = !self.touch_dock; }
+        if menu & 64 != 0 { self.android_tools_open = true; }
         if hide_pad { self.touch_dock = false; }
-        egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
-            .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
-            .show(ctx, |ui| {
-                if ui.button("Android Tools").clicked() {
-                    self.android_tools_open = !self.android_tools_open;
-                }
-            });
-        let gpu_details = if self.android_tools_open {
-            match _frame.wgpu_render_state() {
+        // No persistent floating Android Tools palette. Help exposes read-only
+        // graphics and font-import status on demand without covering the canvas.
+        if self.android_tools_open {
+            let gpu_details = match _frame.wgpu_render_state() {
                 Some(state) => {
                     let info = state.adapter.get_info();
-                    format!(
-                        "UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
+                    format!("UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
                         info.name, info.backend, info.device_type,
                         info.driver, info.driver_info,
-                        state.device.limits().max_texture_dimension_2d
-                    )
+                        state.device.limits().max_texture_dimension_2d)
                 }
                 None => "GPU adapter/backend unavailable from eframe on this device.".into(),
-            }
-        } else { String::new() };
-        if self.android_tools_open {
-            egui::Window::new("VectorCraft Android Tools")
+            };
+            egui::Window::new("VectorCraft Graphics Diagnostics")
                 .open(&mut self.android_tools_open)
-                .default_pos([24.0, 95.0])
+                .default_width(340.0)
                 .show(ctx, |ui| {
-                    ui.heading("Fonts");
-                    if ui.button("Import Font (.ttf / .otf)").clicked() { import = true; }
-                    if !self.fonts.import_status.is_empty() {
-                        ui.label(&self.fonts.import_status);
-                    }
+                    ui.label("Read-only Android graphics information");
+                    ui.monospace(gpu_details);
                     ui.separator();
-                    ui.label("Shared ArtCraft-Fonts library (read-only)");
-                    if ui.button("Select Shared Font Folder").clicked() { select_shared = true; }
-                    if ui.button("Refresh Shared Fonts").clicked() { refresh_shared = true; }
-                    if !self.fonts.shared_status.is_empty() {
-                        ui.label(&self.fonts.shared_status);
-                    }
-                    ui.separator();
-                    ui.heading("Keyboard & Touch");
-                    ui.small("Illustrator-style keys are available in the Classic Defaults preset. Customize them in the shortcut editor; existing mappings are preserved.");
-                    if ui.button("Customize Keyboard Shortcuts").clicked() {
-                        customize_shortcuts = true;
-                    }
-                    ui.checkbox(&mut self.touch_dock, "Show Touch Shortcut Dock");
-                    ui.small("Uses VectorCraft's existing shortcut editor and undo/redo commands.");
-                    ui.separator();
-                    ui.heading("Graphics (read-only)");
-                    ui.monospace(&gpu_details);
-                    ui.small("Reports the actual egui/wgpu UI adapter when available; this does not imply that VectorCraft's document compositor uses the GPU. No renderer settings are changed.");
-                    ui.separator();
-                    if ui.button("Check for VectorCraft Updates").clicked() {
-                        check_updates = true;
-                    }
-                    ui.checkbox(&mut self.startup_updates, "Check for updates at startup");
-                    ui.small("Checks VectorCraft release listings. APK signatures are checked by Android during installation.");
+                    ui.label("Font import status");
+                    ui.label(&self.fonts.import_status);
+                    ui.label(&self.fonts.shared_status);
                 });
         }
         if self.startup_updates != previous_startup_updates {

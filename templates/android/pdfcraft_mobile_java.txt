@@ -19,6 +19,13 @@ public void pdfSetStartupUpdateEnabled(boolean enabled) {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putBoolean(PDF_STARTUP_UPDATE_PREF, enabled).apply();
 }
+public boolean pdfToolsPanelVisible() {
+    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("pdfcraft.tools.visible", false);
+}
+public void pdfSetToolsPanelVisible(boolean visible) {
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean("pdfcraft.tools.visible", visible).apply();
+}
 public void pdfRequestFont() {
     runOnUiThread(() -> {
         try {

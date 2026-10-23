@@ -3,7 +3,7 @@ name: PDFCraft ARM64 ephemeral candidate (not a release)
 on:
   push:
     branches:
-      - fix/pdfcraft-icon-android2
+      - fix/pdfcraft-collapsible-panel
     paths:
       - .github/workflows/pdfcraft-candidate.yml
       - lib/build-common.sh
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/pdfcraft-icon-android2'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/pdfcraft-collapsible-panel'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:

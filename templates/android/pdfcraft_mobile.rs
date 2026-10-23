@@ -10,6 +10,7 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 pub struct Mobile {
     app: AndroidApp,
     renderer: String,
+    panel_open: bool,
     fonts_open: bool,
     updates_open: bool,
     font_status: String,
@@ -23,15 +24,35 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), fonts_open: false, updates_open: false,
+            app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, updates_open: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
         };
+        mobile.panel_open = mobile.read_panel_setting().unwrap_or(false);
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
         mobile
     }
 
+    fn read_panel_setting(&self) -> Result<bool, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfToolsPanelVisible"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|err| err.to_string())
+    }
+    fn save_panel_setting(&self, enabled: bool) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfSetToolsPanelVisible"),
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
     fn read_startup_setting(&self) -> Result<bool, String> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
@@ -109,6 +130,7 @@ impl Mobile {
         self.update_url = None;
         self.update_status = "Checking published PDFCraft Android releases…".into();
         self.updates_open = true;
+        self.panel_open = true;
         match self.request(Action::CheckUpdates) {
             Ok(()) => self.checking = true,
             Err(error) => self.update_status = format!("Update checker unavailable: {error}"),
@@ -158,7 +180,18 @@ impl Mobile {
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
     pub fn toolbar(&mut self, parent: &mut egui::Ui) {
         egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
+            if !self.panel_open {
+                if ui.button("Show Android tools").clicked() {
+                    self.panel_open = true;
+                    let _ = self.save_panel_setting(true);
+                }
+                return;
+            }
             ui.horizontal_wrapped(|ui| {
+                if ui.button("Hide panel").clicked() {
+                    self.panel_open = false;
+                    let _ = self.save_panel_setting(false);
+                }
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;
                 }

@@ -1008,6 +1008,43 @@ impl eframe::App for VectorCraftAndroidApp {
                         });
                 });
         }
+        // Android-only GPU information is an in-layout bottom dock, not a
+        // floating egui window. Reserve space BEFORE drawing the editor so it
+        // never covers document handles or absorbs gestures over the canvas.
+        let mut close_graphics = false;
+        if self.android_tools_open {
+            let gpu_details = match _frame.wgpu_render_state() {
+                Some(state) => {
+                    let info = state.adapter.get_info();
+                    format!("UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
+                        info.name, info.backend, info.device_type,
+                        info.driver, info.driver_info,
+                        state.device.limits().max_texture_dimension_2d)
+                }
+                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
+            };
+            egui::Panel::bottom("vectorcraft.android.graphics_diagnostics")
+                .resizable(false)
+                .default_size(144.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("Graphics Diagnostics");
+                        if ui.small_button("Close").clicked() { close_graphics = true; }
+                    });
+                    egui::ScrollArea::vertical()
+                        .id_salt("vectorcraft.android.graphics_diagnostics.scroll")
+                        .max_height(128.0)
+                        .show(ui, |ui| {
+                            ui.label("Read-only Android graphics information");
+                            ui.monospace(gpu_details);
+                            ui.separator();
+                            ui.label("Font import status");
+                            ui.label(&self.fonts.import_status);
+                            ui.label(&self.fonts.shared_status);
+                        });
+                });
+        }
+        if close_graphics { self.android_tools_open = false; }
         // The editor now uses the space left after the bottom pad.
         self.inner.ui(ui);
 
@@ -1031,33 +1068,11 @@ impl eframe::App for VectorCraftAndroidApp {
         if menu & 8 != 0 { check_updates = true; }
         if menu & 16 != 0 { self.startup_updates = !self.startup_updates; }
         if menu & 32 != 0 { self.touch_dock = !self.touch_dock; }
-        if menu & 64 != 0 { self.android_tools_open = true; }
-        if hide_pad { self.touch_dock = false; }
-        // No persistent floating Android Tools palette. Help exposes read-only
-        // graphics and font-import status on demand without covering the canvas.
-        if self.android_tools_open {
-            let gpu_details = match _frame.wgpu_render_state() {
-                Some(state) => {
-                    let info = state.adapter.get_info();
-                    format!("UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
-                        info.name, info.backend, info.device_type,
-                        info.driver, info.driver_info,
-                        state.device.limits().max_texture_dimension_2d)
-                }
-                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
-            };
-            egui::Window::new("VectorCraft Graphics Diagnostics")
-                .open(&mut self.android_tools_open)
-                .default_width(340.0)
-                .show(ctx, |ui| {
-                    ui.label("Read-only Android graphics information");
-                    ui.monospace(gpu_details);
-                    ui.separator();
-                    ui.label("Font import status");
-                    ui.label(&self.fonts.import_status);
-                    ui.label(&self.fonts.shared_status);
-                });
+        if menu & 64 != 0 {
+            self.android_tools_open = !self.android_tools_open;
+            ctx.request_repaint();
         }
+        if hide_pad { self.touch_dock = false; }
         if self.startup_updates != previous_startup_updates {
             if let Some(dir) = self.persist.as_ref() {
                 persist_write(dir, "startup_updates.enabled", if self.startup_updates { b"1" } else { b"0" });

@@ -15,9 +15,6 @@ pub struct GridCraftTools {
     check_started_at: Option<std::time::Instant>,
     startup_loaded: bool,
     startup_check: bool,
-    show_shortcut_pad: bool,
-    panel_visible: bool,
-    panel_loaded: bool,
 }
 impl GridCraftTools {
     pub fn new(app: &AndroidApp) -> Self {
@@ -29,8 +26,6 @@ impl GridCraftTools {
             update_status: "Manual update check available; no automatic APK installation.".into(),
             release_url: None, checking: false, check_started_at: None,
             startup_loaded: false, startup_check: false,
-            show_shortcut_pad: false,
-            panel_visible: false, panel_loaded: false,
         }
     }
     fn send(&self, action: Action) -> Result<(), String> {
@@ -48,28 +43,6 @@ impl GridCraftTools {
             result?;
             Ok(())
         }).map_err(|e| format!("Android integration unavailable: {e}"))
-    }
-    fn read_panel_visible(&self) -> Result<bool, String> {
-        self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("gcToolsPanelVisible"), jni_sig!("()Z"), &[])?.z()
-        }).map_err(|e| format!("Cannot read tools panel preference: {e}"))
-    }
-    fn write_panel_visible(&self, visible: bool) -> Result<(), String> {
-        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("gcSetToolsPanelVisible"), jni_sig!("(Z)V"), &[JValue::Bool(visible)])?;
-            Ok(())
-        }).map_err(|e| format!("Cannot save tools panel preference: {e}"))
-    }
-    fn set_panel_visible(&mut self, visible: bool) {
-        self.panel_visible = visible;
-        if let Err(error) = self.write_panel_visible(visible) {
-            // Keep the session usable even if Android's preference bridge fails.
-            self.update_status = format!("{error}. This choice may reset on restart.");
-        }
     }
     fn read_startup(&self) -> Result<bool, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
@@ -109,12 +82,6 @@ impl GridCraftTools {
         }).map_err(|e| format!("Cannot poll GridCraft Android tools: {e}"))
     }
     pub fn poll(&mut self) {
-        if !self.panel_loaded {
-            if let Ok(visible) = self.read_panel_visible() {
-                self.panel_visible = visible;
-            }
-            self.panel_loaded = true;
-        }
         if !self.startup_loaded {
             match self.read_startup() {
                 Ok(value) => { self.startup_check = value; self.startup_loaded = true; },
@@ -170,8 +137,41 @@ impl GridCraftTools {
             }
         }
     }
-    /// Non-floating Android controls in the app's existing egui host; not a separate font window.
-    pub fn ui(&mut self, ui: &mut egui::Ui, sheet: &mut gridcraft_ui_egui::SheetApp) {
+    /// Android data/commands for the native GridCraft Tools top toolbar menu.
+    /// The UI's own ribbon embeds that menu without adding a panel or window.
+    /// This method is intentionally called before SheetApp::ui: it consumes
+    /// menu commands from the prior frame and refreshes the shared menu status.
+    pub fn ui(&mut self, ui: &mut egui::Ui, _sheet: &mut gridcraft_ui_egui::SheetApp) {
+        let ctx = ui.ctx();
+        let command_id = egui::Id::new("gridcraft.android.menu.action");
+        let command = ctx.data(|d| d.get_temp::<String>(command_id)).unwrap_or_default();
+        if !command.is_empty() {
+            ctx.data_mut(|d| d.insert_temp(command_id, String::new()));
+            match command.as_str() {
+                "import" => self.try_action(Action::Import),
+                "folder" => self.try_action(Action::SelectFolder),
+                "refresh" => self.try_action(Action::RefreshFolder),
+                "updates" => self.try_action(Action::CheckUpdates),
+                "open_release" => {
+                    if let Some(url) = self.release_url.clone() {
+                        if let Err(error) = self.open_release(&url) {
+                            self.update_status = error;
+                        }
+                    }
+                }
+                "startup_on" | "startup_off" => {
+                    let enabled = command == "startup_on";
+                    match self.write_startup(enabled) {
+                        Ok(()) => {
+                            self.startup_check = enabled;
+                            self.update_status = "Startup preference saved.".into();
+                        }
+                        Err(error) => self.update_status = error,
+                    }
+                }
+                _ => self.update_status = "Unknown GridCraft Tools menu command.".into(),
+            }
+        }
         if self.checking {
             if self.check_started_at.is_some_and(|t| t.elapsed() >= std::time::Duration::from_secs(30)) {
                 self.checking = false;
@@ -179,132 +179,17 @@ impl GridCraftTools {
                 self.release_url = None;
                 self.update_status = "Update check timed out. Check your connection and retry.".into();
             } else {
-                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
             }
         }
-        // Unlike the collapsible content header, hiding the panel removes the
-        // tools dock completely. Keep only a small non-floating restore control
-        // anchored at the bottom; it never obscures the spreadsheet with a window.
-        // Visibility is stored in the GridCraft-only Android preferences.
-        if !self.panel_visible {
-            egui::Panel::bottom("gridcraft.android.suite_tools_restore")
-                .resizable(false)
-                .frame(
-                    egui::Frame::default()
-                        .fill(egui::Color32::from_rgb(247, 250, 248))
-                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(205, 219, 210)))
-                        .inner_margin(egui::Margin::symmetric(4, 1))
-                )
-                .show(ui, |ui| {
-                    ui.scope(|ui| {
-                        ui.style_mut().visuals.override_text_color =
-                            Some(egui::Color32::from_rgb(30, 50, 39));
-                        if ui.small_button("Show GridCraft Tools ▲").clicked() {
-                            self.set_panel_visible(true);
-                        }
-                    });
-                });
-            return;
-        }
-        // The spreadsheet uses a light workbook UI. Reserve its bottom edge for
-        // Android controls instead of inserting dark inherited egui widgets in
-        // a black full-width strip ABOVE the File/Home/ribbon toolbar.
-        // Render before the SheetApp's central canvas (overlay.py controls order).
-        egui::Panel::bottom("gridcraft.android.suite_tools_dock")
-            .resizable(false)
-            .frame(
-                egui::Frame::default()
-                    .fill(egui::Color32::from_rgb(247, 250, 248))
-                    .stroke(egui::Stroke::new(
-                        1.0, egui::Color32::from_rgb(205, 219, 210)))
-                    .inner_margin(egui::Margin::symmetric(12, 8))
-            )
-            .show(ui, |ui| {
-                ui.scope(|ui| {
-                    // Limit styling to this dock. Never recolor the workbook,
-                    // formula bar, ribbon or sheet grid.
-                    let visuals = &mut ui.style_mut().visuals;
-                    visuals.dark_mode = false;
-                    visuals.override_text_color =
-                        Some(egui::Color32::from_rgb(30, 50, 39));
-                    visuals.widgets.inactive.bg_fill =
-                        egui::Color32::from_rgb(231, 242, 236);
-                    visuals.widgets.hovered.bg_fill =
-                        egui::Color32::from_rgb(211, 233, 218);
-                    visuals.widgets.active.bg_fill =
-                        egui::Color32::from_rgb(189, 221, 199);
-                    visuals.widgets.inactive.fg_stroke.color =
-                        egui::Color32::from_rgb(30, 50, 39);
-                    visuals.widgets.hovered.fg_stroke.color =
-                        egui::Color32::from_rgb(25, 60, 38);
-                    visuals.widgets.active.fg_stroke.color =
-                        egui::Color32::from_rgb(25, 60, 38);
-                    ui.spacing_mut().button_padding = egui::vec2(10.0, 7.0);
-                    ui.horizontal(|ui| {
-                        if ui.small_button("Hide Panel ▼").clicked() {
-                            self.set_panel_visible(false);
-                        }
-                    });
-                    egui::CollapsingHeader::new("GridCraft Tools  ·  Fonts / Updates / Shortcuts")
-                        .default_open(false)
-                        .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Import TTF / OTF").clicked() { self.try_action(Action::Import); }
-                if ui.button("Select Shared Font Folder").clicked() { self.try_action(Action::SelectFolder); }
-                if ui.button("Refresh Shared Fonts").clicked() { self.try_action(Action::RefreshFolder); }
-            });
-            ui.label(&self.font_status);
-            ui.separator();
-            if ui.button("Check for GridCraft Updates").clicked() { self.try_action(Action::CheckUpdates); }
-            if let Some(url) = self.release_url.clone() {
-                if ui.button("View verified GitHub release").clicked() {
-                    if let Err(error) = self.open_release(&url) { self.update_status = error; }
-                }
-            }
-            ui.horizontal(|ui| {
-                if self.checking { ui.spinner(); }
-                ui.label(&self.update_status);
-            });
-            let mut startup = self.startup_check;
-            if ui.checkbox(&mut startup, "Check for updates at startup").changed() {
-                match self.write_startup(startup) {
-                    Ok(()) => { self.startup_check = startup; self.update_status = "Startup preference saved.".into(); }
-                    Err(error) => self.update_status = error,
-                }
-            }
-            ui.separator();
-            ui.checkbox(&mut self.show_shortcut_pad, "Show tablet Shortcut Pad");
-            if self.show_shortcut_pad {
-                ui.horizontal_wrapped(|ui| {
-                    for (label, command) in [
-                        ("Undo", "edit.undo"), ("Redo", "edit.redo"),
-                        ("Previous sheet", "sheet.previous"), ("Next sheet", "sheet.next"),
-                    ] {
-                        if ui.button(label).clicked() {
-                            if let Err(error) = sheet.run(command, serde_json::json!({})) {
-                                self.font_status = format!("{label}: {error}");
-                            }
-                        }
-                    }
-                    let zoom = sheet.session.active()
-                        .and_then(|d| d.wb.active().map(|s| s.zoom))
-                        .unwrap_or(100);
-                    for (label, value) in [
-                        ("Zoom −", (i32::from(zoom) - 10).clamp(10, 400)),
-                        ("Zoom +", (i32::from(zoom) + 10).clamp(10, 400))
-                    ] {
-                        if ui.button(label).clicked() {
-                            if let Err(error) = sheet.run("view.zoom", serde_json::json!({"percent": value})) {
-                                self.font_status = format!("{label}: {error}");
-                            }
-                        }
-                    }
-                });
-            }
-            ui.small("GPU: renderer/backend not verified on this device; do not infer acceleration from the model name.");
-                        });
-                });
-            });
+        // Transient, UI-only state: no workbook document data is changed.
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.font_status"), self.font_status.clone());
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.update_status"), self.update_status.clone());
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.checking"), self.checking);
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.startup_check"), self.startup_check);
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.has_release"), self.release_url.is_some());
+        });
     }
 }
 #[derive(Clone, Copy)]

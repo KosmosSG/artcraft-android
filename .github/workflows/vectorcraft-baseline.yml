@@ -1,0 +1,176 @@
+name: VectorCraft Android baseline
+on:
+  push:
+    branches: [vectorcraft-android-baseline]
+    paths: ['tools/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Reserved Android versionCode (must exceed every prior installed/signed version)'
+        required: true
+        type: string
+      previous_version_code:
+        description: 'Verified highest previous code; 0 only for a confirmed first installation'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: vectorcraft-baseline
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/vectorcraft-android-baseline'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BUILDER_SHA: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      SOURCE_SHA: ad0566943ab9741e6356bbc9b53c3cc09895068d
+      SOURCE_TAG: v0.14.0
+      VERSION_NAME: 0.14.0-android.1
+      VERSION_CODE: ${{ inputs.version_code }}
+      PREVIOUS_CODE: ${{ inputs.previous_version_code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate reserved version code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          new, old = os.environ['VERSION_CODE'], os.environ['PREVIOUS_CODE']
+          if not re.fullmatch(r'[1-9][0-9]*', new) or not re.fullmatch(r'0|[1-9][0-9]*', old):
+              raise SystemExit('Version codes must be decimal integers')
+          if not 0 <= int(old) < int(new) <= 2100000000:
+              raise SystemExit('Reserved versionCode must exceed the previous verified code')
+          PY
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          fetch-depth: 1
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Verify official release provenance and apply Android version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$SOURCE_SHA"
+          git -C builder/source/vectorcraft fetch --depth=1 origin "refs/tags/$SOURCE_TAG:refs/tags/$SOURCE_TAG"
+          test "$(git -C builder/source/vectorcraft rev-parse "$SOURCE_TAG^{commit}")" = "$SOURCE_SHA"
+          python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build VectorCraft candidate with disposable local key
+        run: bash builder/build.sh -vectorcraft
+      - name: Export unsigned payload only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p unsigned
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, zipfile
+          apks = list(Path('builder/output').glob('*.apk'))
+          if len(apks) != 1:
+              raise SystemExit('Expected exactly one candidate')
+          # Rewriting the ZIP removes APK v2/v3 signing blocks; remove v1 signature entries too.
+          with zipfile.ZipFile(apks[0]) as src, zipfile.ZipFile('unsigned/vectorcraft-unsigned.apk', 'w') as dst:
+              for entry in src.infolist():
+                  if re.fullmatch(r'META-INF/(MANIFEST\.MF|[^/]+\.(SF|RSA|DSA|EC))', entry.filename, re.I):
+                      continue
+                  dst.writestr(entry, src.read(entry.filename))
+          PY
+      - uses: actions/upload-artifact@v5
+        with:
+          name: vectorcraft-unsigned-payload
+          path: unsigned/
+          retention-days: 1
+      - name: Remove disposable key and candidate
+        if: always()
+        run: rm -rf builder/keys builder/output
+  sign:
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      VERSION_NAME: 0.14.0-android.1
+      VERSION_CODE: ${{ inputs.version_code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/vectorcraft
+      - uses: actions/download-artifact@v5
+        with:
+          name: vectorcraft-unsigned-payload
+          path: unsigned
+      - name: Sign isolated payload with established VectorCraft identity
+        env:
+          KEY_DATA: ${{ secrets.VECTORCRAFT_KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.VECTORCRAFT_KEYSTORE_PASSWORD }}
+          EXPECTED_CERT: ${{ vars.VECTORCRAFT_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY_DATA" && test -n "$KEY_PASSWORD" && test -n "$EXPECTED_CERT" || {
+            echo 'Signing blocked: resolve VectorCraft installed APK/key provenance; no replacement production key will be generated.' >&2
+            exit 1
+          }
+          umask 077
+          printf '%s' "$KEY_DATA" | base64 --decode > "$RUNNER_TEMP/vectorcraft.jks"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)
+          mkdir -p verified
+          "$ZIPALIGN" -P 16 -f 4 unsigned/vectorcraft-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$APKSIGNER" sign --ks "$RUNNER_TEMP/vectorcraft.jks" --ks-key-alias artcraftbuilder --ks-pass env:KEY_PASSWORD --key-pass env:KEY_PASSWORD --out "verified/vectorcraft-$VERSION_NAME.apk" "$RUNNER_TEMP/aligned.apk"
+      - name: Verify signed APK before distribution
+        env:
+          EXPECTED_CERT: ${{ vars.VECTORCRAFT_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="verified/vectorcraft-$VERSION_NAME.apk"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          python3 tools/vectorcraft/verify_apk.py "$APK" "$AAPT" "$APKSIGNER" "$VERSION_NAME" "$VERSION_CODE" "$EXPECTED_CERT" > verified/verification.json
+          cat verified/verification.json >> "$GITHUB_STEP_SUMMARY"
+          printf '\nDevice testing remains pending: install, font import, files, keyboard and lifecycle.\n' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: vectorcraft-0.14.0-android.1-verified
+          path: verified/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/vectorcraft.jks" "$RUNNER_TEMP/aligned.apk"

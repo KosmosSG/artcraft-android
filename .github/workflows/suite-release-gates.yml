@@ -11,6 +11,7 @@ on:
       - 'tools/suite_feature_parity.py'
       - 'tools/test_suite_feature_parity.py'
       - 'docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md'
+      - 'AGENTS.md'
       - '.github/workflows/suite-release-gates.yml'
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - 'tools/suite_feature_parity.py'
       - 'tools/test_suite_feature_parity.py'
       - 'docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md'
+      - 'AGENTS.md'
       - '.github/workflows/suite-release-gates.yml'
   workflow_dispatch:
 permissions:

@@ -8,6 +8,7 @@ on:
       - .github/workflows/pdfcraft-candidate.yml
       - lib/build-common.sh
       - assets/pdfcraft/**
+      - templates/android/pdfcraft_modifiers.rs
       - templates/android/pdfcraft_mobile.rs
       - templates/android/pdfcraft_mobile_java.txt
       - tools/test_pdfcraft_adapter.py
@@ -81,6 +82,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+
+      - name: Test PhotoCraft-derived keyboard fix and PDF object read/write code
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pdfcraft-input-tests/src"
+          cp templates/android/pdfcraft_modifiers.rs "$RUNNER_TEMP/pdfcraft-input-tests/src/lib.rs"
+          cat > "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml" <<'EOF'
+          [package]
+          name = "pdfcraft-input-tests"
+          version = "0.1.0"
+          edition = "2024"
+          [dependencies]
+          egui = "=0.36.0"
+          EOF
+          cargo test --manifest-path "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml"
+          cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-cos --lib -j 2
 
       - name: Configure Android SDK/NDK
         shell: bash

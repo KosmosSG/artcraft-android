@@ -372,7 +372,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "25-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "26-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2680,6 +2680,13 @@ impl eframe::App for AndroidShell {{
 '''
 
     if app == "pdfcraft":
+        start = platform.index("fn apply_android_modifiers(")
+        end = platform.index("/// Read the Android system clipboard", start)
+        platform = platform[:start] + "mod pdfcraft_modifiers;\nuse pdfcraft_modifiers::{AndroidModifiers, apply_android_modifiers};\n\n" + platform[end:]
+        shell = shell.replace("modifiers: egui::Modifiers", "modifiers: AndroidModifiers")
+        shell = shell.replace("modifiers: egui::Modifiers::default()", "modifiers: AndroidModifiers::default()")
+
+    if app == "pdfcraft":
         # PDFCraft-only; the document-font cache is separate from UI system-font fallbacks.
         checks = [
             ("    probe: InputProbe,", "    probe: InputProbe,\n    pdf_mobile: pdfcraft_mobile::Mobile,"),
@@ -2687,7 +2694,7 @@ impl eframe::App for AndroidShell {{
              "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
             ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);"),
-            ("        self.inner.ui(ui, frame);", "        self.inner.ui(ui, frame);\n        self.pdf_mobile.toolbar(ui.ctx());"),
+            ("        self.inner.ui(ui, frame);", "        self.pdf_mobile.toolbar(ui);\n        self.inner.ui(ui, frame);"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:
@@ -2707,6 +2714,21 @@ impl eframe::App for AndroidShell {{
         if create_hook
         else "Box::new(move |_cc| Ok(Box::new(shell)))"
     )
+
+    if app == "pdfcraft":
+        creator = """Box::new(move |cc| {
+            let mut shell = shell;
+            let description = match cc.wgpu_render_state.as_ref() {
+                Some(rs) => {
+                    let info = rs.adapter.get_info();
+                    format!("UI: {} ({:?}, {:?}). PDF page rendering uses the upstream renderer.", info.name, info.backend, info.device_type)
+                }
+                None => "UI adapter information unavailable. PDF page rendering uses the upstream renderer.".to_owned(),
+            };
+            log::info!("PDFCraft Android renderer: {}", description);
+            shell.pdf_mobile.set_renderer(description);
+            Ok(Box::new(shell))
+        })"""
 
     if saf:
         entry = f'''//! Generated Android launcher for {title}.
@@ -2792,6 +2814,7 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         if src_audio.is_file():
             shutil.copy2(src_audio, staging_dir / "src" / filename)
     if app == "pdfcraft":
+        shutil.copy2(root / "templates/android/pdfcraft_modifiers.rs", staging_dir / "src/pdfcraft_modifiers.rs")
         marker = "    let saf_bridge = saf::Bridge::new(&android_app);"
         if entry.count(marker) != 1:
             raise SystemExit("PDFCraft environment initialization anchor changed")

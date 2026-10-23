@@ -9,6 +9,7 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 
 pub struct Mobile {
     app: AndroidApp,
+    renderer: String,
     fonts_open: bool,
     updates_open: bool,
     font_status: String,
@@ -22,7 +23,7 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, fonts_open: false, updates_open: false,
+            app, renderer: "Renderer not initialized".into(), fonts_open: false, updates_open: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
@@ -154,15 +155,16 @@ impl Mobile {
             }
         }
     }
-    pub fn toolbar(&mut self, ctx: &egui::Context) {
-        egui::Window::new("PDFCraft Android tools").anchor(egui::Align2::LEFT_BOTTOM, [8.0, -8.0]).resizable(false).collapsible(true).show(ctx, |ui| {
+    pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
+    pub fn toolbar(&mut self, parent: &mut egui::Ui) {
+        egui::TopBottomPanel::bottom("pdfcraft_android_tools").resizable(false).show_inside(parent, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;
                 }
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
                 ui.separator();
-                ui.label("PDFCraft Android • document fonts and releases");
+                ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
             });
             if self.fonts_open {
                 ui.separator();

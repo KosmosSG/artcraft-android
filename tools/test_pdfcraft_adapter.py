@@ -35,6 +35,9 @@ with tempfile.TemporaryDirectory() as folder:
     assert cargo['package']['version'] == '0.12.0-android.1'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
+    assert 'modifiers: AndroidModifiers' in native
+    assert 'shell.pdf_mobile.set_renderer(description)' in native
+    assert native.index('self.pdf_mobile.toolbar(ui)') < native.index('self.inner.ui(ui, frame)')
     assert 'take_android_update_request()' in native
     assert 'self.pdf_mobile.do_update_check()' in native
     assert 'ANDROID_UPDATE_REQUEST' in (dst / 'crates/ui-egui/src/updates.rs').read_text()

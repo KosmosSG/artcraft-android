@@ -72,7 +72,7 @@ pub fn take_android_menu_bits() -> u32 {
     }
 """)
     s=insert_once(s,
-        'pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {\\n',
+        'pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {\n',
         '''pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
     #[cfg(target_os = "android")]
     match id {

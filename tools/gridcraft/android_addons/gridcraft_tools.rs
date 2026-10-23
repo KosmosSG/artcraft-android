@@ -11,6 +11,8 @@ pub struct GridCraftTools {
     pub font_status: String,
     pub update_status: String,
     release_url: Option<String>,
+    checking: bool,
+    check_started_at: Option<std::time::Instant>,
     startup_loaded: bool,
     startup_check: bool,
     show_shortcut_pad: bool,
@@ -23,7 +25,8 @@ impl GridCraftTools {
             app: app.clone(), vm: Arc::new(vm),
             font_status: "Import TTF/OTF or choose ArtCraft-Fonts (restart to apply).".into(),
             update_status: "Manual update check available; no automatic APK installation.".into(),
-            release_url: None, startup_loaded: false, startup_check: false,
+            release_url: None, checking: false, check_started_at: None,
+            startup_loaded: false, startup_check: false,
             show_shortcut_pad: false,
         }
     }
@@ -99,6 +102,8 @@ impl GridCraftTools {
                     match value.get("kind").and_then(|v| v.as_str()).unwrap_or_default() {
                         "font" | "folder" => self.font_status = text,
                         "update" => {
+                            self.checking = false;
+                            self.check_started_at = None;
                             self.update_status = text;
                             self.release_url = value.get("url").and_then(|v| v.as_str())
                                 .filter(|s| s.starts_with("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v"))
@@ -118,19 +123,37 @@ impl GridCraftTools {
                 if matches!(action, Action::CheckUpdates) {
                     self.release_url = None;
                     self.update_status = "Checking published GridCraft Android releases…".into();
+                    self.checking = true;
+                    self.check_started_at = Some(std::time::Instant::now());
                 } else {
                     self.font_status = "Waiting for Android Files…".into();
                 }
             }
             Err(err) => {
-                if matches!(action, Action::CheckUpdates) { self.update_status = err; }
+                if matches!(action, Action::CheckUpdates) {
+                    self.checking = false;
+                    self.check_started_at = None;
+                    self.update_status = err;
+                }
                 else { self.font_status = err; }
             }
         }
     }
     /// Non-floating Android controls in the app's existing egui host; not a separate font window.
     pub fn ui(&mut self, ui: &mut egui::Ui, sheet: &mut gridcraft_ui_egui::SheetApp) {
-        ui.collapsing("GridCraft Android: Fonts, Updates & Shortcuts", |ui| {
+        if self.checking {
+            if self.check_started_at.is_some_and(|t| t.elapsed() >= std::time::Duration::from_secs(30)) {
+                self.checking = false;
+                self.check_started_at = None;
+                self.release_url = None;
+                self.update_status = "Update check timed out. Check your connection and retry.".into();
+            } else {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            }
+        }
+        egui::CollapsingHeader::new("GridCraft Android: Fonts, Updates & Shortcuts")
+            .default_open(true)
+            .show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Import TTF / OTF").clicked() { self.try_action(Action::Import); }
                 if ui.button("Select Shared Font Folder").clicked() { self.try_action(Action::SelectFolder); }
@@ -144,7 +167,10 @@ impl GridCraftTools {
                     if let Err(error) = self.open_release(&url) { self.update_status = error; }
                 }
             }
-            ui.label(&self.update_status);
+            ui.horizontal(|ui| {
+                if self.checking { ui.spinner(); }
+                ui.label(&self.update_status);
+            });
             let mut startup = self.startup_check;
             if ui.checkbox(&mut startup, "Check for updates at startup").changed() {
                 match self.write_startup(startup) {

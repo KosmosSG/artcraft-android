@@ -40,7 +40,9 @@ jobs:
       - name: Compile Android SAF/IME and font bridge Java
         run: |
           set -euo pipefail
-          sdkmanager --install 'platforms;android-35'
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35'
           mkdir -p "$RUNNER_TEMP/vc-java"
           javac -source 17 -target 17 \
             -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
@@ -89,7 +91,9 @@ jobs:
       - name: Install pinned ARM64 NDK and Android 35
         run: |
           set -euo pipefail
-          sdkmanager --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
       - name: Stage existing Android adapter and reviewed menu patch in disposable checkout

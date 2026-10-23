@@ -92,7 +92,6 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertIn("check_started_at", rust)
         self.assertIn("Update check timed out.", rust)
         self.assertIn("ui.ctx().request_repaint_after", rust)
-        self.assertIn("Read-only", rust if "Read-only" in rust else rust + "Read-only")
         self.assertNotIn("gh release create", rust)
         self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
 

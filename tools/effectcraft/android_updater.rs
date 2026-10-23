@@ -11,6 +11,8 @@ pub struct Updater {
     app: AndroidApp,
     open: bool,
     checking: bool,
+    startup_pending: bool,
+    automatic: bool,
     message: String,
     release_url: Option<String>,
     download_url: Option<String>,
@@ -19,7 +21,7 @@ pub struct Updater {
 impl Updater {
     pub fn new(app: &AndroidApp) -> Self {
         Self {
-            app: app.clone(), open: false, checking: false,
+            app: app.clone(), open: false, checking: false, startup_pending: true, automatic: false,
             message: String::new(), release_url: None, download_url: None,
         }
     }
@@ -35,6 +37,31 @@ impl Updater {
             response?;
             Ok(())
         }).map_err(|e| e.to_string())
+    }
+
+    fn settings_java(&self) -> Result<(), String> {
+        // SAFETY: AndroidApp retains the VM and activity for the lifetime of this shell.
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let response = env.call_method(&*activity, jni_str!("ecStartupUpdateSettings"), jni_sig!("()V"), &[]);
+            if response.is_err() { env.exception_clear(); }
+            response?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+
+    fn startup_enabled(&self) -> bool {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("ecStartupUpdatesEnabled"), jni_sig!("()Z"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?.z()
+        }).unwrap_or(false)
     }
 
     fn poll_java(&self) -> Result<Option<String>, String> {
@@ -57,6 +84,13 @@ impl Updater {
     }
 
     pub fn poll(&mut self, ctx: &egui::Context) {
+        if self.startup_pending {
+            self.startup_pending = false;
+            if self.startup_enabled() && self.check_java().is_ok() {
+                self.checking = true;
+                self.automatic = true;
+            }
+        }
         if !self.checking { return; }
         match self.poll_java() {
             Ok(None) => { ctx.request_repaint_after(std::time::Duration::from_millis(300)); }
@@ -70,6 +104,9 @@ impl Updater {
                 match response {
                     Err(err) => self.message = format!("Invalid GitHub update response: {err}"),
                     Ok(info) => {
+                        if self.automatic && info["state"].as_str() == Some("update_available") {
+                            self.open = true;
+                        }
                         let installed = info["installed_version"].as_str().unwrap_or("unknown");
                         let latest = info["latest_version"].as_str().unwrap_or("none");
                         self.release_url = info["release_url"].as_str()
@@ -99,10 +136,20 @@ impl Updater {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
+        let settings = ctx.data_mut(|d|
+            d.remove_temp::<bool>(egui::Id::new("artcraft.effectcraft.update_settings_requested"))
+        ).unwrap_or(false);
+        if settings {
+            if let Err(err) = self.settings_java() {
+                self.open = true;
+                self.message = format!("Could not open update settings: {err}");
+            }
+        }
         let requested = ctx.data_mut(|d|
             d.remove_temp::<bool>(egui::Id::new("artcraft.effectcraft.check_updates_requested"))
         ).unwrap_or(false);
         if requested && !self.checking {
+            self.automatic = false;
             self.open = true;
             self.message = "Checking official EffectCraft GitHub releases…".to_owned();
             self.download_url = None;

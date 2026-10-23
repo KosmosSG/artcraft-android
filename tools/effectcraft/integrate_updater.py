@@ -33,6 +33,11 @@ injected = anchor + """
                                     egui::Id::new("artcraft.effectcraft.check_updates_requested"), true));
                                 ui.close();
                             }
+                            if ui.button("Startup Update Settings").clicked() {
+                                ui.ctx().data_mut(|d| d.insert_temp(
+                                    egui::Id::new("artcraft.effectcraft.update_settings_requested"), true));
+                                ui.close();
+                            }
                         }"""
 m = once(m, anchor, injected, "EffectCraft Help menu")
 menu.write_text(m)

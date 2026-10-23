@@ -1,4 +1,4 @@
-name: EffectCraft v0.14.0 ARM64 candidate (ephemeral; never publish)
+name: EffectCraft v0.16.0 ARM64 candidate (ephemeral; never publish)
 
 on:
   push:
@@ -34,9 +34,9 @@ jobs:
           import json
           from pathlib import Path
           p=json.loads(Path('tools/effectcraft/upstream-lock.json').read_text())
-          assert p['official_tag']=='v0.14.0'
-          assert p['official_commit']=='26b40199b72121aa7f4e55a63718e1b4dd48a859'
-          assert p['android_version_name']=='0.14.0-android.1'
+          assert p['official_tag']=='v0.16.0'
+          assert p['official_commit']=='9581b53c3f8945683252af0eb5fac79e0e43aed4'
+          assert p['android_version_name']=='0.16.0-android.1'
           assert p['expected_abi']=='arm64-v8a'
           assert p['proposed_package']=='com.artcraft.effectcraft'
           assert p['permanent_signing_ready'] is False
@@ -75,14 +75,14 @@ jobs:
           "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Checkout immutable upstream EffectCraft v0.14.0 source
+      - name: Checkout immutable upstream EffectCraft v0.16.0 source
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p source
-          git clone --depth 1 --branch v0.14.0 https://github.com/storytold/effectcraft.git source/effectcraft
-          test "$(git -C source/effectcraft rev-parse HEAD)" = '26b40199b72121aa7f4e55a63718e1b4dd48a859'
-          grep -Fq 'version = "0.14.0"' source/effectcraft/Cargo.toml
+          git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git source/effectcraft
+          test "$(git -C source/effectcraft rev-parse HEAD)" = '9581b53c3f8945683252af0eb5fac79e0e43aed4'
+          grep -Fq 'version = "0.16.0"' source/effectcraft/Cargo.toml
           grep -Fq 'rust-version = "1.95"' source/effectcraft/Cargo.toml
           grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
           echo "Pinned source $(git -C source/effectcraft rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
@@ -98,14 +98,14 @@ jobs:
           set -euo pipefail
           python3 tools/effectcraft/integrate_updater.py .
           bash build.sh -effectcraft -packagename=com.artcraft.effectcraft
-          test -s output/effectcraft-0.14.0.apk
-          mv output/effectcraft-0.14.0.apk output/EffectCraft-0.14.0-android.1-arm64-v8a.apk
+          test -s output/effectcraft-0.16.0.apk
+          mv output/effectcraft-0.16.0.apk output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
 
       - name: Verify signed APK package, version, launcher, ABI and SHA256
         shell: bash
         run: |
           set -euo pipefail
-          APK=output/EffectCraft-0.14.0-android.1-arm64-v8a.apk
+          APK=output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
           SDK="$ANDROID_HOME/build-tools/35.0.0"
           "$SDK/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/signer.txt"
           "$SDK/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
@@ -116,7 +116,7 @@ jobs:
           apk,txt=sys.argv[1:]
           text=Path(txt).read_text()
           m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",text,re.M)
-          if not m or m.group(1)!='com.artcraft.effectcraft' or m.group(3)!='0.14.0-android.1' or int(m.group(2))<1:
+          if not m or m.group(1)!='com.artcraft.effectcraft' or m.group(3)!='0.16.0-android.1' or int(m.group(2))<1:
               raise SystemExit('STOP: incorrect package/version metadata')
           if 'launchable-activity:' not in text:
               raise SystemExit('STOP: no launcher Activity')
@@ -131,7 +131,7 @@ jobs:
           PY
           sha256sum "$APK" | tee "$RUNNER_TEMP/sha256.txt"
           {
-            echo '### EffectCraft v0.14.0 NON-PRODUCTION candidate'
+            echo '### EffectCraft v0.16.0 NON-PRODUCTION candidate'
             echo 'Disposable signing key only. Do not distribute as a permanent update.'
             grep -m1 '^package:' "$RUNNER_TEMP/badging.txt"
             grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/signer.txt"
@@ -142,7 +142,7 @@ jobs:
       - name: Upload short-lived Actions artifact (not a GitHub release)
         uses: actions/upload-artifact@v5
         with:
-          name: EffectCraft-0.14.0-android.1-arm64-EPHEMERAL-NOT-RELEASE
-          path: output/EffectCraft-0.14.0-android.1-arm64-v8a.apk
+          name: EffectCraft-v0.16.0-android.1-arm64-EPHEMERAL-NOT-RELEASE
+          path: output/EffectCraft-v0.16.0-android.1-arm64-v8a.apk
           retention-days: 7
           if-no-files-found: error

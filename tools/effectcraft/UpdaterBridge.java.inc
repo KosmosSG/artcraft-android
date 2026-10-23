@@ -82,7 +82,7 @@
                         int[] candidate = ecVersion(version);
                         if (candidate == null || (selected != null && ecCompare(candidate, selected) <= 0))
                             continue;
-                        String assetName = "EffectCraft-" + version + "-arm64-v8a.apk";
+                        String assetName = "EffectCraft-v" + version + "-arm64-v8a.apk";
                         String requiredUrl = EC_DOWNLOAD_ROOT + tag + "/" + assetName;
                         org.json.JSONArray assets = release.optJSONArray("assets");
                         int matches = 0;
@@ -130,4 +130,22 @@
                 ecUpdateResults.offer(result.toString());
             }
         });
+    }
+
+    public void ecStartupUpdateSettings() {
+        runOnUiThread(() -> {
+            android.content.SharedPreferences prefs = getSharedPreferences("effectcraft_updates", MODE_PRIVATE);
+            boolean[] enabled = { prefs.getBoolean("startup", false) };
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("Startup Update Settings")
+                .setMultiChoiceItems(new String[]{"Check for updates at startup"}, enabled,
+                    (dialog, which, checked) -> enabled[0] = checked)
+                .setPositiveButton("Save", (dialog, which) ->
+                    prefs.edit().putBoolean("startup", enabled[0]).apply())
+                .setNegativeButton("Cancel", null).show();
+        });
+    }
+
+    public boolean ecStartupUpdatesEnabled() {
+        return getSharedPreferences("effectcraft_updates", MODE_PRIVATE).getBoolean("startup", false);
     }

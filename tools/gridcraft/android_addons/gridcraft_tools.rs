@@ -151,9 +151,43 @@ impl GridCraftTools {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
             }
         }
-        egui::CollapsingHeader::new("GridCraft Android: Fonts, Updates & Shortcuts")
-            .default_open(true)
+        // The spreadsheet uses a light workbook UI. Reserve its bottom edge for
+        // Android controls instead of inserting dark inherited egui widgets in
+        // a black full-width strip ABOVE the File/Home/ribbon toolbar.
+        // Render before the SheetApp's central canvas (overlay.py controls order).
+        egui::Panel::bottom("gridcraft.android.suite_tools_dock")
+            .resizable(false)
+            .frame(
+                egui::Frame::default()
+                    .fill(egui::Color32::from_rgb(247, 250, 248))
+                    .stroke(egui::Stroke::new(
+                        1.0, egui::Color32::from_rgb(205, 219, 210)))
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+            )
             .show(ui, |ui| {
+                ui.scope(|ui| {
+                    // Limit styling to this dock. Never recolor the workbook,
+                    // formula bar, ribbon or sheet grid.
+                    let visuals = &mut ui.style_mut().visuals;
+                    visuals.dark_mode = false;
+                    visuals.override_text_color =
+                        Some(egui::Color32::from_rgb(30, 50, 39));
+                    visuals.widgets.inactive.bg_fill =
+                        egui::Color32::from_rgb(231, 242, 236);
+                    visuals.widgets.hovered.bg_fill =
+                        egui::Color32::from_rgb(211, 233, 218);
+                    visuals.widgets.active.bg_fill =
+                        egui::Color32::from_rgb(189, 221, 199);
+                    visuals.widgets.inactive.fg_stroke.color =
+                        egui::Color32::from_rgb(30, 50, 39);
+                    visuals.widgets.hovered.fg_stroke.color =
+                        egui::Color32::from_rgb(25, 60, 38);
+                    visuals.widgets.active.fg_stroke.color =
+                        egui::Color32::from_rgb(25, 60, 38);
+                    ui.spacing_mut().button_padding = egui::vec2(10.0, 7.0);
+                    egui::CollapsingHeader::new("GridCraft Tools  ·  Fonts / Updates / Shortcuts")
+                        .default_open(false)
+                        .show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Import TTF / OTF").clicked() { self.try_action(Action::Import); }
                 if ui.button("Select Shared Font Folder").clicked() { self.try_action(Action::SelectFolder); }
@@ -208,7 +242,9 @@ impl GridCraftTools {
                 });
             }
             ui.small("GPU: renderer/backend not verified on this device; do not infer acceleration from the model name.");
-        });
+                        });
+                });
+            });
     }
 }
 #[derive(Clone, Copy)]

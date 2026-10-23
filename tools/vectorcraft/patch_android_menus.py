@@ -63,6 +63,7 @@ pub fn take_android_menu_bits() -> u32 {
             "android.vectorcraft.startupUpdates" => 16,
             "android.vectorcraft.touchPad" => 32,
             "android.vectorcraft.diagnostics" => 64,
+            "android.vectorcraft.updateChannel" => 128,
             _ => 0,
         };
         if bit != 0 {
@@ -111,6 +112,7 @@ pub fn take_android_menu_bits() -> u32 {
         """                c("About VectorCraft", "help.about"),
                 c("Check for VectorCraft Updates", "android.vectorcraft.updates"),
                 c("Check for Updates at Startup", "android.vectorcraft.startupUpdates"),
+                c("Update Channel…", "android.vectorcraft.updateChannel"),
             ],
         ),
     ]""")

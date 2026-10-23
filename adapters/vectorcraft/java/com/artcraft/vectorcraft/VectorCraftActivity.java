@@ -71,9 +71,23 @@ public final class VectorCraftActivity extends NativeActivity {
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
     public void vcRequestFontFolder(long id) { extras.requestFontFolder(id); }
     public void vcRefreshFontFolder(long id) { extras.refreshFontFolder(id); }
+    public void vcShowUpdateChannelSettings() { extras.showUpdateChannelSettings(); }
     public void vcCheckForUpdates() { extras.checkForUpdates(); }
     public String vcPollUpdateResult() { return extras.pollUpdate(); }
     public void vcOpenUpdatePage(String url) { extras.openRelease(url); }
+
+    // Same native message pattern as the released PhotoCraft Android adapter.
+    // Only human-readable status is displayed; no files or font binaries leave the app.
+    public void vcShowMessage(String message) {
+        if (message == null || message.trim().isEmpty()) return;
+        final String summary = message.length() > 220 ? message.substring(0, 220) : message;
+        runOnUiThread(() -> {
+            if (!isFinishing() && !isDestroyed()) {
+                android.widget.Toast.makeText(this, summary,
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+    }
 
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real

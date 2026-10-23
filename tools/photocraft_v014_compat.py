@@ -100,6 +100,7 @@ def preflight() -> None:
         "templates/android/ime_bridge.rs",
         "patches/photocraft-menus.patch",
         "tools/photocraft_v014_menu_port.py",
+        "tools/photocraft_v014_brand_port.py",
         "adapters/photocraft/prepare.sh",
         "vendor/winit",
         "vendor/android-activity",
@@ -119,7 +120,7 @@ def preflight() -> None:
             die("launcher Pc PNG exists but its SHA-256 does not match approved artwork")
         print("Approved Pc icon checksum verified.")
     else:
-        die("exact approved Pc icon is required for the v0.12 preservation branch")
+        die("exact approved Pc icon is required for the v0.14 upgrade")
     print("PASS: static feature-preservation markers, package, SDK, and source pin.")
 
 
@@ -195,6 +196,12 @@ def prepare() -> None:
         ["bash", "adapters/photocraft/prepare.sh", "photocraft", "PhotoCraft", "source/photocraft", "debug"],
         cwd=ROOT, env=env, check=True,
     )
+    # The in-app top-left title-bar mark is a separate asset embedded by ui-egui:
+    # use the exact launcher artwork here, not upstream's fox icon.
+    subprocess.run(
+        ["python3", str(ROOT / "tools/photocraft_v014_brand_port.py"), str(SOURCE)],
+        cwd=ROOT, check=True,
+    )
     # Use existing builder's Android input and ANR fixes, but only in this
     # ephemeral, pinned source checkout. Never edit or replace builder/vendor originals.
     dest = SOURCE / "vendor"
@@ -240,12 +247,16 @@ def verify_prepared() -> None:
     staged_icon = SOURCE / "apps/photocraft-android/res/drawable/ic_launcher.png"
     if hashlib.sha256(staged_icon.read_bytes()).hexdigest() != config()["approved_icon_sha256"]:
         die("staged launcher icon differs from the approved original")
-    print("PASS: prepared versionName, package, architecture and Android menus.")
+    brand = (SOURCE / "crates/ui-egui/src/brand.rs").read_text()
+    approved_reference = 'include_bytes!("../../../apps/photocraft-android/res/drawable/ic_launcher.png")'
+    if brand.count(approved_reference) != 1 or '#[cfg(target_os = "android")]' not in brand:
+        die("Android's top-left application mark does not use the exact approved Pc launcher")
+    print("PASS: prepared versionName, package, architecture, Android menus and top-left Pc icon.")
 
 
 def main() -> None:
     if len(sys.argv) != 2 or sys.argv[1] not in {"preflight", "checkout", "prepare", "verify"}:
-        die("usage: photocraft_v012_compat.py preflight|checkout|prepare|verify")
+        die("usage: photocraft_v014_compat.py preflight|checkout|prepare|verify")
     cmd = sys.argv[1]
     if cmd == "preflight":
         preflight()

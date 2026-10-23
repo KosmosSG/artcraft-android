@@ -53,3 +53,5 @@ jobs:
 # Retry 1: release signature verification stage instrumentation applied.
 
 # Retry 2: tolerant SHA-256 digest parsing from APK verification output.
+
+# Retry 3: handle 'V3.0 Signer: certificate SHA-256 digest' format.

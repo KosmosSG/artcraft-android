@@ -66,6 +66,15 @@ def generate(source, destination):
     tile_size = round(CANVAS * 64 / 108)
     foreground = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     fitted = tile.resize((tile_size, tile_size), Image.Resampling.LANCZOS)
+    # Lanczos can reintroduce a handful of near-black samples after cleanup.
+    # Clear only residual dark specks in the adaptive foreground; the solid
+    # burgundy layer beneath fills their places without a black outline.
+    filtered = fitted.load()
+    for fy in range(fitted.height):
+        for fx in range(fitted.width):
+            r, g, b, a = filtered[fx, fy]
+            if a and max(r, g, b) < 52:
+                filtered[fx, fy] = (r, g, b, 0)
     foreground.alpha_composite(fitted, ((CANVAS-tile_size)//2, (CANVAS-tile_size)//2))
     folder = destination / "drawable-xxxhdpi"
     folder.mkdir(parents=True, exist_ok=True)

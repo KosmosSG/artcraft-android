@@ -206,6 +206,16 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn choose_update_channel(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcShowUpdateChannelSettings"),
+                jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn check_for_updates(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -1168,6 +1178,11 @@ impl eframe::App for VectorCraftAndroidApp {
         if menu & 2 != 0 { select_shared = true; }
         if menu & 4 != 0 { refresh_shared = true; }
         if menu & 8 != 0 { check_updates = true; }
+        if menu & 128 != 0 {
+            if let Err(e) = self.bridge.choose_update_channel() {
+                log::warn!("Cannot open VectorCraft update channel settings: {e}");
+            }
+        }
         if menu & 16 != 0 { self.startup_updates = !self.startup_updates; }
         if menu & 32 != 0 { self.touch_dock = !self.touch_dock; }
         if menu & 64 != 0 {

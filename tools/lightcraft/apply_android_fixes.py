@@ -26,20 +26,20 @@ def apply(builder: Path, source: Path, suite: Path):
     icons = builder / "lib/app_icons.py"
     original = icons.read_text()
     anchor = (
-        "    stripped, _changed = _strip_background(work, pristine=pristine)\\n"
+        "    stripped, _changed = _strip_background(work, pristine=pristine)\n"
         "    foreground = _foreground(Image, stripped)"
     )
     replacement = (
-        "    if app == 'lightcraft' and explicit is not None:\\n"
-        "        sample = pristine.getpixel((WORK_PX // 2, WORK_PX // 4))\\n"
-        "        color = '#%02X%02X%02X' % sample[:3]\\n"
-        "        # Preserve every original pixel; only scale and center the full tile.\\n"
-        "        side = round(CANVAS_PX * 0.85)\\n"
-        "        icon = pristine.resize((side, side), Image.Resampling.LANCZOS)\\n"
-        "        foreground = Image.new('RGBA', (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))\\n"
-        "        foreground.alpha_composite(icon, ((CANVAS_PX-side)//2, (CANVAS_PX-side)//2))\\n"
-        "    else:\\n"
-        "        stripped, _changed = _strip_background(work, pristine=pristine)\\n"
+        "    if app == 'lightcraft' and explicit is not None:\n"
+        "        sample = pristine.getpixel((WORK_PX // 2, WORK_PX // 4))\n"
+        "        color = '#%02X%02X%02X' % sample[:3]\n"
+        "        # Preserve every original pixel; only scale and center the full tile.\n"
+        "        side = round(CANVAS_PX * 0.85)\n"
+        "        icon = pristine.resize((side, side), Image.Resampling.LANCZOS)\n"
+        "        foreground = Image.new('RGBA', (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))\n"
+        "        foreground.alpha_composite(icon, ((CANVAS_PX-side)//2, (CANVAS_PX-side)//2))\n"
+        "    else:\n"
+        "        stripped, _changed = _strip_background(work, pristine=pristine)\n"
         "        foreground = _foreground(Image, stripped)"
     )
     original = replace_once(original, anchor, replacement, "exact approved adaptive icon")

@@ -39,6 +39,8 @@
         ecUpdateExecutor.execute(() -> {
             try {
                 String installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                boolean includePreview = getSharedPreferences("effectcraft_updates", MODE_PRIVATE)
+                    .getBoolean("include_preview_releases", true);
                 int[] current = ecVersion(installed);
                 if (current == null) throw new java.io.IOException("Installed EffectCraft version cannot be compared safely");
                 String selectedVersion = null;
@@ -74,7 +76,8 @@
                     }
                     for (int i = 0; i < releases.length(); i++) {
                         org.json.JSONObject release = releases.optJSONObject(i);
-                        if (release == null || release.optBoolean("draft") || release.optBoolean("prerelease"))
+                        if (release == null || release.optBoolean("draft")
+                            || (!includePreview && release.optBoolean("prerelease")))
                             continue;
                         String tag = release.optString("tag_name", "");
                         if (!tag.startsWith(EC_TAG_PREFIX)) continue;
@@ -135,13 +138,19 @@
     public void ecStartupUpdateSettings() {
         runOnUiThread(() -> {
             android.content.SharedPreferences prefs = getSharedPreferences("effectcraft_updates", MODE_PRIVATE);
-            boolean[] enabled = { prefs.getBoolean("startup", false) };
+            boolean[] enabled = {
+                prefs.getBoolean("startup", false),
+                prefs.getBoolean("include_preview_releases", true)
+            };
             new android.app.AlertDialog.Builder(this)
                 .setTitle("Startup Update Settings")
-                .setMultiChoiceItems(new String[]{"Check for updates at startup"}, enabled,
-                    (dialog, which, checked) -> enabled[0] = checked)
+                .setMultiChoiceItems(new String[]{
+                    "Check for updates at startup",
+                    "Stable + Preview Releases (uncheck for Stable Only)"
+                }, enabled, (dialog, which, checked) -> enabled[which] = checked)
                 .setPositiveButton("Save", (dialog, which) ->
-                    prefs.edit().putBoolean("startup", enabled[0]).apply())
+                    prefs.edit().putBoolean("startup", enabled[0])
+                        .putBoolean("include_preview_releases", enabled[1]).apply())
                 .setNegativeButton("Cancel", null).show();
         });
     }

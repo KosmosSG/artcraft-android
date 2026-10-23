@@ -1,13 +1,13 @@
-# GridCraft launcher artwork (Gc)
+# GridCraft Android approved launcher artwork (Gc)
 
-Owner-approved artwork: `Glossy Green Gc App Icon.png` (1254 × 1254 PNG), supplied 2026-10-23.
+This folder contains the exact PNG the owner approved in the ChatGPT ArtCraft Android Suite project on **24 October 2026**, uploaded as `Glossy Green Gc App Icon(4).png`, now committed unchanged as [`launcher-source.png`](./launcher-source.png).
 
-Upload its **original unchanged pixels and bytes** to this directory using the filename **`launcher-source.png`**. Required SHA-256:
+- **Image:** 1254 × 1254 PNG
+- **Bytes:** 1,925,327 (original file preserved)
+- **SHA-256:** `ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca`
+- **Git blob SHA-1:** `bbe6539a9a5753ee99fdcbf8484b531d329baa3a`
+- **Target:** GridCraft Android launcher icon only; no other ArtCraft apps
 
-```
-b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06
-```
+The isolated GridCraft candidate workflow verifies the exact source hash, supplies it via the pinned Android builder's `-appicon` argument, and builds the ARM64 candidate under the disposable-only `com.artcraft.gridcraft.candidate` identity.
 
-**No image is present or approved for an APK until the actual PNG exists and the checksum passes.** The GridCraft candidate workflow automatically uses the matching PNG with `-appicon`. Do not substitute older Xc logos, other suite app icons, or a newly generated lookalike.
-
-Production signing and publication remain separate and require GridCraft's own permanent certificate and owner backup, Android upgrade tests, and release verification.
+**This icon approval is not production release approval.** The GridCraft production signer, independent offline key backup, versionCode continuity and device acceptance checks remain separate. No automatic publishing or upstream syncing.

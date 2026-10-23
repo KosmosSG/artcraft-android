@@ -36,11 +36,15 @@ jobs:
           assert lock['official_release_commit']=='ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9'
           assert lock['version_name']=='0.11.1-android.1'
           assert lock['target_abi']=='arm64-v8a'
-          assert lock['icon_committed'] is False
+          assert lock['icon_committed'] is True
+          assert lock['icon_source_sha256']=='ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca'
+          from hashlib import sha256
+          source=Path(lock['icon_intended_repository_path'])
+          assert source.is_file() and sha256(source.read_bytes()).hexdigest() == lock['icon_source_sha256']
           assert lock['permanent_signing_certificate_sha256'] is None
           assert lock['permanent_key_backup_verified'] is False
           assert lock['build_approved'] is False and lock['publish_approved'] is False
-          print('PASS: candidate only; no production icon, keystore, or release approval')
+          print('PASS: exact approved GridCraft icon present; no permanent key or release approval')
           PY
   candidate:
     needs: validate
@@ -106,7 +110,7 @@ jobs:
           ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-source.png"
           if [ -f "$ICON" ]; then
             # Use exact user-approved Gc artwork, not generated/stock app icons.
-            echo "b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06  $ICON" | sha256sum -c -
+            echo "ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca  $ICON" | sha256sum -c -
             bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
           else
             echo "::warning::Approved Gc artwork not yet committed: candidate keeps upstream stock icon and is NOT eligible for public release"

@@ -15,7 +15,7 @@
   "icon_source_sha256": "ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca",
   "icon_lettering": "Gc",
   "icon_intended_repository_path": "assets/gridcraft/launcher-source.png",
-  "icon_committed": false,
+  "icon_committed": true,
   "version_code_reserved": null,
   "permanent_signing_certificate_sha256": null,
   "permanent_key_backup_verified": false,

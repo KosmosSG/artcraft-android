@@ -1,0 +1,51 @@
+name: PDFCraft one-time verified release dispatcher
+# This file dispatches only when deliberately added/changed on main.
+# PDFCraft's separate production workflow performs all APK/signature checks.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/pdfcraft-release-dispatch.yml
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Verify pinned successful candidate, backup and release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          RUN_ID=39902436117
+          SHA=4a7e17d592f51da8feeab3405592ff3820a2b7d4
+          TAG=pdfcraft-v0.12.0-android.1
+          gh api "repos/$REPO/actions/runs/$RUN_ID" > candidate.json
+          jq -e --arg sha "$SHA" '.conclusion == "success" and .head_sha == $sha and .head_branch == "pdfcraft-v0.10.1-android1-candidate" and .path == ".github/workflows/pdfcraft-candidate.yml"' candidate.json
+          gh api "repos/$REPO/actions/runs/39903733606" > bootstrap.json
+          jq -e '.conclusion == "success" and .path == ".github/workflows/pdfcraft-signing-bootstrap.yml"' bootstrap.json
+          gh api "repos/$REPO/actions/runs/39903733606/artifacts" > backups.json
+          jq -e 'any(.artifacts[]; .name == "pdfcraft-encrypted-signing-backup" and .expired == false)' backups.json
+          gh api --paginate "repos/$REPO/git/refs/tags" > tags.json
+          if jq -e --arg ref "refs/tags/$TAG" '.[] | select(.ref == $ref)' tags.json >/dev/null; then
+            echo "Release tag already exists; skipping. Will not replace any release."
+            exit 0
+          fi
+          echo "Verified candidate, bootstrap, and available encrypted backup."
+          echo "IMPORTANT: Download and independently store the backup before GitHub artifact expiry."
+      - name: Dispatch existing production verification and release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run pdfcraft-release.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main \
+            --field candidate_run=39902436117 \
+            --field candidate_sha=4a7e17d592f51da8feeab3405592ff3820a2b7d4 \
+            --field publish=true
+          echo "PDFCraft production signing and release workflow dispatched."

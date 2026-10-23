@@ -33,6 +33,8 @@ class LightCraftUpdatesSourceContract(unittest.TestCase):
         self.assertIn('artcraft.lightcraft.startup_updates_requested', rust)
         self.assertIn('lcGetStartupUpdateCheck', rust)
         self.assertIn('lcSetStartupUpdateCheck', rust)
+        self.assertIn('JValue::Bool(enabled)', rust)
+        self.assertNotIn('JValue::Bool(if enabled { 1 } else { 0 })', rust)
         self.assertIn('self.begin_check(app, true)', rust)
         self.assertIn('if was_background && state != "update_available"', rust)
         self.assertIn('Open GitHub Release', rust)

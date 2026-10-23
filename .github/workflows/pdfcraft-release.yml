@@ -64,18 +64,27 @@ jobs:
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           test -x "$BUILD_TOOLS/apksigner"
           mkdir release
+          echo 'CHECK: keystore decoded and signing tools found'
           APK=release/PDFCraft-v0.12.0-arm64-release.apk
           "$BUILD_TOOLS/zipalign" -P 16 -f 4 candidate/pdfcraft-0.12.0-android.1.apk aligned.apk
+          echo 'CHECK: zipalign completed'
           "$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/pdfcraft.p12" --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$APK" aligned.apk
+          echo 'CHECK: apksigner signing completed'
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > release/signature.txt
+          echo 'CHECK: apksigner verification completed'
           ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/signature.txt)"
-          test "${ACTUAL,,}" = "${CERT_SHA256,,}"
+          if [ -z "$ACTUAL" ]; then echo '::error::Could not parse certificate SHA-256 from apksigner output'; exit 1; fi
+          if [ "${ACTUAL,,}" != "${CERT_SHA256,,}" ]; then echo '::error::Permanent certificate fingerprint does not match PDFCraft secret'; exit 1; fi
+          echo 'CHECK: permanent certificate fingerprint matched'
           "$BUILD_TOOLS/aapt2" dump badging "$APK" > release/package.txt
+          echo 'CHECK: Android package metadata decoded'
           grep -q "package: name='com.artcraft.pdfcraft'" release/package.txt
           grep -q "versionName='0.12.0-android.1'" release/package.txt
           grep -q "versionCode='16780288'" release/package.txt
+          echo 'CHECK: package name, version and build code matched'
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          echo 'CHECK: signed APK ZIP alignment verified'
           python3 - <<'PY'
           import zipfile
           before=zipfile.ZipFile('candidate/pdfcraft-0.12.0-android.1.apk')
@@ -87,6 +96,7 @@ jobs:
           assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
           assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in after.namelist())
           PY
+          echo 'CHECK: application payload and ABI matched original candidate'
           (cd release && sha256sum PDFCraft-v0.12.0-arm64-release.apk > SHA256SUMS.txt)
       - name: Retain verified signed APK
         uses: actions/upload-artifact@v4

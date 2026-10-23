@@ -5,7 +5,20 @@
     private final java.util.concurrent.ExecutorService lcUpdateIo =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
-    /** Initiate a bounded, asynchronous manual check of LightCraft GitHub Releases. */
+    // App-private SharedPreferences survive upgrades of com.artcraft.lightcraft.
+    // The first launch defaults to OFF; no network connection is used at startup
+    // unless this has been explicitly enabled.
+    public boolean lcGetStartupUpdateCheck() {
+        return getSharedPreferences("lightcraft.android.updates", MODE_PRIVATE)
+            .getBoolean("check_at_startup", false);
+    }
+
+    public void lcSetStartupUpdateCheck(boolean enabled) {
+        getSharedPreferences("lightcraft.android.updates", MODE_PRIVATE).edit()
+            .putBoolean("check_at_startup", enabled).apply();
+    }
+
+    /** Initiate a bounded, asynchronous LightCraft-only GitHub check. */
     public void lcCheckForUpdates() {
         lcUpdateIo.execute(() -> {
             java.net.HttpURLConnection connection = null;
@@ -48,29 +61,43 @@
                         release.optBoolean("prerelease")) continue;
                     String tag = release.optString("tag_name", "");
                     java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                        "^lightcraft-v([0-9]+)\\.([0-9]+)\\.([0-9]+)(?:-android\\.([0-9]+))?$"
+                        "^lightcraft-v([0-9]+)\\.([0-9]+)\\.([0-9]+)-android\\.([1-9][0-9]*)$"
                     ).matcher(tag);
                     if (!m.matches()) continue;
                     int major = Integer.parseInt(m.group(1));
                     int minor = Integer.parseInt(m.group(2));
                     int patch = Integer.parseInt(m.group(3));
-                    int android = m.group(4) == null ? 0 : Integer.parseInt(m.group(4));
+                    int android = Integer.parseInt(m.group(4));
                     // Matches the Android-only ArtCraft versionCode scheme; accept only
                     // unambiguous bounded version components and real ARM64 APK assets.
-                    if (major > 255 || minor > 255 || patch > 255 || android > 50) continue;
+                    if (major > 255 || minor > 255 || patch > 205 || android > 50) continue;
+                    // Avoid carrying Android revision increments into a different
+                    // patch/versionCode slot; published builds must use this scheme.
+                    if (patch + android > 255) continue;
                     long code = (1L << 24) | (major << 16) | (minor << 8) | patch;
                     code += android;
                     if (code <= latestCode) continue;
                     org.json.JSONArray assets = release.optJSONArray("assets");
-                    boolean arm64 = false;
+                    // Reject similarly named APKs, other Craft apps, incomplete
+                    // uploads, or any unapproved ABI. Older PhotoCraft-style
+                    // filename and the current suite canonical alias are both
+                    // accepted, but ONLY for this exact LightCraft tag.
+                    String version = tag.substring("lightcraft-v".length());
+                    String canonical = "LightCraft-v" + version + "-arm64-v8a.apk";
+                    String legacy = "LightCraft-" + version + "-arm64-v8a.apk";
+                    boolean exactAsset = false;
                     if (assets != null) for (int j = 0; j < assets.length(); j++) {
                         org.json.JSONObject asset = assets.optJSONObject(j);
-                        String name = asset == null ? "" : asset.optString("name", "").toLowerCase(
-                            java.util.Locale.ROOT);
-                        if (name.endsWith(".apk") &&
-                            (name.contains("arm64") || name.contains("aarch64"))) arm64 = true;
+                        if (asset == null) continue;
+                        String name = asset.optString("name", "");
+                        String state = asset.optString("state", "");
+                        if ((canonical.equals(name) || legacy.equals(name))
+                            && "uploaded".equals(state) && asset.optLong("size", 0L) > 0L) {
+                            exactAsset = true;
+                            break;
+                        }
                     }
-                    if (!arm64) continue;
+                    if (!exactAsset) continue;
                     String url = release.optString("html_url", "");
                     if (!url.startsWith(
                         "https://github.com/KosmosSG/artcraft-android/releases/tag/lightcraft-")) continue;

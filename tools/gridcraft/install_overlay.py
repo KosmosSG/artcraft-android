@@ -44,19 +44,23 @@ def install(builder: Path, additions: Path):
     # Its existing title bar provides a native anchored menu; the generated
     # Android shell handles Java actions through egui Context data on next frame.
     ribbon = builder / "source/gridcraft/crates/ui-egui/src/ribbon.rs"
-    if not ribbon.is_file():
-        raise RuntimeError("Pinned GridCraft UI ribbon not found")
-    ribbon_source = ribbon.read_text()
-    menu_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
-    menu_marker = "GRIDCRAFT_ANDROID_NATIVE_MENU_V1"
-    if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
-        raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
     native_menu = (additions / "GridCraftNativeMenu.rs.inc").read_text()
+    menu_marker = "GRIDCRAFT_ANDROID_NATIVE_MENU_V1"
     if native_menu.count(menu_marker) != 1 or 'ui.menu_button("GridCraft Tools"' not in native_menu:
         raise RuntimeError("GridCraft top menu contract missing")
-    patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
-    # Other projects, signing keys, upstream releases and publisher untouched.
-    ribbon.write_text(patched_ribbon)
+    # Read-only source audit downloads only the builder, not upstream sources.
+    # In that limited audit checkout we still install the safe staging hook.
+    # The real candidate build always checks out pinned GridCraft beforehand;
+    # fail there if the ribbon is missing or its API changed.
+    if ribbon.is_file():
+        ribbon_source = ribbon.read_text()
+        menu_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
+        if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
+            raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
+        patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
+        ribbon.write_text(patched_ribbon)
+    elif (builder / "source/gridcraft").exists():
+        raise RuntimeError("GridCraft checkout exists but the expected ribbon file is missing")
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):

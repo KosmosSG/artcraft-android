@@ -5,6 +5,7 @@ No upstream synchronization, source checkout, production key, signing or publica
 The GitHub Action checks out immutable source independently and invokes this checker.
 """
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -50,11 +51,15 @@ def preflight():
         "existing_signed_version_code_floor_exclusive": 16780805,
         "production_signing_allowed": False,
         "production_apk_build_allowed": False,
-        "test_apk_build_allowed": False, "publishing_allowed": False,
+        "test_apk_build_allowed": True, "publishing_allowed": False,
         "automatic_upstream_sync_allowed": False,
     }
     for key, value in expected.items():
         require(cfg.get(key) == value, f"unsafe or changed v0.16 config: {key}")
+    # Candidate-only override: permission is never given to the source-check PR
+    # or the production signer. GitHub ref must match the isolated Test branch.
+    require(os.environ.get("GITHUB_REF") == "refs/heads/development/vectorcraft-v016-test-apk-20261023",
+            "disposable Test APK permission restricted to candidate branch")
     adapter = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()
     require(all(m in adapter for m in BRIDGE_MARKERS), "Android adapter feature marker missing")
     manifest = tomllib.loads((ROOT / "adapters/vectorcraft/Cargo.toml").read_text())

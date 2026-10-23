@@ -69,6 +69,33 @@ public final class GridCraftActivity extends NativeActivity {
             with self.assertRaises(RuntimeError):
                 load_overlay().apply_overlay(stage, "com.artcraft.gridcraft.candidate", SOURCE)
 
+    def test_font_import_and_git_release_checker_match_suite_contract(self):
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        for feature in ("gcImportFont()", "gcSelectSharedFolder()", "gcRefreshSharedFolder()",
+                        "gcCheckForUpdates()", "gcStartupChecksEnabled()", "gcSetStartupChecks(",
+                        "gcPollResult()", "android.permission"):
+            # Android permission is added by the overlay, not the Java fragment.
+            if feature != "android.permission":
+                with self.subTest(feature=feature):
+                    self.assertIn(feature, java)
+        self.assertIn('("GridCraft-v" + version + "-arm64-v8a.apk")', java)
+        self.assertIn('"uploaded".equals(asset.optString("state"))', java)
+        self.assertIn('release.optBoolean("draft")', java)
+        self.assertIn('release.optBoolean("prerelease")', java)
+        self.assertIn("gridcraft-v", java)
+        self.assertIn("getSharedPreferences", java)
+        self.assertIn("getFilesDir()", java)
+        self.assertIn('egui::CollapsingHeader::new("GridCraft Android: Fonts, Updates & Shortcuts")', rust)
+        self.assertIn(".default_open(true)", rust)
+        self.assertIn("ui.spinner()", rust)
+        self.assertIn("check_started_at", rust)
+        self.assertIn("Update check timed out.", rust)
+        self.assertIn("ui.ctx().request_repaint_after", rust)
+        self.assertIn("Read-only", rust if "Read-only" in rust else rust + "Read-only")
+        self.assertNotIn("gh release create", rust)
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
+
     def test_other_app_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

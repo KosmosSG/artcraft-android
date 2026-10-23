@@ -24,7 +24,7 @@ final class DesignCraftUpdatePolicy {
         if (result < 1 || result > 2100000000L)
             throw new IllegalArgumentException("Invalid Android version code");
         String expected = REPOSITORY + "/releases/download/" + tag
-                + "/DesignCraft-" + version + "-arm64-v8a.apk";
+                + "/DesignCraft-v" + version + "-arm64-v8a.apk";
         if (!expected.equals(apkUrl)) throw new IllegalArgumentException("Unexpected APK destination");
         return result;
     }

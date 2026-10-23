@@ -27,7 +27,8 @@
     "startup_update_opt_in",
     "app_scoped_release_filter",
     "updater_security",
-    "update_menu_consistency"
+    "update_menu_consistency",
+    "update_channel_selection"
   ],
   "feature_verification_statuses": [
     "not_verified",
@@ -47,7 +48,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": "User-designated behavioral reference. Main branch alone is not proof that all runtime features work; verify pinned PhotoCraft release source and installed APK."
@@ -63,7 +65,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -79,7 +82,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": "DesignCraft v0.12.0-android.2 published; this shared audit still requires feature-specific APK evidence before marking verified."
@@ -95,7 +99,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -111,7 +116,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -127,7 +133,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": "PR #11 stages persistent fonts, SAF folder, update controls and updater; production signing/device checks are in progress. Do not mark verified solely on code."
@@ -143,7 +150,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -159,7 +167,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -175,10 +184,11 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
-      "notes": null
+      "notes": "Owner requested Stable + Preview channel; LightCraft Android-6 integration in progress, no signed/device verification recorded."
     },
     "soundcraft": {
       "features": {
@@ -191,7 +201,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -207,7 +218,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -223,7 +235,8 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
@@ -239,10 +252,12 @@
         "startup_update_opt_in": "not_verified",
         "app_scoped_release_filter": "not_verified",
         "updater_security": "not_verified",
-        "update_menu_consistency": "not_verified"
+        "update_menu_consistency": "not_verified",
+        "update_channel_selection": "not_verified"
       },
       "verified_apk_sha256": null,
       "notes": null
     }
-  }
+  },
+  "update_channels": "Persisted app-specific setting: Stable Releases Only or Stable + Preview Releases; owner-selected default includes preview releases. Exclude drafts in both channels, require exact signed APK and higher versionCode."
 }

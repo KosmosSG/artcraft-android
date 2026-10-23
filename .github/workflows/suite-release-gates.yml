@@ -7,6 +7,10 @@ on:
       - 'tools/release_gate_audit.py'
       - 'tools/artcraft_release_naming.py'
       - 'tools/test_artcraft_release_naming.py'
+      - 'configs/feature-parity.json'
+      - 'tools/suite_feature_parity.py'
+      - 'tools/test_suite_feature_parity.py'
+      - 'docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md'
       - '.github/workflows/suite-release-gates.yml'
   pull_request:
     paths:
@@ -14,6 +18,10 @@ on:
       - 'tools/release_gate_audit.py'
       - 'tools/artcraft_release_naming.py'
       - 'tools/test_artcraft_release_naming.py'
+      - 'configs/feature-parity.json'
+      - 'tools/suite_feature_parity.py'
+      - 'tools/test_suite_feature_parity.py'
+      - 'docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md'
       - '.github/workflows/suite-release-gates.yml'
   workflow_dispatch:
 permissions:
@@ -30,6 +38,10 @@ jobs:
         run: python3 tools/release_gate_audit.py
       - name: Test upstream-plus-Android-revision naming across the suite
         run: python3 tools/test_artcraft_release_naming.py -v
+      - name: Test PhotoCraft custom fonts and updater requirements for every Craft app
+        run: |
+          python3 tools/suite_feature_parity.py
+          python3 tools/test_suite_feature_parity.py -v
       - name: Verify the standard release metadata and artifact filename
         run: |
           python3 tools/artcraft_release_naming.py verify \

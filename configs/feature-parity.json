@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "standard": "artcraft-photocraft-font-and-update-parity-v1",
+  "reference_app": "photocraft",
+  "intent": "Required suite-wide Android feature contract based on the user's PhotoCraft experience. This is a policy and checklist, not proof the functionality exists in a given APK.",
+  "font_extensions": [
+    ".ttf",
+    ".otf"
+  ],
+  "font_import_method": "Android system document picker (Storage Access Framework); store usable fonts in app-private persistent storage",
+  "shared_font_folder": "Optional user-selected shared SAF document tree; read-only persisted grant; nested folders with bounded scanning; no all-files-access permission",
+  "font_refresh": "Explicit refresh; safe handling for revoked grant, invalid font, duplicates, oversized files, lifecycle/restart",
+  "font_menu_location": "At the bottom of Type (or native text/font menu if no Type menu)",
+  "update_manual": "Check for Updates reads published GitHub Releases for this app only",
+  "update_startup": "Optional persisted startup update check, initially OFF",
+  "update_location": "Help menu, immediately below About <AppName> (About is a dialog action, not a submenu)",
+  "update_integrity": "Require exact app tag/package, stable version parsing, correct matching APK asset and increasing Android versionCode; preserve dedicated certificate and in-place upgrade; no silent install",
+  "update_unavailable": "Offline/network errors are non-fatal; never block app startup or editing; report clear state",
+  "name_contract": "AppName vX.Y.Z-android.N; appname-vX.Y.Z-android.N; AppName-vX.Y.Z-android.N-arm64-v8a.apk, with identical-bytes legacy alias while installed updater requires it",
+  "expected_feature_ids": [
+    "custom_font_import",
+    "persistent_user_fonts",
+    "shared_font_folder",
+    "font_refresh",
+    "font_menu_consistency",
+    "manual_update_check",
+    "startup_update_opt_in",
+    "app_scoped_release_filter",
+    "updater_security",
+    "update_menu_consistency"
+  ],
+  "feature_verification_statuses": [
+    "not_verified",
+    "source_verified",
+    "artifact_verified",
+    "device_verified"
+  ],
+  "app_status": {
+    "photocraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": "User-designated behavioral reference. Main branch alone is not proof that all runtime features work; verify pinned PhotoCraft release source and installed APK."
+    },
+    "vectorcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "designcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": "DesignCraft v0.12.0-android.2 published; this shared audit still requires feature-specific APK evidence before marking verified."
+    },
+    "filmcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "pdfcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "wordcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": "PR #11 stages persistent fonts, SAF folder, update controls and updater; production signing/device checks are in progress. Do not mark verified solely on code."
+    },
+    "deckcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "effectcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "lightcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "soundcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "cadcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "figcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    },
+    "gridcraft": {
+      "features": {
+        "custom_font_import": "not_verified",
+        "persistent_user_fonts": "not_verified",
+        "shared_font_folder": "not_verified",
+        "font_refresh": "not_verified",
+        "font_menu_consistency": "not_verified",
+        "manual_update_check": "not_verified",
+        "startup_update_opt_in": "not_verified",
+        "app_scoped_release_filter": "not_verified",
+        "updater_security": "not_verified",
+        "update_menu_consistency": "not_verified"
+      },
+      "verified_apk_sha256": null,
+      "notes": null
+    }
+  }
+}

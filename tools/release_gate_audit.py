@@ -20,6 +20,15 @@ assert naming.get("tag")=="appname-vMAJOR.MINOR.PATCH-android.REVISION"
 assert naming.get("apk_asset")=="DisplayName-vMAJOR.MINOR.PATCH-android.REVISION-arm64-v8a.apk"
 assert naming.get("legacy_releases_immutable") is True, "Never rename old signed release artifacts"
 assert naming.get("signing_and_version_codes_unchanged_by_naming") is True
+# The PhotoCraft font/update experience is required in every app. This
+# read-only suite audit validates the contract but cannot invent verification
+# of real production APKs.
+from suite_feature_parity import read_contract, APP_IDS, FEATURE_IDS
+feature_contract=read_contract()
+assert feature_contract['reference_app']=='photocraft'
+assert len(feature_contract['app_status'])==len(APP_IDS)==13
+assert len(FEATURE_IDS)==10
+
 expected=["photocraft","vectorcraft","designcraft","filmcraft","pdfcraft","wordcraft","deckcraft","effectcraft","lightcraft","soundcraft","cadcraft","figcraft","gridcraft"]
 apps=d.get("apps",{})
 assert sorted(apps)==sorted(expected),"Missing suite app or unreviewed new app"

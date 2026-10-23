@@ -276,9 +276,9 @@ impl Tools {
 
     // Non-floating, dismissible WordCraft update feedback below the editor.
     // Reserve actual layout space rather than obscuring ribbon, text or dialogs.
-    pub fn update_feedback(&mut self, ctx: &egui::Context) {
+    pub fn update_feedback(&mut self, ui: &mut egui::Ui) {
         if !self.update_visible { return; }
-        egui::TopBottomPanel::bottom("wc_update_feedback").show(ctx, |ui| {
+        egui::Panel::bottom("wc_update_feedback").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if self.update_checking { ui.spinner(); }
                 ui.label(&self.update_message);

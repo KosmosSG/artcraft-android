@@ -950,7 +950,11 @@ impl eframe::App for VectorCraftAndroidApp {
             if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
                 log::warn!("Android font rescan failed: {error}");
                 self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
-                self.fonts.notice = Some(self.fonts.shared_status.clone());
+                // Quiet startup font restore should stay quiet, including errors;
+                // manually requested refresh still reports a rescan failure.
+                if self.fonts.notice.is_some() {
+                    self.fonts.notice = Some(self.fonts.shared_status.clone());
+                }
             }
         }
         // The native notification makes font import and refresh status visible

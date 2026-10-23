@@ -17,14 +17,20 @@ def validate(data):
     assert data["app"] == "gridcraft"
     assert data["product_name"] == "GridCraft"
     assert data["upstream_repository"] == UPSTREAM
-    assert data["official_version"] == "0.9.0"
+    assert data["official_version"] == "0.11.1"
     assert data["official_release_tag"] == "v" + data["official_version"]
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1
     assert data["version_name"] == data["official_version"] + "-android." + str(data["android_revision"])
-    assert data["intended_release_apk"] == "gridcraft-" + data["version_name"] + ".apk"
+    assert data["intended_release_apk"] == "GridCraft-v" + data["version_name"] + "-arm64-v8a.apk"
     assert data["production_package"] == "com.artcraft.gridcraft"
     assert data["target_abi"] == "arm64-v8a"
+    parity = data.get("feature_requirements", {})
+    for feature in ("custom_font_import", "shared_font_folder",
+                    "manual_release_update_check", "optional_startup_check",
+                    "visible_update_status", "approved_icon_required",
+                    "per_app_signing_required"):
+        assert parity.get(feature) is True, "Missing mandatory ArtCraft feature requirement: " + feature
     assert data["implementation_reference"] == REF_BUILDER
     assert data["icon_original_name"] == "Glossy Green Xc App Icon(1).png"
     assert data["icon_source_sha256"] == ICON_SHA

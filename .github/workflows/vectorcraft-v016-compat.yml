@@ -1,0 +1,116 @@
+name: VectorCraft v0.16 isolated Android compatibility (never sign or publish)
+
+on:
+  push:
+    branches: [development/vectorcraft-v016-android1-20261023]
+    paths:
+      - '.github/workflows/vectorcraft-v016-compat.yml'
+      - 'configs/vectorcraft-v0.16.0-android.1.json'
+      - 'tools/vectorcraft_v016_compat.py'
+      - 'tools/vectorcraft/**'
+      - 'adapters/vectorcraft/**'
+      - 'assets/branding/vectorcraft/**'
+  workflow_dispatch:
+
+# Explicitly read-only; this does NOT sync upstream, sign APKs or publish Releases.
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v016-isolated-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Assert read-only release policy, exact upstream pin and existing features
+        run: |
+          set -euo pipefail
+          python3 tools/vectorcraft_v016_compat.py preflight
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile Android SAF/IME and font bridge Java
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-35'
+          mkdir -p "$RUNNER_TEMP/vc-java"
+          javac -source 17 -target 17 \
+            -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d "$RUNNER_TEMP/vc-java" \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
+            tools/vectorcraft/FontContentTest.java
+          java -cp "$ANDROID_HOME/platforms/android-35/android.jar:$RUNNER_TEMP/vc-java" FontContentTest
+
+  arm64-source-compatibility:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: 10190753ef356ce8de7592626bcb99fd69db467c
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Check reviewed upstream source SHA and workspace metadata
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          python3 tools/vectorcraft_v016_compat.py source builder/source/vectorcraft
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - name: Install pinned ARM64 NDK and Android 35
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage existing Android adapter and reviewed menu patch in disposable checkout
+        run: |
+          set -euo pipefail
+          mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
+          cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
+          cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
+          cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+          python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vectorcraft-inapp-vc.png"
+          python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vectorcraft-inapp-vc.png"
+          python3 tools/vectorcraft_v016_compat.py port builder/source/vectorcraft
+      - name: Rust ARM64 type check with upstream v0.16.0 (NO APK or signing)
+        timeout-minutes: 105
+        run: |
+          set -euo pipefail
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android28-clang"
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --target aarch64-linux-android

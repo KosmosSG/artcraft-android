@@ -29,7 +29,7 @@ cp -f "$ROOT/templates/android/system_fonts.rs" "$DEST/src/system_fonts.rs"
 # (see templates/android/ime_bridge.rs, shared with the generated launchers).
 cp -f "$ROOT/templates/android/ime_bridge.rs" "$DEST/src/ime_bridge.rs"
 mkdir -p "$DEST/res/drawable"
-if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.12.0-android.1" ]]; then
+if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.12.0-android.1" || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" ]]; then
   icon="$ROOT/assets/photocraft/launcher-pc.png"
   # Exact user-approved image, independently checked before staging.
   python3 - "$icon" <<'PC_ICON'

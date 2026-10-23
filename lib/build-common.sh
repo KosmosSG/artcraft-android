@@ -311,18 +311,29 @@ if fixed:
     print(f"  Repaired upstream compile errors still present in {title}: {', '.join(fixed)}")
 PY
 
-# Apply the Android-only Window > Custom Fonts menu patch after cloning PhotoCraft.
-# Keep this scoped to PhotoCraft; fail rather than silently build without the menu.
+# Legacy PhotoCraft builds use the historical Custom Fonts patch. The reviewed
+# v0.14 migration already ports all six Android menu commands into the exact,
+# pinned upstream checkout; applying the OLD v0.12 patch a second time fails.
+# Only this explicit candidate version may take the guarded v0.14 path.
+# No auto-upstream sync, production signing, or release behavior is enabled.
 if [[ "$APP" == "photocraft" ]]; then
-    MENU_PATCH="$ROOT/patches/photocraft-menus.patch"
-    [[ -f "$MENU_PATCH" ]] || fail "Missing PhotoCraft menu patch: $MENU_PATCH"
-    if git -C "$SRC" apply --reverse --check "$MENU_PATCH" >/dev/null 2>&1; then
-        echo "PhotoCraft Custom Fonts menu patch is already applied."
-    elif git -C "$SRC" apply --check "$MENU_PATCH"; then
-        git -C "$SRC" apply "$MENU_PATCH"
-        echo "Applied PhotoCraft Window > Custom Fonts menu patch."
+    if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" ]]; then
+        [[ -f "$ROOT/tools/photocraft_v014_menu_guard.py" ]] \
+            || fail "Missing v0.14 Android menu compatibility guard."
+        python3 "$ROOT/tools/photocraft_v014_menu_guard.py" "$ROOT/$SRC" \
+            || fail "PhotoCraft v0.14 Android menus or source pin failed validation."
+        echo "Verified PhotoCraft v0.14 Android menu port; skipping incompatible legacy patch."
     else
-        fail "PhotoCraft upstream menus.rs has changed; the Custom Fonts patch no longer applies."
+        MENU_PATCH="$ROOT/patches/photocraft-menus.patch"
+        [[ -f "$MENU_PATCH" ]] || fail "Missing PhotoCraft menu patch: $MENU_PATCH"
+        if git -C "$SRC" apply --reverse --check "$MENU_PATCH" >/dev/null 2>&1; then
+            echo "PhotoCraft Custom Fonts menu patch is already applied."
+        elif git -C "$SRC" apply --check "$MENU_PATCH"; then
+            git -C "$SRC" apply "$MENU_PATCH"
+            echo "Applied PhotoCraft Window > Custom Fonts menu patch."
+        else
+            fail "PhotoCraft upstream menus.rs has changed; the Custom Fonts patch no longer applies."
+        fi
     fi
 fi
 

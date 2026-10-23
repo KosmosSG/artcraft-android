@@ -8,6 +8,9 @@ on:
       - 'configs/photocraft-v0.14.0-android.1.json'
       - 'tools/photocraft_v014_compat.py'
       - 'tools/photocraft_v014_menu_port.py'
+      - 'tools/photocraft_v014_menu_guard.py'
+      - 'tools/tests/test_photocraft_v014_menu_guard.py'
+      - 'lib/build-common.sh'
       - 'tools/photocraft_v014_brand_port.py'
       - 'adapters/photocraft/**'
       - 'templates/android/**'
@@ -46,6 +49,7 @@ jobs:
           print("PASS: production signing/publishing and automated upstream sync remain disabled")
           PY
           python3 -m unittest discover -s tools/tests -p 'test_photocraft_v012_candidate.py' -v
+          python3 -m unittest discover -s tools/tests -p 'test_photocraft_v014_menu_guard.py' -v
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'

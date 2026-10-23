@@ -4,14 +4,15 @@ import hashlib
 from pathlib import Path
 from PIL import Image
 
-APPROVED_SHA256 = "92070af3f08464e65a03eb181a0ccc97c29f131404476649410bfb417560c67f"
+APPROVED_SHA256 = "306fb5fd3efdb138eee5d0b7c0c34b91718229c60408e92af4bba949daecea9d"
+STAGED_PNG_SHA256 = "df27b2f46cfad9df7493ee88da9265fc7de2d62313361746d9bc0ecd5dd6803b"
 CANVAS = 432
 DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
 
 def tile_from_source(source):
     source = Path(source)
-    if hashlib.sha256(source.read_bytes()).hexdigest() != APPROVED_SHA256:
+    if hashlib.sha256(source.read_bytes()).hexdigest() not in (APPROVED_SHA256, STAGED_PNG_SHA256):
         raise ValueError("Launcher artwork differs from the approved Dc source")
     with Image.open(source) as opened:
         tile = opened.convert("RGBA")

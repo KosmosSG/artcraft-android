@@ -51,3 +51,5 @@ jobs:
           echo "PDFCraft production signing and release workflow dispatched."
 
 # Retry 1: release signature verification stage instrumentation applied.
+
+# Retry 2: tolerant SHA-256 digest parsing from APK verification output.

@@ -49,3 +49,5 @@ jobs:
             --field candidate_sha=4a7e17d592f51da8feeab3405592ff3820a2b7d4 \
             --field publish=true
           echo "PDFCraft production signing and release workflow dispatched."
+
+# Retry 1: release signature verification stage instrumentation applied.

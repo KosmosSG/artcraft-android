@@ -12,6 +12,14 @@ assert d.get("schema_version")==1
 assert d.get("public_release_repository")=="KosmosSG/artcraft-android"
 assert d.get("enable_unattended_upstream_merges") is False
 assert d.get("enable_any_public_release") is False, "Global release switch cannot be enabled without per-app reviewed workflows"
+naming=d.get("version_naming",{})
+assert naming.get("scheme")=="upstream-semver-plus-android-revision-v1", "Unsupported suite naming scheme"
+assert naming.get("version_name")=="MAJOR.MINOR.PATCH-android.REVISION"
+assert naming.get("release_title")=="DisplayName vMAJOR.MINOR.PATCH-android.REVISION"
+assert naming.get("tag")=="appname-vMAJOR.MINOR.PATCH-android.REVISION"
+assert naming.get("apk_asset")=="DisplayName-vMAJOR.MINOR.PATCH-android.REVISION-arm64-v8a.apk"
+assert naming.get("legacy_releases_immutable") is True, "Never rename old signed release artifacts"
+assert naming.get("signing_and_version_codes_unchanged_by_naming") is True
 expected=["photocraft","vectorcraft","designcraft","filmcraft","pdfcraft","wordcraft","deckcraft","effectcraft","lightcraft","soundcraft","cadcraft","figcraft","gridcraft"]
 apps=d.get("apps",{})
 assert sorted(apps)==sorted(expected),"Missing suite app or unreviewed new app"

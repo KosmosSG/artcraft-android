@@ -239,5 +239,16 @@
       "release_workflow_verified": false,
       "notes": "Identity between GridCraft and ExcelCraft must be resolved before Android packaging."
     }
+  },
+  "version_naming": {
+    "scheme": "upstream-semver-plus-android-revision-v1",
+    "version_name": "MAJOR.MINOR.PATCH-android.REVISION",
+    "release_title": "DisplayName vMAJOR.MINOR.PATCH-android.REVISION",
+    "tag": "appname-vMAJOR.MINOR.PATCH-android.REVISION",
+    "apk_asset": "DisplayName-vMAJOR.MINOR.PATCH-android.REVISION-arm64-v8a.apk",
+    "android_only_changes": "increment REVISION without changing upstream MAJOR.MINOR.PATCH",
+    "upstream_stable_update": "use new official upstream MAJOR.MINOR.PATCH and start REVISION at 1",
+    "legacy_releases_immutable": true,
+    "signing_and_version_codes_unchanged_by_naming": true
   }
 }

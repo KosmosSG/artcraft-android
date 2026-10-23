@@ -117,7 +117,10 @@ jobs:
           assert m, "Missing Android identity"
           assert m.group(1) == "com.artcraft.photocraft.candidate", "STOP: production identity"
           assert m.group(3) == "0.14.0-android.1", "Wrong versionName"
-          assert int(m.group(2)) > 16790002, "versionCode must exceed published production"
+          # Candidate has a distinct .candidate package identity and cannot upgrade
+          # production. Its own code must be valid; a separately reviewed,
+          # ORIGINAL-signed production build must exceed 16790002.
+          assert int(m.group(2)) > 0, "candidate versionCode must be positive"
           with zipfile.ZipFile("candidate/PhotoCraft-v0.14.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk") as z:
               files=z.namelist()
               assert any(f.startswith("lib/arm64-v8a/") and f.endswith(".so") for f in files)

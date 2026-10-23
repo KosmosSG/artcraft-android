@@ -16,6 +16,6 @@
   "signing_certificate_sha256": null,
   "permanent_signing_ready": false,
   "public_release_enabled": false,
-  "uploaded_icon_sha256": "376a9b60f3ca15174a8a4e07563d5f4402a03011bc86e56395134f3f8f88661b",
+  "uploaded_icon_sha256": "6686489c6b64965610274461bcce0cc8ad2c27bf0bb5d7ef48ee4a303ea59389",
   "icon_in_apk_verified": false
 }

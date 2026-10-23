@@ -15,7 +15,7 @@ assert lock["android_revision"] == 1
 assert lock["android_version_name"] == "0.16.0-android.1"
 assert lock["candidate_apk_name"] == "EffectCraft-v0.16.0-android.1-arm64-v8a.apk"
 assert lock["expected_abi"] == "arm64-v8a"
-assert lock["uploaded_icon_sha256"] == "376a9b60f3ca15174a8a4e07563d5f4402a03011bc86e56395134f3f8f88661b"
+assert lock["uploaded_icon_sha256"] == "6686489c6b64965610274461bcce0cc8ad2c27bf0bb5d7ef48ee4a303ea59389"
 assert lock["version_code"] is None and lock["signing_certificate_sha256"] is None
 assert lock["permanent_signing_ready"] is False and lock["public_release_enabled"] is False
 

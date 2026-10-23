@@ -6,7 +6,7 @@ use jni::{JavaVM, jni_sig, strings::JNIString, objects::{JObject, JString, JValu
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 mod refresh_feedback;
 use refresh_feedback::FontRefresh;
 
@@ -29,6 +29,11 @@ pub struct Tools {
     startup_updates: bool,
     status: String,
     release_url: Option<String>,
+    update_checking: bool,
+    update_manual: bool,
+    update_visible: bool,
+    update_message: String,
+    update_started: Option<Instant>,
     pending_fonts: VecDeque<String>,
     fonts: FontRefresh,
     slots: [usize; 6],
@@ -41,7 +46,9 @@ impl Tools {
         let mut tools = Self {
             app: app.clone(), vm, show_pad: false,
             startup_updates: false, status: "Ready".to_owned(),
-            release_url: None, pending_fonts: VecDeque::new(),
+            release_url: None, update_checking: false, update_manual: false,
+            update_visible: false, update_message: String::new(),
+            update_started: None, pending_fonts: VecDeque::new(),
             fonts: FontRefresh::default(), slots: [0, 1, 2, 3, 4, 5],
         };
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
@@ -52,8 +59,9 @@ impl Tools {
                 }
             }
         }
-        if tools.startup_updates {
-            let _ = tools.call_void("wcCheckForUpdates");
+        if tools.startup_updates && tools.call_void("wcCheckForUpdates").is_ok() {
+            tools.update_checking = true;
+            tools.update_started = Some(Instant::now());
         }
         if tools.call_bool("wcHasFontFolder").unwrap_or(false) {
             tools.status = tools.fonts.start();
@@ -195,25 +203,99 @@ impl Tools {
         }
         match self.call_string("wcPollUpdateResult") {
             Ok(Some(raw)) => {
-                if let Ok(result) = serde_json::from_str::<Value>(&raw) {
-                    self.release_url = None;
-                    match result["state"].as_str().unwrap_or("") {
-                        "update_available" => {
-                            let latest = result["latest"].as_str().unwrap_or("unknown");
-                            self.release_url = result["url"].as_str().map(str::to_owned);
-                            self.status = format!("WordCraft Android update available: {latest}");
+                let manual = self.update_manual;
+                self.update_checking = false;
+                self.update_manual = false;
+                self.update_started = None;
+                self.release_url = None;
+                match serde_json::from_str::<Value>(&raw) {
+                    Ok(result) => {
+                        let state = result["state"].as_str().unwrap_or("error");
+                        match state {
+                            "update_available" => {
+                                let latest = result["latest"].as_str().unwrap_or("unknown");
+                                self.release_url = result["url"].as_str().map(str::to_owned);
+                                self.status = format!("WordCraft Android update available: {latest}");
+                            }
+                            "up_to_date" => self.status = "WordCraft Android is up to date".into(),
+                            "no_release" => self.status = "No published WordCraft Android APK release yet".into(),
+                            _ => self.status = result["message"].as_str()
+                                .unwrap_or("Could not check WordCraft Android releases").to_owned(),
                         }
-                        "up_to_date" => self.status = "WordCraft Android is up to date".into(),
-                        "no_release" => self.status = "No published WordCraft Android APK release yet".into(),
-                        _ => self.status = result["message"].as_str()
-                            .unwrap_or("Could not check WordCraft Android releases").to_owned(),
+                        // Quiet startup checks except when a newer signed release is available.
+                        if manual || state == "update_available" {
+                            self.update_visible = true;
+                        }
                     }
-                    app.status(self.status.clone());
+                    Err(_) => {
+                        self.status = "Could not read WordCraft update response".into();
+                        if manual { self.update_visible = true; }
+                    }
                 }
+                self.update_message = self.status.clone();
+                if manual {
+                    let _ = self.call_string_arg("wcShowUpdateMessage", &self.status);
+                }
+                app.status(self.status.clone());
+                ctx.request_repaint();
             }
             Ok(None) => {}
-            Err(error) => self.status = format!("Update-check bridge error: {error}"),
+            Err(error) => {
+                self.update_checking = false;
+                self.update_started = None;
+                self.status = format!("Update-check bridge error: {error}");
+                self.update_message = self.status.clone();
+                if self.update_manual {
+                    self.update_visible = true;
+                    let _ = self.call_string_arg("wcShowUpdateMessage", &self.status);
+                }
+                self.update_manual = false;
+                app.status(self.status.clone());
+                ctx.request_repaint();
+            }
         }
+        if self.update_checking {
+            if self.update_started.is_some_and(|started| started.elapsed() > Duration::from_secs(30)) {
+                self.update_checking = false;
+                self.update_started = None;
+                self.status = "WordCraft update check timed out. Check your connection and try again.".into();
+                self.update_message = self.status.clone();
+                if self.update_manual {
+                    self.update_visible = true;
+                    let _ = self.call_string_arg("wcShowUpdateMessage", &self.status);
+                }
+                self.update_manual = false;
+                app.status(self.status.clone());
+                ctx.request_repaint();
+            } else {
+                // GitHub I/O is asynchronous: keep polling even when the user is idle.
+                ctx.request_repaint_after(Duration::from_millis(250));
+            }
+        }
+    }
+
+    // Non-floating, dismissible WordCraft update feedback below the editor.
+    // Reserve actual layout space rather than obscuring ribbon, text or dialogs.
+    pub fn update_feedback(&mut self, ctx: &egui::Context) {
+        if !self.update_visible { return; }
+        egui::TopBottomPanel::bottom("wc_update_feedback").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if self.update_checking { ui.spinner(); }
+                ui.label(&self.update_message);
+                if !self.update_checking {
+                    if let Some(url) = self.release_url.clone() {
+                        if ui.button("View WordCraft release").clicked() {
+                            if let Err(error) = self.call_string_arg("wcOpenUpdatePage", &url) {
+                                self.update_message = format!("Could not open release page: {error}");
+                            }
+                        }
+                    }
+                }
+                if ui.button("Dismiss").clicked() {
+                    self.update_visible = false;
+                }
+            });
+        });
     }
 
     pub fn prepare_menu(&self, ctx: &egui::Context, frame: &eframe::Frame) {
@@ -258,9 +340,31 @@ impl Tools {
                 app.status(self.status.clone());
                 ctx.request_repaint_after(Duration::from_millis(100));
             }
-            "check_updates" => self.status = match self.call_void("wcCheckForUpdates") {
-                Ok(()) => "Checking published WordCraft Android APK releases...".into(),
-                Err(error) => format!("Update check error: {error}"),
+            "check_updates" => {
+                self.update_visible = true;
+                self.release_url = None;
+                if self.update_checking {
+                    self.status = "Already checking WordCraft Android releases...".into();
+                } else {
+                    match self.call_void("wcCheckForUpdates") {
+                        Ok(()) => {
+                            self.update_checking = true;
+                            self.update_manual = true;
+                            self.update_started = Some(Instant::now());
+                            self.status = "Checking published WordCraft Android APK releases...".into();
+                        }
+                        Err(error) => {
+                            self.status = format!("Update check error: {error}");
+                            self.update_checking = false;
+                            self.update_manual = false;
+                            self.update_started = None;
+                        }
+                    }
+                }
+                self.update_message = self.status.clone();
+                let _ = self.call_string_arg("wcShowUpdateMessage", &self.status);
+                app.status(self.status.clone());
+                ctx.request_repaint_after(Duration::from_millis(250));
             },
             "startup_on" | "startup_off" => {
                 self.startup_updates = action == "startup_on";

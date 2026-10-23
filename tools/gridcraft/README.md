@@ -8,7 +8,13 @@ The mandatory suite standard is `docs/ARTCRAFT_ANDROID_SUITE_FEATURE_STANDARD.md
 
 A new isolated GitHub Actions workflow `gridcraft-android-candidate.yml` compiles the real v0.11.1 Android ARM64 source and enhancement overlay with `com.artcraft.gridcraft.candidate` and a disposable builder key. **This is not a production APK, does not update an installed GridCraft app, and does not create a GitHub release.** Any compilation errors and upstream incompatibilities must be repaired before proceeding.
 
-**Known production blockers remain:** the exact owner-approved Xc icon is absent from repository history; no verified dedicated GridCraft permanent signer or recoverable backup exists in the connected account; no production versionCode is reserved; no device upgrade or spreadsheet fidelity test has been recorded. Do not reuse another app's signer, bypass these gates or claim a successful public release merely because CI passes.
+### UI issue confirmed from the owner's 23 October screenshot
+The black strip at the top of the workbook showed low-contrast font/update/shortcut controls that obscured the otherwise light spreadsheet interface. The GridCraft-only Rust addon now renders a compact, collapsed-by-default **light bottom dock** with readable dark labels and green-tinted controls. The dock reserves layout space before the workbook editor is drawn; the workbook ribbon, formula bar and grid styling remain untouched. Re-test on HONOR MagicPad 4 after the patched ARM64 candidate succeeds, including landscape, keyboard, and update-check feedback.
+
+### Owner-approved launcher artwork
+On 23 October the user supplied `Glossy Green Gc App Icon.png` (1254×1254 RGBA), SHA-256 `b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06`. This **replaces** the previous Xc icon choice. The workflow verifies this exact image when it is present at `assets/gridcraft/launcher-source.png` and passes it to `-appicon`. Until the GitHub branch contains the exact original PNG and its SHA passes, any candidate is explicitly unbranded, and a public release is forbidden. No lookalikes or other suite icons can substitute for it.
+
+**Known production blockers remain:** the user-approved **Gc** icon is uploaded in ChatGPT but not yet committed to the GitHub branch; no verified dedicated GridCraft permanent signer or recoverable backup exists in the connected account; no production versionCode is reserved; no device upgrade or spreadsheet fidelity test has been recorded. Do not reuse another app's signer, bypass these gates or claim a successful public release merely because CI passes.
 
 ---
 
@@ -43,11 +49,11 @@ The fork's generic builder already declares GridCraft in `lib/build-common.sh`. 
 
 ## Uploaded icon — exact-asset gate
 
-The user-provided PNG named `Glossy Green Xc App Icon(1).png` is **1254×1254** with SHA-256
-`8c0db50831bd715812212c04f156029cfeabd1be82cf5bd777c9db5547063d19`.
-It visibly spells **Xc**, and the user requested using it as supplied, rather than changing the lettering to Gc.
+The user-provided PNG named `Glossy Green Gc App Icon.png` is **1254×1254** with SHA-256
+`b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06`.
+It visibly spells **Gc**, and the user requested using it as supplied, preserving the user-selected GridCraft initials.
 Target source path is `assets/gridcraft/launcher-source.png`.
-The uploaded binary **has not yet been committed** to this repository. Do not use a mock icon or claim it is installed. The image may be integrated only after exact SHA-256 verification and launcher density/adaptive foreground/background tests.
+The newly approved Gc PNG (1254×1254, SHA-256 `b8cd22fdf04da6dfe4da3cf818fc85763509f767b15c132f75784a1f0d03ae06`) **has not yet been committed** to this repository. Do not use a mock icon or claim it is installed. The image may be integrated only after exact SHA-256 verification and launcher density/adaptive foreground/background tests.
 
 ## Release safety and remaining blockers
 
@@ -82,5 +88,5 @@ The Shortcut Pad is an in-app proof of concept with GridCraft-native commands; i
 2. Verify generated manifest, activity, SAF picker result dispatch, font load after restart, preference persistence, scanner limits, updater response types and separate release URL allowlist.
 3. Verify formulas, recalc, formatting, ranges, XLSX/CSV/PDF, clipboard/IME/hardware modifier keys with synthetic workbooks; do not claim Excel macro/round-trip compatibility.
 4. Validate UI layout on MagicPad 4, then refine Shortcut Pad placement and customization and GPU backend reporting from actual runtime data.
-5. Integrate the exact user-uploaded Xc launcher artwork (matching source SHA in lock); **the binary has not been uploaded into GitHub**, so APK branding remains unverified.
+5. Integrate the exact newly approved user-uploaded Gc launcher artwork (matching source SHA in lock); **the binary has not been uploaded into GitHub**, so APK branding remains unverified.
 6. Only then verify permanent signing identity, certified versionCode continuity, reversible encrypted key backup and separate signed release workflow. Do not publish or enable main-branch schedules from this draft.

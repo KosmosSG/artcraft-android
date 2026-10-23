@@ -86,14 +86,13 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertIn("gridcraft-v", java)
         self.assertIn("getSharedPreferences", java)
         self.assertIn("getFilesDir()", java)
-        self.assertIn('egui::Panel::bottom("gridcraft.android.suite_tools_dock")', rust)
-        self.assertIn('egui::CollapsingHeader::new("GridCraft Tools  ·  Fonts / Updates / Shortcuts")', rust)
-        self.assertIn(".default_open(false)", rust)
-        self.assertIn("visuals.dark_mode = false;", rust)
-        self.assertIn("visuals.override_text_color", rust)
-        self.assertIn("egui::Color32::from_rgb(247, 250, 248)", rust)
-        self.assertIn("egui::Margin::symmetric(12, 8)", rust)
-        # Bottom panels consume screen space before the workbook canvas is drawn.
+        self.assertNotIn("egui::Panel::bottom", rust)
+        self.assertNotIn("egui::Window::new", rust)
+        self.assertIn('egui::Id::new("gridcraft.android.menu.action")', rust)
+        self.assertIn('gridcraft.android.menu.update_status', rust)
+        self.assertIn('gridcraft.android.menu.font_status', rust)
+        self.assertIn('gridcraft.android.menu.checking', rust)
+        # Before SheetApp::ui the shell processes commands and publishes status.
         overlay = (SOURCE / "overlay.py").read_text()
         self.assertIn("self.tools.ui(ui, &mut self.inner);", overlay)
         self.assertNotIn("egui::Window::new", rust)
@@ -104,30 +103,40 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertNotIn("gh release create", rust)
         self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
 
-    def test_bottom_tools_show_hide_persists_and_restores_without_floating_window(self):
+    def test_native_gridcraft_tools_in_existing_menu_without_dock(self):
         rust = (SOURCE / "gridcraft_tools.rs").read_text()
         java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
-        # The native addon reads an app-private preference and provides a
-        # tiny anchored restore affordance when the full tools dock is hidden.
-        for expected in (
-            'gcToolsPanelVisible', 'gcSetToolsPanelVisible',
-            'panel_visible: bool', 'panel_loaded: bool',
-            'fn read_panel_visible(&self)', 'fn write_panel_visible(&self, visible: bool)',
-            'self.set_panel_visible(false)', 'self.set_panel_visible(true)',
-            'egui::Panel::bottom("gridcraft.android.suite_tools_restore")',
-            'egui::Panel::bottom("gridcraft.android.suite_tools_dock")',
-            'Show GridCraft Tools ▲', 'Hide Panel ▼',
+        menu = (SOURCE / "GridCraftNativeMenu.rs.inc").read_text()
+        installer = (FOLDER / "install_overlay.py").read_text()
+        for marker in (
+            'GRIDCRAFT_ANDROID_NATIVE_MENU_V1',
+            'ui.menu_button("GridCraft Tools"',
+            '"Import TTF / OTF..."',
+            '"Select Shared Font Folder..."',
+            '"Refresh Shared Fonts"',
+            '"Check for GridCraft Updates"',
+            '"View verified GitHub Release..."',
+            '"Check for updates at startup"',
+            '"Previous sheet"', '"Next sheet"', '"Undo"', '"Redo"',
         ):
-            with self.subTest(expected=expected):
-                self.assertIn(expected, rust)
-        self.assertIn('getBoolean("bottom_tools_visible", false)', java)
-        self.assertIn('putBoolean("bottom_tools_visible", visible).apply()', java)
-        self.assertLess(rust.index('if !self.panel_visible {'), rust.index('// The spreadsheet uses a light workbook UI.'))
-        self.assertNotIn('egui::Window::new', rust)
-        # Showing/hiding tools must not interrupt the Java font or updater queues.
-        self.assertIn('self.tools.poll();', (SOURCE / "overlay.py").read_text())
-        self.assertIn('gcCheckForUpdates()', java)
+            with self.subTest(marker=marker):
+                self.assertIn(marker, menu)
+        self.assertIn('crates/ui-egui/src/ribbon.rs', installer)
+        self.assertIn('source/gridcraft', installer)
+        self.assertIn('ribbon_source.count(menu_anchor) != 1', installer)
+        self.assertIn('ribbon.write_text(patched_ribbon)', installer)
+        self.assertIn('gridcraft.android.menu.action', rust)
+        self.assertIn('"startup_on" | "startup_off"', rust)
+        self.assertIn('gcStartupChecksEnabled', java)
         self.assertIn('gcImportFont()', java)
+        self.assertIn('gcCheckForUpdates()', java)
+        self.assertNotIn('egui::Window::new', rust)
+        self.assertNotIn('egui::Panel::bottom', rust)
+        self.assertNotIn('bottom("gridcraft.android.suite_tools_restore")', menu)
+        self.assertNotIn('bottom("gridcraft.android.suite_tools_dock")', menu)
+        self.assertNotIn('GridCraftNativeMenu.rs.inc', (SOURCE / "overlay.py").read_text())
+        # The Android tools source never needs to change upstream workbook state.
+        self.assertIn('self.tools.poll();', (SOURCE / "overlay.py").read_text())
 
     def test_other_app_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

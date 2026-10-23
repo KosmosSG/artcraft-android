@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "app": "vectorcraft",
+  "upstream_repository": "https://github.com/storytold/vectorcraft",
+  "upstream_tag": "v0.16.0",
+  "upstream_commit": "10190753ef356ce8de7592626bcb99fd69db467c",
+  "upstream_workspace_version": "0.16.0",
+  "upstream_rust_toolchain": "1.95.0",
+  "android_version_name": "0.16.0-android.1",
+  "android_package": "com.artcraft.vectorcraft",
+  "android_target": "aarch64-linux-android",
+  "android_min_sdk": 28,
+  "android_target_sdk": 35,
+  "existing_signed_version_code_floor_exclusive": 16780805,
+  "production_signing_allowed": false,
+  "production_apk_build_allowed": false,
+  "test_apk_build_allowed": false,
+  "publishing_allowed": false,
+  "automatic_upstream_sync_allowed": false
+}

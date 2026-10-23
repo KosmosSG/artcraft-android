@@ -393,7 +393,9 @@ struct UpdateDialogState {
 fn mime_for_filters(pick: &FilePick) -> String {
     pick.filters
         .first()
-        .and_then(|(_, exts)| exts.first().copied())
+        // Official v0.16 stores dialog extensions as String, not Copy &str.
+        // Borrow the extension for MIME detection; never clone filters or alter SAF.
+        .and_then(|(_, exts)| exts.first().map(String::as_str))
         .map(mime_for_extension)
         .unwrap_or_else(|| "*/*".to_string())
 }

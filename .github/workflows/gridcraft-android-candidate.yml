@@ -4,6 +4,7 @@ on:
     branches: [development/gridcraft-v0111-fonts-updates-20261023]
     paths:
       - 'tools/gridcraft/**'
+      - 'assets/gridcraft/**'
       - '.github/workflows/gridcraft-android-candidate.yml'
   workflow_dispatch:
 permissions:

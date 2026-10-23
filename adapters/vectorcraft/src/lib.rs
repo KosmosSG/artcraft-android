@@ -968,9 +968,49 @@ impl eframe::App for VectorCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+
+        // PhotoCraft-style dock: an actual bottom panel reserves editor space instead
+        // of floating over canvas handles or intercepting drawing gestures.
+        let mut pad_command: Option<&'static str> = None;
+        let mut hide_pad = false;
+        if self.touch_dock {
+            let editing_text = ui.ctx().text_edit_focused();
+            let has_doc = self.inner.session.active().is_some();
+            egui::Panel::bottom("vectorcraft.android.touch_shortcut_pad")
+                .resizable(false)
+                .default_size(56.0)
+                .show(ui, |ui| {
+                    egui::ScrollArea::horizontal()
+                        .id_salt("vectorcraft.android.touch_shortcut_pad.scroll")
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                for (label, command, needs_document) in [
+                                    ("Undo", "edit.undo", true),
+                                    ("Redo", "edit.redo", true),
+                                    ("Fit", "view.fitArtboard", true),
+                                    ("100%", "view.actualSize", true),
+                                    ("Shortcuts", "edit.keyboardShortcuts", false),
+                                ] {
+                                    let enabled = !editing_text && (!needs_document || has_doc);
+                                    if ui.add_enabled(enabled,
+                                        egui::Button::new(label)
+                                            .min_size(egui::vec2(64.0, 44.0)))
+                                        .clicked() {
+                                        pad_command = Some(command);
+                                    }
+                                }
+                                if ui.add(egui::Button::new("Hide pad")
+                                    .min_size(egui::vec2(74.0, 44.0))).clicked() {
+                                    hide_pad = true;
+                                }
+                            });
+                        });
+                });
+        }
+        // The editor now uses the space left after the bottom pad.
         self.inner.ui(ui);
 
-        // Small Android-only entry point: no upstream menus or desktop preferences are changed.
+        // Small Android-only entry point: no upstream desktop preferences are changed.
         let ctx = ui.ctx();
         let mut import = false;
         let mut select_shared = false;
@@ -981,6 +1021,16 @@ impl eframe::App for VectorCraftAndroidApp {
         let mut dock_redo = false;
         let previous_touch_dock = self.touch_dock;
         let previous_startup_updates = self.startup_updates;
+        // Genuine upstream Type, Help, and Window menu clicks are passed back to the
+        // Android host; no desktop menu commands or user shortcut assignments change.
+        let menu = vectorcraft_ui_egui::menus::take_android_menu_bits();
+        if menu & 1 != 0 { import = true; }
+        if menu & 2 != 0 { select_shared = true; }
+        if menu & 4 != 0 { refresh_shared = true; }
+        if menu & 8 != 0 { check_updates = true; }
+        if menu & 16 != 0 { self.startup_updates = !self.startup_updates; }
+        if menu & 32 != 0 { self.touch_dock = !self.touch_dock; }
+        if hide_pad { self.touch_dock = false; }
         egui::Area::new(egui::Id::new("vectorcraft.android_tools_button"))
             .anchor(egui::Align2::RIGHT_TOP, [-12.0, 70.0])
             .show(ctx, |ui| {
@@ -1039,17 +1089,6 @@ impl eframe::App for VectorCraftAndroidApp {
                     ui.small("Checks VectorCraft release listings. APK signatures are checked by Android during installation.");
                 });
         }
-        if self.touch_dock {
-            egui::Area::new(egui::Id::new("vectorcraft.touch_shortcut_dock"))
-                .anchor(egui::Align2::LEFT_BOTTOM, [12.0, -12.0])
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("Undo").clicked() { dock_undo = true; }
-                        if ui.button("Redo").clicked() { dock_redo = true; }
-                        if ui.button("Shortcuts").clicked() { customize_shortcuts = true; }
-                    });
-                });
-        }
         if self.startup_updates != previous_startup_updates {
             if let Some(dir) = self.persist.as_ref() {
                 persist_write(dir, "startup_updates.enabled", if self.startup_updates { b"1" } else { b"0" });
@@ -1062,6 +1101,12 @@ impl eframe::App for VectorCraftAndroidApp {
                     log::warn!("Could not save shortcut dock preference: {error}");
                 }
             }
+        }
+        if let Some(command) = pad_command {
+            if let Err(error) = self.inner.run(command, serde_json::json!({})) {
+                log::warn!("VectorCraft Touch Shortcut Pad {command} failed: {error}");
+            }
+            ctx.request_repaint();
         }
         for (pressed, command) in [(dock_undo, "edit.undo"),
                                    (dock_redo, "edit.redo"),

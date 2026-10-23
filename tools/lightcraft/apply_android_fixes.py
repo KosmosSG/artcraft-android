@@ -16,98 +16,33 @@ def replace_once(text, old, new, label):
 
 def apply(builder: Path, source: Path, suite: Path):
     assert (suite / "assets/lightcraft/lc-user-approved.png").is_file()
+    # The committed icon is byte-identical to the user's uploaded PNG.
+    # Do not crop, repaint, neutralize its highlights or recolor the LC glass.
+    # The original icon is a complete blue rounded-square tile, NOT a
+    # foreground glyph to background-strip and shrink to 66dp.
+    # Render the original pixel artwork as a comfortably inset full icon on
+    # Android's 108dp adaptive canvas. Its background uses the actual blue
+    # from an interior sample so MagicOS never shows the wrong teal surround.
     icons = builder / "lib/app_icons.py"
     original = icons.read_text()
-    old = "    work = _raster(source)\n    color = _background_color(Image, work)"
-    # Scope the derived borderless artwork to LightCraft. Both legacy and adaptive
-    # resource generators get the derived pixels; the approved original is unchanged.
-    new = (
-        "    work = _raster(source)\n"
-        "    if app == 'lightcraft' and explicit is not None:\n"
-        "        work = _lightcraft_borderless(Image, work)\n"
-        "    color = _background_color(Image, work)"
+    anchor = (
+        "    stripped, _changed = _strip_background(work, pristine=pristine)\\n"
+        "    foreground = _foreground(Image, stripped)"
     )
-    original = replace_once(original, old, new, "icon render")
-    original = replace_once(original,
-        "    _write_legacy(source, pristine, res_dir)",
-        "    _write_legacy(None if app == 'lightcraft' and explicit is not None else source, pristine, res_dir)",
-        "legacy icon")
-    original = replace_once(original,
-        "        if magick:\n            subprocess.run(",
-        "        if magick and source is not None:\n            subprocess.run(",
-        "legacy renderer")
-    anchor = "\ndef generate(src: Path, app: str, res_dir: Path, explicit: Path = None) -> Path:\n"
-    algorithm = '''
-def _lightcraft_borderless(Image, img):
-    """Derive launcher-only deep-blue tile from the approved image, excluding white frame.
-
-    Find dark blue interior at central horizontal/vertical cross-sections rather
-    than bleaching near-white letters (their specular highlights must survive).
-    This changes the *Android derived launcher resources*, NOT the approved PNG.
-    """
-    w, h = img.size
-    px = img.load()
-    def blue(x, y):
-        r, g, b, a = px[x, y]
-        return a >= 190 and b >= 75 and b > r * 1.3 and r < 145 and (b - r) > 25
-    def run_at_horizontal(y):
-        xs = [x for x in range(w // 7, w * 6 // 7) if blue(x, y)]
-        return (min(xs), max(xs)) if len(xs) > w // 3 else None
-    def run_at_vertical(x):
-        ys = [y for y in range(h // 7, h * 6 // 7) if blue(x, y)]
-        return (min(ys), max(ys)) if len(ys) > h // 3 else None
-    x_ranges = [v for y in (h // 3, h * 2 // 3) if (v := run_at_horizontal(y))]
-    y_ranges = [v for x in (w // 3, w * 2 // 3) if (v := run_at_vertical(x))]
-    if len(x_ranges) != 2 or len(y_ranges) != 2:
-        raise RuntimeError("STOP: approved Lc tile not recognized; do not alter launcher icon")
-    # The border occupies the outer band around the dark blue tile.
-    left = max(0, min(v[0] for v in x_ranges) + 2)
-    top = max(0, min(v[0] for v in y_ranges) + 2)
-    right = min(w, max(v[1] for v in x_ranges) - 1)
-    bottom = min(h, max(v[1] for v in y_ranges) - 1)
-    if not (0.64*w < right-left < 0.96*w and 0.64*h < bottom-top < 0.96*h):
-        raise RuntimeError("STOP: Lc border crop exceeds accepted geometry")
-    derived = img.crop((left, top, right, bottom)).resize(
-        (w, h), Image.Resampling.LANCZOS)
-    # HONOR launchers expose the whole middle edge on both legacy and adaptive
-    # shapes. Stretch only the *outer* blue edge texture out to the canvas border;
-    # the inner Lc lettering and specular glass highlights remain unchanged.
-    # This also removes thin antialiased pale pixels the geometric crop misses.
-    band = int(min(w, h) * 0.13)
-    sample = derived.load()
-    safe = derived.copy()
-    pixels = safe.load()
-    for y in range(h):
-        for x in range(w):
-            if x < band or x >= w-band or y < band or y >= h-band:
-                sx = min(max(x, band), w-band-1)
-                sy = min(max(y, band), h-band-1)
-                pixels[x, y] = sample[sx, sy]
-    # The original Lc photo also contains separate opaque white edge highlights
-    # that geometric cropping cannot remove. Neutralise only nearly-neutral
-    # whites in the *outer* launcher band, never the cyan Lc glass lettering.
-    from collections import Counter
-    interior = [
-        (r // 16 * 16, g // 16 * 16, b // 16 * 16)
-        for y in range(h // 4, h * 3 // 4, 8)
-        for x in range(w // 4, w * 3 // 4, 8)
-        for (r,g,b,a) in [pixels[x,y]]
-        if a > 230 and b > r * 1.35 and b > 70 and r < 120
-    ]
-    if not interior:
-        raise RuntimeError("STOP: approved Lc dark blue background missing")
-    (r0,g0,b0), _ = Counter(interior).most_common(1)[0]
-    for y in range(h):
-        for x in range(w):
-            if min(x, y, w-1-x, h-1-y) >= int(min(w,h) * 0.18):
-                continue
-            r,g,b,a = pixels[x,y]
-            if a > 170 and min(r,g,b) > 155 and max(r,g,b)-min(r,g,b) < 80:
-                pixels[x,y] = (r0,g0,b0,255)
-    return safe
-
-'''
-    original = replace_once(original, anchor, "\n"+algorithm+anchor, "icon helper")
+    replacement = (
+        "    if app == 'lightcraft' and explicit is not None:\\n"
+        "        sample = pristine.getpixel((WORK_PX // 2, WORK_PX // 4))\\n"
+        "        color = '#%02X%02X%02X' % sample[:3]\\n"
+        "        # Preserve every original pixel; only scale and center the full tile.\\n"
+        "        side = round(CANVAS_PX * 0.85)\\n"
+        "        icon = pristine.resize((side, side), Image.Resampling.LANCZOS)\\n"
+        "        foreground = Image.new('RGBA', (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))\\n"
+        "        foreground.alpha_composite(icon, ((CANVAS_PX-side)//2, (CANVAS_PX-side)//2))\\n"
+        "    else:\\n"
+        "        stripped, _changed = _strip_background(work, pristine=pristine)\\n"
+        "        foreground = _foreground(Image, stripped)"
+    )
+    original = replace_once(original, anchor, replacement, "exact approved adaptive icon")
     ast.parse(original)
     icons.write_text(original)
 

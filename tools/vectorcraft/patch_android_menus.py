@@ -79,7 +79,7 @@ pub fn take_android_menu_bits() -> u32 {
         '            "Window",\n            vec![\n',
         """            "Window",
             vec![
-                c("Toggle Touch Shortcut Pad", "android.vectorcraft.touchPad"),
+                c("Touch Shortcut Pad", "android.vectorcraft.touchPad"),
                 Sep,
 """)
     menu.write_text(s)

@@ -259,6 +259,21 @@
                     String tag = release.optString("tag_name");
                     if (!tag.matches("gridcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+")) continue;
                     String version = tag.substring("gridcraft-v".length());
+                    // Only real, published and downloadable GridCraft APKs are updates.
+                    // A draft, a tag-only release, or another app's APK is not.
+                    org.json.JSONArray assets = release.optJSONArray("assets");
+                    boolean downloadable = false;
+                    if (assets != null) for (int ai = 0; ai < assets.length(); ai++) {
+                        org.json.JSONObject asset = assets.optJSONObject(ai);
+                        if (asset != null &&
+                            ("GridCraft-v" + version + "-arm64-v8a.apk").equals(asset.optString("name")) &&
+                            "uploaded".equals(asset.optString("state")) &&
+                            asset.optLong("size", 0) > 0) {
+                            downloadable = true;
+                            break;
+                        }
+                    }
+                    if (!downloadable) continue;
                     String page = release.optString("html_url");
                     if (!page.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v")) continue;
                     if (bestVersion == null || gcCompareVersion(version, bestVersion) > 0) {

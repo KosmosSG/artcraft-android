@@ -115,6 +115,7 @@ def main() -> None:
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
         "    wc_logic = '        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",
         "initialize WordCraft-only shell fields",
     )
@@ -132,7 +133,7 @@ def main() -> None:
          "{intent_logic}{saf_logic_poll}{wc_logic}{persist_logic}",
          "poll WordCraft Java results"),
         ("        {inner_ui}\n    }}",
-         "        {inner_ui}\n{wc_ui}    }}",
+         "        {wc_preui}{inner_ui}\n{wc_ui}    }}",
          "show WordCraft tools and shortcut pad"),
     ):
         patched = exactly_once(patched, before, after, purpose)
@@ -156,6 +157,26 @@ def main() -> None:
         "permit WordCraft-only read-only GitHub update checks",
     )
 
+    # Add ArtCraft as a real ribbon dropdown, with room reserved by the tab
+    # planner. Other app checkouts and the upstream repository are untouched.
+    ribbon = root / "source" / "wordcraft" / "crates" / "ui-egui" / "src" / "ribbon.rs"
+    ribbon_text = ribbon.read_text(encoding="utf-8")
+    ribbon_text = exactly_once(
+        ribbon_text,
+        "let button_levels = [button_widths(0), button_widths(1), button_widths(2)];",
+        "let android_tools_width = if cfg!(target_os = \"android\") { 92.0 } else { 0.0 };\n"
+        "                let button_levels = [button_widths(0), button_widths(1), button_widths(2)].map(|width| width + android_tools_width);",
+        "reserve native ArtCraft menu space",
+    )
+    ribbon_text = exactly_once(
+        ribbon_text,
+        "                    // No document open (#1129): nothing to share, edit or comment on — but only",
+        "                    #[cfg(target_os = \"android\")]\n"
+        "                    artcraft_android_menu(ui);\n"
+        "                    // No document open (#1129): nothing to share, edit or comment on — but only",
+        "insert native ArtCraft ribbon menu",
+    )
+    ribbon.write_text(ribbon_text + Path(__file__).with_name("ribbon_android.rs.inc").read_text(), encoding="utf-8")
     source.write_text(patched, encoding="utf-8")
     print("Applied WordCraft font persistence and scoped-storage overlay to isolated builder")
     print("WordCraft SAF shared font folder, manual/opt-in updater, shortcut pad and GPU info installed; device testing pending")
@@ -163,3 +184,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -22,7 +22,6 @@ const ACTIONS: [(&str, &str); 9] = [
 pub struct Tools {
     app: AndroidApp,
     vm: Arc<JavaVM>,
-    show_tools: bool,
     show_pad: bool,
     startup_updates: bool,
     status: String,
@@ -38,7 +37,7 @@ impl Tools {
         // SAFETY: AndroidApp owns the JavaVM for the Activity's lifetime.
         let vm = Arc::new(unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) });
         let mut tools = Self {
-            app: app.clone(), vm, show_tools: false, show_pad: false,
+            app: app.clone(), vm, show_pad: false,
             startup_updates: false, status: "Ready".to_owned(),
             release_url: None, pending_fonts: VecDeque::new(),
             imported: 0, failed: 0, slots: [0, 1, 2, 3, 4, 5],
@@ -197,78 +196,69 @@ impl Tools {
         }
     }
 
+    pub fn prepare_menu(&self, ctx: &egui::Context, frame: &eframe::Frame) {
+        let gpu = if let Some(render) = frame.wgpu_render_state() {
+            let info = render.adapter.get_info();
+            format!("GPU: {} ({:?})", info.name, info.backend)
+        } else {
+            "GPU: renderer information not available".to_owned()
+        };
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("wc_menu_startup"), self.startup_updates);
+            d.insert_temp(egui::Id::new("wc_menu_pad"), self.show_pad);
+            d.insert_temp(egui::Id::new("wc_menu_status"), self.status.clone());
+            d.insert_temp(egui::Id::new("wc_menu_release"), self.release_url.clone().unwrap_or_default());
+            d.insert_temp(egui::Id::new("wc_menu_gpu"), gpu);
+        });
+    }
+
     pub fn ui(
         &mut self,
         app: &mut wordcraft_ui_egui::WordApp,
         ctx: &egui::Context,
-        frame: &mut eframe::Frame,
+        _frame: &mut eframe::Frame,
     ) {
-        egui::Area::new(egui::Id::new("wc_android_menu"))
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 48.0))
-            .show(ctx, |ui| {
-                if ui.button("ArtCraft tools").clicked() {
-                    self.show_tools = !self.show_tools;
+        let action = ctx.data_mut(|d| {
+            let id = egui::Id::new("wc_menu_action");
+            let value = d.get_temp::<String>(id).unwrap_or_default();
+            d.insert_temp(id, String::new());
+            value
+        });
+        match action.as_str() {
+            "font_folder" => self.status = match self.call_void("wcRequestFontFolder") {
+                Ok(()) => "Choose your shared font folder in Android Files".into(),
+                Err(error) => format!("Folder picker error: {error}"),
+            },
+            "font_refresh" => self.status = match self.call_void("wcRefreshFontFolder") {
+                Ok(()) => "Refreshing shared fonts...".into(),
+                Err(error) => format!("Font refresh error: {error}"),
+            },
+            "check_updates" => self.status = match self.call_void("wcCheckForUpdates") {
+                Ok(()) => "Checking published WordCraft Android APK releases...".into(),
+                Err(error) => format!("Update check error: {error}"),
+            },
+            "startup_on" | "startup_off" => {
+                self.startup_updates = action == "startup_on";
+                if let Err(error) = self.call_bool_arg("wcSetStartupUpdates", self.startup_updates) {
+                    self.status = format!("Could not save update preference: {error}");
                 }
-            });
-        if self.show_tools {
-            let mut open = self.show_tools;
-            egui::Window::new("WordCraft Android tools")
-                .id(egui::Id::new("wc_android_tools"))
-                .open(&mut open)
-                .default_width(330.0)
-                .show(ctx, |ui| {
-                    if ui.button("Choose shared font folder").clicked() {
-                        self.status = match self.call_void("wcRequestFontFolder") {
-                            Ok(()) => "Choose your ArtCraft shared font folder in Android Files".into(),
-                            Err(error) => format!("Folder picker error: {error}"),
-                        };
+            }
+            "view_release" => {
+                if let Some(url) = &self.release_url {
+                    if let Err(error) = self.call_string_arg("wcOpenUpdatePage", url) {
+                        self.status = format!("Could not open release page: {error}");
                     }
-                    if ui.button("Refresh shared fonts").clicked() {
-                        self.status = match self.call_void("wcRefreshFontFolder") {
-                            Ok(()) => "Refreshing shared fonts...".into(),
-                            Err(error) => format!("Font refresh error: {error}"),
-                        };
-                    }
-                    ui.label("TTF / OTF / TTC / OTC in nested folders. Imported fonts are saved in WordCraft.");
-                    ui.separator();
-                    if ui.button("Check for Updates").clicked() {
-                        self.status = match self.call_void("wcCheckForUpdates") {
-                            Ok(()) => "Checking published WordCraft Android APK releases...".into(),
-                            Err(error) => format!("Update check error: {error}"),
-                        };
-                    }
-                    if ui.checkbox(&mut self.startup_updates, "Check updates on startup").changed() {
-                        if let Err(error) = self.call_bool_arg("wcSetStartupUpdates", self.startup_updates) {
-                            self.status = format!("Could not save update preference: {error}");
-                        }
-                    }
-                    if let Some(url) = self.release_url.clone() {
-                        if ui.button("View published release").clicked() {
-                            if let Err(error) = self.call_string_arg("wcOpenUpdatePage", &url) {
-                                self.status = format!("Could not open release page: {error}");
-                            }
-                        }
-                    }
-                    ui.separator();
-                    ui.checkbox(&mut self.show_pad, "Show Shortcut Pad");
-                    if ui.button("Customize physical keyboard").clicked() {
-                        match app.run("tools.customizeKeyboard", serde_json::json!({})) {
-                            Ok(_) => self.status = "Customize Keyboard dialog opened".into(),
-                            Err(error) => self.status = format!("Keyboard customization: {error}"),
-                        }
-                    }
-                    if let Some(render) = frame.wgpu_render_state() {
-                        let info = render.adapter.get_info();
-                        ui.label(format!("GPU: {} ({:?})", info.name, info.backend));
-                    } else {
-                        ui.label("GPU: renderer information not available");
-                    }
-                    ui.label("Graphics configured: Vulkan first, OpenGL fallback.");
-                    ui.separator();
-                    ui.label(&self.status);
-                });
-            self.show_tools = open;
+                }
+            }
+            "pad_on" => self.show_pad = true,
+            "pad_off" => self.show_pad = false,
+            "keyboard" => self.status = match app.run("tools.customizeKeyboard", serde_json::json!({})) {
+                Ok(_) => "Customize Keyboard dialog opened".into(),
+                Err(error) => format!("Keyboard customization: {error}"),
+            },
+            _ => {}
         }
+        if !action.is_empty() { ctx.request_repaint(); }
         if self.show_pad {
             let mut open = self.show_pad;
             egui::Window::new("WordCraft Shortcut Pad")
@@ -310,3 +300,4 @@ impl Tools {
         }
     }
 }
+

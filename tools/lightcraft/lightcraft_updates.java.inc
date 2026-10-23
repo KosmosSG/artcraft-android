@@ -107,6 +107,7 @@
                     // filename and the current suite canonical alias are both
                     // accepted, but ONLY for this exact LightCraft tag.
                     String version = tag.substring("lightcraft-v".length());
+                    String suiteCanonical = "lightcraft-" + version + ".apk";
                     String canonical = "LightCraft-v" + version + "-arm64-v8a.apk";
                     String legacy = "LightCraft-" + version + "-arm64-v8a.apk";
                     boolean exactAsset = false;
@@ -115,7 +116,7 @@
                         if (asset == null) continue;
                         String name = asset.optString("name", "");
                         String state = asset.optString("state", "");
-                        if ((canonical.equals(name) || legacy.equals(name))
+                        if ((suiteCanonical.equals(name) || canonical.equals(name) || legacy.equals(name))
                             && "uploaded".equals(state) && asset.optLong("size", 0L) > 0L) {
                             exactAsset = true;
                             break;

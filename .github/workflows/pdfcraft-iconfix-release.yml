@@ -127,11 +127,11 @@ jobs:
           from pathlib import Path
           import re
           def code(p):
-              m=re.search(r"versionCode='(\\d+)'", Path(p).read_text())
+              m=re.search(r"versionCode='(\d+)'", Path(p).read_text())
               assert m, 'Missing Android versionCode'
               return int(m.group(1))
           def cert(p):
-              m=re.search(r'certificate SHA-256 digest:\\s*([0-9a-f]{64})', Path(p).read_text(), re.I)
+              m=re.search(r'certificate SHA-256 digest:\s*([0-9a-f]{64})', Path(p).read_text(), re.I)
               assert m, 'Missing Android certificate'
               return m.group(1).lower()
           old,new=code('previous/package.txt'),code('release/package.txt')

@@ -64,6 +64,7 @@ class RevisionTests(unittest.TestCase):
             script = (root / 'lib/build-common.sh').read_text()
             self.assertIn('{wc_preui}{inner_ui}', script)
             self.assertIn('self.wc.prepare_menu(ui.ctx(), frame)', script)
+            self.assertIn('self.wc.update_feedback(ui.ctx())', script)
             subprocess.run(['bash', '-n', str(root / 'lib/build-common.sh')], check=True)
             ribbon = (root / 'source/wordcraft/crates/ui-egui/src/ribbon.rs').read_text()
             self.assertIn('width + android_tools_width', ribbon)
@@ -73,6 +74,14 @@ class RevisionTests(unittest.TestCase):
             self.assertNotIn('wc_android_menu', shell)
             self.assertNotIn('Window::new("WordCraft Android tools")', shell)
             self.assertIn('wcSetStartupUpdates', shell)
+            self.assertIn('TopBottomPanel::bottom("wc_update_feedback")', shell)
+            self.assertIn('update_checking', shell)
+            self.assertIn('request_repaint_after(Duration::from_millis(250))', shell)
+            self.assertNotIn('Window::new("WordCraft update', shell)
+            java = (root / 'templates/android/SafActivity.java').read_text()
+            self.assertIn('wcShowUpdateMessage(String message)', java)
+            self.assertIn('WordCraft-v" + version + "-arm64-v8a.apk"', java)
+            self.assertIn('wcPollUpdateResult()', java)
             self.assertIn('Window::new("WordCraft Shortcut Pad")', shell)
 
 

@@ -100,6 +100,21 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertNotIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", extras)
         self.assertNotIn("ACTION_INSTALL_PACKAGE", extras)
 
+    def test_gpu_diagnostics_is_docked_and_never_floats(self):
+        rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()
+        diagnostic_panel = 'egui::Panel::bottom("vectorcraft.android.graphics_diagnostics")'
+        editor = "self.inner.ui(ui);"
+        self.assertIn(diagnostic_panel, rust)
+        self.assertNotIn('egui::Window::new("VectorCraft Graphics Diagnostics")', rust)
+        # The dock is allocated before the editor to reserve canvas space.
+        self.assertLess(rust.index(diagnostic_panel), rust.index(editor))
+        for marker in ("state.adapter.get_info()", "state.device.limits()",
+                       "self.fonts.import_status", "self.fonts.shared_status",
+                       'if ui.small_button("Close").clicked()',
+                       "self.android_tools_open = !self.android_tools_open;"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, rust)
+
     def test_signing_guards_still_required_and_no_release_published(self):
         workflow = WORKFLOW.read_text()
         for marker in ("VECTORCRAFT_KEYSTORE_BASE64", "VECTORCRAFT_CERT_SHA256",

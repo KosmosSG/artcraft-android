@@ -33,6 +33,17 @@ def prepare(root: Path, version: str, code: int):
     fonts = root / "templates/android/system_fonts.rs"
     text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
     fonts.write_text(text)
+    # Generate both legacy and adaptive layers from the approved glossy source.
+    icon_module = root / "lib/app_icons.py"
+    icon_source = icon_module.read_text()
+    icon_anchor = "    Image, _ = _pillow()\n    source = pick_source(src, app, explicit)"
+    if icon_source.count(icon_anchor) != 1:
+        raise ValueError("Pinned icon generator changed")
+    icon_module.write_text(icon_source.replace(icon_anchor,
+        "    if app == 'designcraft' and explicit is not None:\n"
+        "        import designcraft_launcher\n"
+        "        return designcraft_launcher.generate(explicit, res_dir)\n" + icon_anchor, 1))
+    shutil.copyfile(Path(__file__).with_name("launcher_icon.py"), root / "lib/designcraft_launcher.py")
     script.write_text(source)
     project.write_text(generated)
 
@@ -44,3 +55,4 @@ if __name__ == "__main__":
     parser.add_argument("version_code", type=int)
     args = parser.parse_args()
     prepare(args.builder, args.version, args.version_code)
+

@@ -29,6 +29,9 @@ class SuiteFeatureParityTest(unittest.TestCase):
 
     def test_update_policy_is_app_scoped_and_opt_in(self):
         self.assertIn("OFF",self.contract["update_startup"])
+        self.assertIn("Stable + Preview Releases",self.contract["update_channels"])
+        self.assertIn("Exclude drafts",self.contract["update_channels"])
+        self.assertIn("update_channel_selection",FEATURE_IDS)
         self.assertIn("published GitHub Releases",self.contract["update_manual"])
         self.assertIn("Help menu",self.contract["update_location"])
         self.assertIn("immediately below About",self.contract["update_location"])

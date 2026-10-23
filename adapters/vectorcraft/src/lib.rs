@@ -250,6 +250,21 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    /// PhotoCraft-style native Android message, independent of the editor's
+    /// optional Graphics Diagnostics panel. Java posts the Toast to the UI thread.
+    fn native_message(&self, message: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let text = JObject::from(env.new_string(message)?);
+            let result = env.call_method(&*activity, jni_str!("vcShowMessage"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&text)]);
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+
     fn files_dir(&self) -> Result<String, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<String> {
@@ -333,11 +348,18 @@ struct FontUiState {
     pending_shared: Option<u64>,
     import_status: String,
     shared_status: String,
+    // One-shot user feedback, not a floating tools window.
+    notice: Option<String>,
+    // An automatic restoration at app startup must not produce spurious Toasts.
+    notify_shared_completion: bool,
 }
 
 impl FontUiState {
     fn import(&mut self, picks: &PickState, bridge: &AndroidFileBridge) {
-        if self.pending_import.is_some() { return; }
+        if self.pending_import.is_some() {
+            self.notice = Some("Font import is already in progress".into());
+            return;
+        }
         let id = picks.next_id();
         match bridge.request_font_import(id) {
             Ok(()) => {
@@ -346,19 +368,32 @@ impl FontUiState {
             }
             Err(error) => self.import_status = format!("Font picker unavailable: {error}"),
         }
+        self.notice = Some(self.import_status.clone());
     }
 
-    fn shared(&mut self, picks: &PickState, bridge: &AndroidFileBridge, refresh: bool) {
-        if self.pending_shared.is_some() { return; }
+    fn shared(&mut self, picks: &PickState, bridge: &AndroidFileBridge,
+        refresh: bool, notify: bool) {
+        if self.pending_shared.is_some() {
+            if notify {
+                self.notice = Some("Shared font refresh is already in progress".into());
+                self.notify_shared_completion = true;
+            }
+            return;
+        }
         let id = picks.next_id();
+        self.notify_shared_completion = notify;
         match bridge.request_font_folder(id, refresh) {
             Ok(()) => {
                 self.pending_shared = Some(id);
                 self.shared_status = if refresh { "Refreshing shared fonts…" }
                     else { "Select ArtCraft-Fonts in Android Files…" }.into();
             }
-            Err(error) => self.shared_status = format!("Shared folder unavailable: {error}"),
+            Err(error) => {
+                self.shared_status = format!("Shared folder unavailable: {error}");
+                self.notify_shared_completion = false;
+            },
         }
+        if notify { self.notice = Some(self.shared_status.clone()); }
     }
 
     /// Returns true only when VectorCraft should rescan its registered Fonts directory.
@@ -372,9 +407,14 @@ impl FontUiState {
         if font_import {
             self.pending_import = None;
             self.import_status = message.into();
+            self.notice = Some(self.import_status.clone());
         } else {
             self.pending_shared = None;
             self.shared_status = message.into();
+            if self.notify_shared_completion {
+                self.notice = Some(self.shared_status.clone());
+            }
+            self.notify_shared_completion = false;
         }
         Some(success)
     }
@@ -387,6 +427,8 @@ struct UpdateDialogState {
     started_at: Option<std::time::Instant>,
     message: String,
     release_url: Option<String>,
+    // Notify for user-initiated checks, never for quiet startup polling.
+    notify_result: bool,
 }
 
 /// A MIME type for an open dialog, from its first file-type filter (every file when it has none).
@@ -908,6 +950,18 @@ impl eframe::App for VectorCraftAndroidApp {
             if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
                 log::warn!("Android font rescan failed: {error}");
                 self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
+                // Quiet startup font restore should stay quiet, including errors;
+                // manually requested refresh still reports a rescan failure.
+                if self.fonts.notice.is_some() {
+                    self.fonts.notice = Some(self.fonts.shared_status.clone());
+                }
+            }
+        }
+        // The native notification makes font import and refresh status visible
+        // even when the read-only Graphics Diagnostics dock is closed.
+        if let Some(message) = self.fonts.notice.take() {
+            if let Err(error) = self.bridge.native_message(&message) {
+                log::warn!("Cannot show VectorCraft font status: {error}");
             }
         }
         if self.updates.checking {
@@ -966,6 +1020,12 @@ impl eframe::App for VectorCraftAndroidApp {
                     ctx.request_repaint();
                 }
             }
+            }
+        }
+        if self.updates.notify_result && !self.updates.checking {
+            self.updates.notify_result = false;
+            if let Err(error) = self.bridge.native_message(&self.updates.message) {
+                log::warn!("Cannot show VectorCraft update result: {error}");
             }
         }
         // Then deliver any file the system asked us to open, through the same inbox.
@@ -1143,10 +1203,16 @@ impl eframe::App for VectorCraftAndroidApp {
             }
         }
         if import { self.fonts.import(&self.picks, &self.bridge); }
-        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
-        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
+        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false, true); }
+        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true, true); }
+        if let Some(message) = self.fonts.notice.take() {
+            if let Err(error) = self.bridge.native_message(&message) {
+                log::warn!("Cannot show VectorCraft font status: {error}");
+            }
+        }
         if check_updates {
             self.updates.open = true;
+            self.updates.notify_result = true;
             self.updates.release_url = None;
             if self.updates.checking {
                 self.updates.message = "Already checking GitHub releases…".into();
@@ -1162,6 +1228,11 @@ impl eframe::App for VectorCraftAndroidApp {
                         self.updates.message = format!("Could not check releases: {error}");
                     }
                 }
+            }
+            // A brief PhotoCraft-style Android notification confirms the menu
+            // action immediately; the bottom panel retains its full result.
+            if let Err(error) = self.bridge.native_message(&self.updates.message) {
+                log::warn!("Cannot show VectorCraft update progress: {error}");
             }
             // Menu dispatch happens after inner.ui. Force another frame so the
             // newly opened bottom panel is drawn before the editor next frame.
@@ -1199,7 +1270,7 @@ fn android_main(android_app: AndroidApp) {
     let picks = Arc::new(PickState::default());
     let mut initial_fonts = FontUiState::default();
     // Restore a previously authorized shared library on startup; missing access is nonfatal.
-    initial_fonts.shared(&picks, &bridge, true);
+    initial_fonts.shared(&picks, &bridge, true, false);
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

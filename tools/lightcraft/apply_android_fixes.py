@@ -133,8 +133,10 @@ def apply(builder: Path, source: Path, suite: Path):
                         3 => {
                             ui.heading("LightCraft Updates");
                             let ctx = ui.ctx().clone();
-                            let installed = format!("Installed: {}", env!("CARGO_PKG_VERSION"));
-                            ui.label(installed);
+                            let installed = ctx.data(|d| d.get_temp::<String>(
+                                egui::Id::new("artcraft.lightcraft.installed_version")))
+                                .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+                            ui.label(format!("Installed Version: {installed}"));
                             let state_id = egui::Id::new("artcraft.lightcraft.update_status");
                             let state = ctx.data(|d| d.get_temp::<String>(state_id))
                                 .unwrap_or_else(|| "Select Check for Updates to query GitHub Releases.".into());
@@ -144,6 +146,20 @@ def apply(builder: Path, source: Path, suite: Path):
                                     egui::Id::new("artcraft.lightcraft.check_updates_requested"), true));
                                 ctx.request_repaint();
                             }
+                            ui.separator();
+                            ui.label("Update Channel");
+                            let preview_id = egui::Id::new("artcraft.lightcraft.include_preview");
+                            let mut previews = ctx.data(|d| d.get_temp::<bool>(preview_id)).unwrap_or(true);
+                            let stable_only = ui.radio_value(&mut previews, false, "Stable Releases Only");
+                            let stable_preview = ui.radio_value(&mut previews, true, "Stable + Preview Releases");
+                            if stable_only.changed() || stable_preview.changed() {
+                                ctx.data_mut(|d| {
+                                    d.insert_temp(egui::Id::new("artcraft.lightcraft.channel_desired"), previews);
+                                    d.insert_temp(egui::Id::new("artcraft.lightcraft.channel_changed"), true);
+                                });
+                                ctx.request_repaint();
+                            }
+                            ui.small("Preview releases may be untested; installing remains your choice.");
                             ui.separator();
                             let startup_id = egui::Id::new("artcraft.lightcraft.startup_enabled");
                             let mut startup = ctx.data(|d| d.get_temp::<bool>(startup_id)).unwrap_or(false);

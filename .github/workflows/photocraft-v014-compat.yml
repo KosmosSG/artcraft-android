@@ -1,0 +1,140 @@
+name: PhotoCraft v0.14 Android compatibility and Test APK
+
+on:
+  push:
+    branches: [development/photocraft-v014-android1-20261023]
+    paths:
+      - '.github/workflows/photocraft-v014-compat.yml'
+      - 'configs/photocraft-v0.14.0-android.1.json'
+      - 'tools/photocraft_v014_compat.py'
+      - 'tools/photocraft_v014_menu_port.py'
+      - 'adapters/photocraft/**'
+      - 'templates/android/**'
+  workflow_dispatch:
+
+# Never publish, access permanent signing secrets or synchronize upstream.
+permissions:
+  contents: read
+
+jobs:
+  guarded-android-test:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/photocraft-v014-android1-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME: '0.14.0-android.1'
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Guard official pin, every original Android feature and release restrictions
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v014_compat.py preflight
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path("configs/photocraft-v0.14.0-android.1.json").read_text())
+          for k in ("production_signing_allowed", "production_apk_build_allowed", "publishing_allowed", "automatic_upstream_sync_allowed"):
+              assert c[k] is False, "Unsafe policy: " + k
+          assert c["test_apk_build_allowed"] is True
+          assert c["existing_signed_version_code_floor_exclusive"] == 16790002
+          print("PASS: production signing/publishing and automated upstream sync remain disabled")
+          PY
+          python3 -m unittest discover -s tools/tests -p 'test_photocraft_v012_candidate.py' -v
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android ARM64 toolchain
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+      - name: Unit-test Android update policy and compile SAF Java
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pc-java"
+          javac -d "$RUNNER_TEMP/pc-java" adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java tools/tests/PhotoCraftUpdatePolicyTest.java
+          java -cp "$RUNNER_TEMP/pc-java" com.artcraft.photocraft.PhotoCraftUpdatePolicyTest
+          javac -cp "$ANDROID_HOME/platforms/android-35/android.jar" -d "$RUNNER_TEMP/pc-java" \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+      - name: Checkout immutable official release and port current Android features
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v014_compat.py checkout
+          python3 tools/photocraft_v014_compat.py prepare
+          python3 tools/photocraft_v014_compat.py verify
+      - name: Rust type-check against official PhotoCraft v0.14 APIs
+        timeout-minutes: 90
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path source/photocraft/Cargo.toml --no-deps --format-version 1 > /dev/null
+          cargo check --manifest-path source/photocraft/Cargo.toml --package photocraft-android --target aarch64-linux-android
+      - name: Change only disposable staging to isolated Test package
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v012_candidate.py stage
+          python3 tools/photocraft_v012_candidate.py verify
+          test ! -e keys/artcraft-builder.jks
+      - name: Compile ARM64 Test APK using a temporary local-only signing key
+        timeout-minutes: 130
+        run: |
+          set -euo pipefail
+          bash build.sh -photocraft
+          mkdir -p candidate
+          test "$(find output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
+          cp "$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)" candidate/PhotoCraft-v0.14.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk
+      - name: Verify separated identity, versionCode, ABI and Test signature
+        run: |
+          set -euo pipefail
+          APK=candidate/PhotoCraft-v0.14.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
+          python3 - <<'PY'
+          import re, zipfile
+          from pathlib import Path
+          badging=Path("candidate/badging.txt").read_text()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
+          assert m, "Missing Android identity"
+          assert m.group(1) == "com.artcraft.photocraft.candidate", "STOP: production identity"
+          assert m.group(3) == "0.14.0-android.1", "Wrong versionName"
+          assert int(m.group(2)) > 16790002, "versionCode must exceed published production"
+          with zipfile.ZipFile("candidate/PhotoCraft-v0.14.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk") as z:
+              files=z.namelist()
+              assert any(f.startswith("lib/arm64-v8a/") and f.endswith(".so") for f in files)
+              assert any(f.endswith(".dex") for f in files)
+          print("PASS: isolated test package, correct code, Java and ARM64 library")
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/signing.txt
+          sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Upload Test-only APK artifact; no GitHub Release
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-v014-Android-Test-ONLY
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build error logs
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-v014-compat-diagnostics
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Delete temporary local-only Test signing files
+        if: always()
+        run: rm -f keys/artcraft-builder.jks keys/.keystore-password

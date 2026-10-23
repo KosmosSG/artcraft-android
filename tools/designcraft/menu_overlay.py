@@ -66,9 +66,12 @@ pub fn ui_label(id: &str) -> Option<(&''')
             _ => &[],
         };
         if !ids.is_empty() {
-            let mut android: Vec<Item> = ids.iter().map(|id| cmd_item(id, Value::Null)).collect();
-            android.push(Item::Sep);
-            entries.splice(0..0, android);
+            // Keep upstream menu order and append a separated Android-only section.
+            // About DesignCraft is a dialog action; update controls follow it in Help.
+            if !entries.is_empty() && !matches!(entries.last(), Some(Item::Sep)) {
+                entries.push(Item::Sep);
+            }
+            entries.extend(ids.iter().map(|id| cmd_item(id, Value::Null)));
         }
     }
     tree

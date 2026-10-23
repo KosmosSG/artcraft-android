@@ -30,14 +30,16 @@ class LightCraftUpdatesSourceContract(unittest.TestCase):
     def test_rust_manual_and_startup_controls(self):
         rust = (ROOT / "lightcraft_updates.rs").read_text()
         self.assertIn('artcraft.lightcraft.check_updates_requested', rust)
-        self.assertIn('artcraft.lightcraft.startup_updates_requested', rust)
+        self.assertIn('artcraft.lightcraft.startup_changed', rust)
         self.assertIn('lcGetStartupUpdateCheck', rust)
         self.assertIn('lcSetStartupUpdateCheck', rust)
         self.assertIn('JValue::Bool(enabled)', rust)
         self.assertNotIn('JValue::Bool(if enabled { 1 } else { 0 })', rust)
         self.assertIn('self.begin_check(app, true)', rust)
-        self.assertIn('if was_background && state != "update_available"', rust)
-        self.assertIn('Open GitHub Release', rust)
+        self.assertIn('artcraft.lightcraft.update_status', rust)
+        self.assertNotIn('egui::Window::new("LightCraft — Check for Updates")', rust)
+        self.assertNotIn('egui::Window::new("LightCraft — Startup Update Settings")', rust)
+        self.assertIn('Self::open_page(app, url)', rust)
         self.assertNotIn("ACTION_INSTALL_PACKAGE", rust)
 
     def test_help_menu_directly_below_about(self):
@@ -46,6 +48,18 @@ class LightCraftUpdatesSourceContract(unittest.TestCase):
         self.assertIn('"app.artcraftStartupUpdateSettings"', integration)
         self.assertIn('Help menu layout directly under About LightCraft', integration)
         self.assertIn('LightCraft Android Help command handler', integration)
+        self.assertIn('native About dialog update controls', integration)
+        self.assertIn('("updates", "Updates")', integration)
+        self.assertIn('artcraft.lightcraft.check_updates_requested', integration)
+        self.assertIn('artcraft.lightcraft.startup_changed', integration)
+        self.assertIn('LightCraft Updates', integration)
+
+    def test_exact_icon_not_cropped_or_repainted(self):
+        integration = (ROOT / "apply_android_fixes.py").read_text()
+        self.assertIn("exact approved adaptive icon", integration)
+        self.assertIn("foreground.alpha_composite(icon", integration)
+        self.assertNotIn("_lightcraft_borderless", integration)
+        self.assertNotIn("pixels[x,y] =", integration)
 
 
 if __name__ == "__main__":

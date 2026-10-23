@@ -34,10 +34,24 @@ class UpdatePolicyTest(unittest.TestCase):
             release("effectcraft-v0.555.0-android.1", apk="not-effectcraft.apk"),
             release("v0.15.0", apk="effectcraft-0.15.0.apk"),
         ]
-        result = preliminary_candidates(releases, "0.13.0-android.1")
+        result = preliminary_candidates(releases, "0.13.0-android.1", include_preview=False)
         self.assertEqual([x.version_name for x in result],
                          ["0.14.0-android.1", "0.13.0-android.2"])
         self.assertTrue(all(x.verification_required for x in result))
+
+    def test_preview_channel_is_opt_in_persistent_policy(self):
+        tag = "effectcraft-v0.13.0-android.3"
+        versions = [release(tag, prerelease=True),
+                    release("effectcraft-v0.13.0-android.4", draft=True),
+                    release("photocraft-v9.0.0-android.1", prerelease=True)]
+        self.assertEqual(preliminary_candidates(versions, "0.13.0-android.1",
+                                               include_preview=False), [])
+        found = preliminary_candidates(versions, "0.13.0-android.1",
+                                       include_preview=True)
+        self.assertEqual([x.version_name for x in found], ["0.13.0-android.3"])
+        bridge = (__import__("pathlib").Path(__file__).parent / "UpdaterBridge.java.inc").read_text()
+        self.assertIn('getBoolean("include_preview_releases", true)', bridge)
+        self.assertIn('putBoolean("include_preview_releases", enabled[1])', bridge)
 
     def test_bad_asset_and_duplicate_release_rejected(self):
         tag = "effectcraft-v0.13.0-android.3"

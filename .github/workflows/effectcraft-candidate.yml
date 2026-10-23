@@ -96,6 +96,7 @@ jobs:
           ARTCRAFT_TARGET_SDK: '35'
         run: |
           set -euo pipefail
+          python3 tools/effectcraft/install_packager.py
           python3 -m pip install Pillow==11.3.0
           python3 tools/effectcraft/integrate_updater.py .
           echo '548b40f2997037c5861c602fecfad71ef8bf3c78ad9e6189c8409d0a78629b0b  tools/effectcraft/icon/ec-approved-512.png' | sha256sum -c -

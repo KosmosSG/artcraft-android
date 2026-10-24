@@ -1,0 +1,27 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "photocraft-v0.12.0-android.2",
+  "title": "PhotoCraft v0.12.0-android.2",
+  "package": "com.artcraft.photocraft",
+  "versionName": "0.12.0-android.2",
+  "versionCode": 16790003,
+  "canonical_apk": "PhotoCraft-v0.12.0-android.2-arm64-v8a.apk",
+  "identical_byte_aliases": [],
+  "apk_sha256": "fa38cef328052f7a4ef5af04792141f1800e39599d760c7f57648d717350e43a",
+  "certificate_sha256": "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef",
+  "verified_build_source_commit": "4c59876726c2b54e635be1dbec34d45a5b1f167f",
+  "source_run": 40076750011,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.photocraft\nVersion: 0.12.0-android.2\nVersionCode: 16790003\nCertificate SHA-256: 45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef\nAPK SHA-256: fa38cef328052f7a4ef5af04792141f1800e39599d760c7f57648d717350e43a\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

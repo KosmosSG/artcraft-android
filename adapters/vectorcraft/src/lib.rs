@@ -40,7 +40,7 @@ mod ime_bridge;
 // Shared PhotoCraft-style hardware-key reconstruction: independent left/right modifiers,
 // correctly ordered modifier transitions, Ctrl text suppression and focus-loss reset.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers};
+use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -739,6 +739,7 @@ struct VectorCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    keyboard: KeyboardDiagnostics,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -981,9 +982,33 @@ impl eframe::App for VectorCraftAndroidApp {
         self.persist_tick();
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
+        self.keyboard.observe(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
+        // Upstream VectorCraft's V/T and other tool keys are dispatched from Text events.
+        // NativeActivity can report only physical Key events on external keyboards.
+        // Reconstruct a tool-selection letter only outside fields, Type editing and IME.
+        let field_focused = ctx.egui_wants_keyboard_input();
+        let type_editing = self.inner.session.tool_wants_text();
+        if field_focused || type_editing {
+            let letter_presses = raw.events.iter().filter(|event| match event {
+                egui::Event::Key { key, physical_key, pressed: true, .. } => {
+                    let k = physical_key.unwrap_or(*key);
+                    let name = k.name();
+                    name.len() == 1 && name.as_bytes()[0].is_ascii_alphabetic()
+                }
+                _ => false,
+            }).count() as u64;
+            if field_focused {
+                self.keyboard.blocked_by_field = self.keyboard.blocked_by_field.saturating_add(letter_presses);
+            } else {
+                self.keyboard.blocked_by_type_tool = self.keyboard.blocked_by_type_tool.saturating_add(letter_presses);
+            }
+        }
+        let tool_shortcuts_allowed = !field_focused && !type_editing;
+        let count = restore_tool_key_text(raw, tool_shortcuts_allowed);
+        self.keyboard.fallback_events = self.keyboard.fallback_events.saturating_add(count as u64);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
@@ -1065,6 +1090,22 @@ impl eframe::App for VectorCraftAndroidApp {
                             ui.label("Font import status");
                             ui.label(&self.fonts.import_status);
                             ui.label(&self.fonts.shared_status);
+                            ui.separator();
+                            ui.label("Physical keyboard events (test diagnostics)");
+                            ui.monospace(format!(
+                                "Key presses: {} | letter keys: {} | native Text: {}",
+                                self.keyboard.key_downs, self.keyboard.letter_key_downs,
+                                self.keyboard.text_events,
+                            ));
+                            ui.monospace(format!(
+                                "IME: {} | tool fallback: {} | blocked by field: {} | blocked by Type: {}",
+                                self.keyboard.ime_events, self.keyboard.fallback_events,
+                                self.keyboard.blocked_by_field, self.keyboard.blocked_by_type_tool,
+                            ));
+                            ui.monospace(format!(
+                                "Last key: {}",
+                                if self.keyboard.last_key.is_empty() { "none" } else { &self.keyboard.last_key },
+                            ));
                         });
                 });
         }
@@ -1266,6 +1307,7 @@ fn android_main(android_app: AndroidApp) {
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                keyboard: KeyboardDiagnostics::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

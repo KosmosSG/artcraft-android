@@ -60,6 +60,39 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.modifiers)
 
+    def test_android_tool_selection_key_only_fallback_is_wired(self):
+        for marker in (
+            "pub fn restore_tool_key_text(", "fn bare_v_and_t_are_repaired_from_key_only_frames",
+            "fn never_double_native_text_or_editing_ime_events",
+            "fn modifier_chords_repeat_and_shift_are_respected",
+            "fn repair_uses_physical_letter_when_logical_key_is_unknown",
+            "matches!(event, egui::Event::Text(_))",
+            "fn inactive_ime_composition_does_not_suppress_physical_tool_key",
+            "pub letter_key_downs: u64",
+            "pub blocked_by_field: u64",
+            "pub blocked_by_type_tool: u64",
+            "if !tool_shortcuts_allowed", "egui::Event::Text(letter)",
+            "pub struct KeyboardDiagnostics", "pub fn observe(",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.modifiers)
+        for marker in (
+            "keyboard: KeyboardDiagnostics,", "keyboard: KeyboardDiagnostics::default(),",
+            "self.keyboard.observe(raw);",
+            "restore_tool_key_text(raw, tool_shortcuts_allowed);",
+            "let field_focused = ctx.egui_wants_keyboard_input();",
+            "let type_editing = self.inner.session.tool_wants_text();",
+            "Physical keyboard events (test diagnostics)",
+            "tool fallback:",
+            "letter keys:",
+            "blocked by field:",
+            "blocked by Type:",
+            "self.keyboard.blocked_by_field",
+            "self.keyboard.blocked_by_type_tool",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.shell)
+
     def test_existing_app_features_and_settings_still_present(self):
         for marker in (
             "persist_load(", "persist_save(", "self.persist_tick();",

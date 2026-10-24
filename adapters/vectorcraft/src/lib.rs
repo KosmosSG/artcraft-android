@@ -989,8 +989,24 @@ impl eframe::App for VectorCraftAndroidApp {
         // Upstream VectorCraft's V/T and other tool keys are dispatched from Text events.
         // NativeActivity can report only physical Key events on external keyboards.
         // Reconstruct a tool-selection letter only outside fields, Type editing and IME.
-        let tool_shortcuts_allowed = !ctx.egui_wants_keyboard_input()
-            && !self.inner.session.tool_wants_text();
+        let field_focused = ctx.egui_wants_keyboard_input();
+        let type_editing = self.inner.session.tool_wants_text();
+        if field_focused || type_editing {
+            let letter_presses = raw.events.iter().filter(|event| match event {
+                egui::Event::Key { key, physical_key, pressed: true, .. } => {
+                    let k = physical_key.unwrap_or(*key);
+                    let name = k.name();
+                    name.len() == 1 && name.as_bytes()[0].is_ascii_alphabetic()
+                }
+                _ => false,
+            }).count() as u64;
+            if field_focused {
+                self.keyboard.blocked_by_field = self.keyboard.blocked_by_field.saturating_add(letter_presses);
+            } else {
+                self.keyboard.blocked_by_type_tool = self.keyboard.blocked_by_type_tool.saturating_add(letter_presses);
+            }
+        }
+        let tool_shortcuts_allowed = !field_focused && !type_editing;
         let count = restore_tool_key_text(raw, tool_shortcuts_allowed);
         self.keyboard.fallback_events = self.keyboard.fallback_events.saturating_add(count as u64);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
@@ -1077,11 +1093,17 @@ impl eframe::App for VectorCraftAndroidApp {
                             ui.separator();
                             ui.label("Physical keyboard events (test diagnostics)");
                             ui.monospace(format!(
-                                "Key presses: {} | native Text: {} | IME: {} | synthesized tool keys: {}\\nLast key: {}",
-                                self.keyboard.key_downs,
+                                "Key presses: {} | letter keys: {} | native Text: {}",
+                                self.keyboard.key_downs, self.keyboard.letter_key_downs,
                                 self.keyboard.text_events,
-                                self.keyboard.ime_events,
-                                self.keyboard.fallback_events,
+                            ));
+                            ui.monospace(format!(
+                                "IME: {} | tool fallback: {} | blocked by field: {} | blocked by Type: {}",
+                                self.keyboard.ime_events, self.keyboard.fallback_events,
+                                self.keyboard.blocked_by_field, self.keyboard.blocked_by_type_tool,
+                            ));
+                            ui.monospace(format!(
+                                "Last key: {}",
                                 if self.keyboard.last_key.is_empty() { "none" } else { &self.keyboard.last_key },
                             ));
                         });

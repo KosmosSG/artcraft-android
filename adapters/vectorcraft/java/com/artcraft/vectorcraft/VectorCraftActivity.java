@@ -89,55 +89,144 @@ public final class VectorCraftActivity extends NativeActivity {
         });
     }
 
-    // EffectCraft-style native Android update dialog; never covers the egui
-    // document with a home-grown floating Window or a permanent bottom dock.
-    // Only a user-initiated Check Updates call opens it. An opted-in silent
-    // startup check continues to use the existing read-only updater.
+    // LightCraft-inspired native About > Updates interface. Only manual actions
+    // open this Android dialog; silent startup checks never block the canvas.
     private android.app.AlertDialog vcUpdateDialog;
     private android.widget.ProgressBar vcUpdateProgress;
+    private android.widget.TextView vcUpdateStatus;
+    private android.widget.Button vcUpdateCheckButton, vcUpdateReleaseButton;
     private String vcUpdateReleaseUrl;
     private boolean vcUpdateDialogDismissed;
+
+    /** Repaint an already-open update dialog after the native Java check finishes. */
+    public boolean vcHasVisibleUpdateDialog() {
+        return vcUpdateDialog != null && vcUpdateDialog.isShowing();
+    }
 
     public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking, boolean manualOpen) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
-            // Every explicit menu tap reopens the dialog, including a failed start.
             if (manualOpen) vcUpdateDialogDismissed = false;
-            // A dismissed manual dialog must stay dismissed if its async
-            // GitHub worker completes later. A new menu tap reopens it.
             if (vcUpdateDialogDismissed) return;
-
             if (vcUpdateDialog == null || !vcUpdateDialog.isShowing()) {
+                int pad = Math.round(16 * getResources().getDisplayMetrics().density);
+                android.widget.LinearLayout content = new android.widget.LinearLayout(this);
+                content.setOrientation(android.widget.LinearLayout.VERTICAL);
+                content.setPadding(pad, pad, pad, pad);
+                android.widget.TextView heading = new android.widget.TextView(this);
+                heading.setText("VectorCraft Updates");
+                heading.setTextSize(18);
+                heading.setTypeface(null, android.graphics.Typeface.BOLD);
+                content.addView(heading);
+                android.widget.TextView installed = new android.widget.TextView(this);
+                try {
+                    installed.setText("Installed Version: " + getPackageManager()
+                            .getPackageInfo(getPackageName(), 0).versionName);
+                } catch (Exception error) {
+                    installed.setText("Installed Version: unavailable");
+                }
+                installed.setPadding(0, pad / 2, 0, pad / 2);
+                content.addView(installed);
+                vcUpdateStatus = new android.widget.TextView(this);
+                content.addView(vcUpdateStatus);
                 vcUpdateProgress = new android.widget.ProgressBar(this);
                 vcUpdateProgress.setIndeterminate(true);
+                content.addView(vcUpdateProgress);
+                vcUpdateCheckButton = new android.widget.Button(this);
+                vcUpdateCheckButton.setText("Check for Updates");
+                vcUpdateCheckButton.setOnClickListener(v -> {
+                    vcUpdateCheckButton.setEnabled(false);
+                    vcUpdateStatus.setText("Checking official GitHub releases…");
+                    vcUpdateProgress.setVisibility(View.VISIBLE);
+                    extras.checkForUpdates();
+                });
+                content.addView(vcUpdateCheckButton);
+
+                android.widget.TextView channelHeading = new android.widget.TextView(this);
+                channelHeading.setText("Update Channel");
+                channelHeading.setPadding(0, pad, 0, 0);
+                content.addView(channelHeading);
+                android.widget.RadioGroup channels = new android.widget.RadioGroup(this);
+                android.widget.RadioButton stable = new android.widget.RadioButton(this);
+                stable.setId(View.generateViewId());
+                stable.setText("Stable Releases Only");
+                channels.addView(stable);
+                android.widget.RadioButton preview = new android.widget.RadioButton(this);
+                preview.setId(View.generateViewId());
+                preview.setText("Stable + Preview Releases");
+                channels.addView(preview);
+                android.content.SharedPreferences prefs = getSharedPreferences(
+                        "vectorcraft.android.updates", MODE_PRIVATE);
+                channels.check(prefs.getBoolean("include_preview_releases", false)
+                        ? preview.getId() : stable.getId());
+                channels.setOnCheckedChangeListener((group, id) ->
+                        prefs.edit().putBoolean("include_preview_releases", id == preview.getId()).apply());
+                content.addView(channels);
+                android.widget.TextView previewNote = new android.widget.TextView(this);
+                previewNote.setText("Preview releases may be untested; installing remains your choice.");
+                previewNote.setTextSize(12);
+                content.addView(previewNote);
+
+                // Same setting file read by the existing Rust Android wrapper at startup.
+                final File preference = new File(new File(appStorageDir(), "config"),
+                        "startup_updates.enabled");
+                android.widget.CheckBox startup = new android.widget.CheckBox(this);
+                startup.setText("Check for updates at startup");
+                boolean startupEnabled = false;
+                try {
+                    startupEnabled = new String(java.nio.file.Files.readAllBytes(preference.toPath()),
+                            java.nio.charset.StandardCharsets.UTF_8).trim().equals("1");
+                } catch (java.io.IOException ignored) { }
+                startup.setChecked(startupEnabled);
+                startup.setOnCheckedChangeListener((button, checked) -> {
+                    try {
+                        File dir = preference.getParentFile();
+                        if (dir != null && !dir.isDirectory() && !dir.mkdirs())
+                            throw new java.io.IOException("Cannot save update preference");
+                        java.nio.file.Files.write(preference.toPath(),
+                                (checked ? "1" : "0").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    } catch (Exception error) {
+                        android.widget.Toast.makeText(this,
+                                "Could not save startup update preference", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                });
+                startup.setPadding(0, pad / 2, 0, 0);
+                content.addView(startup);
+                vcUpdateReleaseButton = new android.widget.Button(this);
+                vcUpdateReleaseButton.setText("Open Official GitHub Release");
+                vcUpdateReleaseButton.setOnClickListener(v -> {
+                    if (vcUpdateReleaseUrl != null) extras.openRelease(vcUpdateReleaseUrl);
+                });
+                content.addView(vcUpdateReleaseButton);
+                android.widget.TextView note = new android.widget.TextView(this);
+                note.setText("VectorCraft-only GitHub Releases; Android updates require the original signature.");
+                note.setTextSize(12);
+                content.addView(note);
+                android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+                scroll.addView(content);
                 vcUpdateDialog = new android.app.AlertDialog.Builder(this)
-                    .setTitle("VectorCraft Updates")
-                    .setMessage(message)
-                    .setView(vcUpdateProgress)
-                    .setNegativeButton("Close", (dialog, which) -> { })
-                    .setPositiveButton("View Release", (dialog, which) -> {
-                        String url = vcUpdateReleaseUrl;
-                        if (url != null) extras.openRelease(url);
-                    })
-                    .create();
+                        .setTitle("About VectorCraft — Updates")
+                        .setView(scroll)
+                        .setPositiveButton("Close", (dialog, which) -> { })
+                        .create();
                 vcUpdateDialog.setOnDismissListener(dialog -> {
                     vcUpdateDialogDismissed = true;
                     vcUpdateReleaseUrl = null;
                     vcUpdateDialog = null;
                     vcUpdateProgress = null;
+                    vcUpdateStatus = null;
+                    vcUpdateCheckButton = null;
+                    vcUpdateReleaseButton = null;
                 });
                 vcUpdateDialog.show();
-            } else {
-                vcUpdateDialog.setMessage(message);
             }
+            vcUpdateStatus.setText(message == null ? "Check for updates." : message);
             vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE);
-            // Never accept an arbitrary URL from GitHub JSON or Rust: this
-            // is a version-specific link to the official VectorCraft tag.
-            boolean trusted = !checking && releaseUrl != null &&
-                releaseUrl.matches("https://github\\.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*");
+            vcUpdateCheckButton.setEnabled(!checking);
+            boolean trusted = !checking && releaseUrl != null
+                && releaseUrl.matches("https://github\\.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*");
             vcUpdateReleaseUrl = trusted ? releaseUrl : null;
-            vcUpdateDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
-                .setVisibility(trusted ? View.VISIBLE : View.GONE);
+            vcUpdateReleaseButton.setVisibility(trusted ? View.VISIBLE : View.GONE);
         });
     }
 

@@ -91,13 +91,15 @@ impl KeyboardDiagnostics {
 
 /// Some Android hardware keyboards emit an egui Key event but no Text event.
 /// Official VectorCraft v0.14 tool switching (V=Selection, T=Type, etc.) listens
-/// for Text, so such hardware cannot switch tools. Add a plain ASCII letter
-/// only when that frame has NO native Text or IME event and no editing focus.
-/// Do not change or suppress any original event. Never synthesize Ctrl/Alt
-/// chords, repeated keys or ongoing text editing/IME: no duplicate letters.
+/// for Text, so such hardware cannot switch tools. Reconstruct a bare letter
+/// when the native key frame lacks Text AND no egui field or Type editor owns
+/// the keyboard. Android's hidden EditText can also emit IME events while the
+/// physical keyboard is used: their mere presence must not suppress tool keys.
+/// Original IME events are retained, and text-editing frames are never modified.
+/// Never synthesize Ctrl/Alt chords, repeated keys or duplicate native text.
 pub fn restore_tool_key_text(raw: &mut egui::RawInput, tool_shortcuts_allowed: bool) -> usize {
     if !tool_shortcuts_allowed || raw.events.iter().any(|event| {
-        matches!(event, egui::Event::Text(_) | egui::Event::Ime(_))
+        matches!(event, egui::Event::Text(_))
     }) {
         return 0;
     }
@@ -157,11 +159,30 @@ mod tests {
     }
 
     #[test]
+    fn inactive_ime_composition_does_not_suppress_physical_tool_key() {
+        // MagicPad 4 reports hardware keys along with IME messages even when
+        // the user is not inside a Text tool or a focused egui editor.
+        let mut raw = RawInput { events: vec![
+            key(Key::V, true),
+            Event::Ime(egui::ImeEvent::Preedit { text: "v".into(), active_range_chars: None }),
+            Event::Ime(egui::ImeEvent::Commit("v".into())),
+        ], ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut raw, true), 1);
+        assert!(matches!(&raw.events[0], Event::Key { key: Key::V, .. }));
+        assert!(matches!(&raw.events[1], Event::Text(text) if text == "v"));
+        assert_eq!(raw.events.iter().filter(|e| matches!(e, Event::Ime(_))).count(), 2);
+        // With an active egui field or Type editing, no keyboard synthesis is allowed.
+        let original = format!("{:?}", raw.events);
+        assert_eq!(restore_tool_key_text(&mut raw, false), 0);
+        assert_eq!(format!("{:?}", raw.events), original);
+    }
+
+    #[test]
     fn never_double_native_text_or_editing_ime_events() {
         let mut state = AndroidModifiers::default();
         let events = [
             vec![key(Key::V, true), Event::Text("v".into())],
-            vec![key(Key::T, true), Event::Ime(egui::ImeEvent::Commit("你好".into()))],
+            vec![key(Key::T, true), Event::Text("t".into()), Event::Ime(egui::ImeEvent::Commit("你好".into()))],
         ];
         for original in events {
             let mut raw = RawInput { events: apply(&mut state, original), ..Default::default() };

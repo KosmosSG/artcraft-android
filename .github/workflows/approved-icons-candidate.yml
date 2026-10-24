@@ -1,0 +1,184 @@
+name: DeckCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/deckcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: deckcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      DECKCRAFT_UPSTREAM_COMMIT: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+      DECKCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      DECKCRAFT_VERSION_NAME: 0.9.0-android.1
+      DECKCRAFT_CANDIDATE_VERSION_CODE: '100000001'
+      DECKCRAFT_PACKAGE: com.artcraft.deckcraft
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout DeckCraft-only candidate
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout pinned reference builder
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - name: Checkout pinned stable DeckCraft
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: storytold/deckcraft
+        ref: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+        path: builder/source/deckcraft
+        persist-credentials: false
+    - name: Confirm stable tag, exact commits, isolated input and icon digest
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C builder rev-parse HEAD)" = "$DECKCRAFT_BUILDER_COMMIT"
+
+        test "$(git -C builder/source/deckcraft rev-parse HEAD)" = "$DECKCRAFT_UPSTREAM_COMMIT"
+
+        test -z "$(git -C builder/source/deckcraft status --porcelain)"
+
+        tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.9.0 | awk ''{print $1}'')"
+
+        test "$tag_commit" = "$DECKCRAFT_UPSTREAM_COMMIT"
+
+        base64 --decode deckcraft/android/icon/deckcraft-approved-192.webp.b64 > deckcraft/android/icon/deckcraft-approved-192.webp
+
+        echo ''c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61  deckcraft/android/icon/deckcraft-approved-192.webp''
+        | sha256sum --check
+
+        '
+    - name: Set up Java, Rust and Android build prerequisites
+      shell: bash
+      run: "set -euo pipefail\njava -version\nrustup toolchain install stable --profile minimal\nrustup default stable\nrustup\
+        \ target add aarch64-linux-android\ncargo install cargo-ndk --locked\n# GitHub's Ubuntu image may have SDK command-line\
+        \ tools installed but not on PATH.\n# Look only under the runner's Android SDK; do not download unverified installers.\n\
+        sdk_root=\"${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}\"\ntest -d \"$sdk_root\" || { echo \"\
+        ::error::Android SDK root not found\"; exit 1; }\nsdkmanager_bin=\"$sdk_root/cmdline-tools/latest/bin/sdkmanager\"\
+        \nif [[ ! -x \"$sdkmanager_bin\" ]]; then\n  sdkmanager_bin=\"$(find \"$sdk_root/cmdline-tools\" -type f -name sdkmanager\
+        \ -print -quit 2>/dev/null || true)\"\nfi\nif [[ ! -x \"$sdkmanager_bin\" && -x \"$sdk_root/tools/bin/sdkmanager\"\
+        \ ]]; then\n  sdkmanager_bin=\"$sdk_root/tools/bin/sdkmanager\"\nfi\ntest -x \"$sdkmanager_bin\" || { echo \"::error::Android\
+        \ SDK command-line tools missing: install them in a reviewed follow-up\"; exit 1; }\n\"$sdkmanager_bin\" --sdk_root=\"\
+        $sdk_root\" --install \"platforms;android-35\" \"build-tools;35.0.0\" \"ndk;27.2.12479018\"\necho \"ANDROID_HOME=$sdk_root\"\
+        \ >> \"$GITHUB_ENV\"\necho \"ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018\" >> \"$GITHUB_ENV\"\npython3 -m venv /tmp/deckcraft-icon-env\n\
+        /tmp/deckcraft-icon-env/bin/pip install \"Pillow==11.3.0\"\necho \"/tmp/deckcraft-icon-env/bin\" >> \"$GITHUB_PATH\"\
+        \n"
+    - name: Convert uploaded Dk derivative into builder icon PNG
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY'\nfrom pathlib import Path\nfrom PIL import Image\nimport hashlib\nsrc = Path('deckcraft/android/icon/deckcraft-approved-192.webp')\n\
+        assert hashlib.sha256(src.read_bytes()).hexdigest() == 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61'\n\
+        with Image.open(src) as artwork:\n    assert artwork.size == (192, 192) and artwork.format == 'WEBP'\n    artwork.convert('RGBA').save(src.with_suffix('.png'),\
+        \ optimize=True)\nprint('Converted user-approved Dk art for builder density/adaptive generation')\nPY\n"
+    - name: Normalize Dk icon black surround for Android launcher
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 deckcraft/android/normalize_deckcraft_icon.py deckcraft/android/icon/deckcraft-approved-192.png
+
+        '
+    - name: Apply isolated Android-only candidate version metadata
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 - <<''PY''
+
+        from pathlib import Path
+
+        # These changes are confined to ephemeral checkouts, never upstream or suite main.
+
+        source = Path(''builder/source/deckcraft/Cargo.toml'')
+
+        s = source.read_text()
+
+        old = ''version = "0.9.0"''
+
+        assert s.count(old) == 1, ''Review new upstream manifest before changing version''
+
+        source.write_text(s.replace(old, ''version = "0.9.0-android.1"'', 1))
+
+        project = Path(''builder/lib/android_project.py'')
+
+        p = project.read_text()
+
+        formula = ''return (1 << 24) | (major << 16) | (minor << 8) | patch''
+
+        assert p.count(formula) == 1, ''Version-code override location changed: stop''
+
+        project.write_text(p.replace(formula, ''return 100000001'', 1))
+
+        print(''Candidate metadata set: 0.9.0-android.1 / 100000001'')
+
+        PY
+
+        git -C builder/source/deckcraft diff -- Cargo.toml
+
+        git -C builder diff -- lib/android_project.py
+
+        '
+    - name: Apply DeckCraft-only individual-font import (session scope)
+      shell: bash
+      run: "set -euo pipefail\npython3 deckcraft/android/patch_deckcraft_fonts.py builder/source/deckcraft\ngit -C builder/source/deckcraft\
+        \ diff --check\ngit -C builder/source/deckcraft diff --stat\n# Require the patch to stay confined to the reviewed\
+        \ DeckCraft UI files and version metadata.\npython3 - <<'PY'\nimport subprocess\nchanged = set(subprocess.check_output(\n\
+        \    ['git', '-C', 'builder/source/deckcraft', 'diff', '--name-only'], text=True\n).splitlines())\nexpected = {'Cargo.toml',\
+        \ 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs'}\nassert changed == expected, f'Unexpected source changes:\
+        \ {changed ^ expected}'\nprint('DeckCraft-only patch scope verified:', sorted(changed))\nPY\n"
+    - name: Build DeckCraft icon candidate
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 deckcraft/android/adaptive_safe.py builder deckcraft
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install builder deckcraft
+
+        bash builder/build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: DeckCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: DeckCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys

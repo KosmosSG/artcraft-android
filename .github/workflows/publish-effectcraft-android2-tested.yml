@@ -51,8 +51,8 @@ jobs:
           python3 - <<'PY'
           import os,re,zipfile
           from pathlib import Path
-          certs=re.findall(r'Signer #\d+ certificate SHA-256 digest:\s*([a-fA-F0-9]{64})',Path('certificate.txt').read_text())
-          assert len(certs)==1 and certs[0].upper()==os.environ['CERT']
+          certs={v.upper() for v in re.findall(r'certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})',Path('certificate.txt').read_text(),re.I)}
+          assert certs=={os.environ['CERT']}, 'Certificate mismatch: '+repr(certs)
           data=Path('badging.txt').read_text()
           assert "package: name='com.artcraft.effectcraft' versionCode='16781314' versionName='0.16.0-android.2'" in data
           assert 'launchable-activity:' in data

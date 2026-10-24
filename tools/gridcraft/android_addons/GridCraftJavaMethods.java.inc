@@ -89,7 +89,7 @@
                     java.io.File destination = new java.io.File(gcFontRoot(), "artcraft-imported");
                     if (!destination.isDirectory() && !destination.mkdirs()) throw new java.io.IOException("Cannot create font folder");
                     gcCopyFont(uri, new java.io.File(destination, gcHash(uri.toString()) + (filename.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")));
-                    gcSend("font", "ok", "Font imported. Restart GridCraft to refresh the font list.");
+                    gcSend("font", "ok", "Font imported into the GridCraft font library. Fully close and reopen GridCraft, then choose its family name in the font dropdown.");
                 } catch (Exception error) {
                     gcSend("font", "error", "Import failed: " + error.getMessage());
                 }
@@ -99,7 +99,11 @@
     }
 
     private java.io.File gcFontRoot() {
-        return new java.io.File(getFilesDir(), ".local/share/fonts");
+        // GridCraft's native font catalog scans $HOME/ArtCraft-Fonts.
+        // The Android builder binds $HOME to getFilesDir()/home.
+        // Do NOT use .local/share/fonts: that path is an Android SYSTEM font
+        // symlink; writes there are not user fonts and may fail silently.
+        return new java.io.File(getFilesDir(), "home/ArtCraft-Fonts");
     }
 
     private static boolean gcHasFontExtension(String name) {
@@ -203,7 +207,7 @@
                 throw new java.io.IOException("Cannot finish shared font refresh");
             }
             gcDeleteTree(previous);
-            gcSend("folder", "ok", imported + " shared fonts cached. Restart GridCraft to use them.");
+            gcSend("folder", "ok", imported + " shared fonts cached. Fully close and reopen GridCraft to update the font dropdown.");
         } catch (Exception error) {
             gcDeleteTree(staged);
             gcSend("folder", "error", "Shared font folder: " + error.getMessage());
@@ -219,7 +223,7 @@
         if (!file.delete()) android.util.Log.w(TAG, "Cannot delete GridCraft temporary file " + file.getName());
     }
 
-    // Only GridCraft owns this preference. The small bottom Show button stays accessible.
+    // Legacy GridCraft-only preference retained for compatibility; no bottom dock is displayed.
     public boolean gcToolsPanelVisible() {
         return getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).getBoolean("bottom_tools_visible", false);
     }

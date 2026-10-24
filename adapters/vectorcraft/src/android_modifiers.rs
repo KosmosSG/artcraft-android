@@ -63,6 +63,9 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
 #[derive(Default)]
 pub struct KeyboardDiagnostics {
     pub key_downs: u64,
+    pub letter_key_downs: u64,
+    pub blocked_by_field: u64,
+    pub blocked_by_type_tool: u64,
     pub text_events: u64,
     pub ime_events: u64,
     pub fallback_events: u64,
@@ -75,7 +78,12 @@ impl KeyboardDiagnostics {
             match event {
                 egui::Event::Key { key, physical_key, pressed: true, .. } => {
                     self.key_downs = self.key_downs.saturating_add(1);
-                    self.last_key = format!("{:?}", physical_key.unwrap_or(*key));
+                    let physical = physical_key.unwrap_or(*key);
+                    self.last_key = format!("{physical:?}");
+                    let name = physical.name();
+                    if name.len() == 1 && name.as_bytes()[0].is_ascii_alphabetic() {
+                        self.letter_key_downs = self.letter_key_downs.saturating_add(1);
+                    }
                 }
                 egui::Event::Text(_) => {
                     self.text_events = self.text_events.saturating_add(1);

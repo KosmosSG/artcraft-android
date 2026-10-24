@@ -113,6 +113,10 @@ def apply(builder, source, android, app):
         # Do not clobber an application's unrelated colors.xml definitions.
         if str(relative)=='values/colors.xml': relative=Path('values/approved_brand_colors.xml')
         dest=res/relative;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
+    # The handoff XML incorrectly concatenated decimal RGB channels (e.g.
+    # 6,0,132 -> #0600132). Use its authoritative manifest hex color instead.
+    color_file=res/'values/approved_brand_colors.xml'
+    color_file.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="approved_launcher_background">'+cfg['bg_color']+'</color></resources>\n')
     # Rename the approved background to avoid collision with existing definitions.
     for p in [res/'values/approved_brand_colors.xml',*list((res/'mipmap-anydpi-v26').glob('*.xml'))]:
         p.write_text(p.read_text().replace('artcraft_icon_background','approved_launcher_background').replace('ic_launcher_background','approved_launcher_background'))

@@ -1,8 +1,8 @@
-name: VectorCraft v0.14 Physical Tool Keys Fix Test APK
+name: VectorCraft v0.14 Physical Keyboard Diagnostic APK
 
 on:
   push:
-    branches: [fix/vectorcraft-android-tool-keys-20261024]
+    branches: [diagnostics/vectorcraft-physical-key-path-20261024]
     paths:
       - 'adapters/vectorcraft/**'
       - 'tools/vectorcraft/**'
@@ -14,7 +14,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: vectorcraft-v014-keyboard-fix-test-apk
+  group: vectorcraft-v014-keyboard-diagnostics
   cancel-in-progress: false
 
 jobs:
@@ -23,8 +23,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      VERSION_NAME: '0.14.0-android.91'
-      TEST_VERSION_CODE: '16780891'
+      VERSION_NAME: '0.14.0-android.92'
+      TEST_VERSION_CODE: '16780892'
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
     steps:
@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = 'refs/heads/fix/vectorcraft-android-tool-keys-20261024'
+          test "$GITHUB_REF" = 'refs/heads/diagnostics/vectorcraft-physical-key-path-20261024'
           test ! -e builder/keys/artcraft-builder.jks
           python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
           test -s adapters/vectorcraft/src/android_modifiers.rs
@@ -107,8 +107,8 @@ jobs:
           set -euo pipefail
           mkdir -p candidate
           test "$(find builder/output -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
-          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v014-KEYS-FIX-TEST-ONLY.apk
-          APK='candidate/VectorCraft-v014-KEYS-FIX-TEST-ONLY.apk'
+          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v014-KEY-DIAGNOSTIC-ONLY.apk
+          APK='candidate/VectorCraft-v014-KEY-DIAGNOSTIC-ONLY.apk'
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
           python3 - <<'PY'
@@ -117,11 +117,11 @@ jobs:
           badging = Path("candidate/badging.txt").read_text()
           parsed = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
           assert parsed, "Missing package metadata"
-          assert parsed.group(1) == "com.artcraft.vectorcraft.keyboardfix", "STOP: cannot overwrite production or other Test installs"
-          assert parsed.group(2) == "16780891", "Unexpected test version code"
-          assert parsed.group(3) == "0.14.0-android.91", "Unexpected test version name"
-          assert "launchable-activity: name='com.artcraft.vectorcraft.keyboardfix.VectorCraftActivity'" in badging, "Missing isolated launcher"
-          with zipfile.ZipFile("candidate/VectorCraft-v014-KEYS-FIX-TEST-ONLY.apk") as apk:
+          assert parsed.group(1) == "com.artcraft.vectorcraft.keyboarddiag", "STOP: cannot overwrite production or other Test installs"
+          assert parsed.group(2) == "16780892", "Unexpected test version code"
+          assert parsed.group(3) == "0.14.0-android.92", "Unexpected test version name"
+          assert "launchable-activity: name='com.artcraft.vectorcraft.keyboarddiag.VectorCraftActivity'" in badging, "Missing isolated launcher"
+          with zipfile.ZipFile("candidate/VectorCraft-v014-KEY-DIAGNOSTIC-ONLY.apk") as apk:
               names = apk.namelist()
               assert any(n.startswith("lib/arm64-v8a/") and n.endswith(".so") for n in names), "ARM64 library missing"
               assert any(n.endswith(".dex") for n in names), "Java Activity missing"
@@ -134,7 +134,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: VectorCraft-v014-Keys-Fix-Test-ONLY
+          name: VectorCraft-v014-Key-Diagnostic-ONLY
           path: candidate/
           retention-days: 14
           if-no-files-found: error

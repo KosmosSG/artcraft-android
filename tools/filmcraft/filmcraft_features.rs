@@ -240,6 +240,13 @@ impl FilmcraftFeatures {
                     _ => self.update_status = "No verified release selected; use Check for Updates first".into(),
                 }
             },
+            7 => {
+                let source = option_env!("GITHUB_SHA").unwrap_or("unknown");
+                let source = &source[..source.len().min(12)];
+                self.update_status = format!(
+                    "FilmCraft Android 0.10.0-android.2 | source {source} | disposable test signature"
+                );
+            },
             _ => return String::new(),
         }
         if action <= 3 { self.font_status.clone() } else { self.update_status.clone() }

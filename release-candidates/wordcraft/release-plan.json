@@ -1,0 +1,29 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "wordcraft-v0.9.0-android.4",
+  "title": "WordCraft v0.9.0-android.4",
+  "package": "com.artcraft.wordcraft",
+  "versionName": "0.9.0-android.4",
+  "versionCode": 100000004,
+  "canonical_apk": "WordCraft-v0.9.0-android.4-arm64-v8a.apk",
+  "identical_byte_aliases": [
+    "wordcraft-0.9.0-android.4.apk"
+  ],
+  "apk_sha256": "a1016e3512ee7a88cd6436da3e182856469598245f594b01c8a165926b230b55",
+  "certificate_sha256": "c05372ea57ecf5571a7ac27716179606a2a1a8e57f213d1e3e8beb41f4360b65",
+  "verified_build_source_commit": "d86dfcf3209f2acf36ef05c473c432e5894cac53",
+  "source_run": 40076767116,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.wordcraft\nVersion: 0.9.0-android.4\nVersionCode: 100000004\nCertificate SHA-256: c05372ea57ecf5571a7ac27716179606a2a1a8e57f213d1e3e8beb41f4360b65\nAPK SHA-256: a1016e3512ee7a88cd6436da3e182856469598245f594b01c8a165926b230b55\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

@@ -36,7 +36,7 @@ class AndroidPhotoCraftUpdatesTests(unittest.TestCase):
         for marker in ("fonts.register_font_data(bytes)", "engine.fonts.families()",
                        "artcraft.font_catalog", "pcShowFontCatalog",
                        "imported-{unique}-{id}", "self.picker.poll(&self.bridge, ctx)",
-                       "self.picker.launch_shared_fonts(&self.bridge, true)"):
+                       "picker.launch_shared_fonts(&bridge, true)"):
             with self.subTest(marker=marker):
                 self.assertIn(marker, rust)
         self.assertIn("public void pcShowFontCatalog(String report)", java)

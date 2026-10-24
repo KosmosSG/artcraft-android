@@ -112,7 +112,8 @@ jobs:
           mkdir -p candidate
           test "$(find builder/output -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
           cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
-          APK=candidate/VectorCraft-v0.16.0-android.1-ARM64-TEST-ONLY.apk
+          test -s candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
+          APK=candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
           python3 - <<'PY'
           from pathlib import Path
@@ -124,7 +125,7 @@ jobs:
           assert m.group(3) == '0.16.0-android.1', 'Unexpected version'
           assert int(m.group(2)) == 16780806, 'Unexpected reserved candidate code'
           assert "launchable-activity: name='com.artcraft.vectorcraft.candidate.VectorCraftActivity'" in text
-          with zipfile.ZipFile('candidate/VectorCraft-v0.16.0-android.1-ARM64-TEST-ONLY.apk') as z:
+          with zipfile.ZipFile('candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk') as z:
               names=z.namelist()
               assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names), 'ARM64 library missing'
               assert any(n.endswith('.dex') for n in names), 'Java Activity missing'

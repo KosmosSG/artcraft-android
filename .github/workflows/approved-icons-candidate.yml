@@ -73,7 +73,9 @@ jobs:
         '
     - name: Build approved DesignCraft candidate
       shell: bash
-      run: 'set -euo pipefail
+      run: 'rm -rf builder/source/designcraft/apps/designcraft-android
+
+        set -euo pipefail
 
         python3 -m pip install Pillow==11.3.0
 

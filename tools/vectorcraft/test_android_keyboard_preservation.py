@@ -50,7 +50,7 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
             "egui::Event::WindowFocused(false)",
             "AndroidModifiers::default()",
             "egui::Event::Text(_) if state.modifiers().command",
-            "egui::Event::Ime(",
+            "Event::Ime(",
             "releasing_one_side_preserves_the_other",
             "command_and_chord_text_across_frames",
             "repeats_are_idempotent_and_focus_loss_clears_all_sides",

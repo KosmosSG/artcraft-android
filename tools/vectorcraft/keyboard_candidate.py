@@ -10,8 +10,8 @@ import tomllib
 from pathlib import Path
 
 PRODUCTION = "com.artcraft.vectorcraft"
-TEST_PACKAGE = "com.artcraft.vectorcraft.keyboardtest"
-TEST_LABEL = "VectorCraft Keyboard Test"
+TEST_PACKAGE = "com.artcraft.vectorcraft.keyboardfix"
+TEST_LABEL = "VectorCraft Keys Fix Test"
 JAVA_FILES = ("VectorCraftActivity.java", "VectorCraftExtras.java")
 
 

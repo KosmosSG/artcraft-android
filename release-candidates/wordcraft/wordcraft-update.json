@@ -1,0 +1,30 @@
+{
+  "app": "wordcraft",
+  "version": "0.9.0-android.4",
+  "versionCode": 100000004,
+  "apk_sha256": "a1016e3512ee7a88cd6436da3e182856469598245f594b01c8a165926b230b55",
+  "approved_source_sha256": "6ba5950f28a2bab3316b9d0f9d895d2895d98f4cf67db801f259d7a78547d62b",
+  "compiled_pixels_verified": true,
+  "native_ui_brand_embedded": true,
+  "adaptive_xml": [
+    {
+      "path": "res/0K.xml",
+      "tree": "N: android=http://schemas.android.com/apk/res/android (line=2)\n  E: adaptive-icon (line=2)\n      E: background (line=3)\n        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f05001d\n      E: foreground (line=4)\n        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f070062\n"
+    },
+    {
+      "path": "res/BW.xml",
+      "tree": "N: android=http://schemas.android.com/apk/res/android (line=2)\n  E: adaptive-icon (line=2)\n      E: background (line=3)\n        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f05001d\n      E: foreground (line=4)\n        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f070062\n"
+    }
+  ],
+  "production_signing_verified": true,
+  "device_tested": false,
+  "eligible_for_release": false,
+  "certificate_sha256": "c05372ea57ecf5571a7ac27716179606a2a1a8e57f213d1e3e8beb41f4360b65",
+  "source_run": 40076767116,
+  "source_commit": "d86dfcf3209f2acf36ef05c473c432e5894cac53",
+  "signed_payload_unchanged": true,
+  "package": "com.artcraft.wordcraft",
+  "tag": "wordcraft-v0.9.0-android.4",
+  "asset": "WordCraft-v0.9.0-android.4-arm64-v8a.apk",
+  "release_url": "https://github.com/KosmosSG/artcraft-android/releases/tag/wordcraft-v0.9.0-android.4"
+}

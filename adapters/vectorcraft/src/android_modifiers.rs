@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn repair_uses_physical_letter_when_logical_key_is_unknown() {
         let mut raw = RawInput { events: vec![
-            Event::Key { key: Key::Unidentified, physical_key: Some(Key::V), pressed: true, repeat: false, modifiers: Modifiers::NONE }
+            Event::Key { key: Key::Z, physical_key: Some(Key::V), pressed: true, repeat: false, modifiers: Modifiers::NONE }
         ], ..Default::default() };
         assert_eq!(restore_tool_key_text(&mut raw, true), 1);
         assert!(matches!(raw.events.last(), Some(Event::Text(letter)) if letter == "v"));

@@ -148,8 +148,8 @@ mod tests {
     #[test]
     fn bare_v_and_t_are_repaired_from_key_only_frames() {
         let mut state = AndroidModifiers::default();
-        for (key, expected) in [(Key::V, "v"), (Key::T, "t")] {
-            let mut raw = RawInput { events: apply(&mut state, vec![key(key, true)]), ..Default::default() };
+        for (pressed_key, expected) in [(Key::V, "v"), (Key::T, "t")] {
+            let mut raw = RawInput { events: apply(&mut state, vec![key(pressed_key, true)]), ..Default::default() };
             assert_eq!(restore_tool_key_text(&mut raw, true), 1);
             assert!(matches!(&raw.events[0], Event::Key { pressed: true, .. }));
             assert!(matches!(&raw.events[1], Event::Text(text) if text == expected));

@@ -71,6 +71,22 @@ jobs:
           assert p["compiled_pixels_verified"] is True and p["native_ui_brand_embedded"] is True
           assert p["production_signing_verified"] is False and p["device_tested"] is False
           assert p["eligible_for_release"] is False
+          audit = json.loads(Path("candidate/android-feature-compiled-audit.json").read_text())
+          assert audit["compiled_android_menu"] is True
+          assert audit["device_tested"] is False
+          assert audit["gpu_compositor_verified"] is False
+          assert audit["permanent_signing_verified"] is False
+          assert set(audit["native_commands"]) >= {
+              "android.filmcraft.importFont", "android.filmcraft.sharedFonts",
+              "android.filmcraft.refreshFonts", "android.filmcraft.checkUpdates",
+              "android.filmcraft.startupUpdates", "android.filmcraft.openRelease",
+              "android.filmcraft.buildInfo",
+          }
+          assert set(audit["java_methods"]) >= {
+              "fcRequestFontImport", "fcRequestSharedFontFolder",
+              "fcRefreshSharedFonts", "fcCheckForUpdates",
+              "fcSetStartupUpdatesEnabled", "fcOpenUpdatePage", "fcFeaturePoll",
+          }
           PY
 
       - name: Set up Java 21 for Android signing tools

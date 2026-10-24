@@ -1,0 +1,27 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "vectorcraft-v0.14.0-android.8",
+  "title": "VectorCraft v0.14.0-android.8",
+  "package": "com.artcraft.vectorcraft",
+  "versionName": "0.14.0-android.8",
+  "versionCode": 16780808,
+  "canonical_apk": "VectorCraft-v0.14.0-android.8-arm64-v8a.apk",
+  "identical_byte_aliases": [],
+  "apk_sha256": "d76ab9c499db77faa4ae7e79ce0ce115191911f1028e5f7f93175d06eb6d0756",
+  "certificate_sha256": "7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5",
+  "verified_build_source_commit": "4392e91fbdf6c65e8d1502ef508a6fd8ef79c98e",
+  "source_run": 40076752150,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.vectorcraft\nVersion: 0.14.0-android.8\nVersionCode: 16780808\nCertificate SHA-256: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5\nAPK SHA-256: d76ab9c499db77faa4ae7e79ce0ce115191911f1028e5f7f93175d06eb6d0756\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

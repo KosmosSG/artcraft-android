@@ -1,0 +1,29 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "pdfcraft-v0.12.1-android.3",
+  "title": "PDFCraft v0.12.1-android.3",
+  "package": "com.artcraft.pdfcraft",
+  "versionName": "0.12.1-android.3",
+  "versionCode": 16780291,
+  "canonical_apk": "PDFCraft-v0.12.1-android.3-arm64-v8a.apk",
+  "identical_byte_aliases": [
+    "PDFCraft-v0.12.1-arm64-release.apk"
+  ],
+  "apk_sha256": "f8f3b7bb806bac9eb62c25f4eea762a7912382afb67c72d38e7997112afffb4a",
+  "certificate_sha256": "be7254670cf0d451a17dd7ad8462ada3f806e50ab296d78a5db685e2a30a849f",
+  "verified_build_source_commit": "ba604057f77eb0ae45dac85914280121d0e9eb12",
+  "source_run": 40076764017,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.pdfcraft\nVersion: 0.12.1-android.3\nVersionCode: 16780291\nCertificate SHA-256: be7254670cf0d451a17dd7ad8462ada3f806e50ab296d78a5db685e2a30a849f\nAPK SHA-256: f8f3b7bb806bac9eb62c25f4eea762a7912382afb67c72d38e7997112afffb4a\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

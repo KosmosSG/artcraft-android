@@ -100,6 +100,11 @@ jobs:
         timeout-minutes: 130
         run: |
           set -euo pipefail
+          # Prove the packaging process takes the reviewed v0.14 menu port,
+          # never the v0.12 git-apply patch that failed a previous CI run.
+          test "$ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME" = "0.14.0-android.1"
+          python3 tools/photocraft_v014_menu_guard.py source/photocraft
+          grep -Fq 'skipping incompatible legacy patch' lib/build-common.sh
           bash build.sh -photocraft
           mkdir -p candidate
           test "$(find output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1

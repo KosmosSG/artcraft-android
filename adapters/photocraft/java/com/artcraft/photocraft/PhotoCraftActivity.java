@@ -466,6 +466,18 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
+    /** Report the real PhotoCraft shared text-engine families for font-import diagnosis. */
+    public void pcShowFontCatalog(String report) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("PhotoCraft — Detected Fonts")
+                    .setMessage(report == null ? "No font information available" : report)
+                    .setPositiveButton("Close", (dialog, which) -> { })
+                    .show();
+        });
+    }
+
     public void pcShowMessage(String message) {
         runOnUiThread(() -> {
             if (!isFinishing() && !isDestroyed())

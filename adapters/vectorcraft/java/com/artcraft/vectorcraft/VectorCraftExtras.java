@@ -364,7 +364,7 @@ final class VectorCraftExtras {
     void showUpdateChannelSettings() {
         activity.runOnUiThread(() -> {
             boolean includePreview = activity.getSharedPreferences(UPDATE_PREFS, android.content.Context.MODE_PRIVATE)
-                .getBoolean("include_preview_releases", true);
+                .getBoolean("include_preview_releases", false);
             new android.app.AlertDialog.Builder(activity)
                 .setTitle("VectorCraft Update Channel")
                 .setSingleChoiceItems(
@@ -409,7 +409,7 @@ final class VectorCraftExtras {
                         .getPackageInfo(activity.getPackageName(), 0).versionName;
                 if (installed == null) installed = "0.0.0";
                 boolean includePreview = activity.getSharedPreferences(UPDATE_PREFS, android.content.Context.MODE_PRIVATE)
-                    .getBoolean("include_preview_releases", true);
+                    .getBoolean("include_preview_releases", false);
                 String latest = null, releaseUrl = null;
                 for (int i = 0; i < releases.length(); i++) {
                     JSONObject release = releases.optJSONObject(i);
@@ -449,6 +449,7 @@ final class VectorCraftExtras {
                             ? "update_available" : "up_to_date");
                 }
                 updates.offer(result.toString());
+                    activity.vcShowUpdateResult(result);
             } catch (Exception error) {
                 Log.w(TAG, "VectorCraft update check failed", error);
                 try {
@@ -456,6 +457,7 @@ final class VectorCraftExtras {
                     result.put("status", "error");
                     result.put("message", error.toString());
                     updates.offer(result.toString());
+                    activity.vcShowUpdateResult(result);
                 } catch (Exception ignored) { }
             } finally {
                 if (connection != null) connection.disconnect();

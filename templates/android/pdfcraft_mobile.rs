@@ -29,30 +29,10 @@ impl Mobile {
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
         };
-        mobile.panel_open = mobile.read_panel_setting().unwrap_or(false);
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
         mobile
     }
 
-    fn read_panel_setting(&self) -> Result<bool, String> {
-        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
-        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("pdfToolsPanelVisible"),
-                jni_sig!("()Z"), &[])?.z()
-        }).map_err(|err| err.to_string())
-    }
-    fn save_panel_setting(&self, enabled: bool) -> Result<(), String> {
-        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
-        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("pdfSetToolsPanelVisible"),
-                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
-            Ok(())
-        }).map_err(|err| err.to_string())
-    }
     fn read_startup_setting(&self) -> Result<bool, String> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
@@ -178,20 +158,28 @@ impl Mobile {
         }
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
-    pub fn toolbar(&mut self, parent: &mut egui::Ui) {
-        egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
-            if !self.panel_open {
-                if ui.button("Show Android tools").clicked() {
-                    self.panel_open = true;
-                    let _ = self.save_panel_setting(true);
-                }
-                return;
-            }
+    pub fn handle_menu(&mut self, action: u8) {
+        let request = match action {
+            1 => Some(Action::ImportFont),
+            2 => Some(Action::SelectFolder),
+            3 => Some(Action::RefreshFonts),
+            4 => None,
+            _ => return,
+        };
+        self.panel_open = true;
+        self.fonts_open = true;
+        self.updates_open = action == 4;
+        if let Some(request) = request {
+            self.font_status = "Waiting for font action…".into();
+            if let Err(error) = self.request(request) { self.font_status = error; }
+        }
+    }
+    pub fn dialog(&mut self, ctx: &egui::Context) {
+        if !self.panel_open { return; }
+        let mut open = self.panel_open;
+        egui::Window::new("Android tools").open(&mut open)
+            .default_width(520.0).resizable(true).vscroll(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Hide panel").clicked() {
-                    self.panel_open = false;
-                    let _ = self.save_panel_setting(false);
-                }
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;
                 }
@@ -238,5 +226,6 @@ impl Mobile {
                 ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
             }
         });
+        self.panel_open = open;
     }
 }

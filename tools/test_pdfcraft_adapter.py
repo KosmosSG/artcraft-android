@@ -37,7 +37,15 @@ with tempfile.TemporaryDirectory() as folder:
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
     assert 'shell.pdf_mobile.set_renderer(description)' in native
-    assert native.index('self.pdf_mobile.toolbar(ui)') < native.index('self.inner.ui(ui, frame)')
+    assert 'self.pdf_mobile.toolbar(ui)' not in native
+    assert 'self.pdf_mobile.dialog(ui.ctx())' in native
+    assert 'take_android_tools_request()' in native
+    chrome = (dst / 'crates/ui-egui/src/chrome.rs').read_text()
+    assert chrome.count('static ANDROID_TOOLS_REQUEST:') == 1
+    assert 'Import Fonts…' in chrome
+    mobile = (root / 'templates/android/pdfcraft_mobile.rs').read_text()
+    assert 'Panel::bottom' not in mobile
+    assert 'Show Android tools' not in mobile
     assert 'take_android_update_request()' in native
     assert 'self.pdf_mobile.do_update_check()' in native
     assert 'ANDROID_UPDATE_REQUEST' in (dst / 'crates/ui-egui/src/updates.rs').read_text()

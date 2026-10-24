@@ -1,0 +1,180 @@
+name: FilmCraft integrated fonts updates and approved icons (never publish)
+'on':
+  push:
+    branches:
+    - dev/filmcraft-integrated-20261025
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/filmcraft-integrated-candidate.yml
+    - tools/filmcraft/**
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: filmcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout FilmCraft-only candidate
+      uses: actions/checkout@v5
+      with:
+        path: suite
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s suite/tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout reviewed Android builder at immutable reference
+      uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: filmcraft-builder
+        persist-credentials: false
+    - name: Verify independent builder and official FilmCraft source identity
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C filmcraft-builder rev-parse HEAD)" = ''ac54d62d9d2d6f663295a4afd8972a7a3e79f9af''
+
+        mkdir -p filmcraft-builder/source
+
+        git clone --depth 1 --branch v0.10.0 https://github.com/storytold/filmcraft.git filmcraft-builder/source/filmcraft
+
+        test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = ''cdf43fd366e378da266cb6d3c94549a45244be1f''
+
+        grep -Fq ''version = "0.10.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        grep -Fq ''license = "MIT OR Apache-2.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        test ! -e filmcraft-builder/keys/artcraft-builder.jks
+
+        test ! -e filmcraft-builder/keys/.keystore-password
+
+        test -f suite/assets/filmcraft/fc-user-approved.png
+
+        echo '242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png' | sha256sum --check
+
+        echo ''Official FilmCraft v0.10.0 and reviewed builder are pinned.'' >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Set up Java 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up Rust 1.95 and ARM64 target
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Select Android SDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+        '
+    - name: Install pinned Android build prerequisites
+      shell: bash
+      run: 'set -euo pipefail
+
+        sdkmanager --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Install launcher icon renderer in isolated Python environment
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m venv "$GITHUB_WORKSPACE/.filmcraft-build-python"
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -m pip install --disable-pip-version-check ''Pillow==11.3.0''
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -c ''from PIL import Image; print("Pillow PNG renderer available")''
+
+        echo "$GITHUB_WORKSPACE/.filmcraft-build-python/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Stage existing FilmCraft fonts shared folders SAF IME and updater integration
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/filmcraft/stage_runtime_hook.py filmcraft-builder/lib/build-common.sh
+        mkdir -p filmcraft-builder/tools/filmcraft
+        cp suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/filmcraft_features.rs suite/tools/filmcraft/FilmCraftActivity.features.java.inc filmcraft-builder/tools/filmcraft/
+        python3 suite/tools/filmcraft/runtime_patch.py --self-test
+        python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch.py suite/tools/approved-branding/approved_branding.py
+        bash -n filmcraft-builder/lib/build-common.sh
+    - name: Build temporary FilmCraft ARM64 APK with unique disposable signer
+      shell: bash
+      env:
+        FILMCRAFT_ANDROID_VERSION_NAME: 0.10.0-android.1
+        FILMCRAFT_EPHEMERAL_VERSION_CODE: '1000001'
+        ARTCRAFT_TARGET_SDK: '35'
+      run: 'set -euo pipefail
+
+        python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
+
+        python3 suite/tools/filmcraft/stage_variant.py filmcraft-builder/lib/android_project.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 suite/tools/approved-branding/approved_branding.py install filmcraft-builder filmcraft
+
+        cd filmcraft-builder
+
+        bash build.sh -filmcraft -packagename=com.artcraft.filmcraft -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-user-approved.png"
+
+        test -f output/filmcraft-0.10.0.apk
+
+        mv output/filmcraft-0.10.0.apk output/filmcraft-0.10.0-android.2.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: FilmCraft-integrated-0.10.0-android.2-NOT-FOR-RELEASE
+        path: integrated-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: FilmCraft-integrated-diagnostics
+        path: filmcraft-builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf filmcraft-builder/keys

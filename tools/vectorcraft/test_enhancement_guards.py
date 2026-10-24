@@ -115,16 +115,17 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, rust)
 
-    def test_manual_update_checker_has_visible_docked_progress_and_results(self):
+    def test_manual_update_checker_has_native_effectcraft_style_popup(self):
         rust = (ROOT / "adapters/vectorcraft/src/lib.rs").read_text()
-        java = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
-        panel = 'egui::Panel::bottom("vectorcraft.android.update_status")'
-        editor = "self.inner.ui(ui);"
-        self.assertEqual(rust.count(panel), 1)
-        self.assertLess(rust.index(panel), rust.index(editor),
-                        "Update panel must reserve space before editor draws")
-        # The Help menu is consumed AFTER the editor, so explicitly repaint
-        # to make the new progress panel visible on the following frame.
+        extras = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
+        activity = (ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+        self.assertNotIn('egui::Panel::bottom("vectorcraft.android.update_status")', rust)
+        self.assertNotIn('egui::Window::new("VectorCraft Updates")', rust)
+        self.assertIn('new android.app.AlertDialog.Builder(this)', activity)
+        self.assertIn('.setTitle("VectorCraft Updates")', activity)
+        self.assertIn('vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE)', activity)
+        self.assertIn('vcUpdateDialog.setMessage(message)', activity)
+        self.assertIn('jni_str!("vcShowUpdateDialog")', rust)
         click = rust[rust.index("        if check_updates {"):]
         self.assertIn("self.updates.open = true;", click)
         self.assertIn("ctx.request_repaint();", click.split("        if check_updates {", 1)[1])
@@ -136,12 +137,12 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertIn("Update check timed out.", rust)
         self.assertIn("started_at: Option<std::time::Instant>", rust)
         self.assertIn("ctx.request_repaint_after", rust)
-        self.assertIn('ui.small_button("Dismiss")', rust)
-        self.assertIn("ui.spinner()", rust)
-        self.assertIn('connection.setConnectTimeout(8000)', java)
-        self.assertIn('connection.setReadTimeout(8000)', java)
-        # Clicking Check for Updates does NOT silently download/install APKs.
-        self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
+        self.assertIn('.setNegativeButton("Close"', activity)
+        self.assertIn('.setPositiveButton("View Release"', activity)
+        self.assertIn('connection.setConnectTimeout(8000)', extras)
+        self.assertIn('connection.setReadTimeout(8000)', extras)
+        # Manual Update Check only opens the browser after a validated release link.
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", extras)
 
     def test_signing_guards_still_required_and_no_release_published(self):
         workflow = WORKFLOW.read_text()

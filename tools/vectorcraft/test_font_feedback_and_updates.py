@@ -45,7 +45,7 @@ class VectorCraftFeedbackTests(unittest.TestCase):
         self.assertIn('getPersistedUriPermissions', self.extras)
 
     def test_effectcraft_style_native_update_dialog_replaces_bottom_dock(self):
-        self.assertIn('public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking)', self.java)
+        self.assertIn('public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking, boolean manualOpen)', self.java)
         self.assertIn('new android.app.AlertDialog.Builder(this)', self.java)
         self.assertIn('.setTitle("VectorCraft Updates")', self.java)
         self.assertIn('.setNegativeButton("Close"', self.java)
@@ -53,6 +53,7 @@ class VectorCraftFeedbackTests(unittest.TestCase):
         self.assertIn('vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE)', self.java)
         self.assertIn('vcUpdateDialog.setMessage(message)', self.java)
         self.assertIn('vcUpdateDialogDismissed = true;', self.java)
+        self.assertIn('if (manualOpen) vcUpdateDialogDismissed = false;', self.java)
         self.assertIn('if (vcUpdateDialogDismissed) return;', self.java)
         self.assertIn('releaseUrl.matches(', self.java)
         self.assertIn('extras.openRelease(url)', self.java)
@@ -67,7 +68,7 @@ class VectorCraftFeedbackTests(unittest.TestCase):
             'self.updates.notify_result = true;',
             'self.bridge.show_update_dialog(',
             'self.bridge.check_for_updates()',
-            'self.updates.checking)',
+            'self.updates.checking, true)',
             'ctx.request_repaint();',
             'Already checking GitHub releases',
         ):
@@ -76,7 +77,7 @@ class VectorCraftFeedbackTests(unittest.TestCase):
         self.assertIn('if self.updates.notify_result && !self.updates.checking {', self.rust)
         self.assertIn('self.updates.notify_result = false;', self.rust)
         self.assertIn('let available_url = if self.updates.message.starts_with("Update available:")', self.rust)
-        self.assertIn('self.updates.message, available_url, false)', self.rust)
+        self.assertIn('self.updates.message, available_url, false, false)', self.rust)
         self.assertIn('Some("up_to_date")', self.rust)
         self.assertIn('Some("update_available")', self.rust)
         self.assertIn('Some("no_release")', self.rust)

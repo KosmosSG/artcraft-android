@@ -10,6 +10,7 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 pub struct Mobile {
     app: AndroidApp,
     renderer: String,
+    panel_open: bool,
     fonts_open: bool,
     updates_open: bool,
     font_status: String,
@@ -23,7 +24,7 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), fonts_open: false, updates_open: false,
+            app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, updates_open: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
@@ -109,6 +110,7 @@ impl Mobile {
         self.update_url = None;
         self.update_status = "Checking published PDFCraft Android releases…".into();
         self.updates_open = true;
+        self.panel_open = true;
         match self.request(Action::CheckUpdates) {
             Ok(()) => self.checking = true,
             Err(error) => self.update_status = format!("Update checker unavailable: {error}"),
@@ -156,8 +158,27 @@ impl Mobile {
         }
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
-    pub fn toolbar(&mut self, parent: &mut egui::Ui) {
-        egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
+    pub fn handle_menu(&mut self, action: u8) {
+        let request = match action {
+            1 => Some(Action::ImportFont),
+            2 => Some(Action::SelectFolder),
+            3 => Some(Action::RefreshFonts),
+            4 => None,
+            _ => return,
+        };
+        self.panel_open = true;
+        self.fonts_open = true;
+        self.updates_open = action == 4;
+        if let Some(request) = request {
+            self.font_status = "Waiting for font action…".into();
+            if let Err(error) = self.request(request) { self.font_status = error; }
+        }
+    }
+    pub fn dialog(&mut self, ctx: &egui::Context) {
+        if !self.panel_open { return; }
+        let mut open = self.panel_open;
+        egui::Window::new("Android tools").open(&mut open)
+            .default_width(520.0).resizable(true).vscroll(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
                     self.fonts_open = !self.fonts_open;
@@ -205,5 +226,6 @@ impl Mobile {
                 ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
             }
         });
+        self.panel_open = open;
     }
 }

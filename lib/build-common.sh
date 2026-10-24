@@ -347,6 +347,17 @@ impl PdfCraftApp {
         updates.write_text(text)
         fixed.append("crates/ui-egui/src/updates.rs")
 
+    chrome = src / "crates/ui-egui/src/chrome.rs"
+    text = chrome.read_text()
+    old_help = 'crate::commands::registry_menu(app, ui, "Help")'
+    if "ANDROID_TOOLS_REQUEST" not in text:
+        if text.count(old_help) != 1:
+            raise SystemExit("PDFCraft Help menu API changed")
+        text = text.replace(old_help, '{\n                crate::commands::registry_menu(app, ui, "Help");\n                #[cfg(target_os = "android")]\n                {\n                    ui.separator();\n                    for (label, action) in [("Import Fonts…", 1), ("Shared fonts folder…", 2), ("Refresh shared fonts", 3), ("Android tools…", 4)] {\n                        if ui.button(label).clicked() {\n                            ANDROID_TOOLS_REQUEST.store(action, std::sync::atomic::Ordering::Release);\n                            ui.close();\n                        }\n                    }\n                }\n            }', 1)
+        text += '\n#[cfg(target_os = "android")]\nstatic ANDROID_TOOLS_REQUEST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);\nimpl PdfCraftApp {\n    #[cfg(target_os = "android")]\n    pub fn take_android_tools_request(&self) -> u8 {\n        ANDROID_TOOLS_REQUEST.swap(0, std::sync::atomic::Ordering::AcqRel)\n    }\n}\n'
+        chrome.write_text(text)
+        fixed.append("crates/ui-egui/src/chrome.rs")
+
 if fixed:
     print(f"  Patched app-specific Android integration: {', '.join(fixed)}")
 PY
@@ -372,7 +383,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "26-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "28-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2693,8 +2704,8 @@ impl eframe::App for AndroidShell {{
             ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
              "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
-            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);"),
-            ("        self.inner.ui(ui, frame);", "        self.pdf_mobile.toolbar(ui);\n        self.inner.ui(ui, frame);"),
+            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.handle_menu(self.inner.take_android_tools_request());\n        self.pdf_mobile.poll(ctx);"),
+            ("        self.inner.ui(ui, frame);", "        self.inner.ui(ui, frame);\n        self.pdf_mobile.dialog(ui.ctx());"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:

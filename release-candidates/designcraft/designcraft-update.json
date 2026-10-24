@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "package": "com.artcraft.designcraft",
+  "version_name": "0.12.0-android.3",
+  "version_code": 16800004,
+  "certificate_sha256": "c45236b436cbfbfbeade716b11cb24a50a795a6af3f147132ce6f19753fea394",
+  "apk_sha256": "61b1c5ace867c89d906d45c665c8b0c178b7fa0579126de2a37fc2dc2ac5dd22",
+  "apk_url": "https://github.com/KosmosSG/artcraft-android/releases/download/designcraft-v0.12.0-android.3/DesignCraft-0.12.0-android.3-arm64-v8a.apk",
+  "upstream_commit": "5e8ef678321cfdd2d18927e2af94d58e5f9d8836",
+  "builder_commit": "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
+  "automation_commit": "abc4cb85ba8095e11901d0315c870aa0ba951c8a"
+}

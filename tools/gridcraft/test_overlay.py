@@ -164,12 +164,29 @@ public final class GridCraftActivity extends NativeActivity {
 
     def test_gridcraft_only_icon_foreground_preserves_original_glossy_asset(self):
         installer = (FOLDER / "install_overlay.py").read_text()
-        self.assertIn('GRIDCRAFT_APPROVED_ADAPTIVE_FOREGROUND_V1', installer)
+        self.assertIn('GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2', installer)
         self.assertIn('lib/app_icons.py', installer)
         self.assertIn('if app == "gridcraft" else _foreground(Image, stripped)', installer)
-        self.assertIn('art.putalpha(matte)', installer)
-        self.assertIn('canvas.alpha_composite(art', installer)
+        self.assertIn('return pristine.convert("RGBA").resize((CANVAS_PX, CANVAS_PX), Image.LANCZOS)', installer)
+        self.assertNotIn('art.putalpha(matte)', installer)
+        self.assertNotIn('round(CANVAS_PX * 0.80)', installer)
         self.assertIn('icon_script.write_text(icon_source)', installer)
+
+    def test_native_font_dropdown_uses_official_discovered_families(self):
+        # Official GridCraft v0.11.1 already scans and binds local families,
+        # but its Home font combo accidentally uses only the static FONTS list.
+        # The GridCraft-only source patch must use crate::fonts::families().
+        installer = (FOLDER / "install_overlay.py").read_text()
+        self.assertIn("GRIDCRAFT_ANDROID_FONT_COMBO_V1", installer)
+        self.assertIn("let available = crate::fonts::families();", installer)
+        self.assertIn("available.iter()", installer)
+        self.assertIn("f.as_str(), f.clone()", installer)
+        self.assertIn("patched_ribbon.count(combo_old) != 1", installer)
+        self.assertIn('ribbon.write_text(patched_ribbon)', installer)
+        # Android import and source catalog share the same HOME directory.
+        self.assertIn('dirs.push(h.join("ArtCraft-Fonts"))', installer)
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
 
     def test_other_app_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

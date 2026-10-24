@@ -88,6 +88,37 @@ public final class VectorCraftActivity extends NativeActivity {
         });
     }
 
+    // TEST APP ONLY: count physical key delivery without recording typed characters.
+    // This diagnostic is not retained in any production build.
+    private volatile int keyboardDispatchCount = 0;
+    private volatile int keyboardChildCount = 0;
+    private volatile int keyboardImeCommits = 0;
+    private volatile String keyboardLastKey = "none";
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event != null) {
+            keyboardDispatchCount++;
+            keyboardLastKey = (event.getAction() == KeyEvent.ACTION_DOWN ? "DOWN " : "UP ")
+                    + KeyEvent.keyCodeToString(event.getKeyCode())
+                    + " meta[C=" + event.isCtrlPressed()
+                    + " S=" + event.isShiftPressed()
+                    + " A=" + event.isAltPressed() + "]";
+        }
+        // Observe only; never consume or inject key events into NativeActivity.
+        return super.dispatchKeyEvent(event);
+    }
+
+    /** Called by the test shell only; never includes input text or file data. */
+    public String vcKeyboardDiagnostics() {
+        return "Java dispatch=" + keyboardDispatchCount
+                + " child=" + keyboardChildCount
+                + " IME commits=" + keyboardImeCommits
+                + " IME wanted=" + imeWanted
+                + " IME focus=" + (imeView != null && imeView.isFocused())
+                + " last=" + keyboardLastKey;
+    }
+
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real
     // InputConnection, so the keyboard shows/dismisses on request and every commit/composition
@@ -207,6 +238,7 @@ public final class VectorCraftActivity extends NativeActivity {
                         @Override
                         public boolean commitText(CharSequence text, int newCursorPosition) {
                             if (text != null && text.length() > 0) {
+                                keyboardImeCommits++;
                                 imeEvents.offer("c" + text);
                             }
                             return super.commitText(text, newCursorPosition);
@@ -257,6 +289,7 @@ public final class VectorCraftActivity extends NativeActivity {
 
                 @Override
                 public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    keyboardChildCount++;
                     // Let hardware key events fall through to the native input queue (winit), exactly
                     // as they did before this view existed; the soft keyboard talks to us through the
                     // InputConnection instead. This keeps physical keyboards working.

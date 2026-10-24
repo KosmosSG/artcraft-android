@@ -99,6 +99,24 @@ public final class VectorCraftActivity extends NativeActivity {
     private boolean vcUpdateDialogDismissed;
 
     /** Repaint an already-open update dialog after the native Java check finishes. */
+    /** Native worker completion feedback, including checks initiated inside the dialog. */
+    public void vcShowUpdateResult(org.json.JSONObject result) {
+        runOnUiThread(() -> {
+            if (!vcHasVisibleUpdateDialog()) return; // Never pop up on silent startup.
+            String state = result.optString("state", "error");
+            String installed = result.optString("installed_version", "unknown");
+            String latest = result.optString("latest_version", "unknown");
+            String summary = "update_available".equals(state)
+                    ? "Update available: " + latest + " (installed: " + installed + ")"
+                    : "up_to_date".equals(state)
+                    ? "VectorCraft is up to date (" + installed + ")."
+                    : result.optString("message", "Update check failed.");
+            vcShowUpdateDialog(summary,
+                    "update_available".equals(state) ? result.optString("url", "") : "",
+                    false, false);
+        });
+    }
+
     public boolean vcHasVisibleUpdateDialog() {
         return vcUpdateDialog != null && vcUpdateDialog.isShowing();
     }

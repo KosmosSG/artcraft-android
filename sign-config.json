@@ -1,0 +1,11 @@
+{
+  "app": "PDFCraft",
+  "run": 40076764017,
+  "source_sha": "ba604057f77eb0ae45dac85914280121d0e9eb12",
+  "candidate_sha256": "2a6ba0e87d6a0613f99d1015dafcf2d3cc396434d273a72f9ec85da87ca21577",
+  "version": "0.12.1-android.3",
+  "code": 16780291,
+  "package": "com.artcraft.pdfcraft",
+  "baseline_url": "https://github.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v0.12.1-android.2/PDFCraft-v0.12.1-android.2-arm64-v8a.apk",
+  "baseline_sha256": "89d79b02e7a494fed08bc788310238dfabef21b38b603a5a050f5890e9161042"
+}

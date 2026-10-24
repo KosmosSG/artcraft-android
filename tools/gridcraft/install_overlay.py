@@ -58,6 +58,17 @@ def install(builder: Path, additions: Path):
         if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
             raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
         patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
+        # GRIDCRAFT_ANDROID_FONT_COMBO_V1: the official GridCraft font scanner
+        # already exposes families(), but this pinned v0.11.1 ribbon mistakenly
+        # uses just the 17 built-in FONTS strings. Use the discovered catalog.
+        combo_old = '    let items: Vec<(&str, String)> = FONTS.iter().map(|f| (*f, f.to_string())).collect();'
+        combo_new = ('    // GRIDCRAFT_ANDROID_FONT_COMBO_V1: include scanned user-installed fonts.\n'
+                     '    let available = crate::fonts::families();\n'
+                     '    let items: Vec<(&str, String)> = available.iter()\n'
+                     '        .map(|f| (f.as_str(), f.clone())).collect();')
+        if patched_ribbon.count(combo_old) != 1 or "GRIDCRAFT_ANDROID_FONT_COMBO_V1" in patched_ribbon:
+            raise RuntimeError("Pinned GridCraft font dropdown changed; manual review required")
+        patched_ribbon = patched_ribbon.replace(combo_old, combo_new, 1)
         ribbon.write_text(patched_ribbon)
     elif (builder / "source/gridcraft").exists():
         raise RuntimeError("GridCraft checkout exists but the expected ribbon file is missing")
@@ -81,44 +92,26 @@ def install(builder: Path, additions: Path):
     elif (builder / "source/gridcraft").exists():
         raise RuntimeError("Pinned GridCraft font catalog missing")
 
-    # GridCraft's glossy Gc artwork has a photographic green gradient, which
-    # cannot be cleanly background-flood-filled. The generic adaptive-icon
-    # flood fill produced unwanted corner blotches on HONOR MagicOS.
-    # Apply a GridCraft-only, feathered full-colour original PNG instead;
-    # leave every other ArtCraft app's icon processing exactly unchanged.
+    # On HONOR MagicOS the adaptive launcher already masks the source to its
+    # rounded-square shape. The earlier 80%-sized foreground introduced a
+    # second small green square INSIDE that mask. Keep the owner-approved
+    # image full bleed, and let the Android launcher do the only clipping.
     icon_script = builder / "lib/app_icons.py"
     if not icon_script.is_file():
         raise RuntimeError("Pinned Android launcher icon generator not found")
     icon_source = icon_script.read_text()
     icon_hook = '    foreground = _foreground(Image, stripped)'
-    icon_marker = "GRIDCRAFT_APPROVED_ADAPTIVE_FOREGROUND_V1"
+    icon_marker = "GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2"
     if icon_source.count(icon_hook) != 1 or icon_marker in icon_source:
-        raise RuntimeError("Pinned adaptive icon generator changed or GridCraft patch duplicated")
-    icon_function = '''def _gridcraft_approved_adaptive_foreground(Image, pristine):
-    """GRIDCRAFT_APPROVED_ADAPTIVE_FOREGROUND_V1: retain the owner's original glassy Gc pixels.
+        raise RuntimeError("Pinned adaptive icon generator changed or patch duplicated")
+    icon_function = '''def _gridcraft_full_bleed_foreground(Image, pristine):
+    """GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2: no double-masked inner tile.
     
-    The original stays unchanged for normal mipmap icons. Only the Android
-    adaptive foreground gets a soft matte at the photographic background edges;
-    preserve the interior bevels, highlights and green colours without floodfill.
+    The user's exact original Gc PNG remains the legacy icon source;
+    adaptive launchers receive an opaque full-bleed foreground, letting
+    Android apply its own ONE rounded-square/circle mask at native scale.
     """
-    from PIL import ImageDraw
-    art_size = round(CANVAS_PX * 0.80)
-    art = pristine.convert("RGBA").resize((art_size, art_size), Image.LANCZOS)
-    matte = Image.new("L", (art_size, art_size), 0)
-    mask = matte.load()
-    # Full opacity in the visual logo region; feather only outside the logo.
-    for y in range(art_size):
-        top = min(1.0, y / max(1.0, art_size * 0.22))
-        bottom = min(1.0, (art_size - 1 - y) / max(1.0, art_size * 0.17))
-        for x in range(art_size):
-            horizontal = min(1.0, x / max(1.0, art_size * 0.07),
-                             (art_size - 1 - x) / max(1.0, art_size * 0.07))
-            a = max(0.0, min(1.0, horizontal, top, bottom))
-            mask[x, y] = round(255 * (a * a * (3.0 - 2.0 * a)))
-    art.putalpha(matte)
-    canvas = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
-    canvas.alpha_composite(art, ((CANVAS_PX - art_size) // 2, (CANVAS_PX - art_size) // 2))
-    return canvas
+    return pristine.convert("RGBA").resize((CANVAS_PX, CANVAS_PX), Image.LANCZOS)
 
 
 '''
@@ -128,7 +121,7 @@ def install(builder: Path, additions: Path):
     icon_source = icon_source.replace(insertion_anchor, icon_function + insertion_anchor, 1)
     icon_source = icon_source.replace(
         icon_hook,
-        '    foreground = (_gridcraft_approved_adaptive_foreground(Image, pristine) '
+        '    foreground = (_gridcraft_full_bleed_foreground(Image, pristine) '
         'if app == "gridcraft" else _foreground(Image, stripped))',
         1
     )

@@ -34,14 +34,13 @@ mod android_tests {
             assert!(chain[0].starts_with("fnt-src:"), "actual imported face precedes fallback");
             let ctx = egui::Context::default();
             ctx.set_fonts(definitions);
-            let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
                     let galley = ui.painter().layout_no_wrap("GridCraft 123".into(),
                         egui::FontId::new(20.0, egui::FontFamily::Name(key.clone().into())), egui::Color32::BLACK);
                     assert!(galley.size().x > 0.0);
                     assert!(!galley.rows.is_empty());
-                });
             });
+            output.textures_delta.clear();
         }
         assert!(!catalog.iter().any(|f| f.path.ends_with("broken.ttf")));
         std::fs::remove_file(&otf).unwrap();

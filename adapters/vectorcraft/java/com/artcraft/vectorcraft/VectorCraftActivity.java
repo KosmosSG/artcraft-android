@@ -88,6 +88,57 @@ public final class VectorCraftActivity extends NativeActivity {
         });
     }
 
+    // EffectCraft-style native Android update dialog; never covers the egui
+    // document with a home-grown floating Window or a permanent bottom dock.
+    // Only a user-initiated Check Updates call opens it. An opted-in silent
+    // startup check continues to use the existing read-only updater.
+    private android.app.AlertDialog vcUpdateDialog;
+    private android.widget.ProgressBar vcUpdateProgress;
+    private String vcUpdateReleaseUrl;
+    private boolean vcUpdateDialogDismissed;
+
+    public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (checking) vcUpdateDialogDismissed = false;
+            // A dismissed manual dialog must stay dismissed if its async
+            // GitHub worker completes later. A new menu tap reopens it.
+            if (vcUpdateDialogDismissed) return;
+
+            if (vcUpdateDialog == null || !vcUpdateDialog.isShowing()) {
+                vcUpdateProgress = new android.widget.ProgressBar(this);
+                vcUpdateProgress.setIndeterminate(true);
+                vcUpdateDialog = new android.app.AlertDialog.Builder(this)
+                    .setTitle("VectorCraft Updates")
+                    .setMessage(message)
+                    .setView(vcUpdateProgress)
+                    .setNegativeButton("Close", (dialog, which) -> { })
+                    .setPositiveButton("View Release", (dialog, which) -> {
+                        String url = vcUpdateReleaseUrl;
+                        if (url != null) extras.openRelease(url);
+                    })
+                    .create();
+                vcUpdateDialog.setOnDismissListener(dialog -> {
+                    vcUpdateDialogDismissed = true;
+                    vcUpdateReleaseUrl = null;
+                    vcUpdateDialog = null;
+                    vcUpdateProgress = null;
+                });
+                vcUpdateDialog.show();
+            } else {
+                vcUpdateDialog.setMessage(message);
+            }
+            vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE);
+            // Never accept an arbitrary URL from GitHub JSON or Rust: this
+            // is a version-specific link to the official VectorCraft tag.
+            boolean trusted = !checking && releaseUrl != null &&
+                releaseUrl.matches("https://github\\.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*");
+            vcUpdateReleaseUrl = trusted ? releaseUrl : null;
+            vcUpdateDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                .setVisibility(trusted ? View.VISIBLE : View.GONE);
+        });
+    }
+
     // Soft-keyboard host. A bare NativeActivity has no editable view, so the system IME opens
     // unreliably and delivers no text. This tiny, invisible but focusable EditText has a real
     // InputConnection, so the keyboard shows/dismisses on request and every commit/composition

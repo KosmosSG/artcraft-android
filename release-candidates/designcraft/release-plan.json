@@ -1,0 +1,29 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "designcraft-v0.12.0-android.3",
+  "title": "DesignCraft v0.12.0-android.3",
+  "package": "com.artcraft.designcraft",
+  "versionName": "0.12.0-android.3",
+  "versionCode": 16800004,
+  "canonical_apk": "DesignCraft-v0.12.0-android.3-arm64-v8a.apk",
+  "identical_byte_aliases": [
+    "DesignCraft-0.12.0-android.3-arm64-v8a.apk"
+  ],
+  "apk_sha256": "61b1c5ace867c89d906d45c665c8b0c178b7fa0579126de2a37fc2dc2ac5dd22",
+  "certificate_sha256": "c45236b436cbfbfbeade716b11cb24a50a795a6af3f147132ce6f19753fea394",
+  "verified_build_source_commit": "abc4cb85ba8095e11901d0315c870aa0ba951c8a",
+  "source_run": 40076755214,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.designcraft\nVersion: 0.12.0-android.3\nVersionCode: 16800004\nCertificate SHA-256: c45236b436cbfbfbeade716b11cb24a50a795a6af3f147132ce6f19753fea394\nAPK SHA-256: 61b1c5ace867c89d906d45c665c8b0c178b7fa0579126de2a37fc2dc2ac5dd22\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

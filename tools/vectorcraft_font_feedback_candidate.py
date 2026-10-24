@@ -9,7 +9,7 @@ import tomllib
 from pathlib import Path
 
 PROD = "com.artcraft.vectorcraft"
-TEST = "com.artcraft.vectorcraft.candidate"
+TEST = "com.artcraft.vectorcraft.dialogtest"
 JAVA = ("VectorCraftActivity.java", "VectorCraftExtras.java")
 
 
@@ -21,7 +21,7 @@ def stage(builder: Path) -> None:
     if original.count(old) != 1 or original.count('label = "VectorCraft"') != 2:
         raise ValueError("original Android package or label was modified")
     changed = original.replace(old, f'package = "{TEST}"', 1).replace(
-        'label = "VectorCraft"', 'label = "VectorCraft Test"')
+        'label = "VectorCraft"', 'label = "VectorCraft Dialog Test"')
     a = tomllib.loads(changed)["package"]["metadata"]["android"]
     if a["package"] != TEST or a["build_targets"] != ["aarch64-linux-android"]:
         raise ValueError("incorrect test package or ABI")
@@ -44,7 +44,7 @@ def stage(builder: Path) -> None:
 def verify(builder: Path) -> None:
     adapter = builder / "adapters/vectorcraft"
     a = tomllib.loads((adapter / "Cargo.toml").read_text())["package"]["metadata"]["android"]
-    if a["package"] != TEST or a["application"]["label"] != "VectorCraft Test":
+    if a["package"] != TEST or a["application"]["label"] != "VectorCraft Dialog Test":
         raise ValueError("not an isolated VectorCraft Test app")
     for name in JAVA:
         text = (adapter / "java/com/artcraft/vectorcraft" / name).read_text()

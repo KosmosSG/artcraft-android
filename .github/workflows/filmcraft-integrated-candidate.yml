@@ -61,7 +61,7 @@ jobs:
 
         test -f suite/assets/filmcraft/fc-user-approved.png
 
-        echo '242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png' | sha256sum --check
+        echo ''242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png'' | sha256sum --check
 
         echo ''Official FilmCraft v0.10.0 and reviewed builder are pinned.'' >> "$GITHUB_STEP_SUMMARY"
 

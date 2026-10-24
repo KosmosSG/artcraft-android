@@ -49,6 +49,32 @@ final class PhotoCraftUpdatePolicy {
                 .matcher(assetName).matches();
     }
 
+    /**
+     * Never call an older upstream/version-name release an update merely because
+     * a temporary Android test APK has a smaller versionCode.
+     * Unknown or malformed versions fail closed; Android versionCode is still
+     * checked independently before suggesting an in-place install.
+     */
+    static int compareVersions(String candidate, String installed) {
+        int[] a = numericVersion(candidate), b = numericVersion(installed);
+        if (a == null || b == null) return -1;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] != b[i]) return Integer.compare(a[i], b[i]);
+        }
+        return 0;
+    }
+
+    private static int[] numericVersion(String version) {
+        if (version == null || !version.matches("[0-9]+\\.[0-9]+\\.[0-9]+(?:-android\\.[1-9][0-9]*)?"))
+            return null;
+        String[] parts = version.replace("-android.", ".").split("\\.");
+        int[] result = new int[4];
+        try {
+            for (int i = 0; i < parts.length; i++) result[i] = Integer.parseInt(parts[i]);
+        } catch (NumberFormatException error) { return null; }
+        return result;
+    }
+
     static boolean isNewer(long candidateCode, long installedCode) {
         return installedCode > 0 && candidateCode > installedCode;
     }

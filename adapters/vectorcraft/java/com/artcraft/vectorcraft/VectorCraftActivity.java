@@ -98,10 +98,11 @@ public final class VectorCraftActivity extends NativeActivity {
     private String vcUpdateReleaseUrl;
     private boolean vcUpdateDialogDismissed;
 
-    public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking) {
+    public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking, boolean manualOpen) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
-            if (checking) vcUpdateDialogDismissed = false;
+            // Every explicit menu tap reopens the dialog, including a failed start.
+            if (manualOpen) vcUpdateDialogDismissed = false;
             // A dismissed manual dialog must stay dismissed if its async
             // GitHub worker completes later. A new menu tap reopens it.
             if (vcUpdateDialogDismissed) return;

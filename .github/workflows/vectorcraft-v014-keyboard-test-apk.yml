@@ -8,6 +8,11 @@ on:
       - 'tools/vectorcraft/**'
       - '.github/workflows/vectorcraft-v014-keyboard-test-apk.yml'
       - 'assets/branding/vectorcraft/**'
+  pull_request:
+    paths:
+      - 'adapters/vectorcraft/**'
+      - 'tools/vectorcraft/**'
+      - '.github/workflows/vectorcraft-v014-keyboard-test-apk.yml'
   workflow_dispatch:
 
 # A read-only, separately installable candidate. NEVER production-sign or publish.
@@ -19,7 +24,7 @@ concurrency:
 
 jobs:
   build-test-apk:
-    if: github.repository == 'KosmosSG/artcraft-android'
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/test/vectorcraft-v014-keyboard-apk-20261024' || (github.event_name == 'pull_request' && github.event.pull_request.number == 51 && github.head_ref == 'test/vectorcraft-v014-keyboard-apk-20261024' && github.event.pull_request.head.repo.full_name == 'KosmosSG/artcraft-android'))
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -35,7 +40,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = 'refs/heads/test/vectorcraft-v014-keyboard-apk-20261024'
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test "$GITHUB_HEAD_REF" = 'test/vectorcraft-v014-keyboard-apk-20261024'
+            test "$GITHUB_REF" = 'refs/pull/51/merge'
+          else
+            test "$GITHUB_REF" = 'refs/heads/test/vectorcraft-v014-keyboard-apk-20261024'
+          fi
           test ! -e builder/keys/artcraft-builder.jks
           python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
           test -s adapters/vectorcraft/src/android_modifiers.rs
@@ -100,6 +110,13 @@ jobs:
           set -euo pipefail
           python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/keyboard-test-launcher.png"
           bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/keyboard-test-launcher.png"
+      - name: Compile Android keyboard regression tests before APK packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The full build copies the isolated adapter into the upstream app directory.
+          # Typecheck unit tests for the Android target even when they cannot run on the CI host.
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --tests --target aarch64-linux-android
       - name: Verify actual APK identity, launcher, ARM64, disposable signature
         shell: bash
         run: |

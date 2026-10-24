@@ -89,7 +89,7 @@
                     java.io.File destination = new java.io.File(gcFontRoot(), "artcraft-imported");
                     if (!destination.isDirectory() && !destination.mkdirs()) throw new java.io.IOException("Cannot create font folder");
                     gcCopyFont(uri, new java.io.File(destination, gcHash(uri.toString()) + (filename.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")));
-                    gcSend("font", "ok", "Font imported into the GridCraft font library. Fully close and reopen GridCraft, then choose its family name in the font dropdown.");
+                    gcSend("font", "ok", "Font file saved. Refreshing GridCraft catalog; check Detected font families for recognition.");
                 } catch (Exception error) {
                     gcSend("font", "error", "Import failed: " + error.getMessage());
                 }
@@ -207,7 +207,7 @@
                 throw new java.io.IOException("Cannot finish shared font refresh");
             }
             gcDeleteTree(previous);
-            gcSend("folder", "ok", imported + " shared fonts cached. Fully close and reopen GridCraft to update the font dropdown.");
+            gcSend("folder", "ok", imported + " shared font files saved. Refreshing GridCraft catalog; check Detected font families for recognition.");
         } catch (Exception error) {
             gcDeleteTree(staged);
             gcSend("folder", "error", "Shared font folder: " + error.getMessage());

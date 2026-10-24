@@ -25,6 +25,14 @@
                 if !font_status.is_empty() {
                     ui.small(font_status);
                 }
+                if ui.button("Detected font families / Rescan").clicked() {
+                    ui.ctx().data_mut(|d| d.insert_temp(command_id, "diagnose_fonts".to_owned()));
+                    ui.ctx().request_repaint();
+                }
+                let catalog = ui.ctx().data(|d| d.get_temp::<String>(
+                    egui::Id::new("gridcraft.android.menu.catalog_status"))).unwrap_or_default();
+                egui::ScrollArea::vertical().id_salt("gridcraft.font.diagnostics")
+                    .max_height(200.0).show(ui, |ui| { ui.set_max_width(420.0); ui.small(catalog); });
                 ui.separator();
                 ui.label(egui::RichText::new("Android updates").strong());
                 if ui.button("Check for GridCraft Updates").clicked() {
@@ -91,5 +99,5 @@
                     }
                 });
                 ui.separator();
-                ui.small("Imported fonts become available after restarting GridCraft.");
+                ui.small("Imports refresh the Home font list automatically. Select a family to apply it to cells.");
             });

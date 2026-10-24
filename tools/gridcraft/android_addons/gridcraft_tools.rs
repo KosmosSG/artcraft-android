@@ -1,11 +1,13 @@
 //! GRIDCRAFT_ANDROID_TOOLS_V1 — shell-only enhancements; upstream spreadsheet crates unchanged.
 //! Java owns SAF folder grants and network IO; this module only drives the native UI via JNI.
-//! Font catalog uses OnceLock in GridCraft v0.9.0, so reload requires restarting the app.
+//! Imported fonts reload through the official catalog on a worker, then rebind worksheet fonts.
 use android_activity::AndroidApp;
 use jni::{JavaVM, jni_sig, jni_str, objects::{JObject, JString, JValue}};
 use std::sync::Arc;
 
 pub struct GridCraftTools {
+    font_scan: Option<std::sync::mpsc::Receiver<String>>,
+    catalog_status: String,
     app: AndroidApp,
     vm: Arc<JavaVM>,
     pub font_status: String,
@@ -25,8 +27,9 @@ impl GridCraftTools {
         // SAFETY: AndroidApp owns this live JavaVM for the lifetime of the native activity.
         let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
         Self {
+            font_scan: None, catalog_status: "Open Detected font families to inspect the catalog.".into(),
             app: app.clone(), vm: Arc::new(vm),
-            font_status: "Import TTF/OTF or choose ArtCraft-Fonts (restart to apply).".into(),
+            font_status: "Import TTF/OTF or choose ArtCraft-Fonts; families refresh automatically.".into(),
             update_status: "Manual update check available; no automatic APK installation.".into(),
             release_url: None, checking: false, check_started_at: None,
             startup_loaded: false, startup_check: false,
@@ -91,7 +94,63 @@ impl GridCraftTools {
         self.feedback_message = Some(message);
         self.feedback_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(7));
     }
+    fn refresh_catalog(&mut self) {
+        // The Java worker serializes imports; replace the receiver so the newest
+        // request owns feedback. Catalog scans are serialized independently.
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.font_scan = Some(rx);
+        self.catalog_status = "Scanning saved fonts with GridCraft's font engine…".into();
+        let spawn = std::thread::Builder::new().name("gridcraft-font-refresh".into()).spawn(move || {
+            static SCAN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let _guard = SCAN.lock().unwrap_or_else(|e| e.into_inner());
+            use gridcraft_ui_egui::fonts;
+            fonts::reload_catalog();
+            let root = std::env::var_os("HOME").map(std::path::PathBuf::from)
+                .unwrap_or_default().join("ArtCraft-Fonts");
+            let active = [root.join("artcraft-imported"), root.join("artcraft-shared")];
+            let faces: Vec<_> = fonts::catalog().iter()
+                .filter(|f| active.iter().any(|dir| f.path.starts_with(dir))).cloned().collect();
+            let mut families: Vec<_> = faces.iter().map(|f| f.family.clone()).collect();
+            families.sort(); families.dedup();
+            let mut paths: Vec<_> = faces.iter().map(|f| f.path.clone()).collect();
+            paths.sort(); paths.dedup();
+            let saved = active.iter().filter_map(|d| std::fs::read_dir(d).ok())
+                .flatten().flatten().filter(|e| e.path().extension().and_then(|x| x.to_str())
+                    .is_some_and(|x| x.eq_ignore_ascii_case("ttf") || x.eq_ignore_ascii_case("otf"))).count();
+            let mut definitions = egui::FontDefinitions::default();
+            let mut lines = vec![format!("Saved files: {saved}; catalog files: {}; detected families: {}", paths.len(), families.len())];
+            for family in &families {
+                let bound = fonts::bind_family(&mut definitions, family);
+                lines.push(format!("{} — {}", family, if bound.len() == 4 { "available in Home; font data bound" } else { "detected but font data unavailable" }));
+            }
+            if saved > paths.len() {
+                lines.push(format!("{} saved file(s) were not recognized by the font catalog.", saved - paths.len()));
+            }
+            if families.is_empty() { lines.push("No imported font families detected.".into()); }
+            lines.push(format!("Scanned: {}", root.display()));
+            let _ = tx.send(lines.join("\n"));
+        });
+        if let Err(error) = spawn {
+            self.font_scan = None;
+            self.catalog_status = format!("Could not start font scan: {error}");
+        }
+    }
     pub fn poll(&mut self) {
+        if let Some(receiver) = &self.font_scan {
+            match receiver.try_recv() {
+                Ok(status) => {
+                    self.catalog_status = status;
+                    self.font_status = "Font catalog refreshed. See Detected font families in GridCraft Tools.".into();
+                    self.notify(self.font_status.clone());
+                    self.font_scan = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.catalog_status = "Font scan stopped unexpectedly. Retry Detected font families.".into();
+                    self.font_scan = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
         if !self.startup_loaded {
             match self.read_startup() {
                 Ok(value) => { self.startup_check = value; self.startup_loaded = true; },
@@ -113,6 +172,9 @@ impl GridCraftTools {
                             self.font_request_started = None;
                             self.font_status = text.clone();
                             self.notify(text);
+                            if value.get("state").and_then(|v| v.as_str()) == Some("ok") {
+                                self.refresh_catalog();
+                            }
                         },
                         "update" => {
                             self.checking = false;
@@ -176,6 +238,7 @@ impl GridCraftTools {
                 "import" => self.try_action(Action::Import),
                 "folder" => self.try_action(Action::SelectFolder),
                 "refresh" => self.try_action(Action::RefreshFolder),
+                "diagnose_fonts" => self.refresh_catalog(),
                 "updates" => self.try_action(Action::CheckUpdates),
                 "open_release" => {
                     if let Some(url) = self.release_url.clone() {
@@ -212,6 +275,7 @@ impl GridCraftTools {
                 ctx.request_repaint_after(std::time::Duration::from_millis(250));
             }
         }
+        if self.font_scan.is_some() { ctx.request_repaint_after(std::time::Duration::from_millis(200)); }
         if self.font_request_pending {
             if self.font_request_started.is_some_and(|t| t.elapsed() >= std::time::Duration::from_secs(60)) {
                 self.font_request_pending = false;
@@ -243,6 +307,7 @@ impl GridCraftTools {
         // Transient, UI-only state: no workbook document data is changed.
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("gridcraft.android.menu.font_status"), self.font_status.clone());
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.catalog_status"), self.catalog_status.clone());
             d.insert_temp(egui::Id::new("gridcraft.android.menu.update_status"), self.update_status.clone());
             d.insert_temp(egui::Id::new("gridcraft.android.menu.checking"), self.checking);
             d.insert_temp(egui::Id::new("gridcraft.android.menu.startup_check"), self.startup_check);

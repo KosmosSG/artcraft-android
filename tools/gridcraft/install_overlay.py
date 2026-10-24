@@ -85,47 +85,59 @@ def install(builder: Path, additions: Path):
             home_font_anchor,
             home_font_anchor + '\n'
             + '                // GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1: Android internal HOME is shared with Java SAF.\n'
-            + '                dirs.push(h.join("ArtCraft-Fonts"));',
+            + '                dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"));\n                dirs.push(h.join("ArtCraft-Fonts/artcraft-shared"));',
             1
         )
+        import runpy
+        patch = runpy.run_path(str(additions / "font_catalog_patch.py"))
+        scanned = patch["patch_catalog"](scanned)
         fonts.write_text(scanned)
+        lib = fonts.with_name("lib.rs")
+        lib.write_text(patch["patch_app"](lib.read_text()))
     elif (builder / "source/gridcraft").exists():
         raise RuntimeError("Pinned GridCraft font catalog missing")
 
-    # On HONOR MagicOS the adaptive launcher already masks the source to its
-    # rounded-square shape. The earlier 80%-sized foreground introduced a
-    # second small green square INSIDE that mask. Keep the owner-approved
-    # image full bleed, and let the Android launcher do the only clipping.
+    # GridCraft uses extracted lettering, not a scaled green square. The same
+    # 66.56/108 foreground geometry as the pinned suite builder is retained.
     icon_script = builder / "lib/app_icons.py"
-    if not icon_script.is_file():
-        raise RuntimeError("Pinned Android launcher icon generator not found")
     icon_source = icon_script.read_text()
     icon_hook = '    foreground = _foreground(Image, stripped)'
-    icon_marker = "GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2"
-    if icon_source.count(icon_hook) != 1 or icon_marker in icon_source:
-        raise RuntimeError("Pinned adaptive icon generator changed or patch duplicated")
-    icon_function = '''def _gridcraft_full_bleed_foreground(Image, pristine):
-    """GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2: no double-masked inner tile.
-    
-    The user's exact original Gc PNG remains the legacy icon source;
-    adaptive launchers receive an opaque full-bleed foreground, letting
-    Android apply its own ONE rounded-square/circle mask at native scale.
-    """
-    return pristine.convert("RGBA").resize((CANVAS_PX, CANVAS_PX), Image.LANCZOS)
-
-
-'''
-    insertion_anchor = 'def generate(src: Path, app: str, res_dir: Path, explicit: Path = None) -> Path:'
-    if icon_source.count(insertion_anchor) != 1:
-        raise RuntimeError("Adaptive icon generator entry changed")
-    icon_source = icon_source.replace(insertion_anchor, icon_function + insertion_anchor, 1)
-    icon_source = icon_source.replace(
-        icon_hook,
-        '    foreground = (_gridcraft_full_bleed_foreground(Image, pristine) '
-        'if app == "gridcraft" else _foreground(Image, stripped))',
-        1
-    )
-    icon_script.write_text(icon_source)
+    replacement = '''    # GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3
+    if app == "gridcraft":
+        cutout = source.with_name("launcher-lettering.png")
+        if not cutout.is_file():
+            raise RuntimeError("GridCraft transparent lettering asset missing")
+        lettering = Image.open(cutout).convert("RGBA")
+        if lettering.getextrema()[3][0] != 0:
+            raise RuntimeError("GridCraft lettering must have transparency")
+        # Ignore nearly invisible extraction noise when measuring optical bounds.
+        bounds = lettering.getchannel("A").point(lambda a: 255 if a > 16 else 0).getbbox()
+        if bounds is None:
+            raise RuntimeError("GridCraft lettering is empty")
+        lettering = lettering.crop(bounds)
+        foreground = _foreground(Image, lettering)
+        color = "#006039"
+    else:
+        foreground = _foreground(Image, stripped)'''
+    if icon_source.count(icon_hook) != 1:
+        raise RuntimeError("Pinned adaptive icon generator changed")
+    icon_source = icon_source.replace(icon_hook, replacement, 1)
+    # Match legacy surfaces to the adaptive visible 72dp area, without a second mask.
+    legacy_hook = '    _write_legacy(source, pristine, res_dir)'
+    legacy = '''    if app == "gridcraft":
+        flat = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), color)
+        flat.alpha_composite(foreground)
+        inset = (CANVAS_PX - round(CANVAS_PX * 72 / 108)) // 2
+        flat = flat.crop((inset, inset, CANVAS_PX - inset, CANVAS_PX - inset))
+        for density, size in DENSITIES.items():
+            out = res_dir / f"mipmap-{density}"
+            out.mkdir(parents=True, exist_ok=True)
+            flat.resize((size, size), Image.LANCZOS).save(out / "ic_launcher.png")
+    else:
+        _write_legacy(source, pristine, res_dir)'''
+    if icon_source.count(legacy_hook) != 1:
+        raise RuntimeError("Pinned legacy icon generator changed")
+    icon_script.write_text(icon_source.replace(legacy_hook, legacy, 1))
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):

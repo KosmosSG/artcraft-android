@@ -144,9 +144,9 @@ public final class GridCraftActivity extends NativeActivity {
         # Importer must write to exactly the same HOME user-font directory
         # that the pinned upstream GridCraft catalog scans on next launch.
         self.assertIn('new java.io.File(getFilesDir(), "home/ArtCraft-Fonts")', java)
-        self.assertIn('dirs.push(h.join("ArtCraft-Fonts"))', installer)
+        self.assertIn('dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"))', installer)
         self.assertIn("GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1", installer)
-        self.assertIn("Fully close and reopen GridCraft", java)
+        self.assertIn("Refreshing GridCraft catalog", java)
         self.assertIn("gcSend(\"font\", \"ok\"", java)
         self.assertNotIn('new java.io.File(getFilesDir(), ".local/share/fonts")', java)
         self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
@@ -162,15 +162,24 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertNotIn('egui::Panel::bottom', rust)
         self.assertNotIn('egui::Window::new', rust)
 
-    def test_gridcraft_only_icon_foreground_preserves_original_glossy_asset(self):
+    def test_gridcraft_only_icon_has_separate_padded_lettering(self):
         installer = (FOLDER / "install_overlay.py").read_text()
-        self.assertIn('GRIDCRAFT_FULL_BLEED_ADAPTIVE_ICON_V2', installer)
-        self.assertIn('lib/app_icons.py', installer)
-        self.assertIn('if app == "gridcraft" else _foreground(Image, stripped)', installer)
-        self.assertIn('return pristine.convert("RGBA").resize((CANVAS_PX, CANVAS_PX), Image.LANCZOS)', installer)
-        self.assertNotIn('art.putalpha(matte)', installer)
-        self.assertNotIn('round(CANVAS_PX * 0.80)', installer)
-        self.assertIn('icon_script.write_text(icon_source)', installer)
+        self.assertIn('GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3', installer)
+        self.assertIn('foreground = _foreground(Image, lettering)', installer)
+        self.assertIn('launcher-lettering.png', installer)
+        self.assertNotIn('FULL_BLEED', installer)
+        self.assertIn('flat.alpha_composite(foreground)', installer)
+
+    def test_font_reload_invalidates_worksheet_binding(self):
+        patch = (SOURCE / "font_catalog_patch.py").read_text()
+        self.assertIn('catalog_changed || seen != self.fonts_seen', patch)
+        self.assertIn('catalog_changed || used != self.fonts_bound', patch)
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        self.assertIn('fonts::reload_catalog()', rust)
+        self.assertIn('fonts::bind_family', rust)
+        self.assertIn('detected families:', rust)
+        self.assertIn('not recognized by the font catalog', rust)
+        self.assertIn('"diagnose_fonts" => self.refresh_catalog()', rust)
 
     def test_native_font_dropdown_uses_official_discovered_families(self):
         # Official GridCraft v0.11.1 already scans and binds local families,
@@ -184,7 +193,7 @@ public final class GridCraftActivity extends NativeActivity {
         self.assertIn("patched_ribbon.count(combo_old) != 1", installer)
         self.assertIn('ribbon.write_text(patched_ribbon)', installer)
         # Android import and source catalog share the same HOME directory.
-        self.assertIn('dirs.push(h.join("ArtCraft-Fonts"))', installer)
+        self.assertIn('dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"))', installer)
         java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
         self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
 

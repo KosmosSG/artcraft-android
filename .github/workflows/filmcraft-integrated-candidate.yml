@@ -125,8 +125,10 @@ jobs:
         mkdir -p filmcraft-builder/tools/filmcraft
         cp suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/filmcraft_features.rs suite/tools/filmcraft/FilmCraftActivity.features.java.inc filmcraft-builder/tools/filmcraft/
         python3 suite/tools/filmcraft/runtime_patch.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py filmcraft-builder/source/filmcraft/crates/ui-egui/src/menus.rs
         python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
-        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch.py suite/tools/approved-branding/approved_branding.py
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/native_menu_patch.py suite/tools/approved-branding/approved_branding.py
         bash -n filmcraft-builder/lib/build-common.sh
     - name: Build temporary FilmCraft ARM64 APK with unique disposable signer
       shell: bash

@@ -185,7 +185,85 @@ impl FilmcraftFeatures {
         (good, bad)
     }
 
+    /// Bridge native FilmCraft menu commands to the existing Java/SAF operations.
+    /// The menu runs in the upstream UI crate; this wrapper polls the same egui context.
+    fn native_menu_action(&mut self, action: u8) -> String {
+        match action {
+            1 | 2 | 3 if self.pending_font => {
+                self.font_status = "Finish the previous font operation first".into();
+            },
+            1 => {
+                match self.java_command("import", None, false) {
+                    Ok(()) => { self.pending_font = true; self.font_status = "Choose a TTF/OTF font…".into(); },
+                    Err(e) => self.font_status = format!("Font import unavailable: {e}"),
+                }
+            },
+            2 => {
+                match self.java_command("folder", None, false) {
+                    Ok(()) => { self.pending_font = true; self.font_status = "Choose shared font folder…".into(); },
+                    Err(e) => self.font_status = format!("Shared font folder unavailable: {e}"),
+                }
+            },
+            3 => {
+                match self.java_command("refresh", None, false) {
+                    Ok(()) => { self.pending_font = true; self.font_status = "Refreshing imported fonts…".into(); },
+                    Err(e) => self.font_status = format!("Font refresh unavailable: {e}"),
+                }
+            },
+            4 if self.pending_updates => {
+                self.update_status = "Update check is already running".into();
+            },
+            4 => {
+                self.update_page = None;
+                match self.java_command("updates", None, false) {
+                    Ok(()) => { self.pending_updates = true; self.update_status = "Checking FilmCraft Android releases…".into(); },
+                    Err(e) => self.update_status = format!("Update check unavailable: {e}"),
+                }
+            },
+            5 => {
+                let enabled = !self.startup_updates;
+                match self.java_command("startup", None, enabled) {
+                    Ok(()) => {
+                        self.startup_updates = enabled;
+                        self.update_status = format!("Startup update checks {}", if enabled { "enabled" } else { "disabled" });
+                    },
+                    Err(e) => self.update_status = format!("Could not save startup update preference: {e}"),
+                }
+            },
+            6 => {
+                match self.update_page.clone() {
+                    Some(url) if url.starts_with(RELEASE_PREFIX) =>
+                        match self.java_command("open_release", Some(&url), false) {
+                            Ok(()) => self.update_status = "Opening verified FilmCraft release page…".into(),
+                            Err(e) => self.update_status = format!("Could not open release: {e}"),
+                        },
+                    _ => self.update_status = "No verified release selected; use Check for Updates first".into(),
+                }
+            },
+            _ => return String::new(),
+        }
+        if action <= 3 { self.font_status.clone() } else { self.update_status.clone() }
+    }
+
+    fn native_menu_status(ctx: &egui::Context, status: &str) {
+        ctx.data_mut(|data| {
+            data.insert_temp(egui::Id::new("filmcraft.android.menu.status"), status.to_owned());
+        });
+        ctx.request_repaint();
+    }
+
     pub fn poll(&mut self, ctx: &egui::Context) {
+        // Consume once; menu invocation may occur after our poll in the UI frame.
+        let id = egui::Id::new("filmcraft.android.menu.action");
+        let action = ctx.data_mut(|data| {
+            let value = data.get_temp::<u8>(id).unwrap_or(0);
+            if value != 0 { data.insert_temp(id, 0u8); }
+            value
+        });
+        if action != 0 {
+            let status = self.native_menu_action(action);
+            if !status.is_empty() { Self::native_menu_status(ctx, &status); }
+        }
         for _ in 0..12 {
             let raw = match Self::java_string(&self.app, "fcFeaturePoll") {
                 Ok(Some(value)) => value,
@@ -245,6 +323,11 @@ impl FilmcraftFeatures {
                     }
                 },
                 _ => log::warn!("Unexpected FilmCraft feature event"),
+            }
+            if kind == "updates" {
+                Self::native_menu_status(ctx, &self.update_status);
+            } else if kind == "font_import" || kind == "font_folder" {
+                Self::native_menu_status(ctx, &self.font_status);
             }
             ctx.request_repaint();
         }

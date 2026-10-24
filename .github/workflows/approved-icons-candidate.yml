@@ -5,6 +5,7 @@ name: LightCraft approved icons ARM64 candidate (never publish)
     - icons/lightcraft-approved-20261024
     paths:
     - tools/approved-branding/**
+    - tools/lightcraft/**
     - .github/workflows/approved-icons-candidate.yml
   workflow_dispatch: {}
 permissions:

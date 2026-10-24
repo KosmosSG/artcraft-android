@@ -1,0 +1,157 @@
+name: Publish tested EffectCraft v0.16.0-android.3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-effectcraft-android3-tested
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release/effectcraft-android3-tested'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: \${{ github.token }}
+      SIGNING_READ_TOKEN: \${{ secrets.EFFECTCRAFT_SIGNING_READ_TOKEN }}
+      SIGNED_RUN: '40076369681'
+      SIGNER_COMMIT: '66e4e7eea2e3c3883137fa1864504fabd2a1db3b'
+      SOURCE_COMMIT: '9af891410bdfe151168bab7ebe49ffe3f0f0cecf'
+      TAG: effectcraft-v0.16.0-android.3
+      APK: EffectCraft-v0.16.0-android.3-arm64-v8a.apk
+      CERT: 10C93A0A55B9D66B6C64AC87372D5F3118C74A11C99FECB6E9F3951D2CBE8577
+
+    steps:
+      - name: Verify original signing workflow and read permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SIGNING_READ_TOKEN" ]]; then
+            echo "::error::Set EFFECTCRAFT_SIGNING_READ_TOKEN in THIS public repository's Actions secrets, with read-only Actions access to KosmosSG/effectcraft-signing-private." >&2
+            exit 1
+          fi
+          mkdir release
+          curl -fL --retry 3 -sS \
+            -H "Authorization: Bearer $SIGNING_READ_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/KosmosSG/effectcraft-signing-private/actions/runs/$SIGNED_RUN" > signing-run.json
+          python3 - <<'PY'
+          import json,os
+          x=json.load(open('signing-run.json'))
+          assert x['repository']['full_name']=='KosmosSG/effectcraft-signing-private'
+          assert x['id']==int(os.environ['SIGNED_RUN'])
+          assert x['head_sha']==os.environ['SIGNER_COMMIT']
+          assert x['status']=='completed' and x['conclusion']=='success'
+          print('Verified completed permanent signing workflow and exact source pin.')
+          PY
+
+      - name: Download the production-signed APK (never the temporary-key fonttest APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -sS \
+            -H "Authorization: Bearer $SIGNING_READ_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/KosmosSG/effectcraft-signing-private/actions/runs/$SIGNED_RUN/artifacts" > signing-artifacts.json
+          ARTIFACT_ID="$(python3 - <<'PY'
+          import json,os
+          x=json.load(open('signing-artifacts.json'))['artifacts']
+          expected='EffectCraft-v0.16.0-android.3-arm64-PERMANENT-SIGNER-TEST-ONLY'
+          matches=[a for a in x if a['name']==expected and not a['expired']]
+          assert len(matches)==1, 'Exactly one verified permanent signer artifact is required'
+          print(matches[0]['id'])
+          PY
+          )"
+          curl -fL --retry 3 -sS \
+            -H "Authorization: Bearer $SIGNING_READ_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/KosmosSG/effectcraft-signing-private/actions/artifacts/$ARTIFACT_ID/zip" > signed-artifact.zip
+          python3 - <<'PY'
+          import os,zipfile
+          from pathlib import Path
+          name=os.environ['APK']
+          with zipfile.ZipFile('signed-artifact.zip') as z:
+              infos=[i for i in z.infolist() if not i.is_dir()]
+              assert len(infos)==1 and infos[0].filename==name, 'Unexpected artifact payload'
+              assert 15_000_000 <= infos[0].file_size <= 128_000_000, 'Invalid APK size'
+              with z.open(infos[0]) as src, open(Path('release')/name,'wb') as dst:
+                  import shutil
+                  shutil.copyfileobj(src,dst)
+          PY
+
+      - name: Independently verify the EffectCraft certificate, package, version, ARM64 and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          "$SIGNER" verify --verbose --print-certs "release/$APK" > cert.txt
+          "$AAPT" dump badging "release/$APK" > badging.txt
+          python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          text=Path('cert.txt').read_text()
+          certs={x.upper() for x in re.findall(r'certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})',text,re.I)}
+          assert certs=={os.environ['CERT']},'APK is not signed with the existing EffectCraft production certificate'
+          badging=Path('badging.txt').read_text()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
+          assert m and m.group(1)=='com.artcraft.effectcraft'
+          assert m.group(2)=='16781315' and m.group(3)=='0.16.0-android.3'
+          assert 'launchable-activity:' in badging
+          with zipfile.ZipFile(Path('release')/os.environ['APK']) as z:
+              names=z.namelist()
+              libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert any(n.endswith('.dex') for n in names)
+              assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
+          print('PASS: original production signer, package, android.3, ARM64, launcher')
+          PY
+          cd release
+          sha256sum "$APK" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish verified owner-approved EffectCraft stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_COMMIT" --jq .sha | grep -Fx "$SOURCE_COMMIT"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release already exists; no automatic overwrite." >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha | grep -Fx "$SOURCE_COMMIT"
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$TAG" -f "sha=$SOURCE_COMMIT" >/dev/null
+          fi
+          cat > release/release-notes.md <<'NOTES'
+          EffectCraft v0.16.0-android.3 fixes Android TTF/OTF import handling.
+
+          - Fixes private custom-font path validation on Android /data/data and /data/user/0 layouts.
+          - Registers imported fonts in EffectCraft's actual text engine and reports the detected font family or any import error.
+          - Keeps imported fonts across app restarts, and retains optional shared font-folder refresh.
+          - Retains the existing Help update controls, Ec icon and official v0.16.0 app features.
+          - Existing text can be changed by highlighting characters or selecting the entire text layer outside text-edit mode. A caret alone changes the font for newly typed text.
+
+          Production Android package: com.artcraft.effectcraft
+          Version name: 0.16.0-android.3
+          Version code: 16781315
+          Architecture: arm64-v8a
+          Production certificate SHA-256: 10C93A0A55B9D66B6C64AC87372D5F3118C74A11C99FECB6E9F3951D2CBE8577
+          EffectCraft source: KosmosSG/artcraft-android at 9af891410bdfe151168bab7ebe49ffe3f0f0cecf
+          Official upstream: storytold/effectcraft v0.16.0 at 9581b53c3f8945683252af0eb5fac79e0e43aed4
+
+          Tested by the owner on HONOR MagicPad 4; this production-signed APK is separately verified for certificate, package, version and ABI continuity. Download and install manually over android.2. Community Android port, not an official upstream distribution.
+          NOTES
+          gh release create "$TAG" "release/$APK" "release/SHA256SUMS.txt" \
+            --verify-tag --title "EffectCraft v0.16.0-android.3" \
+            --notes-file release/release-notes.md --latest=false
+          gh release view "$TAG" --json isDraft,isPrerelease,url,tagName,assets \
+            --jq '{draft:.isDraft,prerelease:.isPrerelease,url,tag:.tagName,assets:[.assets[].name]}'
+          echo "### Published $TAG" >> "$GITHUB_STEP_SUMMARY"
+          cat release/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"

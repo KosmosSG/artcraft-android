@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 import launcher_icon
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "tools/designcraft/icon/dc-user-approved.png"
+SOURCE = ROOT / "tools/designcraft/icon/dc-user-20261023.webp"
 
 
 class LauncherIconTests(unittest.TestCase):

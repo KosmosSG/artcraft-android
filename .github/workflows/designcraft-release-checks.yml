@@ -1,7 +1,7 @@
 name: DesignCraft release checks
 on:
   push:
-    branches: [development/designcraft-v012-20261023]
+    branches: [fix/designcraft-android2-icon-menus-20261023]
     paths: ['tools/designcraft/**', '.github/workflows/designcraft-release-checks.yml']
   workflow_dispatch:
 permissions:
@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
           python3 -m pip install 'Pillow==11.3.0'
           python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
-          python3 tools/designcraft/prepare_builder.py builder 0.12.0-android.1 16800002
+          python3 tools/designcraft/prepare_builder.py builder 0.12.0-android.2 16800003
           python3 tools/designcraft/make_icon.py builder/dc-icon.png
           python3 tools/designcraft/stage_launcher.py builder
           mkdir -p "$RUNNER_TEMP/designcraft-java"

@@ -13,3 +13,7 @@ Production package is `com.artcraft.designcraft`. The existing permanent certifi
 Python tests cover menu patch drift, retained font-cache protections, icon source identity/masks and clipping. CI checks the generated Java Activity and metadata policy. The private pipeline builds ARM64, signs on an isolated runner using the existing backup, and verifies source provenance, signature, package, version and unchanged payload. Tablet behavior must be recorded separately; CI is not a device test.
 
 Prior signing-pending statements in REVIEW.md, APPROVED_ICON_STATUS.md and PRODUCTION_GATES.md are historical. This release record and the private signing identity supersede them. No scheduled builds or main merge are enabled here.
+
+## Android revision 2 — owner menu and icon improvements
+
+The owner's new 1254px glossy magenta Dc upload (SHA-256 `f6dbdba9ea8e510414934c0aea697457a922dfada96feecc0baf0809d8e391ae`) replaces the icon source used by the v0.12.0-android.1 build; its pinned 192px packaging derivative preserves the appearance at Android launcher sizes. Font import/shared-folder/refresh actions now appear at the bottom of the Type menu. Update checking and startup setting appear immediately below About DesignCraft at the bottom of Help, because About is a dialog action rather than a submenu. The production upgrade must be v0.12.0-android.2 with Android versionCode strictly above 16800002 and the original certificate unchanged. Do not overwrite the first release.

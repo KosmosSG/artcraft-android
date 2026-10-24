@@ -4,14 +4,15 @@ import hashlib
 from pathlib import Path
 from PIL import Image
 
-APPROVED_SHA256 = "92070af3f08464e65a03eb181a0ccc97c29f131404476649410bfb417560c67f"
+APPROVED_SHA256 = "306fb5fd3efdb138eee5d0b7c0c34b91718229c60408e92af4bba949daecea9d"
+STAGED_PNG_SHA256 = "df27b2f46cfad9df7493ee88da9265fc7de2d62313361746d9bc0ecd5dd6803b"
 CANVAS = 432
 DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
 
 def tile_from_source(source):
     source = Path(source)
-    if hashlib.sha256(source.read_bytes()).hexdigest() != APPROVED_SHA256:
+    if hashlib.sha256(source.read_bytes()).hexdigest() not in (APPROVED_SHA256, STAGED_PNG_SHA256):
         raise ValueError("Launcher artwork differs from the approved Dc source")
     with Image.open(source) as opened:
         tile = opened.convert("RGBA")
@@ -35,6 +36,14 @@ def tile_from_source(source):
         for nx, ny in ((x-1, y), (x+1, y), (x, y-1), (x, y+1)):
             if 0 <= nx < w and 0 <= ny < h and not seen[ny * w + nx]:
                 queue.append((nx, ny))
+    # Remove a few near-black interior compression specks as well. Even four
+    # opaque black pixels can show as a dark halo on MagicOS adaptive masks.
+    # The original magenta glass lettering and burgundy tile remain intact.
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = pixels[x, y]
+            if a and max(r, g, b) <= 40:
+                pixels[x, y] = (r, g, b, 0)
     bounds = tile.getchannel("A").getbbox()
     if bounds is None:
         raise ValueError("Approved launcher tile is empty")
@@ -57,6 +66,15 @@ def generate(source, destination):
     tile_size = round(CANVAS * 64 / 108)
     foreground = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     fitted = tile.resize((tile_size, tile_size), Image.Resampling.LANCZOS)
+    # Lanczos can reintroduce a handful of near-black samples after cleanup.
+    # Clear only residual dark specks in the adaptive foreground; the solid
+    # burgundy layer beneath fills their places without a black outline.
+    filtered = fitted.load()
+    for fy in range(fitted.height):
+        for fx in range(fitted.width):
+            r, g, b, a = filtered[fx, fy]
+            if a and max(r, g, b) < 52:
+                filtered[fx, fy] = (r, g, b, 0)
     foreground.alpha_composite(fitted, ((CANVAS-tile_size)//2, (CANVAS-tile_size)//2))
     folder = destination / "drawable-xxxhdpi"
     folder.mkdir(parents=True, exist_ok=True)

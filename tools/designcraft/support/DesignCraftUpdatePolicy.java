@@ -23,9 +23,15 @@ final class DesignCraftUpdatePolicy {
         long result = integer(code);
         if (result < 1 || result > 2100000000L)
             throw new IllegalArgumentException("Invalid Android version code");
-        String expected = REPOSITORY + "/releases/download/" + tag
+        String canonical = REPOSITORY + "/releases/download/" + tag
+                + "/DesignCraft-v" + version + "-arm64-v8a.apk";
+        String legacy = REPOSITORY + "/releases/download/" + tag
                 + "/DesignCraft-" + version + "-arm64-v8a.apk";
-        if (!expected.equals(apkUrl)) throw new IllegalArgumentException("Unexpected APK destination");
+        // Old permanently signed DesignCraft v0.12.0-android.1 accepts only
+        // the legacy APK URL. Preserve that release update chain with an
+        // identical-bytes alias; prefer the canonical v-prefixed APK name.
+        if (!canonical.equals(apkUrl) && !legacy.equals(apkUrl))
+            throw new IllegalArgumentException("Unexpected APK destination");
         return result;
     }
 

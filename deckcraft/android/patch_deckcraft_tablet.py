@@ -108,8 +108,10 @@ mod android_font_regression {
         assert!(db.styles("DeckCraft Legacy").len() >= 2);
         let after = render(&app);
         assert_ne!(before, after, "Imported font must change rendered slide pixels");
-        let bytes = serde_json::to_vec(&app.session.active().unwrap().doc).unwrap();
-        let reopened: deckcraft_model::Presentation = serde_json::from_slice(&bytes).unwrap();
+        assert!(db.families().iter().any(|f| f == "DeckCraft Legacy Semibold"));
+        assert_eq!(db.face("DeckCraft Legacy Semibold", "Regular").style, "Semibold");
+        let bytes = deckcraft_engine::cmd::file::save_bytes(&app.session.active().unwrap().doc, "deckcraft").unwrap();
+        let reopened = deckcraft_engine::cmd::file::open_presentation("font-test.deckcraft", &bytes).unwrap();
         assert_eq!(after, deckcraft_render::render_slide(&reopened, 0, &Default::default()).pixels);
         app.run("view.tabletTools", serde_json::json!({})).unwrap();
         let prefs = serde_json::to_vec(&app.ui).unwrap();
@@ -118,3 +120,25 @@ mod android_font_regression {
     }
 }
 ''')
+# Imported faces must expose the same legacy weight-family aliases as disk-scanned fonts.
+p = Path(sys.argv[1]) / 'crates/fonts/src/fontdb.rs'
+s = p.read_text()
+a = '        let mut v: Vec<String> = self.read_faces().iter().map(|f| f.family.clone()).collect();'
+b = '''        let mut v: Vec<String> = self.read_faces().iter().flat_map(|f| {
+            std::iter::once(f.family.clone()).chain(f.legacy.as_ref().map(|(family, _)| family.clone()))
+        }).collect();'''
+assert s.count(a) == 1
+s = s.replace(a, b)
+a = '''            .filter(|f| f.family.eq_ignore_ascii_case(family) && !f.style.contains('{'))
+            .map(|f| (f.italic, f.weight, f.style.clone()))'''
+b = '''            .filter_map(|f| {
+                if f.style.contains('{') { return None; }
+                if f.family.eq_ignore_ascii_case(family) {
+                    Some((f.italic, f.weight, f.style.clone()))
+                } else {
+                    f.legacy.as_ref().filter(|(name, _)| name.eq_ignore_ascii_case(family))
+                        .map(|(_, style)| (f.italic, f.weight, style.clone()))
+                }
+            })'''
+assert s.count(a) == 1
+p.write_text(s.replace(a, b))

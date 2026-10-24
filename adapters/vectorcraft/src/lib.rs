@@ -279,16 +279,17 @@ impl AndroidFileBridge {
     /// Java enforces the official VectorCraft release-tag URL a second time.
     /// Startup checks never invoke this UI method.
     fn show_update_dialog(&self, message: &str, release_url: &str,
-        checking: bool) -> Result<(), String> {
+        checking: bool, manual_open: bool) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             let text = JObject::from(env.new_string(message)?);
             let link = JObject::from(env.new_string(release_url)?);
             let result = env.call_method(&*activity, jni_str!("vcShowUpdateDialog"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Z)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;ZZ)V"),
                 &[JValue::Object(&text), JValue::Object(&link),
-                    JValue::Bool(if checking { 1 } else { 0 })]);
+                    JValue::Bool(if checking { 1 } else { 0 }),
+                    JValue::Bool(if manual_open { 1 } else { 0 })]);
             if result.is_err() { env.exception_clear(); }
             result?;
             Ok(())
@@ -1062,7 +1063,7 @@ impl eframe::App for VectorCraftAndroidApp {
                 self.updates.release_url.as_deref().unwrap_or("")
             } else { "" };
             if let Err(error) = self.bridge.show_update_dialog(
-                &self.updates.message, available_url, false) {
+                &self.updates.message, available_url, false, false) {
                 log::warn!("Cannot show VectorCraft update result dialog: {error}");
                 let _ = self.bridge.native_message(&self.updates.message);
             }
@@ -1256,7 +1257,7 @@ impl eframe::App for VectorCraftAndroidApp {
             // Open the Android popup immediately; a network result or timeout
             // updates the same dialog without a blocking egui window.
             if let Err(error) = self.bridge.show_update_dialog(
-                &self.updates.message, "", self.updates.checking) {
+                &self.updates.message, "", self.updates.checking, true) {
                 log::warn!("Cannot show VectorCraft update dialog: {error}");
                 let _ = self.bridge.native_message(&self.updates.message);
             }

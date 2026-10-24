@@ -61,6 +61,78 @@ def install(builder: Path, additions: Path):
         ribbon.write_text(patched_ribbon)
     elif (builder / "source/gridcraft").exists():
         raise RuntimeError("GridCraft checkout exists but the expected ribbon file is missing")
+    # Official GridCraft's catalog scans its HOME fonts before the UI font
+    # dropdown is populated (OnceLock). The system-font directory in HOME
+    # is a symlink, so imported files must use a separate HOME folder.
+    fonts = builder / "source/gridcraft/crates/ui-egui/src/fonts.rs"
+    if fonts.is_file():
+        scanned = fonts.read_text()
+        home_font_anchor = '                dirs.push(h.join(".local/share/fonts"));'
+        if scanned.count(home_font_anchor) != 1 or "GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1" in scanned:
+            raise RuntimeError("GridCraft font catalog changed; manual review required")
+        scanned = scanned.replace(
+            home_font_anchor,
+            home_font_anchor + '\n'
+            + '                // GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1: Android internal HOME is shared with Java SAF.\n'
+            + '                dirs.push(h.join("ArtCraft-Fonts"));',
+            1
+        )
+        fonts.write_text(scanned)
+    elif (builder / "source/gridcraft").exists():
+        raise RuntimeError("Pinned GridCraft font catalog missing")
+
+    # GridCraft's glossy Gc artwork has a photographic green gradient, which
+    # cannot be cleanly background-flood-filled. The generic adaptive-icon
+    # flood fill produced unwanted corner blotches on HONOR MagicOS.
+    # Apply a GridCraft-only, feathered full-colour original PNG instead;
+    # leave every other ArtCraft app's icon processing exactly unchanged.
+    icon_script = builder / "lib/app_icons.py"
+    if not icon_script.is_file():
+        raise RuntimeError("Pinned Android launcher icon generator not found")
+    icon_source = icon_script.read_text()
+    icon_hook = '    foreground = _foreground(Image, stripped)'
+    icon_marker = "GRIDCRAFT_APPROVED_ADAPTIVE_FOREGROUND_V1"
+    if icon_source.count(icon_hook) != 1 or icon_marker in icon_source:
+        raise RuntimeError("Pinned adaptive icon generator changed or GridCraft patch duplicated")
+    icon_function = '''def _gridcraft_approved_adaptive_foreground(Image, pristine):
+    """GRIDCRAFT_APPROVED_ADAPTIVE_FOREGROUND_V1: retain the owner's original glassy Gc pixels.
+    
+    The original stays unchanged for normal mipmap icons. Only the Android
+    adaptive foreground gets a soft matte at the photographic background edges;
+    preserve the interior bevels, highlights and green colours without floodfill.
+    """
+    from PIL import ImageDraw
+    art_size = round(CANVAS_PX * 0.80)
+    art = pristine.convert("RGBA").resize((art_size, art_size), Image.LANCZOS)
+    matte = Image.new("L", (art_size, art_size), 0)
+    mask = matte.load()
+    # Full opacity in the visual logo region; feather only outside the logo.
+    for y in range(art_size):
+        top = min(1.0, y / max(1.0, art_size * 0.22))
+        bottom = min(1.0, (art_size - 1 - y) / max(1.0, art_size * 0.17))
+        for x in range(art_size):
+            horizontal = min(1.0, x / max(1.0, art_size * 0.07),
+                             (art_size - 1 - x) / max(1.0, art_size * 0.07))
+            a = max(0.0, min(1.0, horizontal, top, bottom))
+            mask[x, y] = round(255 * (a * a * (3.0 - 2.0 * a)))
+    art.putalpha(matte)
+    canvas = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
+    canvas.alpha_composite(art, ((CANVAS_PX - art_size) // 2, (CANVAS_PX - art_size) // 2))
+    return canvas
+
+
+'''
+    insertion_anchor = 'def generate(src: Path, app: str, res_dir: Path, explicit: Path = None) -> Path:'
+    if icon_source.count(insertion_anchor) != 1:
+        raise RuntimeError("Adaptive icon generator entry changed")
+    icon_source = icon_source.replace(insertion_anchor, icon_function + insertion_anchor, 1)
+    icon_source = icon_source.replace(
+        icon_hook,
+        '    foreground = (_gridcraft_approved_adaptive_foreground(Image, pristine) '
+        'if app == "gridcraft" else _foreground(Image, stripped))',
+        1
+    )
+    icon_script.write_text(icon_source)
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):

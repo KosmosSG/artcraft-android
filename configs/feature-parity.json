@@ -2,7 +2,7 @@
   "schema_version": 1,
   "standard": "artcraft-photocraft-font-and-update-parity-v1",
   "reference_app": "photocraft",
-  "intent": "Required suite-wide Android feature contract based on the user's PhotoCraft experience. This is a policy and checklist, not proof the functionality exists in a given APK.",
+  "intent": "Suite-wide Android font integration contract plus LightCraft-inspired Updates UI specification. Policy alone is not proof that any specific APK implements the requested feature.",
   "font_extensions": [
     ".ttf",
     ".otf"
@@ -259,5 +259,28 @@
       "notes": null
     }
   },
-  "update_channels": "Persisted app-specific setting: Stable Releases Only or Stable + Preview Releases; owner-selected default includes preview releases. Exclude drafts in both channels, require exact signed APK and higher versionCode."
+  "update_channels": "Persisted app-specific setting: Stable Releases Only (default) or Stable + Preview Releases (opt in); preserve saved settings on upgrades. Exclude drafts; require exact app-matching release APK and increasing production versionCode and versionName.",
+  "update_ui_reference_app": "lightcraft",
+  "update_ui_contract": {
+    "version": 1,
+    "source": "User-approved LightCraft About > Updates interface (25 Oct 2026)",
+    "placement": "Help > About App > Updates where supported; otherwise Help > Check for Updates opens an equivalent dialog",
+    "mandatory_controls": [
+      "installed_version",
+      "visible_check_button",
+      "checking_progress",
+      "explicit_success_no_update_error_feedback",
+      "stable_preview_channel_selection",
+      "persisted_startup_checkbox",
+      "app_scoped_release_link",
+      "close"
+    ],
+    "operation": "Nonblocking, read-only GitHub Releases check; never auto-install; never prompt downgrades; do not show failed network requests as available updates",
+    "initial_channel": "stable_only; preserve user's previously saved per-app preference",
+    "mobile_ui": "Center modal with scrollable contents; no permanent update status dock stealing canvas space",
+    "compatibility": "Adapt to each app's upstream UI and available native shell; no injection into incompatible components; build and device test app by app",
+    "release_security": "Require correct app tag and APK asset, versionName strictly newer, Android versionCode increasing, original production signing certificate, original package identity",
+    "devices": "HONOR MagicPad 4 MagicOS 10/11 ARM64",
+    "release_policy": "Test-only branches; no auto upstream sync or public publishing"
+  }
 }

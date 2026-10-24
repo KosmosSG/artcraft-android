@@ -1,0 +1,46 @@
+{
+  "filename": "FilmCraft.png",
+  "source_sha256": "2ceaa5e32d1d2ad7d790f8280437b95493ae638d88922ea81647cc0f4c13c09a",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#000070",
+  "letter_color": "#9A9ADB",
+  "glyph_source_bounds": [
+    424,
+    597,
+    1705,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    210,
+    143
+  ],
+  "app": "filmcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "43c259db56fe6241f457b117f443186950ca8032ff0d003a46332a9248f74678",
+    "res/mipmap-mdpi/ic_launcher_round.png": "43c259db56fe6241f457b117f443186950ca8032ff0d003a46332a9248f74678",
+    "res/values/colors.xml": "3ea505630f96192a15f4ecb9d5d946d634471e3b3bb0143ced48914b1bd65504",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "6c3878381aeffbd6c7263efaf95ce0c236a26990b94d54b3e1c053dbd37af72b",
+    "res/mipmap-xxhdpi/ic_launcher.png": "d4cb24d51f5d31d0714e2a33147b75a1bdb0a2ce2265415a7bd9b26a256f99d3",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "d4cb24d51f5d31d0714e2a33147b75a1bdb0a2ce2265415a7bd9b26a256f99d3",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "3fa4569d636ed77997dffa98dbd2147022c29d14913c97eaa69b0e4682ff0369",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "792b6bd561cb2be9a5f033b3c0baec17fbcf8ad5eb1d0abe1f37519d0b1bbd16",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "6a162c95a34afdf20be2c02c1841d10b8b8da9d032d41511b399b03e49656091",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "5d9103cd17f87cd87c8e37688612cb1c9c962b947a4d64ae5cf1cdb0f4487201",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "716e6c540ff3562dafc007d3ce1f7c3ffd72630440a1d1d25263edd42407b837",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "716e6c540ff3562dafc007d3ce1f7c3ffd72630440a1d1d25263edd42407b837",
+    "res/mipmap-xhdpi/ic_launcher.png": "e45c529974a8f4ca8a48ba551a493ab62a6be373e9d9daedc45747579a38ff0a",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "e45c529974a8f4ca8a48ba551a493ab62a6be373e9d9daedc45747579a38ff0a",
+    "res/mipmap-hdpi/ic_launcher.png": "04025663cb8a1cba01f610837315256e6fcef1e98da8f967dbc2bf769875dbd8",
+    "res/mipmap-hdpi/ic_launcher_round.png": "04025663cb8a1cba01f610837315256e6fcef1e98da8f967dbc2bf769875dbd8"
+  },
+  "display_name": "FilmCraft",
+  "version_name": "0.10.0-android.2",
+  "version_code": 1000002,
+  "previous_version_code": 1000001,
+  "package": "com.artcraft.filmcraft"
+}

@@ -1,0 +1,75 @@
+name: LightCraft icon and Help updater quick checks (no APK, no signing)
+on:
+  push:
+    branches: [review/lightcraft-approved-icon-20261022]
+    paths:
+      - 'tools/lightcraft/**'
+      - '.github/workflows/lightcraft-enhancement-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: ec0cda9a6f320e3b32f659f16718f7bce6c3f12f
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: morte2437/photocraft-android
+          ref: 71c919b768c6d70bc8231b92e3de6a81fb949996
+          path: android-reference
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Prove immutable provenance before applying Android-only patches
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/audit_source.py source builder android-reference suite
+          python3 -m py_compile suite/tools/lightcraft/apply_android_fixes.py
+      - name: Derive and validate actual Android launcher resources
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/apply_android_fixes.py --builder builder --source source --suite suite
+          python3 builder/lib/app_icons.py --app lightcraft --src source --dest output-res --appicon suite/assets/lightcraft/lc-user-approved.png
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          base=Path("output-res")
+          for density in ("mdpi","hdpi","xhdpi","xxhdpi","xxxhdpi"):
+              img=Image.open(base/f"mipmap-{density}/ic_launcher.png").convert("RGBA")
+              w,h=img.size
+              # The outer mid-edge white band is the reported device regression.
+              for point in ((w//2,2),(w//2,h-3),(2,h//2),(w-3,h//2)):
+                  r,g,b,a=img.getpixel(point)
+                  assert not (a>220 and r>210 and g>210 and b>210), (density,point,"white border remains")
+          fg=Image.open(base/"drawable-xxxhdpi/ic_launcher_foreground.png")
+          assert fg.size == (432,432)
+          for item in ("mipmap-anydpi-v26/ic_launcher.xml","mipmap-anydpi-v26/ic_launcher_round.xml"):
+              assert (base/item).exists()
+          print("Borderless launcher resources generated; physical-device appearance not yet verified.")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-borderless-icon-preview-NOT-APK
+          path: output-res/
+          retention-days: 7
+          if-no-files-found: error

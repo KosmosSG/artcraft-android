@@ -26,6 +26,8 @@ COMMAND_INSERT = '''    // FilmCraft Android only: native File and Help commands
     uic!("android.filmcraft.startupUpdates", "Toggle Startup Update Checks", ["Help"], None),
     #[cfg(target_os = "android")]
     uic!("android.filmcraft.openRelease", "Open Available FilmCraft Release", ["Help"], None),
+    #[cfg(target_os = "android")]
+    uic!("android.filmcraft.buildInfo", "Android Build Info…", ["Help"], None),
 '''
 INVOKE_INSERT = '''    #[cfg(target_os = "android")]
     {
@@ -36,6 +38,7 @@ INVOKE_INSERT = '''    #[cfg(target_os = "android")]
             "android.filmcraft.checkUpdates" => Some(4),
             "android.filmcraft.startupUpdates" => Some(5),
             "android.filmcraft.openRelease" => Some(6),
+            "android.filmcraft.buildInfo" => Some(7),
             _ => None,
         };
         if let Some(action) = action {
@@ -83,8 +86,8 @@ def self_test() -> None:
     out = patch(src)
     assert all(f'android.filmcraft.{k}' in out for k in
                ("importFont", "sharedFonts", "refreshFonts", "checkUpdates",
-                "startupUpdates", "openRelease"))
-    assert all(f'Some({i})' in out for i in range(1, 7))
+                "startupUpdates", "openRelease", "buildInfo"))
+    assert all(f'Some({i})' in out for i in range(1, 8))
     assert "filmcraft.android.menu.action" in out
     assert "filmcraft.android.menu.status" in out
     try:

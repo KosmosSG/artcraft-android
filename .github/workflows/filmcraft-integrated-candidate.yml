@@ -160,6 +160,7 @@ jobs:
       run: 'set -euo pipefail
 
         python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
+        python3 suite/tools/filmcraft/verify_android_features_apk.py filmcraft-builder/output/filmcraft-0.10.0-android.2.apk integrated-candidate
 
         '
     - name: Retain APK and verification evidence (no release)

@@ -1,8 +1,8 @@
-name: VectorCraft v0.14 font and updater feedback Test APK (never publish)
+name: VectorCraft v0.14 EffectCraft-style Update Dialog Test APK (never publish)
 
 on:
   push:
-    branches: [development/vectorcraft-v014-feedback-test-apk-20261024]
+    branches: [development/vectorcraft-v014-effectcraft-update-dialog-20261024]
     paths:
       - '.github/workflows/vectorcraft-v014-feedback-test-apk.yml'
       - 'tools/vectorcraft_font_feedback_candidate.py'
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: vectorcraft-v014-feedback-temporary-candidate
+  group: vectorcraft-v014-update-dialog-temporary-candidate
   cancel-in-progress: false
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      VERSION_NAME: '0.14.0-android.6'
-      TEST_VERSION_CODE: '16780806'
+      VERSION_NAME: '0.14.0-android.7'
+      TEST_VERSION_CODE: '16780807'
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
     steps:
@@ -115,8 +115,8 @@ jobs:
           set -euo pipefail
           mkdir -p candidate
           test "$(find builder/output -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
-          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v0.14.0-android.6-ARM64-TEST-ONLY.apk
-          APK=candidate/VectorCraft-v0.14.0-android.6-ARM64-TEST-ONLY.apk
+          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v0.14.0-android.7-EffectStyleDialog-ARM64-TEST-ONLY.apk
+          APK=candidate/VectorCraft-v0.14.0-android.7-EffectStyleDialog-ARM64-TEST-ONLY.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
           python3 - <<'PY'
           from pathlib import Path
@@ -124,11 +124,11 @@ jobs:
           text = Path('candidate/badging.txt').read_text()
           m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text, re.M)
           assert m, "Missing Android package metadata"
-          assert m.group(1) == 'com.artcraft.vectorcraft.candidate', 'STOP: production package cannot be used'
-          assert m.group(3) == '0.14.0-android.6', 'Unexpected version'
-          assert int(m.group(2)) == 16780806, 'Unexpected reserved candidate code'
-          assert "launchable-activity: name='com.artcraft.vectorcraft.candidate.VectorCraftActivity'" in text
-          with zipfile.ZipFile('candidate/VectorCraft-v0.14.0-android.6-ARM64-TEST-ONLY.apk') as z:
+          assert m.group(1) == 'com.artcraft.vectorcraft.dialogtest', 'STOP: production package cannot be used'
+          assert m.group(3) == '0.14.0-android.7', 'Unexpected version'
+          assert int(m.group(2)) == 16780807, 'Unexpected reserved candidate code'
+          assert "launchable-activity: name='com.artcraft.vectorcraft.dialogtest.VectorCraftActivity'" in text
+          with zipfile.ZipFile('candidate/VectorCraft-v0.14.0-android.7-EffectStyleDialog-ARM64-TEST-ONLY.apk') as z:
               names=z.namelist()
               assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names), 'ARM64 library missing'
               assert any(n.endswith('.dex') for n in names), 'Java Activity missing'
@@ -140,7 +140,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: VectorCraft-v014-feedback-Test-ONLY-Temporary-Signer
+          name: VectorCraft-v014-EffectStyleDialog-TEST-Temporary-Signer
           path: candidate/
           if-no-files-found: error
           retention-days: 14

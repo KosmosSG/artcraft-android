@@ -44,18 +44,31 @@ class VectorCraftFeedbackTests(unittest.TestCase):
         self.assertIn('vcRefreshFontFolder', self.java)
         self.assertIn('getPersistedUriPermissions', self.extras)
 
-    def test_update_status_is_visible_in_dock_and_native_notification(self):
-        panel = 'egui::Panel::bottom("vectorcraft.android.update_status")'
-        editor = 'self.inner.ui(ui);'
-        self.assertEqual(self.rust.count(panel), 1)
-        self.assertLess(self.rust.index(panel), self.rust.index(editor))
+    def test_effectcraft_style_native_update_dialog_replaces_bottom_dock(self):
+        self.assertIn('public void vcShowUpdateDialog(String message, String releaseUrl, boolean checking, boolean manualOpen)', self.java)
+        self.assertIn('new android.app.AlertDialog.Builder(this)', self.java)
+        self.assertIn('.setTitle("VectorCraft Updates")', self.java)
+        self.assertIn('.setNegativeButton("Close"', self.java)
+        self.assertIn('.setPositiveButton("View Release"', self.java)
+        self.assertIn('vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE)', self.java)
+        self.assertIn('vcUpdateDialog.setMessage(message)', self.java)
+        self.assertIn('vcUpdateDialogDismissed = true;', self.java)
+        self.assertIn('if (manualOpen) vcUpdateDialogDismissed = false;', self.java)
+        self.assertIn('if (vcUpdateDialogDismissed) return;', self.java)
+        self.assertIn('releaseUrl.matches(', self.java)
+        self.assertIn('extras.openRelease(url)', self.java)
+        self.assertIn('jni_str!("vcShowUpdateDialog")', self.rust)
+        self.assertIn('fn show_update_dialog(&self, message: &str, release_url: &str,', self.rust)
+        self.assertNotIn('egui::Panel::bottom("vectorcraft.android.update_status")', self.rust)
         self.assertNotIn('egui::Window::new("VectorCraft Updates")', self.rust)
-        click = self.rust.split('        if check_updates {', 1)[1].split('\n    }\n\n    fn on_exit(', 1)[0]
+
+    def test_manual_check_pops_out_and_completion_updates_same_dialog(self):
+        click = self.rust.split('        if check_updates {', 1)[1].split('\\n    }\\n\\n    fn on_exit(', 1)[0]
         for value in (
-            'self.updates.open = true;',
             'self.updates.notify_result = true;',
-            'self.bridge.native_message(&self.updates.message)',
+            'self.bridge.show_update_dialog(',
             'self.bridge.check_for_updates()',
+            'self.updates.checking, true)',
             'ctx.request_repaint();',
             'Already checking GitHub releases',
         ):
@@ -63,13 +76,16 @@ class VectorCraftFeedbackTests(unittest.TestCase):
                 self.assertIn(value, click)
         self.assertIn('if self.updates.notify_result && !self.updates.checking {', self.rust)
         self.assertIn('self.updates.notify_result = false;', self.rust)
+        self.assertIn('let available_url = if self.updates.message.starts_with("Update available:")', self.rust)
+        self.assertIn('self.updates.message, available_url, false, false)', self.rust)
         self.assertIn('Some("up_to_date")', self.rust)
         self.assertIn('Some("update_available")', self.rust)
         self.assertIn('Some("no_release")', self.rust)
         self.assertIn('Update check timed out.', self.rust)
-        self.assertIn('ui.small_button("Dismiss")', self.rust)
-        self.assertIn('ui.spinner()', self.rust)
         self.assertIn('ctx.request_repaint_after(', self.rust)
+        # Quiet startup check must never open the native dialog.
+        self.assertIn('notify_result: bool', self.rust)
+        self.assertIn('let mut state = UpdateDialogState::default();', self.rust)
 
     def test_updates_remain_read_only_and_app_scoped(self):
         self.assertIn('https://github.com/KosmosSG/artcraft-android/releases/tag/vectorcraft-v', self.rust)

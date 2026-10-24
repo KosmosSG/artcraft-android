@@ -1,0 +1,9 @@
+[package]
+name = "gridcraft-android-font-validation"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+egui = "0.36"
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
+[dev-dependencies]
+epaint_default_fonts = "0.36"

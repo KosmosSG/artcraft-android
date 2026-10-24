@@ -11,25 +11,32 @@ from pathlib import Path
 LOCK = Path(__file__).with_name("source-lock.json")
 UPSTREAM = "storytold/gridcraft"
 REF_BUILDER = "MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af"
-ICON_SHA = "8c0db50831bd715812212c04f156029cfeabd1be82cf5bd777c9db5547063d19"
+ICON_SHA = "ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca"
 
 def validate(data):
     assert data["app"] == "gridcraft"
     assert data["product_name"] == "GridCraft"
     assert data["upstream_repository"] == UPSTREAM
-    assert data["official_version"] == "0.9.0"
+    assert data["official_version"] == "0.11.1"
     assert data["official_release_tag"] == "v" + data["official_version"]
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1
     assert data["version_name"] == data["official_version"] + "-android." + str(data["android_revision"])
-    assert data["intended_release_apk"] == "gridcraft-" + data["version_name"] + ".apk"
+    assert data["intended_release_apk"] == "GridCraft-v" + data["version_name"] + "-arm64-v8a.apk"
     assert data["production_package"] == "com.artcraft.gridcraft"
     assert data["target_abi"] == "arm64-v8a"
+    parity = data.get("feature_requirements", {})
+    for feature in ("custom_font_import", "shared_font_folder",
+                    "manual_release_update_check", "optional_startup_check",
+                    "visible_update_status", "approved_icon_required",
+                    "per_app_signing_required"):
+        assert parity.get(feature) is True, "Missing mandatory ArtCraft feature requirement: " + feature
     assert data["implementation_reference"] == REF_BUILDER
-    assert data["icon_original_name"] == "Glossy Green Xc App Icon(1).png"
+    assert data["icon_original_name"] == "Glossy Green Gc App Icon(4).png"
     assert data["icon_source_sha256"] == ICON_SHA
-    assert data["icon_lettering"] == "Xc"
+    assert data["icon_lettering"] == "Gc"
     assert data["icon_intended_repository_path"] == "assets/gridcraft/launcher-source.png"
+    assert data["icon_source_dimensions"] == [1254, 1254]
     assert type(data["icon_committed"]) is bool
     if data["icon_committed"]:
         import hashlib

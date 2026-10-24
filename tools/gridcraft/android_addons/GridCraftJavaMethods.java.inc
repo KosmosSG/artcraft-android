@@ -89,7 +89,7 @@
                     java.io.File destination = new java.io.File(gcFontRoot(), "artcraft-imported");
                     if (!destination.isDirectory() && !destination.mkdirs()) throw new java.io.IOException("Cannot create font folder");
                     gcCopyFont(uri, new java.io.File(destination, gcHash(uri.toString()) + (filename.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")));
-                    gcSend("font", "ok", "Font imported. Restart GridCraft to refresh the font list.");
+                    gcSend("font", "ok", "Font file saved. Refreshing GridCraft catalog; check Detected font families for recognition.");
                 } catch (Exception error) {
                     gcSend("font", "error", "Import failed: " + error.getMessage());
                 }
@@ -99,7 +99,11 @@
     }
 
     private java.io.File gcFontRoot() {
-        return new java.io.File(getFilesDir(), ".local/share/fonts");
+        // GridCraft's native font catalog scans $HOME/ArtCraft-Fonts.
+        // The Android builder binds $HOME to getFilesDir()/home.
+        // Do NOT use .local/share/fonts: that path is an Android SYSTEM font
+        // symlink; writes there are not user fonts and may fail silently.
+        return new java.io.File(getFilesDir(), "home/ArtCraft-Fonts");
     }
 
     private static boolean gcHasFontExtension(String name) {
@@ -203,7 +207,7 @@
                 throw new java.io.IOException("Cannot finish shared font refresh");
             }
             gcDeleteTree(previous);
-            gcSend("folder", "ok", imported + " shared fonts cached. Restart GridCraft to use them.");
+            gcSend("folder", "ok", imported + " shared font files saved. Refreshing GridCraft catalog; check Detected font families for recognition.");
         } catch (Exception error) {
             gcDeleteTree(staged);
             gcSend("folder", "error", "Shared font folder: " + error.getMessage());
@@ -217,6 +221,16 @@
             if (children != null) for (java.io.File child : children) gcDeleteTree(child);
         }
         if (!file.delete()) android.util.Log.w(TAG, "Cannot delete GridCraft temporary file " + file.getName());
+    }
+
+    // Legacy GridCraft-only preference retained for compatibility; no bottom dock is displayed.
+    public boolean gcToolsPanelVisible() {
+        return getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).getBoolean("bottom_tools_visible", false);
+    }
+
+    public void gcSetToolsPanelVisible(boolean visible) {
+        getSharedPreferences(GC_SETTINGS, MODE_PRIVATE).edit()
+                .putBoolean("bottom_tools_visible", visible).apply();
     }
 
     public boolean gcStartupChecksEnabled() {
@@ -259,6 +273,21 @@
                     String tag = release.optString("tag_name");
                     if (!tag.matches("gridcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+")) continue;
                     String version = tag.substring("gridcraft-v".length());
+                    // Only real, published and downloadable GridCraft APKs are updates.
+                    // A draft, a tag-only release, or another app's APK is not.
+                    org.json.JSONArray assets = release.optJSONArray("assets");
+                    boolean downloadable = false;
+                    if (assets != null) for (int ai = 0; ai < assets.length(); ai++) {
+                        org.json.JSONObject asset = assets.optJSONObject(ai);
+                        if (asset != null &&
+                            ("GridCraft-v" + version + "-arm64-v8a.apk").equals(asset.optString("name")) &&
+                            "uploaded".equals(asset.optString("state")) &&
+                            asset.optLong("size", 0) > 0) {
+                            downloadable = true;
+                            break;
+                        }
+                    }
+                    if (!downloadable) continue;
                     String page = release.optString("html_url");
                     if (!page.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v")) continue;
                     if (bestVersion == null || gcCompareVersion(version, bestVersion) > 0) {

@@ -69,6 +69,134 @@ public final class GridCraftActivity extends NativeActivity {
             with self.assertRaises(RuntimeError):
                 load_overlay().apply_overlay(stage, "com.artcraft.gridcraft.candidate", SOURCE)
 
+    def test_font_import_and_git_release_checker_match_suite_contract(self):
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        for feature in ("gcImportFont()", "gcSelectSharedFolder()", "gcRefreshSharedFolder()",
+                        "gcCheckForUpdates()", "gcStartupChecksEnabled()", "gcSetStartupChecks(",
+                        "gcPollResult()", "android.permission"):
+            # Android permission is added by the overlay, not the Java fragment.
+            if feature != "android.permission":
+                with self.subTest(feature=feature):
+                    self.assertIn(feature, java)
+        self.assertIn('("GridCraft-v" + version + "-arm64-v8a.apk")', java)
+        self.assertIn('"uploaded".equals(asset.optString("state"))', java)
+        self.assertIn('release.optBoolean("draft")', java)
+        self.assertIn('release.optBoolean("prerelease")', java)
+        self.assertIn("gridcraft-v", java)
+        self.assertIn("getSharedPreferences", java)
+        self.assertIn("getFilesDir()", java)
+        self.assertNotIn("egui::Panel::bottom", rust)
+        self.assertNotIn("egui::Window::new", rust)
+        self.assertIn('egui::Id::new("gridcraft.android.menu.action")', rust)
+        self.assertIn('gridcraft.android.menu.update_status', rust)
+        self.assertIn('gridcraft.android.menu.font_status', rust)
+        self.assertIn('gridcraft.android.menu.checking', rust)
+        # Before SheetApp::ui the shell processes commands and publishes status.
+        overlay = (SOURCE / "overlay.py").read_text()
+        self.assertIn("self.tools.ui(ui, &mut self.inner);", overlay)
+        self.assertNotIn("egui::Window::new", rust)
+        self.assertIn("ui.spinner()", (SOURCE / "GridCraftNativeMenu.rs.inc").read_text())
+        self.assertIn("check_started_at", rust)
+        self.assertIn("Update check timed out.", rust)
+        self.assertIn("ctx.request_repaint_after", rust)
+        self.assertNotIn("gh release create", rust)
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", java)
+
+    def test_native_gridcraft_tools_in_existing_menu_without_dock(self):
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        menu = (SOURCE / "GridCraftNativeMenu.rs.inc").read_text()
+        installer = (FOLDER / "install_overlay.py").read_text()
+        for marker in (
+            'GRIDCRAFT_ANDROID_NATIVE_MENU_V1',
+            'ui.menu_button("GridCraft Tools"',
+            '"Import TTF / OTF..."',
+            '"Select Shared Font Folder..."',
+            '"Refresh Shared Fonts"',
+            '"Check for GridCraft Updates"',
+            '"View verified GitHub Release..."',
+            '"Check for updates at startup"',
+            '"Previous sheet"', '"Next sheet"', '"Undo"', '"Redo"',
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, menu)
+        self.assertIn('crates/ui-egui/src/ribbon.rs', installer)
+        self.assertIn('source/gridcraft', installer)
+        self.assertIn('ribbon_source.count(menu_anchor) != 1', installer)
+        self.assertIn('ribbon.write_text(patched_ribbon)', installer)
+        self.assertIn('gridcraft.android.menu.action', rust)
+        self.assertIn('"startup_on" | "startup_off"', rust)
+        self.assertIn('gcStartupChecksEnabled', java)
+        self.assertIn('gcImportFont()', java)
+        self.assertIn('gcCheckForUpdates()', java)
+        self.assertNotIn('egui::Window::new', rust)
+        self.assertNotIn('egui::Panel::bottom', rust)
+        self.assertNotIn('bottom("gridcraft.android.suite_tools_restore")', menu)
+        self.assertNotIn('bottom("gridcraft.android.suite_tools_dock")', menu)
+        self.assertNotIn('GridCraftNativeMenu.rs.inc', (SOURCE / "overlay.py").read_text())
+        # The Android tools source never needs to change upstream workbook state.
+        self.assertIn('self.tools.poll();', (SOURCE / "overlay.py").read_text())
+
+    def test_android_user_fonts_show_up_in_gridcraft_catalog_after_restart(self):
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        installer = (FOLDER / "install_overlay.py").read_text()
+        # Importer must write to exactly the same HOME user-font directory
+        # that the pinned upstream GridCraft catalog scans on next launch.
+        self.assertIn('new java.io.File(getFilesDir(), "home/ArtCraft-Fonts")', java)
+        self.assertIn('dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"))', installer)
+        self.assertIn("GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1", installer)
+        self.assertIn("Refreshing GridCraft catalog", java)
+        self.assertIn("gcSend(\"font\", \"ok\"", java)
+        self.assertNotIn('new java.io.File(getFilesDir(), ".local/share/fonts")', java)
+        self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
+
+    def test_android_tools_async_notifications_not_hidden_inside_menu(self):
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        self.assertIn('egui::Area::new(egui::Id::new("gridcraft.android.tools.feedback"))', rust)
+        self.assertIn('egui::Order::Foreground', rust)
+        self.assertIn('self.notify(text)', rust)
+        self.assertIn('self.font_request_pending = true', rust)
+        self.assertIn('ctx.request_repaint_after', rust)
+        self.assertIn('Update check timed out', rust)
+        self.assertNotIn('egui::Panel::bottom', rust)
+        self.assertNotIn('egui::Window::new', rust)
+
+    def test_gridcraft_only_icon_has_separate_padded_lettering(self):
+        installer = (FOLDER / "install_overlay.py").read_text()
+        self.assertIn('GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3', installer)
+        self.assertIn('foreground = _foreground(Image, lettering)', installer)
+        self.assertIn('launcher-lettering.png', installer)
+        self.assertNotIn('FULL_BLEED', installer)
+        self.assertIn('flat.alpha_composite(foreground)', installer)
+
+    def test_font_reload_invalidates_worksheet_binding(self):
+        patch = (SOURCE / "font_catalog_patch.py").read_text()
+        self.assertIn('catalog_changed || seen != self.fonts_seen', patch)
+        self.assertIn('catalog_changed || used != self.fonts_bound', patch)
+        rust = (SOURCE / "gridcraft_tools.rs").read_text()
+        self.assertIn('fonts::reload_catalog()', rust)
+        self.assertIn('fonts::bind_family', rust)
+        self.assertIn('detected families:', rust)
+        self.assertIn('not recognized by the font catalog', rust)
+        self.assertIn('"diagnose_fonts" => self.refresh_catalog()', rust)
+
+    def test_native_font_dropdown_uses_official_discovered_families(self):
+        # Official GridCraft v0.11.1 already scans and binds local families,
+        # but its Home font combo accidentally uses only the static FONTS list.
+        # The GridCraft-only source patch must use crate::fonts::families().
+        installer = (FOLDER / "install_overlay.py").read_text()
+        self.assertIn("GRIDCRAFT_ANDROID_FONT_COMBO_V1", installer)
+        self.assertIn("let available = crate::fonts::families();", installer)
+        self.assertIn("available.iter()", installer)
+        self.assertIn("f.as_str(), f.clone()", installer)
+        self.assertIn("patched_ribbon.count(combo_old) != 1", installer)
+        self.assertIn('ribbon.write_text(patched_ribbon)', installer)
+        # Android import and source catalog share the same HOME directory.
+        self.assertIn('dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"))', installer)
+        java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
+        self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
+
     def test_other_app_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -83,10 +211,10 @@ public final class GridCraftActivity extends NativeActivity {
         java = (SOURCE / "GridCraftJavaMethods.java.inc").read_text()
         self.assertIn("gridcraft-v", java)
         self.assertIn("android.intent.action.ACTION_OPEN_DOCUMENT_TREE", java.replace("Intent.ACTION_OPEN_DOCUMENT_TREE", "android.intent.action.ACTION_OPEN_DOCUMENT_TREE"))
-        self.assertIn('getFilesDir(), ".local/share/fonts"', java)
+        self.assertIn('getFilesDir(), "home/ArtCraft-Fonts"', java)
         self.assertIn("gcStartupChecksEnabled", java)
-        self.assertIn("view.zoom", rust)
-        self.assertIn("sheet.next", rust)
+        self.assertIn("view.zoom", (SOURCE / "GridCraftNativeMenu.rs.inc").read_text())
+        self.assertIn("sheet.next", (SOURCE / "GridCraftNativeMenu.rs.inc").read_text())
         self.assertNotIn("photocraft-v", java)
         self.assertNotIn("photocraft", rust.lower())
         self.assertNotIn("KEYSTORE", java)

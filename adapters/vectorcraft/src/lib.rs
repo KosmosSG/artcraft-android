@@ -1056,9 +1056,13 @@ impl eframe::App for VectorCraftAndroidApp {
         }
         if self.updates.notify_result && !self.updates.checking {
             self.updates.notify_result = false;
+            // The updater returns a release URL even when already current.
+            // Only present a View Release button for a genuinely newer version.
+            let available_url = if self.updates.message.starts_with("Update available:") {
+                self.updates.release_url.as_deref().unwrap_or("")
+            } else { "" };
             if let Err(error) = self.bridge.show_update_dialog(
-                &self.updates.message,
-                self.updates.release_url.as_deref().unwrap_or(""), false) {
+                &self.updates.message, available_url, false) {
                 log::warn!("Cannot show VectorCraft update result dialog: {error}");
                 let _ = self.bridge.native_message(&self.updates.message);
             }

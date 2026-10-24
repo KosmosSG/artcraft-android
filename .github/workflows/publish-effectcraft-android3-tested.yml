@@ -1,6 +1,10 @@
 name: Publish tested EffectCraft v0.16.0-android.3
 
 on:
+  push:
+    branches: [release/effectcraft-android3-tested]
+    paths:
+      - '.github/workflows/publish-effectcraft-android3-tested.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,10 +18,10 @@ jobs:
   publish:
     if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release/effectcraft-android3-tested'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 110
     env:
       GH_TOKEN: ${{ github.token }}
-      SIGNING_READ_TOKEN: ${{ secrets.EFFECTCRAFT_SIGNING_READ_TOKEN }}
+      SIGNING_READ_TOKEN: ${{ secrets.EFFECTCRAFT_SIGNING_READ_TOKEN || secrets.EFFECTCRAFT_PUBLIC_RELEASE_TOKEN }}
       SIGNED_RUN: '40076369681'
       SIGNER_COMMIT: '66e4e7eea2e3c3883137fa1864504fabd2a1db3b'
       SOURCE_COMMIT: '9af891410bdfe151168bab7ebe49ffe3f0f0cecf'
@@ -35,19 +39,32 @@ jobs:
             exit 1
           fi
           mkdir release
-          curl -fL --retry 3 -sS \
-            -H "Authorization: Bearer $SIGNING_READ_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/KosmosSG/effectcraft-signing-private/actions/runs/$SIGNED_RUN" > signing-run.json
-          python3 - <<'PY'
+          for attempt in $(seq 1 100); do
+            curl -fL --retry 3 -sS \
+              -H "Authorization: Bearer $SIGNING_READ_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/KosmosSG/effectcraft-signing-private/actions/runs/$SIGNED_RUN" > signing-run.json
+            state="$(python3 - <<'PY'
           import json,os
           x=json.load(open('signing-run.json'))
           assert x['repository']['full_name']=='KosmosSG/effectcraft-signing-private'
           assert x['id']==int(os.environ['SIGNED_RUN'])
           assert x['head_sha']==os.environ['SIGNER_COMMIT']
-          assert x['status']=='completed' and x['conclusion']=='success'
-          print('Verified completed permanent signing workflow and exact source pin.')
+          if x['status']!='completed': print('pending')
+          elif x['conclusion']=='success': print('ready')
+          else: raise SystemExit('Signing workflow failed or cancelled; refusing publication')
           PY
+            )"
+            if [[ "$state" == ready ]]; then
+              echo "Verified completed permanent signing workflow and exact source pin."
+              break
+            fi
+            if [[ "$attempt" == 100 ]]; then
+              echo "::error::Production signing run did not complete within release verification window."
+              exit 1
+            fi
+            sleep 60
+          done
 
       - name: Download the production-signed APK (never the temporary-key fonttest APK)
         shell: bash

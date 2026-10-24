@@ -417,9 +417,20 @@ impl PickerState {
             let families = register_custom_font(bytes.clone())?;
             let dir = bridge.files_dir()?.join("custom-fonts");
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let destination = dir.join(format!("imported-{id}.{}", extension.to_ascii_lowercase()));
+            // Picker request IDs restart at 1 on process launch. They must never
+            // overwrite a different imported font after the app restarts.
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?.as_nanos();
+            let destination = dir.join(format!("imported-{unique}-{id}.{}", extension.to_ascii_lowercase()));
+            if destination.exists() {
+                return Err("Font destination already exists; nothing overwritten".into());
+            }
             fs::write(&destination, &bytes).map_err(|e| e.to_string())?;
-            Ok(format!("Imported: {}", families.join(", ")))
+            // v0.14's text picker caches lists using fonts::shared_generation().
+            // register_font_data above updates that generation; a repaint below
+            // also refreshes the actual Type menu instead of only showing a toast.
+            Ok(format!("Imported and detected in PhotoCraft: {}", families.join(", ")))
         })();
         *self.font_status.lock().unwrap_or_else(|e| e.into_inner()) =
             result.unwrap_or_else(|error| format!("Import failed: {error}"));
@@ -502,6 +513,7 @@ impl PickerState {
             if is_font {
                 self.process_font_result(bridge, id, &value);
                 ctx.request_repaint();
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 continue;
             }
             let is_shared_font = {
@@ -943,31 +955,8 @@ impl eframe::App for PhotoCraftAndroidApp {
                 }
             }
         }
-        // Dock the update checker BEFORE rendering the document so no floating
-        // window covers tools, handles or drawing gestures on the tablet.
-        let mut dismiss_updates = false;
-        if self.updates.open {
-            egui::Panel::bottom("photocraft.android.update_status")
-                .resizable(false)
-                .default_size(76.0)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.strong("PhotoCraft Updates");
-                        if ui.small_button("Dismiss").clicked() { dismiss_updates = true; }
-                    });
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Could not open release page: {error}");
-                            }
-                        }
-                    }
-                });
-        }
-        if dismiss_updates { self.updates.open = false; }
+        // LightCraft-style Updates now lives in the Android modal opened from Help.
+        // Do not consume permanent bottom-screen space with the old status dock.
         self.inner.ui(ui, _frame);
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
@@ -991,6 +980,11 @@ impl eframe::App for PhotoCraftAndroidApp {
             }
         }
         if take("artcraft.check_updates_requested") {
+            // Show immediate, actionable feedback and preferences in the same
+            // native updates panel as LightCraft, not a floating canvas dock.
+            if let Err(error) = self.bridge.native_ui_call("settings") {
+                log::warn!("Could not show PhotoCraft Updates: {error}");
+            }
             self.updates.open = true;
             ui.ctx().request_repaint();
             self.updates.release_url = None;

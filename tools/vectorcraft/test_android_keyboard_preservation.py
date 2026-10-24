@@ -3,7 +3,6 @@
 This is a lightweight structural guard, not a replacement for Rust unit tests,
 ARM64 compilation, or on-device HONOR MagicPad 4 keyboard validation.
 """
-import re
 import unittest
 from pathlib import Path
 
@@ -26,9 +25,8 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
         self.assertNotIn("fn apply_android_modifiers(", self.shell)
 
     def test_ime_and_original_shortcut_dispatch_are_preserved(self):
-        match = re.search(r"fn raw_input_hook\(&mut self,.*?\n\s*\}", self.shell, re.S)
-        self.assertIsNotNone(match)
-        hook = match.group(0)
+        self.assertIn("    fn raw_input_hook(", self.shell)
+        hook = self.shell.split("    fn raw_input_hook(", 1)[1].split("    fn ui(", 1)[0]
         self.assertLess(hook.index("self.ime.poll(raw);"),
                         hook.index("apply_android_modifiers(&mut self.modifiers, raw);"))
         self.assertLess(hook.index("apply_android_modifiers(&mut self.modifiers, raw);"),

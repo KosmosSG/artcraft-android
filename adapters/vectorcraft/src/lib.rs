@@ -37,6 +37,11 @@ mod system_fonts;
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
 
+// Shared PhotoCraft-style hardware-key reconstruction: independent left/right modifiers,
+// correctly ordered modifier transitions, Ctrl text suppression and focus-loss reset.
+mod android_modifiers;
+use android_modifiers::{AndroidModifiers, apply_android_modifiers};
+
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
 
@@ -695,65 +700,6 @@ fn persist_save(app: &mut VectorcraftApp, dir: &Path) {
     }
 }
 
-/// Reconstruct egui's modifier state on Android.
-///
-/// winit's Android backend delivers `KeyboardInput` events but never emits `ModifiersChanged`
-/// (it discards the `KeyEvent`'s meta state), so egui's modifier state stays empty and
-/// `Ctrl`/`Alt` shortcuts are ignored while plain keys continue to work. Physical modifier keys
-/// do arrive as `Event::Key` events (`Key::ControlLeft`, `Key::AltLeft`, ...), so we track them
-/// and stamp the resulting state onto this frame's events. This mirrors `egui-winit`'s
-/// `ModifiersChanged` handling and suppresses the text character that would otherwise be emitted
-/// alongside a Ctrl/Command shortcut.
-fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput) {
-    let before = *state;
-    let mut kept: Vec<egui::Event> = Vec::with_capacity(raw.events.len());
-    for mut event in raw.events.drain(..) {
-        match &mut event {
-            egui::Event::Key {
-                key,
-                physical_key,
-                pressed,
-                modifiers,
-                ..
-            } => {
-                let tracked = physical_key.unwrap_or(*key);
-                match tracked {
-                    egui::Key::ShiftLeft | egui::Key::ShiftRight => state.shift = *pressed,
-                    egui::Key::ControlLeft | egui::Key::ControlRight => state.ctrl = *pressed,
-                    egui::Key::AltLeft | egui::Key::AltRight => state.alt = *pressed,
-                    _ => {}
-                }
-                state.mac_cmd = false;
-                state.command = state.ctrl;
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::PointerButton { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::MouseWheel { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::Text(_) if state.ctrl || state.command || state.mac_cmd => {
-                // Suppress text emitted with a modifier chord.
-            }
-            egui::Event::WindowFocused(false) => {
-                *state = egui::Modifiers::default();
-                kept.push(event);
-            }
-            _ => kept.push(event),
-        }
-    }
-    raw.events = kept;
-    if *state != before {
-        // `RawInput` has no modifier field in this egui version: `InputState.modifiers` is driven
-        // purely by this event (plus its own per-event copies), so it must be emitted on change.
-        raw.events.push(egui::Event::ModifiersChanged(*state));
-    }
-}
-
 fn services(bridge: AndroidFileBridge, state: Arc<PickState>, inbox: Inbox) -> Services {
     let write_bridge = bridge.clone_for_services();
     let pick_bridge = bridge.clone_for_services();
@@ -792,7 +738,7 @@ struct VectorCraftAndroidApp {
     startup_updates: bool,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
-    modifiers: egui::Modifiers,
+    modifiers: AndroidModifiers,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -1319,7 +1265,7 @@ fn android_main(android_app: AndroidApp) {
                     state
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
-                modifiers: egui::Modifiers::default(),
+                modifiers: AndroidModifiers::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

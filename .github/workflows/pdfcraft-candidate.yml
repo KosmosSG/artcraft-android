@@ -117,16 +117,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo install cargo-apk2 --locked
+          cargo install cargo-apk2 --version 1.5.0 --locked
           python3 - <<'PYCODE'
           import os, pathlib, shutil
           root = pathlib.Path.home() / '.cargo/registry/src'
-          matches = list(root.glob('*/cargo-apk2-*/src/manifest.rs'))
+          matches = list(root.glob('*/cargo-apk2-1.5.0/src/apk.rs'))
           assert len(matches) == 1, matches
           source = matches[0].parent.parent
           dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pdfcraft-apk-packager'
           shutil.copytree(source, dest)
-          path = dest / 'src/manifest.rs'
+          path = dest / 'src/apk.rs'
           text = path.read_text()
           old = 'let version_code = VersionCode::from_semver(&package_version)?.to_code(1);'
           assert text.count(old) == 1, 'Packager version-code API changed'

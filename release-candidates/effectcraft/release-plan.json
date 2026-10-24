@@ -1,0 +1,27 @@
+{
+  "status": "blocked_pending_exact_apk_device_tests",
+  "publish": false,
+  "tag": "effectcraft-v0.16.0-android.4",
+  "title": "EffectCraft v0.16.0-android.4",
+  "package": "com.artcraft.effectcraft",
+  "versionName": "0.16.0-android.4",
+  "versionCode": 16781316,
+  "canonical_apk": "EffectCraft-v0.16.0-android.4-arm64-v8a.apk",
+  "identical_byte_aliases": [],
+  "apk_sha256": "9f034a891e03a1623479106c128a2a90aa45ef70e3c78a64437b78ae10820c12",
+  "certificate_sha256": "10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577",
+  "verified_build_source_commit": "c2292636f256d20521a5068e0de3e79ec09382e9",
+  "source_run": 40076757824,
+  "production_signing_verified": true,
+  "device_tested": false,
+  "release_notes_draft": "Approved launcher, adaptive, legacy and native application logo artwork. Android ARM64.\n\nPackage: com.artcraft.effectcraft\nVersion: 0.16.0-android.4\nVersionCode: 16781316\nCertificate SHA-256: 10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577\nAPK SHA-256: 9f034a891e03a1623479106c128a2a90aa45ef70e3c78a64437b78ae10820c12\n\nPublication blocked: exact signed APK has not passed required HONOR MagicPad 4 installation/update, data retention, visual and feature tests. Do not publish these draft notes as a tested release.\n",
+  "required_evidence": [
+    "in-place installation from currently installed production APK",
+    "app data and imported/shared fonts retained",
+    "launcher and top-left UI icon appearance on MagicOS",
+    "SAF open/save/export",
+    "updater and preference persistence",
+    "keyboard shortcuts",
+    "GPU diagnostics and core editing features"
+  ]
+}

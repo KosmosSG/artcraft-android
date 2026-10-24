@@ -21,25 +21,23 @@ jobs:
       APK_SHA: c86d1f0acb8faa6e1efe97df7578ad117df812b64bbd18cd635b149b89366ed9
       CERT: 10C93A0A55B9D66B6C64AC87372D5F3118C74A11C99FECB6E9F3951D2CBE8577
     steps:
-      - name: Retrieve exact owner-tested APK
-        # Read-only, expiring transfer URL for this APK-only artifact; no signing material.
-        env:
-          ARTIFACT_URL: 'https://sdmntprseasia.oaiusercontent.com/files/00000000-f418-8207-a286-53a84d3cee64/raw?se=2026-10-24T01%3A30%3A40Z&sp=r&sv=2026-02-06&sr=b&scid=05abf1d3-d8ea-4718-904c-9630bd2ba0e2&skoid=54865dd2-31dc-44cc-a877-635aa4250446&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-24T00%3A32%3A10Z&ske=2026-10-25T00%3A32%3A10Z&sks=b&skv=2026-02-06&sig=RRRHoWFmOAnShGcQ7qUAzNnMnrtfXSHro7OFObbfdIw%3D'
+      - name: Retrieve uploaded draft APK and verify exact tested bytes
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --output tested.zip "$ARTIFACT_URL"
-          echo '5e4497d85b8f591df907a4dfe86011e25d0048dfd9f588c563a0f639e6c50b3c  tested.zip' | sha256sum -c -
+          mkdir release
+          gh api "repos/$GITHUB_REPOSITORY/releases/422444509" > staged.json
           python3 - <<'PY'
-          import os,zipfile
-          from pathlib import Path
-          with zipfile.ZipFile('tested.zip') as z:
-              assert z.namelist()==[os.environ['APK']]
-              Path('release').mkdir()
-              Path('release',os.environ['APK']).write_bytes(z.read(os.environ['APK']))
+          import os,json
+          d=json.load(open('staged.json'))
+          assert d['draft'] and not d['prerelease']
+          assert d['tag_name']==os.environ['TAG'] and d['target_commitish']==os.environ['SOURCE']
+          a=[x for x in d['assets'] if x['name']==os.environ['APK']]
+          assert len(a)==1 and a[0]['id']==670935966 and a[0]['state']=='uploaded'
+          assert a[0]['size']==31732874 and a[0]['digest']=='sha256:'+os.environ['APK_SHA']
+          assert any(x['name']=='SHA256SUMS.txt' and x['state']=='uploaded' for x in d['assets'])
           PY
-          cd release
-          echo "$APK_SHA  $APK" > SHA256SUMS.txt
-          sha256sum -c SHA256SUMS.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/670935966" -H 'Accept: application/octet-stream' > "release/$APK"
+          echo "$APK_SHA  release/$APK" | sha256sum -c -
       - name: Independently verify permanent signature and Android identity
         run: |
           set -euo pipefail
@@ -63,44 +61,15 @@ jobs:
               assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
           print('PASS: exact tested APK, permanent signer, package, version, launcher and ARM64')
           PY
-      - name: Publish owner-approved stable release without replacing other apps
+      - name: Publish verified owner-tested stable release
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE" --jq .sha | grep -Fx "$SOURCE"
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$TAG" > tags.json
-          python3 - <<'PY'
-          import json,os
-          assert not any(r['tag_name']==os.environ['TAG'] for page in json.load(open('releases.json')) for r in page), 'Release already exists'
-          assert not any(r['ref']=='refs/tags/'+os.environ['TAG'] for page in json.load(open('tags.json')) for r in page), 'Tag already exists'
-          PY
-          cat > notes.md <<'EOF'
-          EffectCraft v0.16.0-android.2 for ARM64 Android. The owner installed and tested this exact APK and approved public release.
-
-          - Import TTF/OTF fonts from Window → Fonts, with private storage that survives restart.
-          - Select and refresh an optional shared font folder through Android's document picker.
-          - Native Android update feedback replaces the draggable update window.
-          - Stable + Preview releases remain available, with an optional startup check.
-          - Updated Ec launcher icon removes the exterior black canvas and includes adaptive icon resources.
-
-          Package: com.artcraft.effectcraft
-          Version code: 16781314
-          Official upstream: storytold/effectcraft v0.16.0 (9581b53c3f8945683252af0eb5fac79e0e43aed4)
-          Android source: 75cf793236022837d2d20c89ff15c1a75fceb107
-
-          This is the unchanged permanent-signed APK from build 40000187989. APK checksum, signing certificate, package/version, launcher and ARM64 libraries were independently verified before publication.
-
-          Download the APK below and open it with Android's package installer. The in-app update checker opens the appropriate GitHub release page; installation is manual. This is a community Android port, not an official storytold distribution.
-          EOF
-          gh release create "$TAG" "release/$APK" release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$SOURCE" --title 'EffectCraft v0.16.0-android.2' --notes-file notes.md --draft --latest=false
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > staged.json
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/422444509" -F draft=false -F prerelease=false -f make_latest=false > published.json
           python3 - <<'PY'
           import os,json
-          d=json.load(open('staged.json'))
-          assert d['draft'] and not d['prerelease']
-          a=[x for x in d['assets'] if x['name']==os.environ['APK']]
-          assert len(a)==1 and a[0]['state']=='uploaded' and a[0]['size']==31732874
-          assert a[0]['digest']=='sha256:'+os.environ['APK_SHA']
+          d=json.load(open('published.json'))
+          assert not d['draft'] and not d['prerelease'] and d['tag_name']==os.environ['TAG']
+          assert d['target_commitish']==os.environ['SOURCE']
+          print(d['html_url'])
           PY
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest=false
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease,assets
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha | grep -Fx "$SOURCE"

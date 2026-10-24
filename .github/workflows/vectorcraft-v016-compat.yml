@@ -2,7 +2,7 @@ name: VectorCraft v0.16 isolated Android compatibility (never sign or publish)
 
 on:
   push:
-    branches: [development/vectorcraft-v016-android1-20261023, development/vectorcraft-v016-font-feedback-20261024]
+    branches: [development/vectorcraft-v016-android1-20261023, development/vectorcraft-v016-font-feedback-20261024, development/vectorcraft-v016-effectcraft-update-dialog-20261024]
     paths:
       - '.github/workflows/vectorcraft-v016-compat.yml'
       - 'configs/vectorcraft-v0.16.0-android.1.json'

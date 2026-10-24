@@ -1,0 +1,59 @@
+name: VectorCraft approved icon permanent signing candidate ONLY
+'on':
+  push:
+    branches:
+    - icons/vectorcraft-signing-20261024
+    paths:
+    - .github/workflows/approved-icon-signing-only.yml
+    - sign_verified.py
+    - sign-config.json
+permissions:
+  contents: read
+  actions: read
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Download only pinned successful candidate run
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: 'set -euo pipefail
+
+        gh api repos/KosmosSG/artcraft-android/actions/runs/40076752150 > original-run.json
+
+        python3 - <<''PYRUN''
+
+        import json
+
+        r=json.load(open(''original-run.json''))
+
+        assert r[''conclusion'']==''success'' and r[''head_sha'']==''4392e91fbdf6c65e8d1502ef508a6fd8ef79c98e''
+
+        assert r[''path'']==''.github/workflows/approved-icons-candidate.yml''
+
+        PYRUN
+
+        gh run download 40076752150 -R KosmosSG/artcraft-android -n VectorCraft-approved-icons-candidate
+        -D candidate
+
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ''build-tools;35.0.0''
+
+        '
+    - name: Restore original app key, verify baseline, sign and compare payload
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEYSTORE_BASE64: ${{ secrets.VECTORCRAFT_KEYSTORE_BASE64 }}
+        STORE_PASSWORD: ${{ secrets.VECTORCRAFT_KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.VECTORCRAFT_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: artcraftbuilder
+      run: python3 sign_verified.py
+    - uses: actions/upload-artifact@v4
+      with:
+        name: VectorCraft-approved-icons-PERMANENT-SIGNED-TESTING
+        path: signed-output/
+        if-no-files-found: error
+        retention-days: 30

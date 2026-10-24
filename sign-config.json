@@ -1,0 +1,11 @@
+{
+  "app": "VectorCraft",
+  "run": 40076752150,
+  "source_sha": "4392e91fbdf6c65e8d1502ef508a6fd8ef79c98e",
+  "candidate_sha256": "5de312a92a0058a67a2bda7cf0d20ba3a18984b41dfceb5d46b2a3f90f2180ce",
+  "version": "0.14.0-android.8",
+  "code": 16780808,
+  "package": "com.artcraft.vectorcraft",
+  "baseline_url": "https://github.com/KosmosSG/artcraft-android/releases/download/vectorcraft-v0.14.0-android.5/VectorCraft-v0.14.0-android.5-arm64-v8a.apk",
+  "baseline_sha256": "c69b91fc645fa9c2dbf3e2c196239cd7176c7936b2daf5f726977a07d8e45474"
+}

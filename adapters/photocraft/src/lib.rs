@@ -214,6 +214,17 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn show_font_catalog(&self, report: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let text = JObject::from(env.new_string(report)?);
+            env.call_method(&*activity, jni_str!("pcShowFontCatalog"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&text)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn startup_update_enabled(&self) -> Result<bool, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -972,6 +983,30 @@ impl eframe::App for PhotoCraftAndroidApp {
             ui.ctx().request_repaint();
         }
         if take("artcraft.custom_fonts_visible") { self.picker.launch_font(&self.bridge); }
+        if take("artcraft.font_catalog") {
+            // Read the exact shared type-engine catalog used by PhotoCraft's
+            // font-family dropdown, not merely filenames copied by the SAF picker.
+            let report = match photocraft_text::shared().lock() {
+                Ok(mut engine) => {
+                    let families = engine.fonts.families();
+                    let saved = self.bridge.files_dir().ok()
+                        .and_then(|root| fs::read_dir(root.join("custom-fonts")).ok())
+                        .map(|entries| entries.flatten().filter(|file| {
+                            file.path().extension().and_then(|ext| ext.to_str())
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case("ttf")
+                                    || ext.eq_ignore_ascii_case("otf"))
+                        }).count()).unwrap_or(0);
+                    format!("Detected font families: {}\nSaved imported font files: {}\n\n{}",
+                        families.len(), saved, families.join("\n"))
+                }
+                Err(error) => format!("Font catalog unavailable: {error}"),
+            };
+            if let Err(error) = self.bridge.show_font_catalog(&report) {
+                log::warn!("Could not display PhotoCraft font catalog: {error}");
+                let _ = self.bridge.native_message(&report);
+            }
+        }
+
         if take("artcraft.shared_fonts_select") { self.picker.launch_shared_fonts(&self.bridge, false); }
         if take("artcraft.shared_fonts_refresh") { self.picker.launch_shared_fonts(&self.bridge, true); }
         if take("artcraft.update_settings") {

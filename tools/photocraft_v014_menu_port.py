@@ -9,6 +9,7 @@ import sys
 
 IDS = (
     "window.artcraftCustomFonts",
+    "window.artcraftFontCatalog",
     "window.artcraftSharedFontsSelect",
     "window.artcraftSharedFontsRefresh",
     "window.artcraftTouchShortcutPad",
@@ -40,6 +41,7 @@ pub fn artcraft_shortcut_pad_chrome_hidden(app: &PhotocraftApp) -> bool {
 }
 
 const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
+const FONT_CATALOG_ID: &str = "window.artcraftFontCatalog";
 const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";
 const SHARED_REFRESH_ID: &str = "window.artcraftSharedFontsRefresh";
 const SHORTCUT_PAD_ID: &str = "window.artcraftTouchShortcutPad";
@@ -61,6 +63,11 @@ const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
         }
         if id == CUSTOM_FONTS_ID {
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.custom_fonts_visible"), true));
+            ctx.request_repaint();
+            return Ok(Value::Null);
+        }
+        if id == FONT_CATALOG_ID {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.font_catalog"), true));
             ctx.request_repaint();
             return Ok(Value::Null);
         }
@@ -87,7 +94,7 @@ const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
         "pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {\n",
         '''pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     #[cfg(target_os = "android")]
-    if matches!(id, CUSTOM_FONTS_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID |
+    if matches!(id, CUSTOM_FONTS_ID | FONT_CATALOG_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID |
                      SHORTCUT_PAD_ID | UPDATE_SETTINGS_ID | CHECK_UPDATES_ID) {
         return true;
     }
@@ -98,7 +105,7 @@ const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
         "pub fn is_live(id: &str) -> bool {\n",
         '''pub fn is_live(id: &str) -> bool {
     #[cfg(target_os = "android")]
-    if matches!(id, CUSTOM_FONTS_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID |
+    if matches!(id, CUSTOM_FONTS_ID | FONT_CATALOG_ID | SHARED_SELECT_ID | SHARED_REFRESH_ID |
                      SHORTCUT_PAD_ID | UPDATE_SETTINGS_ID | CHECK_UPDATES_ID) {
         return true;
     }
@@ -111,6 +118,7 @@ const CHECK_UPDATES_ID: &str = "help.artcraftCheckUpdates";
     {
         for (id, label, menu) in [
             (CUSTOM_FONTS_ID, "Import Font…", "Type"),
+            (FONT_CATALOG_ID, "Detected Fonts…", "Type"),
             (SHARED_SELECT_ID, "Select Shared Font Folder…", "Type"),
             (SHARED_REFRESH_ID, "Refresh Shared Fonts", "Type"),
             (SHORTCUT_PAD_ID, "Touch Shortcut Pad", "Window"),
@@ -139,7 +147,7 @@ def main() -> None:
     text = path.read_text(encoding="utf-8")
     updated = rebase(text)
     path.write_text(updated, encoding="utf-8")
-    print("PASS: all six original PhotoCraft Android menu actions staged in isolated v0.14 source")
+    print("PASS: original PhotoCraft Android menu actions and detected-font diagnostics staged in v0.14 source")
 
 if __name__ == "__main__":
     main()

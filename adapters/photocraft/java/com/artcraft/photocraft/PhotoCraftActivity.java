@@ -347,18 +347,137 @@ public final class PhotoCraftActivity extends NativeActivity {
         return getSharedPreferences(PREFS, MODE_PRIVATE)
                 .getBoolean("check_updates_at_startup", true);
     }
+    private android.app.AlertDialog pcUpdatesDialog;
+    private android.widget.TextView pcUpdateStatus;
+    private android.widget.Button pcUpdateCheckButton, pcUpdateReleaseButton;
+    private String pcUpdateReleaseUrl;
+    private volatile boolean pcChecking;
+
+    /** Same information architecture as LightCraft's About > Updates tab. */
     public void pcUpdateSettings() {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("PhotoCraft Updates")
-                    .setMultiChoiceItems(new String[]{"Check for updates at startup"},
-                            new boolean[]{pcStartupUpdatesEnabled()}, (dialog, which, checked) ->
-                                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                                            .putBoolean("check_updates_at_startup", checked).apply())
-                    .setPositiveButton("Done", null).show();
+            if (pcUpdatesDialog != null && pcUpdatesDialog.isShowing()) return;
+            final int spacing = Math.round(16 * getResources().getDisplayMetrics().density);
+            android.widget.LinearLayout content = new android.widget.LinearLayout(this);
+            content.setOrientation(android.widget.LinearLayout.VERTICAL);
+            content.setPadding(spacing, spacing, spacing, spacing);
+            android.widget.TextView section = new android.widget.TextView(this);
+            section.setText("PhotoCraft Updates");
+            section.setTextSize(18);
+            section.setTypeface(null, android.graphics.Typeface.BOLD);
+            content.addView(section);
+            android.widget.TextView installed = new android.widget.TextView(this);
+            try {
+                installed.setText("Installed Version: " + getPackageManager()
+                        .getPackageInfo(getPackageName(), 0).versionName);
+            } catch (Exception error) { installed.setText("Installed Version: unavailable"); }
+            installed.setPadding(0, spacing / 2, 0, spacing / 2);
+            content.addView(installed);
+            pcUpdateStatus = new android.widget.TextView(this);
+            pcUpdateStatus.setText(pcChecking ? "Checking for updates…" :
+                    "Tap Check for Updates to check published PhotoCraft releases.");
+            content.addView(pcUpdateStatus);
+            pcUpdateCheckButton = new android.widget.Button(this);
+            pcUpdateCheckButton.setText("Check for Updates");
+            pcUpdateCheckButton.setEnabled(!pcChecking);
+            pcUpdateCheckButton.setOnClickListener(view -> pcCheckForUpdates());
+            content.addView(pcUpdateCheckButton);
+            android.widget.TextView channelTitle = new android.widget.TextView(this);
+            channelTitle.setText("Update Channel");
+            channelTitle.setPadding(0, spacing, 0, 0);
+            content.addView(channelTitle);
+            android.widget.RadioGroup channels = new android.widget.RadioGroup(this);
+            android.widget.RadioButton stable = new android.widget.RadioButton(this);
+            stable.setId(android.view.View.generateViewId());
+            stable.setText("Stable Releases Only");
+            channels.addView(stable);
+            android.widget.RadioButton preview = new android.widget.RadioButton(this);
+            preview.setId(android.view.View.generateViewId());
+            preview.setText("Stable + Preview Releases");
+            channels.addView(preview);
+            channels.check(getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean("include_preview_releases", false) ? preview.getId() : stable.getId());
+            channels.setOnCheckedChangeListener((group, id) ->
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putBoolean("include_preview_releases", id == preview.getId()).apply());
+            content.addView(channels);
+            android.widget.TextView caution = new android.widget.TextView(this);
+            caution.setText("Preview releases may be untested; installing remains your choice.");
+            caution.setTextSize(12);
+            content.addView(caution);
+            android.widget.CheckBox atStartup = new android.widget.CheckBox(this);
+            atStartup.setText("Check for updates at startup");
+            atStartup.setChecked(pcStartupUpdatesEnabled());
+            atStartup.setOnCheckedChangeListener((button, checked) ->
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putBoolean("check_updates_at_startup", checked).apply());
+            atStartup.setPadding(0, spacing / 2, 0, 0);
+            content.addView(atStartup);
+            pcUpdateReleaseButton = new android.widget.Button(this);
+            pcUpdateReleaseButton.setText("Open Official GitHub Release");
+            pcUpdateReleaseButton.setVisibility(android.view.View.GONE);
+            pcUpdateReleaseButton.setOnClickListener(view -> {
+                if (pcUpdateReleaseUrl != null) pcOpenUpdatePage(pcUpdateReleaseUrl);
+            });
+            content.addView(pcUpdateReleaseButton);
+            android.widget.TextView note = new android.widget.TextView(this);
+            note.setText("PhotoCraft-only GitHub Releases; Android updates require the original signing key.");
+            note.setTextSize(12);
+            content.addView(note);
+            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+            scroll.addView(content);
+            pcUpdatesDialog = new android.app.AlertDialog.Builder(this)
+                    .setTitle("About PhotoCraft — Updates")
+                    .setView(scroll)
+                    .setPositiveButton("Close", (dialog, which) -> { })
+                    .create();
+            pcUpdatesDialog.setOnDismissListener(dialog -> {
+                pcUpdatesDialog = null;
+                pcUpdateStatus = null;
+                pcUpdateCheckButton = null;
+                pcUpdateReleaseButton = null;
+                pcUpdateReleaseUrl = null;
+            });
+            pcUpdatesDialog.show();
         });
     }
+
+    private void pcRenderUpdateResult(JSONObject result) {
+        runOnUiThread(() -> {
+            pcChecking = false;
+            if (pcUpdateCheckButton != null) pcUpdateCheckButton.setEnabled(true);
+            if (pcUpdateStatus == null) return; // Silent startup checks stay silent.
+            String state = result.optString("state", "error");
+            String installed = result.optString("installed_version", "unknown");
+            String latest = result.optString("latest_version", "unknown");
+            String message = "update_available".equals(state)
+                    ? "Update available: " + latest + " (installed: " + installed + ")"
+                    : "up_to_date".equals(state)
+                    ? "PhotoCraft is up to date (" + installed + ")."
+                    : result.optString("message", "Update check failed.");
+            pcUpdateStatus.setText(message);
+            String url = result.optString("url", "");
+            boolean trusted = "update_available".equals(state)
+                    && url.matches("https://github\\.com/KosmosSG/artcraft-android/releases/tag/photocraft-v[0-9]+\\.[0-9]+\\.[0-9]+(?:-android\\.[1-9][0-9]*)?");
+            pcUpdateReleaseUrl = trusted ? url : null;
+            if (pcUpdateReleaseButton != null)
+                pcUpdateReleaseButton.setVisibility(trusted ? android.view.View.VISIBLE : android.view.View.GONE);
+        });
+    }
+
+    /** Report the real PhotoCraft shared text-engine families for font-import diagnosis. */
+    public void pcShowFontCatalog(String report) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("PhotoCraft — Detected Fonts")
+                    .setMessage(report == null ? "No font information available" : report)
+                    .setPositiveButton("Close", (dialog, which) -> { })
+                    .show();
+        });
+    }
+
     public void pcShowMessage(String message) {
         runOnUiThread(() -> {
             if (!isFinishing() && !isDestroyed())
@@ -368,6 +487,12 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     /** JNI: begin a manual, read-only check of published PhotoCraft GitHub releases. */
     public void pcCheckForUpdates() {
+        pcChecking = true;
+        runOnUiThread(() -> {
+            if (pcUpdateStatus != null) pcUpdateStatus.setText("Checking official GitHub releases…");
+            if (pcUpdateCheckButton != null) pcUpdateCheckButton.setEnabled(false);
+            if (pcUpdateReleaseButton != null) pcUpdateReleaseButton.setVisibility(android.view.View.GONE);
+        });
         updateIo.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -411,7 +536,8 @@ public final class PhotoCraftActivity extends NativeActivity {
                 for (int i = 0; i < releases.length(); i++) {
                     JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft")
-                            || release.optBoolean("prerelease")) continue;
+                            || (!getSharedPreferences(PREFS, MODE_PRIVATE)
+                                    .getBoolean("include_preview_releases", false) && release.optBoolean("prerelease"))) continue;
                     String releaseTag = release.optString("tag_name", "");
                     String version = PhotoCraftUpdatePolicy.versionFromTag(releaseTag);
                     if (version == null) continue;
@@ -456,9 +582,11 @@ public final class PhotoCraftActivity extends NativeActivity {
                     result.put("latest_version_code", latestCode);
                     result.put("url", latestUrl);
                     result.put("state", PhotoCraftUpdatePolicy.isNewer(latestCode, installedCode)
+                            && PhotoCraftUpdatePolicy.compareVersions(latestVersion, installedVersion) > 0
                             ? "update_available" : "up_to_date");
                 }
                 updateResults.offer(result.toString());
+                pcRenderUpdateResult(result);
             } catch (Exception error) {
                 Log.w(TAG, "PhotoCraft update check failed", error);
                 try {
@@ -467,6 +595,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                     result.put("message", error.getMessage() == null
                             ? "Could not check GitHub releases" : error.getMessage());
                     updateResults.offer(result.toString());
+                pcRenderUpdateResult(result);
                 } catch (Exception ignored) { }
             } finally {
                 if (connection != null) connection.disconnect();

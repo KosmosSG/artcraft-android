@@ -214,6 +214,17 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn show_font_catalog(&self, report: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let text = JObject::from(env.new_string(report)?);
+            env.call_method(&*activity, jni_str!("pcShowFontCatalog"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&text)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn startup_update_enabled(&self) -> Result<bool, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -417,9 +428,20 @@ impl PickerState {
             let families = register_custom_font(bytes.clone())?;
             let dir = bridge.files_dir()?.join("custom-fonts");
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let destination = dir.join(format!("imported-{id}.{}", extension.to_ascii_lowercase()));
+            // Picker request IDs restart at 1 on process launch. They must never
+            // overwrite a different imported font after the app restarts.
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?.as_nanos();
+            let destination = dir.join(format!("imported-{unique}-{id}.{}", extension.to_ascii_lowercase()));
+            if destination.exists() {
+                return Err("Font destination already exists; nothing overwritten".into());
+            }
             fs::write(&destination, &bytes).map_err(|e| e.to_string())?;
-            Ok(format!("Imported: {}", families.join(", ")))
+            // v0.14's text picker caches lists using fonts::shared_generation().
+            // register_font_data above updates that generation; a repaint below
+            // also refreshes the actual Type menu instead of only showing a toast.
+            Ok(format!("Imported and detected in PhotoCraft: {}", families.join(", ")))
         })();
         *self.font_status.lock().unwrap_or_else(|e| e.into_inner()) =
             result.unwrap_or_else(|error| format!("Import failed: {error}"));
@@ -502,6 +524,7 @@ impl PickerState {
             if is_font {
                 self.process_font_result(bridge, id, &value);
                 ctx.request_repaint();
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 continue;
             }
             let is_shared_font = {
@@ -714,6 +737,7 @@ use android_modifiers::{AndroidModifiers, apply_android_modifiers};
 struct UpdateDialogState {
     open: bool,
     checking: bool,
+    started_at: Option<std::time::Instant>,
     message: String,
     release_url: Option<String>,
 }
@@ -856,14 +880,25 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.picker.poll(&self.bridge, ctx);
         if self.updates.checking {
+            // A delayed Android worker must never block visible progress indefinitely.
+            if self.updates.started_at.is_some_and(|at|
+                at.elapsed() >= std::time::Duration::from_secs(30)) {
+                self.updates.checking = false;
+                self.updates.started_at = None;
+                self.updates.release_url = None;
+                self.updates.message = "Update check timed out. Check your connection and try again.".into();
+                self.updates.open = true;
+                ctx.request_repaint();
+            } else {
             match self.bridge.poll_update_result() {
                 Ok(Some(raw)) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     match serde_json::from_str::<serde_json::Value>(&raw) {
                         Ok(result) => {
                             self.updates.release_url = result.get("url")
                                 .and_then(serde_json::Value::as_str)
-                                .filter(|url| url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/"))
+                                .filter(|url| url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v"))
                                 .map(str::to_owned);
                             let installed = result.get("installed_version")
                                 .and_then(serde_json::Value::as_str).unwrap_or("unknown");
@@ -884,14 +919,19 @@ impl eframe::App for PhotoCraftAndroidApp {
                         }
                         Err(error) => self.updates.message = format!("Invalid update response: {error}"),
                     }
+                    if self.updates.message.starts_with("Update available:") {
+                        self.updates.open = true;
+                    }
                     ctx.request_repaint();
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
                 Err(error) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     self.updates.message = format!("Update checker unavailable: {error}");
                     ctx.request_repaint();
                 }
+            }
             }
         }
         // Deliver any file the system asked us to open through the app's own inbox.
@@ -926,6 +966,8 @@ impl eframe::App for PhotoCraftAndroidApp {
                 }
             }
         }
+        // LightCraft-style Updates now lives in the Android modal opened from Help.
+        // Do not consume permanent bottom-screen space with the old status dock.
         self.inner.ui(ui, _frame);
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
@@ -941,6 +983,30 @@ impl eframe::App for PhotoCraftAndroidApp {
             ui.ctx().request_repaint();
         }
         if take("artcraft.custom_fonts_visible") { self.picker.launch_font(&self.bridge); }
+        if take("artcraft.font_catalog") {
+            // Read the exact shared type-engine catalog used by PhotoCraft's
+            // font-family dropdown, not merely filenames copied by the SAF picker.
+            let report = match photocraft_text::shared().lock() {
+                Ok(mut engine) => {
+                    let families = engine.fonts.families();
+                    let saved = self.bridge.files_dir().ok()
+                        .and_then(|root| fs::read_dir(root.join("custom-fonts")).ok())
+                        .map(|entries| entries.flatten().filter(|file| {
+                            file.path().extension().and_then(|ext| ext.to_str())
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case("ttf")
+                                    || ext.eq_ignore_ascii_case("otf"))
+                        }).count()).unwrap_or(0);
+                    format!("Detected font families: {}\nSaved imported font files: {}\n\n{}",
+                        families.len(), saved, families.join("\n"))
+                }
+                Err(error) => format!("Font catalog unavailable: {error}"),
+            };
+            if let Err(error) = self.bridge.show_font_catalog(&report) {
+                log::warn!("Could not display PhotoCraft font catalog: {error}");
+                let _ = self.bridge.native_message(&report);
+            }
+        }
+
         if take("artcraft.shared_fonts_select") { self.picker.launch_shared_fonts(&self.bridge, false); }
         if take("artcraft.shared_fonts_refresh") { self.picker.launch_shared_fonts(&self.bridge, true); }
         if take("artcraft.update_settings") {
@@ -949,31 +1015,24 @@ impl eframe::App for PhotoCraftAndroidApp {
             }
         }
         if take("artcraft.check_updates_requested") {
+            // Show immediate, actionable feedback and preferences in the same
+            // native updates panel as LightCraft, not a floating canvas dock.
+            if let Err(error) = self.bridge.native_ui_call("settings") {
+                log::warn!("Could not show PhotoCraft Updates: {error}");
+            }
             self.updates.open = true;
+            ui.ctx().request_repaint();
             self.updates.release_url = None;
             self.updates.message = "Checking GitHub releases…".into();
             if !self.updates.checking {
                 match self.bridge.check_for_updates() {
-                    Ok(()) => self.updates.checking = true,
+                    Ok(()) => {
+                        self.updates.checking = true;
+                        self.updates.started_at = Some(std::time::Instant::now());
+                    },
                     Err(error) => self.updates.message = format!("Could not start update check: {error}"),
                 }
             }
-        }
-        if self.updates.open {
-            egui::Window::new("PhotoCraft Updates")
-                .open(&mut self.updates.open)
-                .show(ui.ctx(), |ui| {
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Could not open release page: {error}");
-                            }
-                        }
-                    }
-                });
         }
         for status in [&self.picker.font_status, &self.picker.shared_font_status] {
             let mut message = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -1085,6 +1144,7 @@ fn android_main(android_app: AndroidApp) {
         Ok(true) => match app_bridge.check_for_updates() {
             Ok(()) => {
                 state.checking = true;
+                state.started_at = Some(std::time::Instant::now());
                 state.message = "Checking for PhotoCraft updates…".into();
                 log::info!("PhotoCraft opted-in startup update check started");
             }

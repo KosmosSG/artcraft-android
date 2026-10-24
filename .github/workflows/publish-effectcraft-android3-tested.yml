@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      GH_TOKEN: \${{ github.token }}
-      SIGNING_READ_TOKEN: \${{ secrets.EFFECTCRAFT_SIGNING_READ_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      SIGNING_READ_TOKEN: ${{ secrets.EFFECTCRAFT_SIGNING_READ_TOKEN }}
       SIGNED_RUN: '40076369681'
       SIGNER_COMMIT: '66e4e7eea2e3c3883137fa1864504fabd2a1db3b'
       SOURCE_COMMIT: '9af891410bdfe151168bab7ebe49ffe3f0f0cecf'

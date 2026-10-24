@@ -47,8 +47,8 @@
                     try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
                         if (c != null && c.moveToFirst()) name = c.getString(0);
                     }
-                    ecCopyFont(uri, name, new long[]{0});
-                    ecFontMessage("Font copied; validating font faces…");
+                    ecCopyFont(uri, name, new long[]{0}, true);
+                    ecFontMessage("Font stored; checking font faces…");
                 } catch (Exception e) { ecFontMessage("Font import failed: " + e.getMessage()); }
             });
         } else {
@@ -62,7 +62,7 @@
         }
         return true;
     }
-    private void ecCopyFont(Uri uri, String name, long[] budget) throws Exception {
+    private void ecCopyFont(Uri uri, String name, long[] budget, boolean manual) throws Exception {
         String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
         if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")) throw new java.io.IOException("Choose a TTF or OTF font");
         File dir = ecFontDir();
@@ -93,7 +93,7 @@
             for (byte b : digest.digest()) hash.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
             File target = new File(dir, hash + (lower.endsWith(".otf") ? ".otf" : ".ttf"));
             if (!target.exists()) java.nio.file.Files.move(staged.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-            ecFontPaths.offer(target.getAbsolutePath());
+            ecFontPaths.offer((manual ? "manual|" : "") + target.getAbsolutePath());
         } finally { staged.delete(); }
     }
     public void ecRefreshFonts() { ecRefreshSharedFonts(true); }
@@ -130,7 +130,7 @@
                             }
                             String lower = name.toLowerCase(java.util.Locale.ROOT);
                             if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")) continue;
-                            try { ecCopyFont(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, budget); copied++; }
+                            try { ecCopyFont(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, budget, false); copied++; }
                             catch (Exception error) { skipped++; }
                         }
                     }

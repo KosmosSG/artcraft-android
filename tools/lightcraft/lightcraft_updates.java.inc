@@ -70,6 +70,11 @@
                 }
                 org.json.JSONArray releases = new org.json.JSONArray(
                     new String(buffer.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+                // A full page may hide this app behind newer releases from other suite apps.
+                // Until bounded pagination is implemented, never claim completeness.
+                if (releases.length() >= 100) {
+                    throw new java.io.IOException("Release list is incomplete; open GitHub Releases to check LightCraft manually");
+                }
                 android.content.pm.PackageInfo installed =
                     getPackageManager().getPackageInfo(getPackageName(), 0);
                 String installedName = installed.versionName == null ? "unknown" : installed.versionName;

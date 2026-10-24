@@ -15,6 +15,10 @@ pub struct GridCraftTools {
     check_started_at: Option<std::time::Instant>,
     startup_loaded: bool,
     startup_check: bool,
+    font_request_pending: bool,
+    font_request_started: Option<std::time::Instant>,
+    feedback_message: Option<String>,
+    feedback_until: Option<std::time::Instant>,
 }
 impl GridCraftTools {
     pub fn new(app: &AndroidApp) -> Self {
@@ -26,6 +30,8 @@ impl GridCraftTools {
             update_status: "Manual update check available; no automatic APK installation.".into(),
             release_url: None, checking: false, check_started_at: None,
             startup_loaded: false, startup_check: false,
+            font_request_pending: false, font_request_started: None,
+            feedback_message: None, feedback_until: None,
         }
     }
     fn send(&self, action: Action) -> Result<(), String> {
@@ -81,6 +87,10 @@ impl GridCraftTools {
             Ok(Some(value.try_to_string(env)?))
         }).map_err(|e| format!("Cannot poll GridCraft Android tools: {e}"))
     }
+    fn notify(&mut self, message: String) {
+        self.feedback_message = Some(message);
+        self.feedback_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(7));
+    }
     pub fn poll(&mut self) {
         if !self.startup_loaded {
             match self.read_startup() {
@@ -98,11 +108,17 @@ impl GridCraftTools {
                 Ok(value) => {
                     let text = value.get("message").and_then(|v| v.as_str()).unwrap_or("No further detail").to_string();
                     match value.get("kind").and_then(|v| v.as_str()).unwrap_or_default() {
-                        "font" | "folder" => self.font_status = text,
+                        "font" | "folder" => {
+                            self.font_request_pending = false;
+                            self.font_request_started = None;
+                            self.font_status = text.clone();
+                            self.notify(text);
+                        },
                         "update" => {
                             self.checking = false;
                             self.check_started_at = None;
-                            self.update_status = text;
+                            self.update_status = text.clone();
+                            self.notify(text);
                             self.release_url = value.get("url").and_then(|v| v.as_str())
                                 .filter(|s| s.starts_with("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v"))
                                 .map(str::to_owned);
@@ -123,17 +139,26 @@ impl GridCraftTools {
                     self.update_status = "Checking published GridCraft Android releases…".into();
                     self.checking = true;
                     self.check_started_at = Some(std::time::Instant::now());
+                    self.notify("Checking GridCraft releases on GitHub…".into());
                 } else {
                     self.font_status = "Waiting for Android Files…".into();
+                    self.font_request_pending = true;
+                    self.font_request_started = Some(std::time::Instant::now());
+                    self.notify("Android font picker started…".into());
                 }
             }
             Err(err) => {
                 if matches!(action, Action::CheckUpdates) {
                     self.checking = false;
                     self.check_started_at = None;
-                    self.update_status = err;
+                    self.update_status = err.clone();
+                    self.notify(err);
                 }
-                else { self.font_status = err; }
+                else {
+                    self.font_request_pending = false;
+                    self.font_status = err.clone();
+                    self.notify(err);
+                }
             }
         }
     }
@@ -165,8 +190,12 @@ impl GridCraftTools {
                         Ok(()) => {
                             self.startup_check = enabled;
                             self.update_status = "Startup preference saved.".into();
+                            self.notify(self.update_status.clone());
                         }
-                        Err(error) => self.update_status = error,
+                        Err(error) => {
+                            self.update_status = error.clone();
+                            self.notify(error);
+                        },
                     }
                 }
                 _ => self.update_status = "Unknown GridCraft Tools menu command.".into(),
@@ -178,8 +207,37 @@ impl GridCraftTools {
                 self.check_started_at = None;
                 self.release_url = None;
                 self.update_status = "Update check timed out. Check your connection and retry.".into();
+                self.notify(self.update_status.clone());
             } else {
                 ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            }
+        }
+        if self.font_request_pending {
+            if self.font_request_started.is_some_and(|t| t.elapsed() >= std::time::Duration::from_secs(60)) {
+                self.font_request_pending = false;
+                self.font_status = "Font import status timed out. Check the selected file and retry.".into();
+                self.notify(self.font_status.clone());
+            } else {
+                // Java completes SAF imports on a worker thread after the picker closes.
+                // Keep polling even while the menu is closed.
+                ctx.request_repaint_after(std::time::Duration::from_millis(300));
+            }
+        }
+        if let Some(message) = self.feedback_message.clone() {
+            if self.feedback_until.is_some_and(|end| std::time::Instant::now() < end) {
+                egui::Area::new(egui::Id::new("gridcraft.android.tools.feedback"))
+                    .order(egui::Order::Foreground)
+                    .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 52.0))
+                    .show(ctx, |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.set_max_width(360.0);
+                            ui.label(message);
+                        });
+                    });
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            } else {
+                self.feedback_message = None;
+                self.feedback_until = None;
             }
         }
         // Transient, UI-only state: no workbook document data is changed.

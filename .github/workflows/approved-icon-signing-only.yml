@@ -1,0 +1,59 @@
+name: DeckCraft approved icon permanent signing candidate ONLY
+'on':
+  push:
+    branches:
+    - icons/deckcraft-signing-20261024
+    paths:
+    - .github/workflows/approved-icon-signing-only.yml
+    - sign_verified.py
+    - sign-config.json
+permissions:
+  contents: read
+  actions: read
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Download only pinned successful candidate run
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: 'set -euo pipefail
+
+        gh api repos/KosmosSG/artcraft-android/actions/runs/40076770042 > original-run.json
+
+        python3 - <<''PYRUN''
+
+        import json
+
+        r=json.load(open(''original-run.json''))
+
+        assert r[''conclusion'']==''success'' and r[''head_sha'']==''50955410377d009951aaf39d34342d9ee1fa0661''
+
+        assert r[''path'']==''.github/workflows/approved-icons-candidate.yml''
+
+        PYRUN
+
+        gh run download 40076770042 -R KosmosSG/artcraft-android -n DeckCraft-approved-icons-candidate
+        -D candidate
+
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ''build-tools;35.0.0''
+
+        '
+    - name: Restore original app key, verify baseline, sign and compare payload
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEYSTORE_BASE64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+        STORE_PASSWORD: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+      run: python3 sign_verified.py
+    - uses: actions/upload-artifact@v4
+      with:
+        name: DeckCraft-approved-icons-PERMANENT-SIGNED-TESTING
+        path: signed-output/
+        if-no-files-found: error
+        retention-days: 30

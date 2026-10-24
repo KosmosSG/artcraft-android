@@ -288,8 +288,8 @@ impl AndroidFileBridge {
             let result = env.call_method(&*activity, jni_str!("vcShowUpdateDialog"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;ZZ)V"),
                 &[JValue::Object(&text), JValue::Object(&link),
-                    JValue::Bool(if checking { 1 } else { 0 }),
-                    JValue::Bool(if manual_open { 1 } else { 0 })]);
+                    JValue::Bool(checking),
+                    JValue::Bool(manual_open)]);
             if result.is_err() { env.exception_clear(); }
             result?;
             Ok(())

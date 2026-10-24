@@ -122,9 +122,9 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertNotIn('egui::Panel::bottom("vectorcraft.android.update_status")', rust)
         self.assertNotIn('egui::Window::new("VectorCraft Updates")', rust)
         self.assertIn('new android.app.AlertDialog.Builder(this)', activity)
-        self.assertIn('.setTitle("VectorCraft Updates")', activity)
+        self.assertIn('.setTitle("About VectorCraft — Updates")', activity)
         self.assertIn('vcUpdateProgress.setVisibility(checking ? View.VISIBLE : View.GONE)', activity)
-        self.assertIn('vcUpdateDialog.setMessage(message)', activity)
+        self.assertIn('vcUpdateStatus.setText(message == null', activity)
         self.assertIn('jni_str!("vcShowUpdateDialog")', rust)
         click = rust[rust.index("        if check_updates {"):]
         self.assertIn("self.updates.open = true;", click)
@@ -137,8 +137,8 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         self.assertIn("Update check timed out.", rust)
         self.assertIn("started_at: Option<std::time::Instant>", rust)
         self.assertIn("ctx.request_repaint_after", rust)
-        self.assertIn('.setNegativeButton("Close"', activity)
-        self.assertIn('.setPositiveButton("View Release"', activity)
+        self.assertIn('.setPositiveButton("Close"', activity)
+        self.assertIn('vcUpdateReleaseButton.setOnClickListener', activity)
         self.assertIn('connection.setConnectTimeout(8000)', extras)
         self.assertIn('connection.setReadTimeout(8000)', extras)
         # Manual Update Check only opens the browser after a validated release link.

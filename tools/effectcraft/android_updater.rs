@@ -6,7 +6,7 @@ use std::sync::mpsc;
 pub struct Updater {
     app: AndroidApp,
     started: bool,
-    fonts: mpsc::Sender<String>,
+    fonts: mpsc::Sender<(String, bool)>,
     reports: mpsc::Receiver<String>,
 }
 
@@ -26,29 +26,51 @@ macro_rules! action {
 
 impl Updater {
     pub fn new(app: &AndroidApp) -> Self {
-        let (sender, receiver) = mpsc::channel::<String>();
+        let (sender, receiver) = mpsc::channel::<(String, bool)>();
         let (report_tx, reports) = mpsc::channel();
         let root = app.internal_data_path().map(|p| p.join("custom-fonts"));
         std::thread::spawn(move || {
-            let mut loaded = std::collections::HashSet::new();
-            for path in receiver {
-                let result = (|| -> Result<usize, String> {
-                    let file = std::path::PathBuf::from(&path);
+            // A canonical path check is needed here: Android may expose the same
+            // app-private files directory as /data/data/... or /data/user/0/....
+            // Compare resolved paths, and reject symlinks escaping custom-fonts.
+            let mut loaded = std::collections::HashMap::<std::path::PathBuf, String>::new();
+            for (path, manual) in receiver {
+                let result = (|| -> Result<String, String> {
                     let root = root.as_ref().ok_or("Private font storage unavailable")?;
-                    if file.parent() != Some(root.as_path()) { return Err("Untrusted font path".into()); }
-                    if loaded.contains(&path) { return Ok(0); }
-                    let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
-                    if !meta.is_file() || meta.len() > 32 * 1024 * 1024 { return Err("Invalid font file size".into()); }
-                    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
-                    let count = effectcraft_text::fonts::add_font_data(bytes).len();
-                    if count == 0 {
-                        let _ = std::fs::remove_file(&file);
-                        return Err("Font has no supported faces".into());
+                    let root = std::fs::canonicalize(root)
+                        .map_err(|e| format!("Font storage unavailable: {e}"))?;
+                    let file = std::fs::canonicalize(&path)
+                        .map_err(|e| format!("Cannot open imported font: {e}"))?;
+                    if file.parent() != Some(root.as_path()) {
+                        return Err("Imported font is outside private font storage".into());
                     }
-                    loaded.insert(path.clone());
-                    Ok(count)
+                    if !file.extension().and_then(|x| x.to_str())
+                        .is_some_and(|x| x.eq_ignore_ascii_case("ttf") || x.eq_ignore_ascii_case("otf")) {
+                        return Err("Imported file must be TTF or OTF".into());
+                    }
+                    if let Some(family) = loaded.get(&file) {
+                        return Ok(format!("Font already available: {family}"));
+                    }
+                    let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
+                    if !meta.is_file() || meta.len() < 12 || meta.len() > 32 * 1024 * 1024 {
+                        return Err("Invalid font file size".into());
+                    }
+                    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+                    let faces = effectcraft_text::fonts::add_font_data(bytes);
+                    if faces.is_empty() {
+                        // Only delete a verified file directly inside custom-fonts.
+                        let _ = std::fs::remove_file(&file);
+                        return Err("Font engine could not read any faces in this file".into());
+                    }
+                    let family = effectcraft_text::fonts::face(faces[0]).info.family.clone();
+                    loaded.insert(file, family.clone());
+                    Ok(format!("Font ready: {family}. Select it in Character or Properties."))
                 })();
-                if let Err(error) = result { let _ = report_tx.send(error); }
+                match result {
+                    Ok(status) if manual => { let _ = report_tx.send(status); }
+                    Err(error) => { let _ = report_tx.send(format!("Font import: {error}")); }
+                    _ => {}
+                }
             }
         });
         Self { app: app.clone(), started: false, fonts: sender, reports }
@@ -87,8 +109,23 @@ impl Updater {
         }
         for _ in 0..8 {
             match self.font_path() {
-                Ok(Some(path)) => { let _ = self.fonts.send(path); }
-                _ => break,
+                Ok(Some(path)) => {
+                    // The manual marker comes only from the Java file picker; saved
+                    // fonts and background shared-folder refreshes stay quiet.
+                    let (manual, path) = match path.strip_prefix("manual|") {
+                        Some(p) => (true, p.to_owned()),
+                        None => (false, path),
+                    };
+                    if self.fonts.send((path, manual)).is_err() {
+                        self.message("Font registration worker stopped");
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    self.message(&format!("Font bridge error: {error}"));
+                    break;
+                },
             }
         }
         while let Ok(report) = self.reports.try_recv() { self.message(&report); }

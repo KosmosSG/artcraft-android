@@ -66,7 +66,11 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
             "fn never_double_native_text_or_editing_ime_events",
             "fn modifier_chords_repeat_and_shift_are_respected",
             "fn repair_uses_physical_letter_when_logical_key_is_unknown",
-            "egui::Event::Text(_) | egui::Event::Ime(_)",
+            "matches!(event, egui::Event::Text(_))",
+            "fn inactive_ime_composition_does_not_suppress_physical_tool_key",
+            "pub letter_key_downs: u64",
+            "pub blocked_by_field: u64",
+            "pub blocked_by_type_tool: u64",
             "if !tool_shortcuts_allowed", "egui::Event::Text(letter)",
             "pub struct KeyboardDiagnostics", "pub fn observe(",
         ):
@@ -79,7 +83,12 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
             "!ctx.egui_wants_keyboard_input()",
             "!self.inner.session.tool_wants_text()",
             "Physical keyboard events (test diagnostics)",
-            "synthesized tool keys",
+            "tool fallback:",
+            "letter keys:",
+            "blocked by field:",
+            "blocked by Type:",
+            "self.keyboard.blocked_by_field",
+            "self.keyboard.blocked_by_type_tool",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.shell)

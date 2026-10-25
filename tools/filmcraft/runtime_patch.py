@@ -84,7 +84,7 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         'public final class FilmCraftActivity extends GameActivity {\n'
         '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n'
         '        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE\n'
-        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {\n'
+        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {\n'
         '            if (imeView != null) imeView.clearFocus();\n'
         '            imeHide();\n'
         '            final android.view.Window win = getWindow();\n'

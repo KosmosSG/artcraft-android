@@ -64,7 +64,7 @@ if not j.endswith("}") or "ecCheckForUpdates" in j:
 # Only this EffectCraft-only temporary builder template is patched. A physical
 # Escape retains the upstream editor event and restores canvas focus after IME
 # input; ordinary letters and Chinese composition are left completely alone.
-j = once(j, 'public final class __CLASS__ extends NativeActivity {', '''public final class __CLASS__ extends NativeActivity {
+j = once(j, 'public final class __CLASS__ extends GameActivity {', '''public final class __CLASS__ extends GameActivity {
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {
@@ -73,7 +73,7 @@ j = once(j, 'public final class __CLASS__ extends NativeActivity {', '''public f
         return super.dispatchKeyEvent(event);
     }''', "EffectCraft physical Escape passthrough")
 j = once(j, '                view.clearFocus();', '''                view.clearFocus();
-                // Give physical shortcuts back to NativeActivity's visible surface.
+                // Give physical shortcuts back to GameActivity's visible surface.
                 android.view.Window win = getWindow();
                 android.view.View content = win == null ? null :
                         win.getDecorView().findViewById(android.R.id.content);

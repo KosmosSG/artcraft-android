@@ -203,6 +203,15 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn end_type_editing(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcEndTypeEditing"), jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn native_message(&self, message: &str) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -937,7 +946,15 @@ impl eframe::App for PhotoCraftAndroidApp {
         // Deliver any file the system asked us to open through the app's own inbox.
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
+        // Let the app own Escape/commit/cancel before returning hardware focus.
+        // No hardcoded tools: PhotoCraft's custom shortcut registry stays in charge.
+        let was_editing_type = self.inner.ui.text_edit.is_some();
         self.inner.logic(ctx, frame);
+        if was_editing_type && self.inner.ui.text_edit.is_none() {
+            if let Err(error) = self.bridge.end_type_editing() {
+                log::warn!("Android Type keyboard handoff failed: {error}");
+            }
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

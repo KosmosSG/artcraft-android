@@ -58,6 +58,16 @@ def main(app: str) -> None:
         ast.parse(source, filename=path)
     else:
         raise SystemExit(f"Unsupported app: {app}")
+    if app == "photocraft":
+        require("adapters/photocraft/src/lib.rs", "let was_editing_type = self.inner.ui.text_edit.is_some();",
+                "was_editing_type && self.inner.ui.text_edit.is_none()", 'jni_str!("pcEndTypeEditing")')
+        require("adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java",
+                "public void pcEndTypeEditing()", "imeEvents.clear();")
+    require({"photocraft": "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java",
+             "designcraft": "tools/designcraft/support/patch_launcher.py",
+             "filmcraft": "tools/filmcraft/runtime_patch.py",
+             "effectcraft": "tools/effectcraft/integrate_updater.py"}[app],
+            "event.getRepeatCount() == 0", "event.hasNoModifiers()")
     print(f"PASS: {app} Escape-to-canvas focus markers; APK/device verification still needed")
 
 if __name__ == "__main__":

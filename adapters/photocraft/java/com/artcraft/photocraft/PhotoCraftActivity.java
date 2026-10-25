@@ -308,10 +308,20 @@ public final class PhotoCraftActivity extends NativeActivity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
-                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted) {
+                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             imeHide();
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    /** Called only after PhotoCraft has actually finished inline Type editing. */
+    public void pcEndTypeEditing() {
+        runOnUiThread(() -> {
+            imeHide();
+            // Reset can emit a final composition callback: discard it after the
+            // editor ended, never during ordinary Chinese/IME text entry.
+            imeEvents.clear();
+        });
     }
 
     /** Hide the soft keyboard and release the IME host view. Called by the Rust shell via JNI. */

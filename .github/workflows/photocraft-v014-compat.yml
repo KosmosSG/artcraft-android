@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Validate app-specific keyboard focus handoff
+        run: python3 tools/keyboard/escape_focus_check.py photocraft
       - name: Guard official pin, every original Android feature and release restrictions
         run: |
           set -euo pipefail
@@ -134,6 +136,10 @@ jobs:
           PY
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/signing.txt
           sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Record exact keyboard candidate source
+        run: |
+          mkdir -p candidate
+          printf "%s\n" "$GITHUB_SHA" > candidate/keyboard-source-sha.txt
       - name: Upload Test-only APK artifact; no GitHub Release
         if: success()
         uses: actions/upload-artifact@v5

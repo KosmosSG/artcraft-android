@@ -334,6 +334,34 @@ public final class __CLASS__ extends NativeActivity {
         });
     }
 
+    /** Preserve upstream key handling; release only the hidden Android IME host. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
+                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted
+                && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+            imeHide();
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    /** Find the actual canvas through nested GameActivity/NativeActivity layouts. */
+    private boolean restoreCanvasKeyboardFocus(View node) {
+        if (node == null || node == imeView || !node.isShown()) return false;
+        if (node instanceof android.view.SurfaceView) {
+            node.setFocusable(true);
+            node.setFocusableInTouchMode(true);
+            return node.requestFocus();
+        }
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); ++i) {
+                if (restoreCanvasKeyboardFocus(group.getChildAt(i))) return true;
+            }
+        }
+        return false;
+    }
+
     /** Hide the soft keyboard and release the IME host view. Called by the Rust shell via JNI. */
     public void imeHide() {
         imeWanted = false;
@@ -349,6 +377,11 @@ public final class __CLASS__ extends NativeActivity {
                     imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
                 }
                 view.clearFocus();
+                final Window window = getWindow();
+                if (window != null) {
+                    restoreCanvasKeyboardFocus(window.getDecorView()
+                            .findViewById(android.R.id.content));
+                }
                 // Drop the scratch buffer between sessions so it cannot grow without bound.
                 view.setText("");
             } catch (Throwable error) {

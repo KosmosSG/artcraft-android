@@ -1031,10 +1031,25 @@ impl eframe::App for VectorCraftAndroidApp {
         self.persist_tick();
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.keyboard_trace.observe(raw, true);
         self.ime.poll(raw);
         self.keyboard_trace.observe(raw, false);
+        // Escape returns focus from Type editing; let the upstream tool state
+        // also receive the original event. When a document closes, the old
+        // text field must not retain shortcut focus on the next new canvas.
+        let escape_pressed = raw.events.iter().any(|event|
+            matches!(event, egui::Event::Key {
+                key: egui::Key::Escape, pressed: true, ..
+            }));
+        let document_closed = self.inner.session.active().is_none();
+        if ctx.text_edit_focused() && (escape_pressed || document_closed) {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() {
+                    memory.surrender_focus(id);
+                }
+            });
+        }
         apply_android_modifiers(&mut self.modifiers, raw);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();

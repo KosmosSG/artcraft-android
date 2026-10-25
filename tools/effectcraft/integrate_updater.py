@@ -64,7 +64,12 @@ if not j.endswith("}") or "ecCheckForUpdates" in j:
 # Only this EffectCraft-only temporary builder template is patched. A physical
 # Escape retains the upstream editor event and restores canvas focus after IME
 # input; ordinary letters and Chinese composition are left completely alone.
-j = once(j, 'public final class __CLASS__ extends GameActivity {', '''public final class __CLASS__ extends GameActivity {
+declarations = [f'public final class __CLASS__ extends {base} {{'
+                for base in ('NativeActivity', 'GameActivity')]
+matched = [declaration for declaration in declarations if j.count(declaration) == 1]
+if len(matched) != 1 or 'boolean dispatchKeyEvent(' in j:
+    raise SystemExit('STOP: unsupported or already patched EffectCraft Activity')
+j = once(j, matched[0], matched[0] + '''
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {

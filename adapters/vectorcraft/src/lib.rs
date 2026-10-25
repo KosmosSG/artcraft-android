@@ -1083,16 +1083,13 @@ impl eframe::App for VectorCraftAndroidApp {
         let (tab_check, tab_startup_changed, tab_startup_desired,
              tab_preview_changed, tab_preview_desired, tab_open_release) =
              ctx.data_mut(|d| {
-                let bool_value = |d: &egui::util::IdTypeMap, key: &str| {
-                    d.get_temp::<bool>(egui::Id::new(key)).unwrap_or(false)
-                };
                 // Avoid a stale repeated request on every repaint.
-                let check = bool_value(d, "artcraft.vectorcraft.check_updates_requested");
-                let startup_changed = bool_value(d, "artcraft.vectorcraft.startup_changed");
-                let startup = bool_value(d, "artcraft.vectorcraft.startup_desired");
-                let preview_changed = bool_value(d, "artcraft.vectorcraft.preview_changed");
-                let preview = bool_value(d, "artcraft.vectorcraft.preview_desired");
-                let open = bool_value(d, "artcraft.vectorcraft.open_release_requested");
+                let check = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.check_updates_requested")).unwrap_or(false);
+                let startup_changed = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.startup_changed")).unwrap_or(false);
+                let startup = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.startup_desired")).unwrap_or(false);
+                let preview_changed = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.preview_changed")).unwrap_or(false);
+                let preview = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.preview_desired")).unwrap_or(false);
+                let open = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.open_release_requested")).unwrap_or(false);
                 for key in ["artcraft.vectorcraft.check_updates_requested",
                             "artcraft.vectorcraft.startup_changed",
                             "artcraft.vectorcraft.preview_changed",

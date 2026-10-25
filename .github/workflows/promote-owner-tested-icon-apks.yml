@@ -62,6 +62,7 @@ jobs:
             package: com.artcraft.pdfcraft
             source: ba604057f77eb0ae45dac85914280121d0e9eb12
             run: 40114901778
+            candidate_run: 40076764017
             artifact: PDFCraft-approved-icons-PERMANENT-SIGNED-TESTING
             sha: f8f3b7bb806bac9eb62c25f4eea762a7912382afb67c72d38e7997112afffb4a
           - app: DeckCraft
@@ -70,6 +71,7 @@ jobs:
             package: com.artcraft.deckcraft
             source: 50955410377d009951aaf39d34342d9ee1fa0661
             run: 40114908137
+            candidate_run: 40076770042
             artifact: DeckCraft-approved-icons-PERMANENT-SIGNED-TESTING
             sha: 96a0596e1651656d5728a0358515b77e311f73b473f6a472111c9ad75f98c277
     env:
@@ -80,6 +82,7 @@ jobs:
       PACKAGE: ${{ matrix.package }}
       SOURCE: ${{ matrix.source }}
       RUN_ID: ${{ matrix.run }}
+      CANDIDATE_RUN: ${{ matrix.candidate_run }}
       ARTIFACT: ${{ matrix.artifact }}
       EXPECTED_SHA: ${{ matrix.sha }}
     steps:
@@ -119,7 +122,7 @@ jobs:
           assert v['certificate_sha256'] and re.fullmatch('[a-f0-9]{64}',v['certificate_sha256'])
           assert v['production_signing_verified'] is True
           assert v['signed_payload_unchanged'] is True
-          assert v['source_run']==int(e['RUN_ID'])
+          assert v['source_run']==int(e['CANDIDATE_RUN'])
           assert v['source_commit']==e['SOURCE']
           print("PASS: retained signing provenance",e["APP"],v["certificate_sha256"])
           PY

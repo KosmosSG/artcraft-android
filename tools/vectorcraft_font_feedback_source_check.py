@@ -72,7 +72,7 @@ def verify_port(source):
     crate = src / "apps/vectorcraft-android"
     manifest = tomllib.loads((crate / "Cargo.toml").read_text())
     metadata = manifest["package"]["metadata"]["android"]
-    insist(metadata["package"] == "com.artcraft.vectorcraft.candidate",
+    insist(metadata["package"] == "com.artcraft.vectorcraft.feedbacktest",
            "Test APK must not be production package")
     insist((crate / "src/lib.rs").is_file(), "Android Test launcher missing")
     insist("vcShowMessage" in (crate / "java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text(),

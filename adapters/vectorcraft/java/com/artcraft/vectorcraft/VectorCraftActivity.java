@@ -72,6 +72,8 @@ public final class VectorCraftActivity extends NativeActivity {
     public void vcRequestFontFolder(long id) { extras.requestFontFolder(id); }
     public void vcRefreshFontFolder(long id) { extras.refreshFontFolder(id); }
     public void vcCheckForUpdates() { extras.checkForUpdates(); }
+    public boolean vcGetIncludePreviewUpdates() { return extras.includePreviewUpdates(); }
+    public void vcSetIncludePreviewUpdates(boolean enabled) { extras.setIncludePreviewUpdates(enabled); }
     public String vcPollUpdateResult() { return extras.pollUpdate(); }
     public void vcOpenUpdatePage(String url) { extras.openRelease(url); }
 

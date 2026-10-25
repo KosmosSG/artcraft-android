@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use vectorcraft_engine::Session;
+use vectorcraft_engine::{Session, UiRequest};
+use vectorcraft_tools::{ToolKey, Mods};
 use vectorcraft_ui_egui::picks::PickRequest;
 use vectorcraft_ui_egui::{FilePick, Inbox, Services, VectorcraftApp};
 
@@ -40,7 +41,7 @@ mod ime_bridge;
 // Shared PhotoCraft-style hardware-key reconstruction: independent left/right modifiers,
 // correctly ordered modifier transitions, Ctrl text suppression and focus-loss reset.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape};
+use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -986,10 +987,54 @@ impl eframe::App for VectorCraftAndroidApp {
         self.ime.poll(raw);
         self.keyboard.observe(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
-        // MagicPad diagnostic: egui may expose Android Escape as BrowserBack.
-        // Only translate while actively editing Type; never alter general Back navigation.
+        // Test-only direct dispatch: upstream shortcuts::handle may skip Esc/V/T/P
+        // during an Android focus transition. Operate on observed hardware keys,
+        // never on text/IME commits, and preserve fields, dialogs and composition.
         let type_editing_now = self.inner.session.tool_wants_text();
-        normalize_type_editor_escape(raw, type_editing_now);
+        let field_focused_now = ctx.egui_wants_keyboard_input();
+        let composing_now = self.inner.session.tool_composing();
+        let modal_open = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        if let Some(command) = canvas_hardware_command(
+            raw, type_editing_now, field_focused_now, composing_now, modal_open,
+        ) {
+            let mut handled = false;
+            match command {
+                CanvasHardwareCommand::ExitType => {
+                    let view = self.inner.view_info();
+                    match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                        Ok(requests) => {
+                            for request in requests {
+                                if let UiRequest::SwitchTool(tool) = request {
+                                    self.inner.select_tool(&tool);
+                                    handled = true;
+                                }
+                            }
+                        }
+                        Err(error) => log::warn!("Android Type Escape fallback failed: {error}"),
+                    }
+                    if handled { self.keyboard.direct_escapes += 1; }
+                }
+                CanvasHardwareCommand::Selection
+                | CanvasHardwareCommand::Type
+                | CanvasHardwareCommand::Pen => {
+                    if self.inner.session.active().is_some() {
+                        let tool = match command {
+                            CanvasHardwareCommand::Selection => "selection",
+                            CanvasHardwareCommand::Type => "type",
+                            CanvasHardwareCommand::Pen => "pen",
+                            CanvasHardwareCommand::ExitType => unreachable!(),
+                        };
+                        self.inner.select_tool(tool);
+                        handled = true;
+                        self.keyboard.direct_tools += 1;
+                    }
+                }
+            }
+            if handled { consume_canvas_hardware_command(raw, command); }
+        }
+        // Keep upstream's normal Escape handling available if the direct exit
+        // failed or the raw event was not eligible for direct canvas dispatch.
+        normalize_type_editor_escape(raw, self.inner.session.tool_wants_text());
         // Upstream VectorCraft's V/T and other tool keys are dispatched from Text events.
         // NativeActivity can report only physical Key events on external keyboards.
         // Reconstruct a tool-selection letter only outside fields, Type editing and IME.
@@ -1105,6 +1150,11 @@ impl eframe::App for VectorCraftAndroidApp {
                                 "IME: {} | tool fallback: {} | blocked by field: {} | blocked by Type: {}",
                                 self.keyboard.ime_events, self.keyboard.fallback_events,
                                 self.keyboard.blocked_by_field, self.keyboard.blocked_by_type_tool,
+                            ));
+                            ui.monospace(format!(
+                                "Direct tool: {} | direct Esc exits: {} | IME composing now: {}",
+                                self.keyboard.direct_tools, self.keyboard.direct_escapes,
+                                self.inner.session.tool_composing(),
                             ));
                             ui.monospace(format!(
                                 "Last key: {}",

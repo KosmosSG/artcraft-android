@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "d4c3067352356aa7b85f5bf62a4fad15380b374159b9565870e9c2c23b20a48e"
   },
   "display_name": "DeckCraft",
-  "version_name": "0.9.0-android.2",
-  "version_code": 100000002,
-  "previous_version_code": 100000001,
+  "version_name": "0.9.0-android.3",
+  "version_code": 100000003,
+  "previous_version_code": 100000002,
   "package": "com.artcraft.deckcraft"
 }

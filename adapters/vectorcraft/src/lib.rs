@@ -233,6 +233,27 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    // LightCraft-style persistent update channel, stored in Android's private
+    // SharedPreferences. JNI failures are surfaced to the About → Updates UI.
+    fn get_include_preview_updates(&self) -> Result<bool, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcGetIncludePreviewUpdates"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|e| e.to_string())
+    }
+
+    fn set_include_preview_updates(&self, enabled: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcSetIncludePreviewUpdates"),
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn poll_update_result(&self) -> Result<Option<String>, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -397,10 +418,10 @@ impl FontUiState {
 
 #[derive(Default)]
 struct UpdateDialogState {
-    open: bool,
     checking: bool,
     message: String,
     release_url: Option<String>,
+    include_preview: bool,
 }
 
 /// A MIME type for an open dialog, from its first file-type filter (every file when it has none).
@@ -700,6 +721,7 @@ struct VectorCraftAndroidApp {
     bridge: AndroidFileBridge,
     picks: Arc<PickState>,
     fonts: FontUiState,
+    font_feedback_open: bool,
     android_tools_open: bool,
     touch_dock: bool,
     startup_updates: bool,

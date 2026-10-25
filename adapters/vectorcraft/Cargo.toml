@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 vectorcraft-engine = { path = "../../crates/engine" }
+vectorcraft-tools = { path = "../../crates/tools" }
 vectorcraft-text = { path = "../../crates/text" }
 vectorcraft-ui-egui = { path = "../../crates/ui-egui" }
 eframe = { workspace = true, features = ["wgpu", "persistence"] }

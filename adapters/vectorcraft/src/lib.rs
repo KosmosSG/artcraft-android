@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use vectorcraft_engine::Session;
+use vectorcraft_engine::{Session, UiRequest};
+use vectorcraft_tools::{ToolKey, Mods};
 use vectorcraft_ui_egui::picks::PickRequest;
 use vectorcraft_ui_egui::{FilePick, Inbox, Services, VectorcraftApp};
 
@@ -36,6 +37,10 @@ mod system_fonts;
 // templates/android/ime_bridge.rs). The `mod ime_bridge;` marker also keeps the vendored
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
+
+// Device-tested MagicPad physical keyboard recovery and guarded Contextual Task Bar Escape.
+mod android_modifiers;
+use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -65,6 +70,16 @@ impl AndroidFileBridge {
             app: self.app.clone(),
             vm: self.vm.clone(),
         }
+    }
+
+    /// Restore native canvas keyboard focus after a completed Type editor Escape.
+    fn end_type_editing(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+            env.call_method(&*activity, jni_str!("vcEndTypeEditing"), jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|error| error.to_string())
     }
 
     fn request_open(&self, id: u64, multiple: bool, mime: &str) -> Result<(), String> {
@@ -652,65 +667,6 @@ fn persist_save(app: &mut VectorcraftApp, dir: &Path) {
     }
 }
 
-/// Reconstruct egui's modifier state on Android.
-///
-/// winit's Android backend delivers `KeyboardInput` events but never emits `ModifiersChanged`
-/// (it discards the `KeyEvent`'s meta state), so egui's modifier state stays empty and
-/// `Ctrl`/`Alt` shortcuts are ignored while plain keys continue to work. Physical modifier keys
-/// do arrive as `Event::Key` events (`Key::ControlLeft`, `Key::AltLeft`, ...), so we track them
-/// and stamp the resulting state onto this frame's events. This mirrors `egui-winit`'s
-/// `ModifiersChanged` handling and suppresses the text character that would otherwise be emitted
-/// alongside a Ctrl/Command shortcut.
-fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput) {
-    let before = *state;
-    let mut kept: Vec<egui::Event> = Vec::with_capacity(raw.events.len());
-    for mut event in raw.events.drain(..) {
-        match &mut event {
-            egui::Event::Key {
-                key,
-                physical_key,
-                pressed,
-                modifiers,
-                ..
-            } => {
-                let tracked = physical_key.unwrap_or(*key);
-                match tracked {
-                    egui::Key::ShiftLeft | egui::Key::ShiftRight => state.shift = *pressed,
-                    egui::Key::ControlLeft | egui::Key::ControlRight => state.ctrl = *pressed,
-                    egui::Key::AltLeft | egui::Key::AltRight => state.alt = *pressed,
-                    _ => {}
-                }
-                state.mac_cmd = false;
-                state.command = state.ctrl;
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::PointerButton { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::MouseWheel { modifiers, .. } => {
-                *modifiers = *state;
-                kept.push(event);
-            }
-            egui::Event::Text(_) if state.ctrl || state.command || state.mac_cmd => {
-                // Suppress text emitted with a modifier chord.
-            }
-            egui::Event::WindowFocused(false) => {
-                *state = egui::Modifiers::default();
-                kept.push(event);
-            }
-            _ => kept.push(event),
-        }
-    }
-    raw.events = kept;
-    if *state != before {
-        // `RawInput` has no modifier field in this egui version: `InputState.modifiers` is driven
-        // purely by this event (plus its own per-event copies), so it must be emitted on change.
-        raw.events.push(egui::Event::ModifiersChanged(*state));
-    }
-}
-
 fn services(bridge: AndroidFileBridge, state: Arc<PickState>, inbox: Inbox) -> Services {
     let write_bridge = bridge.clone_for_services();
     let pick_bridge = bridge.clone_for_services();
@@ -749,7 +705,7 @@ struct VectorCraftAndroidApp {
     startup_updates: bool,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
-    modifiers: egui::Modifiers,
+    modifiers: AndroidModifiers,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -957,9 +913,76 @@ impl eframe::App for VectorCraftAndroidApp {
         self.persist_tick();
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
+        // Upstream v0.14 Type editing claims Escape and returns a SwitchTool
+        // request. Routing that request directly avoids stale Android IME focus
+        // or an egui focus transition swallowing the physical key.
+        let editing = self.inner.session.tool_wants_text();
+        let field_focused = ctx.text_edit_focused();
+        let composing = self.inner.session.tool_composing();
+        let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        let selection_idle = matches!(self.inner.session.tool_id(), "selection" | "directSelection")
+            && !self.inner.session.tool_busy();
+        let context_bar_with_selection = self.inner.ui.task_bar && selection_idle &&
+            self.inner.session.active().is_some_and(|d| d.selection.has_objects_or_guides());
+        if let Some(command) = canvas_hardware_command(
+            raw, editing, field_focused, composing, modal, context_bar_with_selection,
+        ) {
+            let mut handled = false;
+            match command {
+                CanvasHardwareCommand::ExitType => {
+                    let view = self.inner.view_info();
+                    match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                        Ok(requests) => {
+                            for request in requests {
+                                if let UiRequest::SwitchTool(tool) = request {
+                                    self.inner.select_tool(&tool);
+                                    handled = true;
+                                }
+                            }
+                        }
+                        Err(error) => log::warn!("Type editor Escape failed: {error}"),
+                    }
+                    if handled {
+                        if let Err(error) = self.bridge.end_type_editing() {
+                            log::warn!("Android keyboard focus handoff failed: {error}");
+                        }
+                    }
+                }
+                CanvasHardwareCommand::DismissContextBar => {
+                    // Second Escape uses the existing Hide Bar state; it does
+                    // not change the user's keyboard shortcut assignments.
+                    self.inner.ui.task_bar = false;
+                    ctx.memory_mut(|memory| {
+                        if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                    });
+                    handled = true;
+                }
+                CanvasHardwareCommand::Selection
+                | CanvasHardwareCommand::Type
+                | CanvasHardwareCommand::Pen => {
+                    if self.inner.session.active().is_some() {
+                        let tool = match command {
+                            CanvasHardwareCommand::Selection => "selection",
+                            CanvasHardwareCommand::Type => "type",
+                            CanvasHardwareCommand::Pen => "pen",
+                            CanvasHardwareCommand::ExitType
+                            | CanvasHardwareCommand::DismissContextBar => unreachable!(),
+                        };
+                        self.inner.select_tool(tool);
+                        handled = true;
+                    }
+                }
+            }
+            if handled { consume_canvas_hardware_command(raw, command); }
+        }
+        // Leave unrelated Escape, punctuation, modified shortcuts and all
+        // IME composition/commit events to the unmodified upstream dispatcher.
+        normalize_type_editor_escape(raw, self.inner.session.tool_wants_text());
+        let allow_letters = !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();
+        restore_tool_key_text(raw, allow_letters);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
@@ -1200,7 +1223,7 @@ fn android_main(android_app: AndroidApp) {
                     state
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
-                modifiers: egui::Modifiers::default(),
+                modifiers: AndroidModifiers::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

@@ -1,0 +1,54 @@
+name: ArtCraft keyboard Escape focus refinement checks
+
+on:
+  push:
+    branches:
+      - refine/photocraft-esc-focus-20261025
+      - refine/designcraft-esc-focus-20261025
+      - refine/filmcraft-esc-focus-20261025
+      - refine/effectcraft-esc-focus-20261025
+    paths:
+      - 'adapters/photocraft/**'
+      - 'tools/designcraft/**'
+      - 'tools/filmcraft/**'
+      - 'tools/effectcraft/**'
+      - 'tools/keyboard/**'
+      - '.github/workflows/escape-focus-refinement.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keyboard-focus-static-gates:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check guarded app-specific Escape handling
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="${GITHUB_REF_NAME#refine/}"
+          APP="${APP%-esc-focus-20261025}"
+          case "$APP" in
+            photocraft|designcraft|filmcraft|effectcraft) ;;
+            *) echo "Only reviewed keyboard refinement branches are allowed"; exit 1;;
+          esac
+          python3 tools/keyboard/escape_focus_check.py "$APP"
+          case "$APP" in
+            designcraft)
+              python3 -m py_compile tools/designcraft/support/patch_launcher.py
+              ;;
+            filmcraft)
+              python3 -m py_compile tools/filmcraft/runtime_patch.py
+              python3 tools/filmcraft/runtime_patch.py --self-test
+              ;;
+            effectcraft)
+              python3 -m py_compile tools/effectcraft/integrate_updater.py
+              ;;
+          esac
+          echo "Static code checks passed; does NOT verify a compiled Android APK or device behavior."

@@ -5,6 +5,8 @@ name: DesignCraft approved icons ARM64 candidate (never publish)
     - icons/designcraft-approved-20261024
     - refine/designcraft-esc-focus-20261025
     paths:
+    - tools/designcraft/**
+    - tools/keyboard/**
     - tools/approved-branding/**
     - tools/designcraft/**
     - .github/workflows/approved-icons-candidate.yml
@@ -25,6 +27,8 @@ jobs:
     - uses: actions/checkout@v5
       with:
         persist-credentials: false
+    - name: Validate app-specific keyboard focus handoff
+      run: python3 tools/keyboard/escape_focus_check.py designcraft
     - name: Verify approved source, adaptive safe area and monotonic version
       run: 'python3 -m pip install Pillow==11.3.0
 
@@ -93,6 +97,10 @@ jobs:
         python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
 
         '
+    - name: Record exact keyboard candidate source
+      run: |
+        mkdir -p approved-icon-candidate
+        printf "%s\n" "$GITHUB_SHA" > approved-icon-candidate/keyboard-source-sha.txt
     - name: Retain APK and verification evidence (no release)
       uses: actions/upload-artifact@v5
       with:

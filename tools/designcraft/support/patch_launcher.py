@@ -63,7 +63,7 @@ def patch(root):
     text = replace_once(text, 'public final class DesignCraftActivity extends GameActivity {', '''public final class DesignCraftActivity extends GameActivity {
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
-                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {
+                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             imeHide();
         }
         return super.dispatchKeyEvent(event);

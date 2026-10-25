@@ -77,6 +77,74 @@ pub fn normalize_type_editor_escape(raw: &mut egui::RawInput, type_editing: bool
     translated
 }
 
+/// Android-only fallback for physical canvas keys. The upstream shortcut UI can
+/// decline Escape while text focus/IME states change within a frame; this path
+/// dispatches the tool action itself instead of merely remapping the egui key.
+/// Never handle a key owned by an egui input field, dialog, or live IME composition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CanvasHardwareCommand {
+    ExitType,
+    Selection,
+    Type,
+    Pen,
+}
+
+pub fn canvas_hardware_command(
+    raw: &egui::RawInput,
+    type_editing: bool,
+    field_focused: bool,
+    composing: bool,
+    modal_open: bool,
+) -> Option<CanvasHardwareCommand> {
+    if field_focused || composing || modal_open { return None; }
+    for event in &raw.events {
+        if let egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers } = event {
+            if modifiers.command || modifiers.ctrl || modifiers.alt { continue; }
+            if type_editing {
+                if *key == egui::Key::Escape ||
+                   (*key == egui::Key::BrowserBack && physical_key.is_none()) {
+                    return Some(CanvasHardwareCommand::ExitType);
+                }
+            } else {
+                let physical = physical_key.unwrap_or(*key);
+                match physical {
+                    egui::Key::V => return Some(CanvasHardwareCommand::Selection),
+                    egui::Key::T => return Some(CanvasHardwareCommand::Type),
+                    egui::Key::P => return Some(CanvasHardwareCommand::Pen),
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Remove the handled press and matching text, leaving unrelated IME events and
+/// key releases untouched. The event is handled by the Android adapter instead
+/// of being processed a second time by upstream's shortcut dispatcher.
+pub fn consume_canvas_hardware_command(raw: &mut egui::RawInput, cmd: CanvasHardwareCommand) {
+    let key = match cmd {
+        CanvasHardwareCommand::ExitType => egui::Key::Escape,
+        CanvasHardwareCommand::Selection => egui::Key::V,
+        CanvasHardwareCommand::Type => egui::Key::T,
+        CanvasHardwareCommand::Pen => egui::Key::P,
+    };
+    raw.events.retain(|event| match event {
+        egui::Event::Key { key: logical, physical_key, pressed: true, .. } => {
+            if cmd == CanvasHardwareCommand::ExitType {
+                !(*logical == egui::Key::Escape ||
+                  (*logical == egui::Key::BrowserBack && physical_key.is_none()))
+            } else {
+                physical_key.unwrap_or(*logical) != key
+            }
+        }
+        egui::Event::Text(text) if cmd != CanvasHardwareCommand::ExitType => {
+            !(text.len() == 1 && text.eq_ignore_ascii_case(key.name()))
+        }
+        _ => true,
+    });
+}
+
 /// Minimal event counters for tablet debugging; never retain actual typed text.
 #[derive(Default)]
 pub struct KeyboardDiagnostics {
@@ -173,6 +241,42 @@ mod tests {
         apply_android_modifiers(state, &mut raw);
         raw.events
     }
+    #[test]
+    fn physical_keys_bypass_shortcut_ui_only_on_idle_canvas() {
+        for (pressed, expected) in [(Key::V, CanvasHardwareCommand::Selection),
+                                    (Key::T, CanvasHardwareCommand::Type),
+                                    (Key::P, CanvasHardwareCommand::Pen)] {
+            let raw = RawInput { events: vec![key(pressed, true)], ..Default::default() };
+            assert_eq!(canvas_hardware_command(&raw, false, false, false, false), Some(expected));
+            assert_eq!(canvas_hardware_command(&raw, true, false, false, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, true, false, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, false, true, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, false, false, true), None);
+        }
+    }
+
+    #[test]
+    fn escape_is_routed_during_type_editing_without_stealing_ime() {
+        let back = Event::Key { key: Key::BrowserBack, physical_key: None,
+            pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        let raw = RawInput { events: vec![back], ..Default::default() };
+        assert_eq!(canvas_hardware_command(&raw, true, false, false, false), Some(CanvasHardwareCommand::ExitType));
+        assert_eq!(canvas_hardware_command(&raw, false, false, false, false), None);
+        assert_eq!(canvas_hardware_command(&raw, true, false, true, false), None);
+        let mut escaped = raw;
+        consume_canvas_hardware_command(&mut escaped, CanvasHardwareCommand::ExitType);
+        assert!(escaped.events.is_empty());
+    }
+
+    #[test]
+    fn direct_tool_dispatch_consumes_only_matching_letter_events() {
+        let mut raw = RawInput { events: vec![key(Key::V, true), Event::Text("v".into()),
+            Event::Ime(egui::ImeEvent::Commit("你好".into())), key(Key::V, false)], ..Default::default() };
+        consume_canvas_hardware_command(&mut raw, CanvasHardwareCommand::Selection);
+        assert!(matches!(&raw.events[0], Event::Ime(_)));
+        assert!(matches!(&raw.events[1], Event::Key { key: Key::V, pressed: false, .. }));
+    }
+
     #[test]
     fn browser_back_becomes_escape_only_in_type_editor() {
         let back = Event::Key { key: Key::BrowserBack, physical_key: None,

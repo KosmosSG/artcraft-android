@@ -163,6 +163,7 @@ pub struct KeyboardDiagnostics {
     pub fallback_events: u64,
     pub direct_tools: u64,
     pub direct_escapes: u64,
+    pub context_bar_dismisses: u64,
     /// Non-sensitive status only; never keep the characters a user typed.
     pub input_gate: String,
     pub native_focus_restore: String,

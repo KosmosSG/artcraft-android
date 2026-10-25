@@ -13,6 +13,16 @@ def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
+    source = replace_once(source, "        self.ime.poll(raw);", '''        self.ime.poll(raw);
+        // Physical Escape releases a genuinely focused egui editor; the
+        // original shortcut and modal handlers still receive Escape.
+        if raw.events.iter().any(|event| matches!(event,
+            egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))
+            && ctx.text_edit_focused() {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+            });
+        }''')
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
     source = replace_once(source, "        system_fonts::install_system_fonts(ui.ctx());", "        self.tablet.ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);\n        system_fonts::install_system_fonts(ui.ctx());")
     source = replace_once(source, "Box::new(move |_cc| Ok(Box::new(shell)))", "Box::new(move |cc| { tablet::record_gpu(cc); Ok(Box::new(shell)) })")

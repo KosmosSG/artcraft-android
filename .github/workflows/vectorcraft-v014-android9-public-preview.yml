@@ -35,6 +35,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 0 # full history is needed for fail-closed ancestry verification
       - name: Verify exact released .8 ancestry, approved source and previous identity
         shell: bash
         run: |

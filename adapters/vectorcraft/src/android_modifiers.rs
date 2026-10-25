@@ -174,6 +174,21 @@ mod tests {
         raw.events
     }
     #[test]
+    fn browser_back_becomes_escape_only_in_type_editor() {
+        let back = Event::Key { key: Key::BrowserBack, physical_key: None,
+            pressed: true, repeat: false, modifiers: Modifiers::NONE };
+        let mut raw = RawInput { events: vec![back.clone()], ..Default::default() };
+        assert_eq!(normalize_type_editor_escape(&mut raw, false), 0);
+        assert!(matches!(raw.events[0], Event::Key { key: Key::BrowserBack, .. }));
+        assert_eq!(normalize_type_editor_escape(&mut raw, true), 1);
+        assert!(matches!(raw.events[0], Event::Key { key: Key::Escape, .. }));
+        let mut physical = RawInput { events: vec![Event::Key {
+            key: Key::BrowserBack, physical_key: Some(Key::BrowserBack),
+            pressed: true, repeat: false, modifiers: Modifiers::NONE }], ..Default::default() };
+        assert_eq!(normalize_type_editor_escape(&mut physical, true), 0);
+    }
+
+    #[test]
     fn bare_v_and_t_are_repaired_from_key_only_frames() {
         let mut state = AndroidModifiers::default();
         for (pressed_key, expected) in [(Key::V, "v"), (Key::T, "t")] {

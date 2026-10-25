@@ -3,7 +3,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 import io, sys, zipfile
 apk, builder, dest = map(Path, sys.argv[1:])
-files = list(builder.rglob('drawable-xxxhdpi/ic_launcher_foreground.png'))
+files = list((builder / 'source/deckcraft/apps/deckcraft-android/res/drawable-xxxhdpi').glob('ic_launcher_foreground.png'))
 assert len(files) == 1, files
 expected = Image.open(files[0]).convert('RGBA')
 assert expected.size == (432, 432)

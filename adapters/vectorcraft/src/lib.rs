@@ -1014,6 +1014,11 @@ impl eframe::App for VectorCraftAndroidApp {
         let field_focused_now = ctx.text_edit_focused();
         let composing_now = self.inner.session.tool_composing();
         let modal_open = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // The upstream Contextual Task Bar's existing visibility flag is the
+        // same one used by its Hide Bar menu. Only an actual object selection
+        // permits a second Escape to dismiss it.
+        let bar_has_selection = self.inner.ui.task_bar &&
+            self.inner.session.active().is_some_and(|doc| doc.selection.has_objects_or_guides());
         self.keyboard.input_gate = format!(
             "wants={} editor={} type={} compose={} modal={}",
             ctx.egui_wants_keyboard_input(), field_focused_now,
@@ -1021,6 +1026,7 @@ impl eframe::App for VectorCraftAndroidApp {
         );
         if let Some(command) = canvas_hardware_command(
             raw, type_editing_now, field_focused_now, composing_now, modal_open,
+            bar_has_selection,
         ) {
             let mut handled = false;
             match command {
@@ -1048,6 +1054,15 @@ impl eframe::App for VectorCraftAndroidApp {
                         }
                     }
                 }
+                CanvasHardwareCommand::DismissContextBar => {
+                    self.inner.ui.task_bar = false;
+                    // Release focus held by a popup/menu on the contextual bar.
+                    ctx.memory_mut(|memory| {
+                        if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                    });
+                    self.keyboard.context_bar_dismisses += 1;
+                    handled = true;
+                }
                 CanvasHardwareCommand::Selection
                 | CanvasHardwareCommand::Type
                 | CanvasHardwareCommand::Pen => {
@@ -1056,7 +1071,8 @@ impl eframe::App for VectorCraftAndroidApp {
                             CanvasHardwareCommand::Selection => "selection",
                             CanvasHardwareCommand::Type => "type",
                             CanvasHardwareCommand::Pen => "pen",
-                            CanvasHardwareCommand::ExitType => unreachable!(),
+                            CanvasHardwareCommand::ExitType
+                            | CanvasHardwareCommand::DismissContextBar => unreachable!(),
                         };
                         self.inner.select_tool(tool);
                         handled = true;
@@ -1189,6 +1205,10 @@ impl eframe::App for VectorCraftAndroidApp {
                                 "Direct tool: {} | direct Esc exits: {} | IME composing now: {}",
                                 self.keyboard.direct_tools, self.keyboard.direct_escapes,
                                 self.inner.session.tool_composing(),
+                            ));
+                            ui.monospace(format!(
+                                "Esc hidden bars: {} | task bar visible: {}",
+                                self.keyboard.context_bar_dismisses, self.inner.ui.task_bar,
                             ));
                             ui.monospace(format!(
                                 "Input gates: {} | native focus restore: {}",

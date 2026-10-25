@@ -1,7 +1,7 @@
 name: VectorCraft Android baseline
 on:
   push:
-    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021, development/vectorcraft-v014-20261023, development/vectorcraft-v014-android4-ui-20261023, development/vectorcraft-v014-android5-menu-20261023]
+    branches: [vectorcraft-android-baseline, vectorcraft-photocraft-parity-20261021, development/vectorcraft-v014-20261023, development/vectorcraft-v014-android4-ui-20261023, development/vectorcraft-v014-android5-menu-20261023, fix/vectorcraft-v014-android8-feedback-20261025]
     paths: ['tools/vectorcraft/**', 'adapters/vectorcraft/**', 'assets/branding/vectorcraft/**', '.github/workflows/vectorcraft-baseline.yml']
   workflow_dispatch:
     inputs:
@@ -48,7 +48,7 @@ jobs:
           java -cp "$ANDROID_HOME/platforms/android-35/android.jar:$RUNNER_TEMP/vectorcraft-java-check" FontContentTest
   compile:
     # Automatic, unsigned native compile check; cannot use signing secrets or publish releases.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023' || github.ref == 'refs/heads/development/vectorcraft-v014-android4-ui-20261023' || github.ref == 'refs/heads/development/vectorcraft-v014-android5-menu-20261023')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/vectorcraft-photocraft-parity-20261021' || github.ref == 'refs/heads/development/vectorcraft-v014-20261023' || github.ref == 'refs/heads/development/vectorcraft-v014-android4-ui-20261023' || github.ref == 'refs/heads/development/vectorcraft-v014-android5-menu-20261023' || github.ref == 'refs/heads/fix/vectorcraft-v014-android8-feedback-20261025')
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 90

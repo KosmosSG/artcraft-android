@@ -250,6 +250,21 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    /// PhotoCraft-style native Android message, independent of the editor's
+    /// optional Graphics Diagnostics panel. Java posts the Toast to the UI thread.
+    fn native_message(&self, message: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let text = JObject::from(env.new_string(message)?);
+            let result = env.call_method(&*activity, jni_str!("vcShowMessage"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&text)]);
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+
     fn files_dir(&self) -> Result<String, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<String> {
@@ -333,11 +348,18 @@ struct FontUiState {
     pending_shared: Option<u64>,
     import_status: String,
     shared_status: String,
+    // One-shot user feedback, not a floating tools window.
+    notice: Option<String>,
+    // An automatic restoration at app startup must not produce spurious Toasts.
+    notify_shared_completion: bool,
 }
 
 impl FontUiState {
     fn import(&mut self, picks: &PickState, bridge: &AndroidFileBridge) {
-        if self.pending_import.is_some() { return; }
+        if self.pending_import.is_some() {
+            self.notice = Some("Font import is already in progress".into());
+            return;
+        }
         let id = picks.next_id();
         match bridge.request_font_import(id) {
             Ok(()) => {
@@ -346,19 +368,32 @@ impl FontUiState {
             }
             Err(error) => self.import_status = format!("Font picker unavailable: {error}"),
         }
+        self.notice = Some(self.import_status.clone());
     }
 
-    fn shared(&mut self, picks: &PickState, bridge: &AndroidFileBridge, refresh: bool) {
-        if self.pending_shared.is_some() { return; }
+    fn shared(&mut self, picks: &PickState, bridge: &AndroidFileBridge,
+        refresh: bool, notify: bool) {
+        if self.pending_shared.is_some() {
+            if notify {
+                self.notice = Some("Shared font refresh is already in progress".into());
+                self.notify_shared_completion = true;
+            }
+            return;
+        }
         let id = picks.next_id();
+        self.notify_shared_completion = notify;
         match bridge.request_font_folder(id, refresh) {
             Ok(()) => {
                 self.pending_shared = Some(id);
                 self.shared_status = if refresh { "Refreshing shared fonts…" }
                     else { "Select ArtCraft-Fonts in Android Files…" }.into();
             }
-            Err(error) => self.shared_status = format!("Shared folder unavailable: {error}"),
+            Err(error) => {
+                self.shared_status = format!("Shared folder unavailable: {error}");
+                self.notify_shared_completion = false;
+            },
         }
+        if notify { self.notice = Some(self.shared_status.clone()); }
     }
 
     /// Returns true only when VectorCraft should rescan its registered Fonts directory.
@@ -372,9 +407,14 @@ impl FontUiState {
         if font_import {
             self.pending_import = None;
             self.import_status = message.into();
+            self.notice = Some(self.import_status.clone());
         } else {
             self.pending_shared = None;
             self.shared_status = message.into();
+            if self.notify_shared_completion {
+                self.notice = Some(self.shared_status.clone());
+            }
+            self.notify_shared_completion = false;
         }
         Some(success)
     }
@@ -384,8 +424,11 @@ impl FontUiState {
 struct UpdateDialogState {
     open: bool,
     checking: bool,
+    started_at: Option<std::time::Instant>,
     message: String,
     release_url: Option<String>,
+    // Notify for user-initiated checks, never for quiet startup polling.
+    notify_result: bool,
 }
 
 /// A MIME type for an open dialog, from its first file-type filter (every file when it has none).
@@ -907,12 +950,37 @@ impl eframe::App for VectorCraftAndroidApp {
             if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
                 log::warn!("Android font rescan failed: {error}");
                 self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
+                // Quiet startup font restore should stay quiet, including errors;
+                // manually requested refresh still reports a rescan failure.
+                if self.fonts.notice.is_some() {
+                    self.fonts.notice = Some(self.fonts.shared_status.clone());
+                }
+            }
+        }
+        // The native notification makes font import and refresh status visible
+        // even when the read-only Graphics Diagnostics dock is closed.
+        if let Some(message) = self.fonts.notice.take() {
+            if let Err(error) = self.bridge.native_message(&message) {
+                log::warn!("Cannot show VectorCraft font status: {error}");
             }
         }
         if self.updates.checking {
+            // A stalled Android worker/JNI callback must never leave a spinner
+            // running forever. Normal GitHub reads have bounded Java timeouts.
+            if self.updates.started_at.is_some_and(|at|
+                at.elapsed() >= std::time::Duration::from_secs(30)) {
+                self.updates.checking = false;
+                self.updates.started_at = None;
+                self.updates.release_url = None;
+                self.updates.message =
+                    "Update check timed out. Check your connection and tap Check for Updates again.".into();
+                self.updates.open = true;
+                ctx.request_repaint();
+            } else {
             match self.bridge.poll_update_result() {
                 Ok(Some(raw)) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     match serde_json::from_str::<serde_json::Value>(&raw) {
                         Ok(result) => {
                             self.updates.release_url = result.get("url")
@@ -946,8 +1014,18 @@ impl eframe::App for VectorCraftAndroidApp {
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
                 Err(error) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     self.updates.message = format!("Update checker unavailable: {error}");
+                    self.updates.open = true;
+                    ctx.request_repaint();
                 }
+            }
+            }
+        }
+        if self.updates.notify_result && !self.updates.checking {
+            self.updates.notify_result = false;
+            if let Err(error) = self.bridge.native_message(&self.updates.message) {
+                log::warn!("Cannot show VectorCraft update result: {error}");
             }
         }
         // Then deliver any file the system asked us to open, through the same inbox.
@@ -1008,6 +1086,65 @@ impl eframe::App for VectorCraftAndroidApp {
                         });
                 });
         }
+        // Android-only GPU information is an in-layout bottom dock, not a
+        // floating egui window. Reserve space BEFORE drawing the editor so it
+        // never covers document handles or absorbs gestures over the canvas.
+        let mut close_graphics = false;
+        if self.android_tools_open {
+            let gpu_details = match _frame.wgpu_render_state() {
+                Some(state) => {
+                    let info = state.adapter.get_info();
+                    format!("UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
+                        info.name, info.backend, info.device_type,
+                        info.driver, info.driver_info,
+                        state.device.limits().max_texture_dimension_2d)
+                }
+                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
+            };
+            egui::Panel::bottom("vectorcraft.android.graphics_diagnostics")
+                .resizable(false)
+                .default_size(144.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("Graphics Diagnostics");
+                        if ui.small_button("Close").clicked() { close_graphics = true; }
+                    });
+                    egui::ScrollArea::vertical()
+                        .id_salt("vectorcraft.android.graphics_diagnostics.scroll")
+                        .max_height(128.0)
+                        .show(ui, |ui| {
+                            ui.label("Read-only Android graphics information");
+                            ui.monospace(gpu_details);
+                            ui.separator();
+                            ui.label("Font import status");
+                            ui.label(&self.fonts.import_status);
+                            ui.label(&self.fonts.shared_status);
+                        });
+                });
+        }
+        if close_graphics { self.android_tools_open = false; }
+        // Show release-check status in real reserved space BEFORE the canvas.
+        // Display manual success, no-update and network failures as well as updates.
+        if self.updates.open {
+            let mut open = self.updates.open;
+            egui::Panel::bottom("vectorcraft.android.update_status")
+                .resizable(false)
+                .show(ui, |ui| {
+                    ui.label(&self.updates.message);
+                    if self.updates.checking {
+                        ui.spinner();
+                    } else if let Some(url) = self.updates.release_url.as_deref() {
+                        if ui.button("Open official GitHub release").clicked() {
+                            if let Err(error) = self.bridge.open_update_page(url) {
+                                log::warn!("Cannot open VectorCraft release: {error}");
+                            }
+                        }
+                    }
+                    if ui.small_button("Dismiss").clicked() { open = false; }
+                });
+            self.updates.open = open;
+        }
+
         // The editor now uses the space left after the bottom pad.
         self.inner.ui(ui);
 
@@ -1031,33 +1168,11 @@ impl eframe::App for VectorCraftAndroidApp {
         if menu & 8 != 0 { check_updates = true; }
         if menu & 16 != 0 { self.startup_updates = !self.startup_updates; }
         if menu & 32 != 0 { self.touch_dock = !self.touch_dock; }
-        if menu & 64 != 0 { self.android_tools_open = true; }
-        if hide_pad { self.touch_dock = false; }
-        // No persistent floating Android Tools palette. Help exposes read-only
-        // graphics and font-import status on demand without covering the canvas.
-        if self.android_tools_open {
-            let gpu_details = match _frame.wgpu_render_state() {
-                Some(state) => {
-                    let info = state.adapter.get_info();
-                    format!("UI adapter: {}\nBackend: {:?}\nDevice type: {:?}\nDriver: {} {}\nMaximum 2D texture: {} px",
-                        info.name, info.backend, info.device_type,
-                        info.driver, info.driver_info,
-                        state.device.limits().max_texture_dimension_2d)
-                }
-                None => "GPU adapter/backend unavailable from eframe on this device.".into(),
-            };
-            egui::Window::new("VectorCraft Graphics Diagnostics")
-                .open(&mut self.android_tools_open)
-                .default_width(340.0)
-                .show(ctx, |ui| {
-                    ui.label("Read-only Android graphics information");
-                    ui.monospace(gpu_details);
-                    ui.separator();
-                    ui.label("Font import status");
-                    ui.label(&self.fonts.import_status);
-                    ui.label(&self.fonts.shared_status);
-                });
+        if menu & 64 != 0 {
+            self.android_tools_open = !self.android_tools_open;
+            ctx.request_repaint();
         }
+        if hide_pad { self.touch_dock = false; }
         if self.startup_updates != previous_startup_updates {
             if let Some(dir) = self.persist.as_ref() {
                 persist_write(dir, "startup_updates.enabled", if self.startup_updates { b"1" } else { b"0" });
@@ -1088,37 +1203,40 @@ impl eframe::App for VectorCraftAndroidApp {
             }
         }
         if import { self.fonts.import(&self.picks, &self.bridge); }
-        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
-        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
-        if check_updates {
-            self.updates.open = true;
-            self.updates.release_url = None;
-            self.updates.message = "Checking GitHub releases…".into();
-            if !self.updates.checking {
-                match self.bridge.check_for_updates() {
-                    Ok(()) => self.updates.checking = true,
-                    Err(error) => self.updates.message = format!("Could not check releases: {error}"),
-                }
+        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false, true); }
+        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true, true); }
+        if let Some(message) = self.fonts.notice.take() {
+            if let Err(error) = self.bridge.native_message(&message) {
+                log::warn!("Cannot show VectorCraft font status: {error}");
             }
         }
-        if self.updates.open {
-            let mut open = self.updates.open;
-            egui::Panel::bottom("vectorcraft.android.update_status")
-                .resizable(false)
-                .show(ui, |ui| {
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Cannot open VectorCraft release: {error}");
-                            }
-                        }
+        if check_updates {
+            self.updates.open = true;
+            self.updates.notify_result = true;
+            self.updates.release_url = None;
+            if self.updates.checking {
+                self.updates.message = "Already checking GitHub releases…".into();
+            } else {
+                self.updates.message = "Checking GitHub releases…".into();
+                match self.bridge.check_for_updates() {
+                    Ok(()) => {
+                        self.updates.checking = true;
+                        self.updates.started_at = Some(std::time::Instant::now());
                     }
-                    if ui.small_button("Dismiss").clicked() { open = false; }
-                });
-            self.updates.open = open;
+                    Err(error) => {
+                        self.updates.started_at = None;
+                        self.updates.message = format!("Could not check releases: {error}");
+                    }
+                }
+            }
+            // A brief PhotoCraft-style Android notification confirms the menu
+            // action immediately; the bottom panel retains its full result.
+            if let Err(error) = self.bridge.native_message(&self.updates.message) {
+                log::warn!("Cannot show VectorCraft update progress: {error}");
+            }
+            // Menu dispatch happens after inner.ui. Force another frame so the
+            // newly opened bottom panel is drawn before the editor next frame.
+            ctx.request_repaint();
         }
     }
 
@@ -1152,7 +1270,7 @@ fn android_main(android_app: AndroidApp) {
     let picks = Arc::new(PickState::default());
     let mut initial_fonts = FontUiState::default();
     // Restore a previously authorized shared library on startup; missing access is nonfatal.
-    initial_fonts.shared(&picks, &bridge, true);
+    initial_fonts.shared(&picks, &bridge, true, false);
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -1195,6 +1313,7 @@ fn android_main(android_app: AndroidApp) {
                     // Nonblocking, read-only startup check as in PhotoCraft.
                     if startup_updates && app_bridge.check_for_updates().is_ok() {
                         state.checking = true;
+                        state.started_at = Some(std::time::Instant::now());
                         state.message = "Checking for VectorCraft updates…".into();
                     }
                     state

@@ -73,6 +73,24 @@ impl AndroidFileBridge {
         }
     }
 
+    /// Release Android's invisible text-input host after the Type tool exits.
+    /// This reassigns hardware-key focus to the NativeActivity canvas.
+    fn end_type_editing(&self) -> Result<(), String> {
+        self.vm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                env.call_method(
+                    &*activity,
+                    jni_str!("vcEndTypeEditing"),
+                    jni_sig!("()V"),
+                    &[],
+                )?;
+                Ok(())
+            })
+            .map_err(|error| error.to_string())
+    }
+
     fn request_open(&self, id: u64, multiple: bool, mime: &str) -> Result<(), String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -991,9 +1009,16 @@ impl eframe::App for VectorCraftAndroidApp {
         // during an Android focus transition. Operate on observed hardware keys,
         // never on text/IME commits, and preserve fields, dialogs and composition.
         let type_editing_now = self.inner.session.tool_wants_text();
-        let field_focused_now = ctx.egui_wants_keyboard_input();
+        // egui_wants_keyboard_input may remain true for a frame after
+        // leaving Type; only actual TextEdit focus must block tool shortcuts.
+        let field_focused_now = ctx.text_edit_focused();
         let composing_now = self.inner.session.tool_composing();
         let modal_open = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        self.keyboard.input_gate = format!(
+            "wants={} editor={} type={} compose={} modal={}",
+            ctx.egui_wants_keyboard_input(), field_focused_now,
+            type_editing_now, composing_now, modal_open,
+        );
         if let Some(command) = canvas_hardware_command(
             raw, type_editing_now, field_focused_now, composing_now, modal_open,
         ) {
@@ -1012,7 +1037,16 @@ impl eframe::App for VectorCraftAndroidApp {
                         }
                         Err(error) => log::warn!("Android Type Escape fallback failed: {error}"),
                     }
-                    if handled { self.keyboard.direct_escapes += 1; }
+                    if handled {
+                        self.keyboard.direct_escapes += 1;
+                        match self.bridge.end_type_editing() {
+                            Ok(()) => self.keyboard.native_focus_restore = "requested".into(),
+                            Err(error) => {
+                                log::warn!("Cannot hand hardware keyboard back to canvas: {error}");
+                                self.keyboard.native_focus_restore = "JNI request failed".into();
+                            }
+                        }
+                    }
                 }
                 CanvasHardwareCommand::Selection
                 | CanvasHardwareCommand::Type
@@ -1155,6 +1189,15 @@ impl eframe::App for VectorCraftAndroidApp {
                                 "Direct tool: {} | direct Esc exits: {} | IME composing now: {}",
                                 self.keyboard.direct_tools, self.keyboard.direct_escapes,
                                 self.inner.session.tool_composing(),
+                            ));
+                            ui.monospace(format!(
+                                "Input gates: {} | native focus restore: {}",
+                                self.keyboard.input_gate,
+                                if self.keyboard.native_focus_restore.is_empty() {
+                                    "not requested"
+                                } else {
+                                    &self.keyboard.native_focus_restore
+                                },
                             ));
                             ui.monospace(format!(
                                 "Last key: {}",

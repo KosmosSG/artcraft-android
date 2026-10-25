@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "deckcraft/android/**"
+      - "deckcraft/tests/**"
       - ".github/workflows/deckcraft-candidate.yml"
   workflow_dispatch:
 
@@ -250,5 +251,8 @@ jobs:
           rustup toolchain install stable --profile minimal
           python3 deckcraft/android/patch_deckcraft_fonts.py source
           python3 deckcraft/android/patch_deckcraft_tablet.py source
+          python3 deckcraft/tests/fetch_fonts.py "$RUNNER_TEMP/deckcraft-test-fonts"
+          export DECKCRAFT_TEST_FONTS="$RUNNER_TEMP/deckcraft-test-fonts"
+          cat deckcraft/tests/montserrat.rs >> source/crates/ui-egui/src/lib.rs
           cd source
-          cargo +stable test -p deckcraft-ui-egui --lib android_font_regression -- --nocapture
+          cargo +stable test -p deckcraft-ui-egui --lib android_font_ -- --nocapture

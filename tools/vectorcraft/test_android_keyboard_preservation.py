@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SHELL = ROOT / "adapters/vectorcraft/src/lib.rs"
 MODIFIERS = ROOT / "adapters/vectorcraft/src/android_modifiers.rs"
+ACTIVITY = ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java"
 
 
 class AndroidKeyboardPreservationTests(unittest.TestCase):
@@ -92,6 +93,35 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.shell)
+
+    def test_escape_returns_android_ime_focus_and_t_remains_available(self):
+        activity = ACTIVITY.read_text(encoding="utf-8")
+        for marker in (
+            "public void vcEndTypeEditing()",
+            "imeWanted = false;",
+            "view.clearFocus();",
+            "child.requestFocus()",
+            "imeEvents.clear();",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, activity)
+        for marker in (
+            "fn end_type_editing(&self)",
+            'jni_str!("vcEndTypeEditing")',
+            "self.bridge.end_type_editing()",
+            "let field_focused_now = ctx.text_edit_focused();",
+            "self.keyboard.native_focus_restore",
+            "self.keyboard.input_gate",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.shell)
+        for marker in (
+            "fn type_shortcut_returns_after_escape_exits_editor()",
+            "Some(CanvasHardwareCommand::ExitType)",
+            "Some(CanvasHardwareCommand::Type)",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.modifiers)
 
     def test_existing_app_features_and_settings_still_present(self):
         for marker in (

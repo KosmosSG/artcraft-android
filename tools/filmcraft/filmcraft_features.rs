@@ -253,10 +253,44 @@ impl FilmcraftFeatures {
     }
 
     fn native_menu_status(ctx: &egui::Context, status: &str) {
+        let until = ctx.input(|i| i.time) + if status.contains("unavailable") || status.contains("failed") || status.contains("error") { 6.0 } else { 4.0 };
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("filmcraft.android.menu.status"), status.to_owned());
+            // LightCraft-inspired non-modal feedback: a bounded, theme-aware toast,
+            // never a persistent status row or an Android floating overlay.
+            data.insert_temp(egui::Id::new("filmcraft.android.feedback"), (status.to_owned(), until));
         });
         ctx.request_repaint();
+    }
+
+    fn show_feedback(&self, ctx: &egui::Context) {
+        let key = egui::Id::new("filmcraft.android.feedback");
+        let Some((text, until)) = ctx.data(|d| d.get_temp::<(String, f64)>(key)) else { return };
+        let now = ctx.input(|i| i.time);
+        if now >= until {
+            ctx.data_mut(|d| d.remove::<(String, f64)>(key));
+            return;
+        }
+        // A compact toast, following LightCraft's in-app feedback convention.
+        // The editor, timeline and keyboard focus stay fully interactive.
+        egui::Area::new(egui::Id::new("filmcraft.android.feedback.overlay"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 54.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .corner_radius(8.0)
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .show(ui, |ui| {
+                        ui.set_max_width(360.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(egui::RichText::new("FilmCraft").strong());
+                            ui.separator();
+                            ui.label(&text);
+                        });
+                    });
+            });
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
     }
 
     pub fn poll(&mut self, ctx: &egui::Context) {
@@ -392,12 +426,7 @@ impl FilmcraftFeatures {
                         }
                     }
                 });
-                if !self.font_status.is_empty() || !self.update_status.is_empty() {
-                    ui.horizontal_wrapped(|ui| {
-                        if !self.font_status.is_empty() { ui.small(&self.font_status); }
-                        if !self.update_status.is_empty() { ui.small(&self.update_status); }
-                    });
-                }
             });
+        self.show_feedback(ui.ctx());
     }
 }

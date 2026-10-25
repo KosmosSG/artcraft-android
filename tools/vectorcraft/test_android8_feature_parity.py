@@ -14,7 +14,7 @@ class VectorCraftParity(unittest.TestCase):
     def test_menu_is_original_android8_bridge(self):
         menu = ROOT / "tools/vectorcraft/patch_android_menus.py"
         data = menu.read_bytes()
-        self.assertEqual(hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest(),
+        self.assertEqual(hashlib.sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest(),
                          "b29dbbfc63427487b7bd52fe655c91af952dc768",
                          "Do not change the reviewed .8 Android Type/Help/Window menu adapter")
         src = menu.read_text(encoding="utf-8")

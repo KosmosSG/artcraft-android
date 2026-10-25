@@ -21,7 +21,7 @@ class KeyboardProductionUpgradeTests(unittest.TestCase):
     def test_production_package_and_original_features_remain(self):
         self.assertIn('package = "com.artcraft.vectorcraft"', self.manifest)
         self.assertNotIn("com.artcraft.vectorcraft.keyboardtest", self.manifest)
-        for feature in ("FontUiState", "Check for Updates", "system_fonts", "startup_updates",
+        for feature in ("FontUiState", "check_for_updates", "system_fonts", "startup_updates",
                         "persist_save(", "persist_load(", "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1",
                         "import_status", "shared_status", "VectorCraftExtras"):
             with self.subTest(feature=feature):

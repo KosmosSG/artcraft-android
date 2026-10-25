@@ -1,13 +1,21 @@
 """Inspect the actual packaged adaptive layer and export mask previews."""
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageChops
 import io, sys, zipfile
 apk, builder, dest = map(Path, sys.argv[1:])
-files = list(builder.rglob('drawable-xxxhdpi/ic_launcher_foreground.png'))
+files = list((builder / 'source/deckcraft/apps/deckcraft-android/res/drawable-xxxhdpi').glob('ic_launcher_foreground.png'))
 assert len(files) == 1, files
 expected = Image.open(files[0]).convert('RGBA')
 assert expected.size == (432, 432)
-assert expected.getchannel('A').getextrema() == (255, 255), 'Inset alpha creates a second frame'
+# Approved adaptive art has intentional transparency outside its safe area.
+# Compare complete RGBA pixel data with the SHA-checked approved resource;
+# do not substitute an obsolete fully-opaque foreground requirement.
+approved = builder / 'tools/approved-branding/assets/res/drawable-xxxhdpi/ic_launcher_foreground.png'
+assert approved.is_file(), 'Missing owner-approved source foreground'
+with Image.open(approved) as source:
+    approved_pixels = source.convert('RGBA')
+assert expected.size == approved_pixels.size
+assert expected.tobytes() == approved_pixels.tobytes(), 'Generated foreground differs from approved icon'
 with zipfile.ZipFile(apk) as z:
     matched = False
     for name in z.namelist():
@@ -23,6 +31,6 @@ visible = expected.crop((72, 72, 360, 360))
 for label, radius in [('round', 144), ('rounded-square', 65)]:
     mask = Image.new('L', visible.size)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, 287, 287), radius=radius, fill=255)
-    preview = visible.copy(); preview.putalpha(mask)
+    preview = visible.copy(); preview.putalpha(ImageChops.multiply(visible.getchannel('A'), mask))
     preview.save(dest / f'DeckCraft-launcher-{label}.png')
 print('PASS: generated approved pixels match actual APK adaptive resource')

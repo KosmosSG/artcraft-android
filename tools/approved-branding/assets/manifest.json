@@ -1,0 +1,46 @@
+{
+  "filename": "DeckCraft.png",
+  "source_sha256": "fdeba1e06e1a74bc09a8892cdf254360f8b282ac8b3e28eca06495db6a467140",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#AA0009",
+  "letter_color": "#FF717F",
+  "glyph_source_bounds": [
+    268,
+    545,
+    1876,
+    1457
+  ],
+  "adaptive_foreground_size": [
+    220,
+    125
+  ],
+  "app": "deckcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "4947a1ddc69c63fa01f613df313cd091e887a604c40e2c64bbe718be3b4e153c",
+    "res/mipmap-mdpi/ic_launcher_round.png": "4947a1ddc69c63fa01f613df313cd091e887a604c40e2c64bbe718be3b4e153c",
+    "res/values/colors.xml": "2b43fc3bfe8518aeb86f0901f0f942f6b61806886311f8f2bb0d9d360aa4682d",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "57cfaf06f9e643fb956b6a60ad9ed697f5cdf9c70a9921b00b84c19e78f2eeaf",
+    "res/mipmap-xxhdpi/ic_launcher.png": "a6e1472d6839e59c5385080c57c219e6218b6f2b858f55458511b0e72ea3048d",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "a6e1472d6839e59c5385080c57c219e6218b6f2b858f55458511b0e72ea3048d",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "500b91d30d4c20534bdcb12bbf197d2a065b6fb4fbd9dd68c9ed372cd14ad4e3",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "c069bdffff5991a0152bf5c18e192edfde697d82e775c637131b0afdcce9e9e0",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "c0b53bd5db2ca736dae296be69d2335aea0e1a9f969218c8010dbb7ae67a64b7",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "225c101075398751689fa5154a82cd094a63c6d4a7934b6dab8d455a2a852321",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "8185c6172ad1a8ea7b3a8c62b7b9fcc7c6d1f1ab3d0ccde559dfc5072e61f1cb",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "8185c6172ad1a8ea7b3a8c62b7b9fcc7c6d1f1ab3d0ccde559dfc5072e61f1cb",
+    "res/mipmap-xhdpi/ic_launcher.png": "82e85e97338b280f9fba6f3eacf546e07675fe1fa4ecc1fb63928970abbabcea",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "82e85e97338b280f9fba6f3eacf546e07675fe1fa4ecc1fb63928970abbabcea",
+    "res/mipmap-hdpi/ic_launcher.png": "d4c3067352356aa7b85f5bf62a4fad15380b374159b9565870e9c2c23b20a48e",
+    "res/mipmap-hdpi/ic_launcher_round.png": "d4c3067352356aa7b85f5bf62a4fad15380b374159b9565870e9c2c23b20a48e"
+  },
+  "display_name": "DeckCraft",
+  "version_name": "0.9.0-android.3",
+  "version_code": 100000003,
+  "previous_version_code": 100000002,
+  "package": "com.artcraft.deckcraft"
+}

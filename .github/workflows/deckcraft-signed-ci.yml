@@ -148,7 +148,7 @@ jobs:
           changed = set(subprocess.check_output(
               ['git', '-C', 'builder/source/deckcraft', 'diff', '--name-only'], text=True
           ).splitlines())
-          expected = {'Cargo.toml', 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs', 'crates/fonts/src/fontdb.rs'}
+          expected = {'Cargo.toml', 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs', 'crates/fonts/src/fontdb.rs', 'crates/ui-egui/src/dialogs.rs'}
           assert changed == expected, f'Unexpected source changes: {changed ^ expected}'
           print('DeckCraft-only patch scope verified:', sorted(changed))
           PY

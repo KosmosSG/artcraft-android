@@ -17,3 +17,11 @@ Device tests are pending; source validation does not substitute for them.
 `assets/manifest.json` records approved master/resource hashes and proposed version.
 `verify_apk.py` checks APK pixels, embedded UI bytes, adaptive XML, version and ARM64.
 All previous releases and ongoing development branches remain untouched.
+
+## Candidate build request — 25 October 2026
+
+The repository owner requested a new **candidate-only** LightCraft validation build.
+This documentation-only commit intentionally triggers the existing `push` path filter
+for `.github/workflows/approved-icons-candidate.yml` on this isolated development
+branch. It does **not** authorize production signing, merging, or publishing.
+The resulting workflow run and artifact still require explicit verification.

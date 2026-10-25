@@ -1189,38 +1189,75 @@ impl eframe::App for VectorCraftAndroidApp {
                 ctx.request_repaint();
             }
         }
-        if import { self.fonts.import(&self.picks, &self.bridge); }
-        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
-        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
+        // An actual feedback window remains visible after SAF returns, including
+        // Cancel, duplicate font and I/O failure. Previously these statuses
+        // existed but were hidden inside Graphics Diagnostics.
+        if import {
+            self.font_feedback_open = true;
+            self.fonts.import(&self.picks, &self.bridge);
+        }
+        if select_shared {
+            self.font_feedback_open = true;
+            self.fonts.shared(&self.picks, &self.bridge, false);
+        }
+        if refresh_shared {
+            self.font_feedback_open = true;
+            self.fonts.shared(&self.picks, &self.bridge, true);
+        }
+        if self.font_feedback_open {
+            let mut open = self.font_feedback_open;
+            let mut close_button = false;
+            egui::Window::new("VectorCraft Fonts")
+                .id(egui::Id::new("vectorcraft.android.font_feedback"))
+                .collapsible(false)
+                .resizable(false)
+                .default_width(425.0)
+                .order(egui::Order::Foreground)
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.heading("Font Import");
+                    ui.separator();
+                    if self.fonts.pending_import.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Waiting for font selection / import…");
+                        });
+                    }
+                    if !self.fonts.import_status.is_empty() {
+                        ui.label(&self.fonts.import_status);
+                    }
+                    if self.fonts.pending_shared.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Loading shared font folder…");
+                        });
+                    }
+                    if !self.fonts.shared_status.is_empty() {
+                        ui.label(&self.fonts.shared_status);
+                    }
+                    ui.add_space(6.0);
+                    ui.small("TTF / OTF fonts stay inside VectorCraft's private Fonts folder.");
+                    ui.separator();
+                    if ui.button("Close").clicked() { close_button = true; }
+                });
+            self.font_feedback_open = open && !close_button;
+        }
         if check_updates {
-            self.updates.open = true;
-            self.updates.release_url = None;
-            self.updates.message = "Checking GitHub releases…".into();
+            // The native About dialog owns the Updates tab, just like
+            // LightCraft. In particular, no bottom panel is drawn after the
+            // central editor (which made the old status nearly invisible).
+            self.inner.ui.about = true;
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("about_tab"), 3u8));
             if !self.updates.checking {
+                self.updates.release_url = None;
+                self.updates.message = "Checking official VectorCraft GitHub Releases…".into();
                 match self.bridge.check_for_updates() {
                     Ok(()) => self.updates.checking = true,
-                    Err(error) => self.updates.message = format!("Could not check releases: {error}"),
+                    Err(error) => self.updates.message =
+                        format!("Could not check releases: {error}"),
                 }
             }
-        }
-        if self.updates.open {
-            let mut open = self.updates.open;
-            egui::Panel::bottom("vectorcraft.android.update_status")
-                .resizable(false)
-                .show(ui, |ui| {
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Cannot open VectorCraft release: {error}");
-                            }
-                        }
-                    }
-                    if ui.small_button("Dismiss").clicked() { open = false; }
-                });
-            self.updates.open = open;
+            ctx.request_repaint();
         }
     }
 
@@ -1289,12 +1326,18 @@ fn android_main(android_app: AndroidApp) {
                 bridge: app_bridge.clone_for_services(),
                 picks: app_picks.clone(),
                 fonts: std::mem::take(&mut initial_fonts),
+                font_feedback_open: false,
                 android_tools_open: false,
                 touch_dock,
                 startup_updates,
                 updates: {
                     let mut state = UpdateDialogState::default();
-                    // Nonblocking, read-only startup check as in PhotoCraft.
+                    // Like LightCraft, preview channel is a persistent Android
+                    // preference; do not silently change it during an update.
+                    state.include_preview =
+                        app_bridge.get_include_preview_updates().unwrap_or(true);
+                    state.message = "Select Check for Updates to query GitHub Releases.".into();
+                    // Nonblocking startup check remains opt-in.
                     if startup_updates && app_bridge.check_for_updates().is_ok() {
                         state.checking = true;
                         state.message = "Checking for VectorCraft updates…".into();

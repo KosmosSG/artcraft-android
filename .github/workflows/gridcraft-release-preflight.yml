@@ -1,6 +1,11 @@
 name: GridCraft release preflight (read-only, no signing)
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/gridcraft/**'
+      - 'assets/gridcraft/**'
+      - '.github/workflows/gridcraft-release-preflight.yml'
   push:
     branches: [development/gridcraft-v0111-fonts-updates-20261023]
     paths:
@@ -42,6 +47,7 @@ jobs:
           assert p.is_file(), 'Owner-approved Gc PNG missing'
           assert hashlib.sha256(p.read_bytes()).hexdigest()==lock['icon_source_sha256'], 'Gc PNG checksum differs'
           print('PASS: pinned GridCraft version, production package and exact Gc source artwork')
+          print('GridCraft release readiness summary:')
           if not lock['version_code_reserved']:
               print('BLOCKER: production versionCode not reserved')
           if lock['permanent_signing_certificate_sha256'] is None:
@@ -52,6 +58,19 @@ jobs:
               print('BLOCKER: source lock has no production build authorization')
           if not lock['publish_approved']:
               print('EXPECTED: public publication remains disabled')
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as report:
+              report.write('## GridCraft release readiness\n\n')
+              report.write('| Gate | Result |\n|---|---|\n')
+              for name,ok in [
+                  ('Approved source and Gc artwork', True),
+                  ('Reserved production versionCode', bool(lock['version_code_reserved'])),
+                  ('Production signer fingerprint linked', bool(lock['permanent_signing_certificate_sha256'])),
+                  ('Signing backup verified for release', bool(lock['permanent_key_backup_verified'])),
+                  ('Build authorized', bool(lock['build_approved'])),
+                  ('Publishing authorized', bool(lock['publish_approved']))
+              ]:
+                  report.write(f"| {name} | {'Ready' if ok else 'Pending'} |\n")
+              report.write('\nProduction APK signing and GitHub publishing are not performed by this workflow.\n')
           PY
       - name: Review source provenance without publishing
         run: python3 tools/gridcraft/verify_source.py

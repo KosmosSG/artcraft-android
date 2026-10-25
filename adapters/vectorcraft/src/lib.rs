@@ -1017,7 +1017,9 @@ impl eframe::App for VectorCraftAndroidApp {
         // The upstream Contextual Task Bar's existing visibility flag is the
         // same one used by its Hide Bar menu. Only an actual object selection
         // permits a second Escape to dismiss it.
-        let bar_has_selection = self.inner.ui.task_bar &&
+        let is_idle_selection = matches!(self.inner.session.tool_id(), "selection" | "directSelection")
+            && !self.inner.session.tool_busy();
+        let bar_has_selection = self.inner.ui.task_bar && is_idle_selection &&
             self.inner.session.active().is_some_and(|doc| doc.selection.has_objects_or_guides());
         self.keyboard.input_gate = format!(
             "wants={} editor={} type={} compose={} modal={}",

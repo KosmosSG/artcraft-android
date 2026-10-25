@@ -40,7 +40,7 @@ mod ime_bridge;
 // Shared PhotoCraft-style hardware-key reconstruction: independent left/right modifiers,
 // correctly ordered modifier transitions, Ctrl text suppression and focus-loss reset.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text};
+use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -986,6 +986,10 @@ impl eframe::App for VectorCraftAndroidApp {
         self.ime.poll(raw);
         self.keyboard.observe(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
+        // MagicPad diagnostic: egui may expose Android Escape as BrowserBack.
+        // Only translate while actively editing Type; never alter general Back navigation.
+        let type_editing_now = self.inner.session.tool_wants_text();
+        normalize_type_editor_escape(raw, type_editing_now);
         // Upstream VectorCraft's V/T and other tool keys are dispatched from Text events.
         // NativeActivity can report only physical Key events on external keyboards.
         // Reconstruct a tool-selection letter only outside fields, Type editing and IME.

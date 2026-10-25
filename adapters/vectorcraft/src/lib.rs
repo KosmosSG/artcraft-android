@@ -270,6 +270,20 @@ impl AndroidFileBridge {
         }).map_err(|error| error.to_string())
     }
 
+    // TEST APP ONLY. Read-only, no text/key characters or document contents.
+    fn keyboard_diagnostics(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let call = env.call_method(&*activity, jni_str!("vcKeyboardDiagnostics"),
+                jni_sig!("()Ljava/lang/String;"), &[]);
+            if call.is_err() { env.exception_clear(); }
+            let value = call?.l()?;
+            let value = JString::cast_local(env, value)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+
     fn files_dir(&self) -> Result<String, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<String> {
@@ -728,6 +742,41 @@ fn services(bridge: AndroidFileBridge, state: Arc<PickState>, inbox: Inbox) -> S
     }
 }
 
+// TEST APP ONLY. Counts and key names only; never stores typed text.
+#[derive(Default)]
+struct KeyboardTrace {
+    native_down: u64,
+    native_text: u64,
+    native_ime: u64,
+    after_ime: u64,
+    last_key: String,
+    last_window_focus: String,
+}
+
+impl KeyboardTrace {
+    fn observe(&mut self, raw: &egui::RawInput, raw_input: bool) {
+        for event in &raw.events {
+            match event {
+                egui::Event::Key { key, physical_key, pressed: true, .. } if raw_input => {
+                    self.native_down += 1;
+                    self.last_key = format!("{key:?} physical={physical_key:?}");
+                }
+                egui::Event::Text(text) if raw_input => {
+                    self.native_text += 1;
+                    // Deliberately do not copy keystrokes to the debug view.
+                    let _ = text;
+                }
+                egui::Event::Ime(_) if raw_input => self.native_ime += 1,
+                egui::Event::Ime(_) => self.after_ime += 1,
+                egui::Event::WindowFocused(focused) if raw_input => {
+                    self.last_window_focus = format!("{focused}");
+                }
+                _ => (),
+            }
+        }
+    }
+}
+
 struct VectorCraftAndroidApp {
     inner: VectorcraftApp,
     bridge: AndroidFileBridge,
@@ -739,6 +788,7 @@ struct VectorCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    keyboard_trace: KeyboardTrace,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -981,8 +1031,25 @@ impl eframe::App for VectorCraftAndroidApp {
         self.persist_tick();
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.keyboard_trace.observe(raw, true);
         self.ime.poll(raw);
+        self.keyboard_trace.observe(raw, false);
+        // Escape returns focus from Type editing; let the upstream tool state
+        // also receive the original event. When a document closes, the old
+        // text field must not retain shortcut focus on the next new canvas.
+        let escape_pressed = raw.events.iter().any(|event|
+            matches!(event, egui::Event::Key {
+                key: egui::Key::Escape, pressed: true, ..
+            }));
+        let document_closed = self.inner.session.active().is_none();
+        if ctx.text_edit_focused() && (escape_pressed || document_closed) {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() {
+                    memory.surrender_focus(id);
+                }
+            });
+        }
         apply_android_modifiers(&mut self.modifiers, raw);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
@@ -993,6 +1060,33 @@ impl eframe::App for VectorCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         vectorcraft_ui_egui::menus::set_android_preferences(self.touch_dock, self.startup_updates);
+
+        // Diagnostic HUD reserves editor space. No controls intercept keyboard focus.
+        egui::Panel::bottom("vectorcraft.test.keyboard_diagnostics")
+            .resizable(false)
+            .default_size(112.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("KEYBOARD INPUT TRACE — TEST APP ONLY").strong());
+                match self.bridge.keyboard_diagnostics() {
+                    Ok(value) => { ui.small(value); }
+                    Err(error) => { ui.colored_label(egui::Color32::RED, format!("Java trace unavailable: {error}")); }
+                }
+                ui.small(format!(
+                    "egui raw key={} raw Text={} raw IME={} post-poll IME={} focus={}",
+                    self.keyboard_trace.native_down, self.keyboard_trace.native_text,
+                    self.keyboard_trace.native_ime, self.keyboard_trace.after_ime,
+                    self.keyboard_trace.last_window_focus
+                ));
+                ui.small(format!(
+                    "last egui key={} | active doc={} | tool={} | text editing={} | field focused={}",
+                    self.keyboard_trace.last_key,
+                    self.inner.session.active().is_some(),
+                    self.inner.session.tool_id(),
+                    self.inner.session.tool_wants_text(),
+                    ui.ctx().text_edit_focused()
+                ));
+            });
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
 
         // PhotoCraft-style dock: an actual bottom panel reserves editor space instead
         // of floating over canvas handles or intercepting drawing gestures.
@@ -1266,6 +1360,7 @@ fn android_main(android_app: AndroidApp) {
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                keyboard_trace: KeyboardTrace::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

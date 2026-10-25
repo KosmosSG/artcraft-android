@@ -301,6 +301,19 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
+    /** Physical Escape must first reach the native editor, then return its
+     * hardware-key focus to the canvas instead of the invisible IME EditText.
+     * Do not consume the event: upstream still owns edit cancel and popups.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
+                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted) {
+            imeHide();
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     /** Hide the soft keyboard and release the IME host view. Called by the Rust shell via JNI. */
     public void imeHide() {
         imeWanted = false;
@@ -316,6 +329,22 @@ public final class PhotoCraftActivity extends NativeActivity {
                     imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
                 }
                 view.clearFocus();
+                // Restore focus to NativeActivity's visible surface; a hidden
+                // EditText must not intercept the next V/T/P tool shortcut.
+                final Window activeWindow = getWindow();
+                final View content = activeWindow == null ? null
+                        : activeWindow.getDecorView().findViewById(android.R.id.content);
+                if (content instanceof android.view.ViewGroup) {
+                    android.view.ViewGroup group = (android.view.ViewGroup) content;
+                    for (int i = 0; i < group.getChildCount(); i++) {
+                        View child = group.getChildAt(i);
+                        if (child != view && child.isShown()) {
+                            child.setFocusable(true);
+                            child.setFocusableInTouchMode(true);
+                            if (child.requestFocus()) break;
+                        }
+                    }
+                }
                 // Drop the scratch buffer between sessions so it cannot grow without bound.
                 view.setText("");
             } catch (Throwable error) {

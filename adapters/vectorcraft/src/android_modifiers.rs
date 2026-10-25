@@ -155,6 +155,8 @@ pub struct KeyboardDiagnostics {
     pub text_events: u64,
     pub ime_events: u64,
     pub fallback_events: u64,
+    pub direct_tools: u64,
+    pub direct_escapes: u64,
     pub last_key: String,
 }
 

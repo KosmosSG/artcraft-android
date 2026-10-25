@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SHELL = ROOT / "adapters/vectorcraft/src/lib.rs"
 MODIFIERS = ROOT / "adapters/vectorcraft/src/android_modifiers.rs"
+ACTIVITY = ROOT / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java"
 
 
 class AndroidKeyboardPreservationTests(unittest.TestCase):
@@ -56,6 +57,68 @@ class AndroidKeyboardPreservationTests(unittest.TestCase):
             "repeats_are_idempotent_and_focus_loss_clears_all_sides",
             "physical_key_and_event_order_are_preserved",
             "ime_composition_is_never_rewritten",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.modifiers)
+
+    def test_android_tool_selection_key_only_fallback_is_wired(self):
+        for marker in (
+            "pub fn restore_tool_key_text(", "fn bare_v_and_t_are_repaired_from_key_only_frames",
+            "fn never_double_native_text_or_editing_ime_events",
+            "fn modifier_chords_repeat_and_shift_are_respected",
+            "fn repair_uses_physical_letter_when_logical_key_is_unknown",
+            "matches!(event, egui::Event::Text(_))",
+            "fn inactive_ime_composition_does_not_suppress_physical_tool_key",
+            "pub letter_key_downs: u64",
+            "pub blocked_by_field: u64",
+            "pub blocked_by_type_tool: u64",
+            "if !tool_shortcuts_allowed", "egui::Event::Text(letter)",
+            "pub struct KeyboardDiagnostics", "pub fn observe(",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.modifiers)
+        for marker in (
+            "keyboard: KeyboardDiagnostics,", "keyboard: KeyboardDiagnostics::default(),",
+            "self.keyboard.observe(raw);",
+            "restore_tool_key_text(raw, tool_shortcuts_allowed);",
+            "let field_focused = ctx.egui_wants_keyboard_input();",
+            "let type_editing = self.inner.session.tool_wants_text();",
+            "Physical keyboard events (test diagnostics)",
+            "tool fallback:",
+            "letter keys:",
+            "blocked by field:",
+            "blocked by Type:",
+            "self.keyboard.blocked_by_field",
+            "self.keyboard.blocked_by_type_tool",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.shell)
+
+    def test_escape_returns_android_ime_focus_and_t_remains_available(self):
+        activity = ACTIVITY.read_text(encoding="utf-8")
+        for marker in (
+            "public void vcEndTypeEditing()",
+            "imeWanted = false;",
+            "view.clearFocus();",
+            "child.requestFocus()",
+            "imeEvents.clear();",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, activity)
+        for marker in (
+            "fn end_type_editing(&self)",
+            'jni_str!("vcEndTypeEditing")',
+            "self.bridge.end_type_editing()",
+            "let field_focused_now = ctx.text_edit_focused();",
+            "self.keyboard.native_focus_restore",
+            "self.keyboard.input_gate",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.shell)
+        for marker in (
+            "fn type_shortcut_returns_after_escape_exits_editor()",
+            "Some(CanvasHardwareCommand::ExitType)",
+            "Some(CanvasHardwareCommand::Type)",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.modifiers)

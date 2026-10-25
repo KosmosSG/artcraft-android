@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use vectorcraft_engine::Session;
+use vectorcraft_engine::{Session, UiRequest};
+use vectorcraft_tools::{ToolKey, Mods};
 use vectorcraft_ui_egui::picks::PickRequest;
 use vectorcraft_ui_egui::{FilePick, Inbox, Services, VectorcraftApp};
 
@@ -40,7 +41,7 @@ mod ime_bridge;
 // Shared PhotoCraft-style hardware-key reconstruction: independent left/right modifiers,
 // correctly ordered modifier transitions, Ctrl text suppression and focus-loss reset.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers};
+use android_modifiers::{AndroidModifiers, KeyboardDiagnostics, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -70,6 +71,24 @@ impl AndroidFileBridge {
             app: self.app.clone(),
             vm: self.vm.clone(),
         }
+    }
+
+    /// Release Android's invisible text-input host after the Type tool exits.
+    /// This reassigns hardware-key focus to the NativeActivity canvas.
+    fn end_type_editing(&self) -> Result<(), String> {
+        self.vm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                env.call_method(
+                    &*activity,
+                    jni_str!("vcEndTypeEditing"),
+                    jni_sig!("()V"),
+                    &[],
+                )?;
+                Ok(())
+            })
+            .map_err(|error| error.to_string())
     }
 
     fn request_open(&self, id: u64, multiple: bool, mime: &str) -> Result<(), String> {
@@ -739,6 +758,7 @@ struct VectorCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    keyboard: KeyboardDiagnostics,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -981,9 +1001,115 @@ impl eframe::App for VectorCraftAndroidApp {
         self.persist_tick();
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
+        self.keyboard.observe(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
+        // Test-only direct dispatch: upstream shortcuts::handle may skip Esc/V/T/P
+        // during an Android focus transition. Operate on observed hardware keys,
+        // never on text/IME commits, and preserve fields, dialogs and composition.
+        let type_editing_now = self.inner.session.tool_wants_text();
+        // egui_wants_keyboard_input may remain true for a frame after
+        // leaving Type; only actual TextEdit focus must block tool shortcuts.
+        let field_focused_now = ctx.text_edit_focused();
+        let composing_now = self.inner.session.tool_composing();
+        let modal_open = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // The upstream Contextual Task Bar's existing visibility flag is the
+        // same one used by its Hide Bar menu. Only an actual object selection
+        // permits a second Escape to dismiss it.
+        let is_idle_selection = matches!(self.inner.session.tool_id(), "selection" | "directSelection")
+            && !self.inner.session.tool_busy();
+        let bar_has_selection = self.inner.ui.task_bar && is_idle_selection &&
+            self.inner.session.active().is_some_and(|doc| doc.selection.has_objects_or_guides());
+        self.keyboard.input_gate = format!(
+            "wants={} editor={} type={} compose={} modal={}",
+            ctx.egui_wants_keyboard_input(), field_focused_now,
+            type_editing_now, composing_now, modal_open,
+        );
+        if let Some(command) = canvas_hardware_command(
+            raw, type_editing_now, field_focused_now, composing_now, modal_open,
+            bar_has_selection,
+        ) {
+            let mut handled = false;
+            match command {
+                CanvasHardwareCommand::ExitType => {
+                    let view = self.inner.view_info();
+                    match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                        Ok(requests) => {
+                            for request in requests {
+                                if let UiRequest::SwitchTool(tool) = request {
+                                    self.inner.select_tool(&tool);
+                                    handled = true;
+                                }
+                            }
+                        }
+                        Err(error) => log::warn!("Android Type Escape fallback failed: {error}"),
+                    }
+                    if handled {
+                        self.keyboard.direct_escapes += 1;
+                        match self.bridge.end_type_editing() {
+                            Ok(()) => self.keyboard.native_focus_restore = "requested".into(),
+                            Err(error) => {
+                                log::warn!("Cannot hand hardware keyboard back to canvas: {error}");
+                                self.keyboard.native_focus_restore = "JNI request failed".into();
+                            }
+                        }
+                    }
+                }
+                CanvasHardwareCommand::DismissContextBar => {
+                    self.inner.ui.task_bar = false;
+                    // Release focus held by a popup/menu on the contextual bar.
+                    ctx.memory_mut(|memory| {
+                        if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                    });
+                    self.keyboard.context_bar_dismisses += 1;
+                    handled = true;
+                }
+                CanvasHardwareCommand::Selection
+                | CanvasHardwareCommand::Type
+                | CanvasHardwareCommand::Pen => {
+                    if self.inner.session.active().is_some() {
+                        let tool = match command {
+                            CanvasHardwareCommand::Selection => "selection",
+                            CanvasHardwareCommand::Type => "type",
+                            CanvasHardwareCommand::Pen => "pen",
+                            CanvasHardwareCommand::ExitType
+                            | CanvasHardwareCommand::DismissContextBar => unreachable!(),
+                        };
+                        self.inner.select_tool(tool);
+                        handled = true;
+                        self.keyboard.direct_tools += 1;
+                    }
+                }
+            }
+            if handled { consume_canvas_hardware_command(raw, command); }
+        }
+        // Keep upstream's normal Escape handling available if the direct exit
+        // failed or the raw event was not eligible for direct canvas dispatch.
+        normalize_type_editor_escape(raw, self.inner.session.tool_wants_text());
+        // Upstream VectorCraft's V/T and other tool keys are dispatched from Text events.
+        // NativeActivity can report only physical Key events on external keyboards.
+        // Reconstruct a tool-selection letter only outside fields, Type editing and IME.
+        let field_focused = ctx.egui_wants_keyboard_input();
+        let type_editing = self.inner.session.tool_wants_text();
+        if field_focused || type_editing {
+            let letter_presses = raw.events.iter().filter(|event| match event {
+                egui::Event::Key { key, physical_key, pressed: true, .. } => {
+                    let k = physical_key.unwrap_or(*key);
+                    let name = k.name();
+                    name.len() == 1 && name.as_bytes()[0].is_ascii_alphabetic()
+                }
+                _ => false,
+            }).count() as u64;
+            if field_focused {
+                self.keyboard.blocked_by_field = self.keyboard.blocked_by_field.saturating_add(letter_presses);
+            } else {
+                self.keyboard.blocked_by_type_tool = self.keyboard.blocked_by_type_tool.saturating_add(letter_presses);
+            }
+        }
+        let tool_shortcuts_allowed = !field_focused && !type_editing;
+        let count = restore_tool_key_text(raw, tool_shortcuts_allowed);
+        self.keyboard.fallback_events = self.keyboard.fallback_events.saturating_add(count as u64);
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
@@ -1065,6 +1191,40 @@ impl eframe::App for VectorCraftAndroidApp {
                             ui.label("Font import status");
                             ui.label(&self.fonts.import_status);
                             ui.label(&self.fonts.shared_status);
+                            ui.separator();
+                            ui.label("Physical keyboard events (test diagnostics)");
+                            ui.monospace(format!(
+                                "Key presses: {} | letter keys: {} | native Text: {}",
+                                self.keyboard.key_downs, self.keyboard.letter_key_downs,
+                                self.keyboard.text_events,
+                            ));
+                            ui.monospace(format!(
+                                "IME: {} | tool fallback: {} | blocked by field: {} | blocked by Type: {}",
+                                self.keyboard.ime_events, self.keyboard.fallback_events,
+                                self.keyboard.blocked_by_field, self.keyboard.blocked_by_type_tool,
+                            ));
+                            ui.monospace(format!(
+                                "Direct tool: {} | direct Esc exits: {} | IME composing now: {}",
+                                self.keyboard.direct_tools, self.keyboard.direct_escapes,
+                                self.inner.session.tool_composing(),
+                            ));
+                            ui.monospace(format!(
+                                "Esc hidden bars: {} | task bar visible: {}",
+                                self.keyboard.context_bar_dismisses, self.inner.ui.task_bar,
+                            ));
+                            ui.monospace(format!(
+                                "Input gates: {} | native focus restore: {}",
+                                self.keyboard.input_gate,
+                                if self.keyboard.native_focus_restore.is_empty() {
+                                    "not requested"
+                                } else {
+                                    &self.keyboard.native_focus_restore
+                                },
+                            ));
+                            ui.monospace(format!(
+                                "Last key: {}",
+                                if self.keyboard.last_key.is_empty() { "none" } else { &self.keyboard.last_key },
+                            ));
                         });
                 });
         }
@@ -1266,6 +1426,7 @@ fn android_main(android_app: AndroidApp) {
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                keyboard: KeyboardDiagnostics::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

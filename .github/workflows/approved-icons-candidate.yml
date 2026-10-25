@@ -3,8 +3,10 @@ name: DesignCraft approved icons ARM64 candidate (never publish)
   push:
     branches:
     - icons/designcraft-approved-20261024
+    - refine/designcraft-esc-focus-20261025
     paths:
     - tools/approved-branding/**
+    - tools/designcraft/**
     - .github/workflows/approved-icons-candidate.yml
   workflow_dispatch: {}
 permissions:

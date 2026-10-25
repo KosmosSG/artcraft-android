@@ -916,9 +916,8 @@ impl eframe::App for VectorCraftAndroidApp {
                         }
                         Err(error) => self.updates.message = format!("Invalid update result: {error}"),
                     }
-                    if self.updates.release_url.is_some() && self.updates.message.starts_with("Update available:") {
-                        self.updates.open = true;
-                    }
+                    // Results remain visible in native About → Updates.
+                    // Background startup checks never steal canvas focus.
                     ctx.request_repaint();
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),

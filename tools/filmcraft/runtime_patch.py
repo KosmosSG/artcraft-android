@@ -55,10 +55,10 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
     # keyboard shortcuts. Do not synthesize V/T: the upstream keymap owns them.
     rust = require_once(
         rust, '        self.ime.poll(raw);',
-        '        self.ime.poll(raw);\\n'
-        '        if raw.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))\\n'
-        '            && ctx.text_edit_focused() {\\n'
-        '            ctx.memory_mut(|memory| { if let Some(id) = memory.focused() { memory.surrender_focus(id); } });\\n'
+        '        self.ime.poll(raw);\n'
+        '        if raw.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))\n'
+        '            && ctx.text_edit_focused() {\n'
+        '            ctx.memory_mut(|memory| { if let Some(id) = memory.focused() { memory.surrender_focus(id); } });\n'
         '        }',
         "Android Escape text focus handoff")
     rust = require_once(
@@ -81,15 +81,15 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         raise RuntimeError("Review existing FilmCraft hardware key dispatch before overlay")
     java = require_once(
         java, 'public final class FilmCraftActivity extends GameActivity {',
-        'public final class FilmCraftActivity extends GameActivity {\\n'
-        '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\\n'
-        '        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE\\n'
-        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {\\n'
-        '            if (imeView != null) imeView.clearFocus();\\n'
-        '            imeHide();\\n'
-        '        }\\n'
-        '        return super.dispatchKeyEvent(event);\\n'
-        '    }\\n',
+        'public final class FilmCraftActivity extends GameActivity {\n'
+        '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n'
+        '        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE\n'
+        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {\n'
+        '            if (imeView != null) imeView.clearFocus();\n'
+        '            imeHide();\n'
+        '        }\n'
+        '        return super.dispatchKeyEvent(event);\n'
+        '    }\n',
         "Escape release Android IME focus")
     if 'private static final int FC_FONT_PICK' not in java:
         if not java.rstrip().endswith('}'):

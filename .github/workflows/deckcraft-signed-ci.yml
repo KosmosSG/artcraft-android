@@ -1,6 +1,13 @@
 name: DeckCraft permanently signed ARM64 review APK (no auto-publish)
 
 on:
+  push:
+    branches:
+      - integration/deckcraft-features-approved-icon-android3
+    paths:
+      - "deckcraft/android/**"
+      - "tools/approved-branding/**"
+      - ".github/workflows/deckcraft-signed-ci.yml"
   pull_request:
     paths:
       - "deckcraft/android/**"
@@ -9,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -272,6 +279,103 @@ jobs:
           path: dist/
           retention-days: 14
           if-no-files-found: error
+
+      - name: Prepare verified production release assets (owner waived device installation test)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/integration/deckcraft-features-approved-icon-android3'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,re,shutil
+          from pathlib import Path
+          source=Path('dist/DeckCraft-v0.9.0-android.3-arm64-review.apk')
+          assert source.is_file() and source.stat().st_size > 10000000
+          digest=hashlib.sha256(source.read_bytes()).hexdigest()
+          assert digest in Path('dist/SHA256SUMS.txt').read_text()
+          cert=Path('dist/DeckCraft-signing-certificate-sha256.txt').read_text().strip().lower()
+          assert re.fullmatch(r'[0-9a-f]{64}',cert)
+          assert cert=='7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9'
+          evidence=json.loads(Path('dist/approved-branding/verification.json').read_text())
+          assert evidence['version']=='0.9.0-android.3' and evidence['versionCode']==100000003
+          assert evidence['apk_sha256']==digest
+          assert evidence['compiled_pixels_verified'] and evidence['native_ui_brand_embedded']
+          assert not evidence['device_tested']
+          target=Path('public-deckcraft-android3')
+          target.mkdir(exist_ok=True)
+          name='DeckCraft-v0.9.0-android.3-arm64-v8a.apk'
+          shutil.copyfile(source,target/name)
+          (target/'SHA256SUMS.txt').write_text(f'{digest}  {name}\n')
+          (target/'release-verification.json').write_text(json.dumps({
+            'app':'DeckCraft','package':'com.artcraft.deckcraft',
+            'versionName':'0.9.0-android.3','versionCode':100000003,
+            'apk':name,'apk_sha256':digest,
+            'signing_cert_sha256':cert,
+            'approved_icon_sha256':evidence['approved_source_sha256'],
+            'compiled_icon_pixels_verified':True,
+            'in_app_brand_embedded':True,
+            'permanent_signing_verified':True,
+            'device_installation_tested':False,
+            'device_testing_waived_by_owner':True,
+            'source_sha':os.environ['GITHUB_SHA'],
+          },indent=2)+'\n')
+          print('Release APK:',name,'SHA256:',digest)
+          PY
+          cat > public-deckcraft-android3/RELEASE-NOTES.md <<'EOF'
+          DeckCraft v0.9.0-android.3 — Android ARM64 stable release (unofficial ArtCraft Android port).
+
+          - Approved 24 October DeckCraft Dk adaptive launcher and native branding.
+          - File > Import Font (TTF/OTF), font rendering and persistence.
+          - Help > Check for Updates and View > Tablet Tools.
+          - Package: com.artcraft.deckcraft; versionCode: 100000003.
+          - Original permanent signing certificate, APK SHA-256, package, ABI, adaptive icon and in-app branding verified in CI.
+          - Owner explicitly waived this round's physical installation testing.
+          - Existing deckcraft-v0.9.0-android.2 release and assets are unchanged.
+          EOF
+
+      - name: Publish new stable DeckCraft .android.3 only after signed build verification
+        if: github.event_name == 'push' && github.ref == 'refs/heads/integration/deckcraft-features-approved-icon-android3'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "KosmosSG/artcraft-android"
+          test "$GITHUB_REF" = "refs/heads/integration/deckcraft-features-approved-icon-android3"
+          tag=deckcraft-v0.9.0-android.3
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists; never overwrite"; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag exists; refusing overwrite"; exit 1
+          fi
+          gh release create "$tag" \
+            public-deckcraft-android3/DeckCraft-v0.9.0-android.3-arm64-v8a.apk \
+            public-deckcraft-android3/SHA256SUMS.txt \
+            public-deckcraft-android3/release-verification.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "DeckCraft Android v0.9.0-android.3 (ARM64)" \
+            --notes-file public-deckcraft-android3/RELEASE-NOTES.md \
+            --draft --latest=false
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,isDraft,assets > public-deckcraft-android3/published.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('public-deckcraft-android3/published.json').read_text())
+          assert data['isDraft'] is True
+          assets={x['name']:x for x in data['assets']}
+          for name in ('DeckCraft-v0.9.0-android.3-arm64-v8a.apk','SHA256SUMS.txt','release-verification.json'):
+            assert name in assets and assets[name]['size'] > 0, name
+          print('Verified draft release assets:',list(assets))
+          PY
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,isDraft,assets > public-deckcraft-android3/published.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('public-deckcraft-android3/published.json').read_text())
+          assert data['isDraft'] is False
+          print('PUBLIC RELEASE:', data['url'])
+          PY
 
       - name: Erase signing key material from runner
         if: always()

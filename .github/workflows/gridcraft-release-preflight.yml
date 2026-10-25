@@ -1,0 +1,60 @@
+name: GridCraft release preflight (read-only, no signing)
+on:
+  workflow_dispatch:
+  push:
+    branches: [development/gridcraft-v0111-fonts-updates-20261023]
+    paths:
+      - 'tools/gridcraft/**'
+      - 'assets/gridcraft/**'
+      - '.github/workflows/gridcraft-release-preflight.yml'
+permissions:
+  contents: read
+concurrency:
+  group: gridcraft-release-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate GridCraft-only feature tests
+        run: python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -v
+      - name: Check pinned version, official source, approved Gc art and production package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          lock=json.loads(Path('tools/gridcraft/source-lock.json').read_text())
+          assert lock['app']=='gridcraft'
+          assert lock['official_release_tag']=='v0.11.1'
+          assert lock['official_release_commit']=='ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9'
+          assert lock['version_name']=='0.11.1-android.1'
+          assert lock['production_package']=='com.artcraft.gridcraft'
+          assert lock['target_abi']=='arm64-v8a'
+          assert lock['intended_release_apk']=='GridCraft-v0.11.1-android.1-arm64-v8a.apk'
+          p=Path(lock['icon_intended_repository_path'])
+          assert p.is_file(), 'Owner-approved Gc PNG missing'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==lock['icon_source_sha256'], 'Gc PNG checksum differs'
+          print('PASS: pinned GridCraft version, production package and exact Gc source artwork')
+          if not lock['version_code_reserved']:
+              print('BLOCKER: production versionCode not reserved')
+          if lock['permanent_signing_certificate_sha256'] is None:
+              print('BLOCKER: permanent certificate not linked to production source lock')
+          if not lock['permanent_key_backup_verified']:
+              print('BLOCKER: restore/backup not independently verified for production workflow')
+          if not lock['build_approved']:
+              print('BLOCKER: source lock has no production build authorization')
+          if not lock['publish_approved']:
+              print('EXPECTED: public publication remains disabled')
+          PY
+      - name: Review source provenance without publishing
+        run: python3 tools/gridcraft/verify_source.py
+      - name: Confirm no signing or publishing attempted
+        run: |
+          echo 'Read-only preflight finished. No keystore fetched, no signing performed and no release published.'

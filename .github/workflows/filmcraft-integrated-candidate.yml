@@ -3,6 +3,7 @@ name: FilmCraft integrated fonts updates and approved icons (never publish)
   push:
     branches:
     - dev/filmcraft-integrated-20261025
+    - refine/filmcraft-esc-focus-20261025
     paths:
     - tools/approved-branding/**
     - .github/workflows/filmcraft-integrated-candidate.yml

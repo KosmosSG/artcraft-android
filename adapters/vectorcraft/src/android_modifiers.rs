@@ -108,7 +108,8 @@ pub fn canvas_hardware_command(
                     return Some(CanvasHardwareCommand::ExitType);
                 }
             } else {
-                if *key == egui::Key::Escape && context_bar_has_selection {
+                if context_bar_has_selection && (*key == egui::Key::Escape ||
+                    (*key == egui::Key::BrowserBack && physical_key.is_none())) {
                     return Some(CanvasHardwareCommand::DismissContextBar);
                 }
                 let physical = physical_key.unwrap_or(*key);
@@ -263,6 +264,12 @@ mod tests {
         assert_eq!(canvas_hardware_command(&esc, false, false, false, false, false), None);
         assert_eq!(canvas_hardware_command(&esc, false, true, false, false, true), None);
         assert_eq!(canvas_hardware_command(&esc, false, false, false, true, true), None);
+        let browser_back = RawInput { events: vec![Event::Key {
+            key: Key::BrowserBack, physical_key: None, pressed: true,
+            repeat: false, modifiers: Modifiers::NONE,
+        }], ..Default::default() };
+        assert_eq!(canvas_hardware_command(&browser_back, false, false, false, false, true),
+            Some(CanvasHardwareCommand::DismissContextBar));
         let mut raw = esc;
         consume_canvas_hardware_command(&mut raw, CanvasHardwareCommand::DismissContextBar);
         assert!(raw.events.is_empty());

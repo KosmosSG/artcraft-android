@@ -1,0 +1,192 @@
+name: Publish owner-tested ArtCraft icon APKs (preserve signed bytes)
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/promote-owner-tested-icon-apks.yml
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: owner-tested-icon-promotion-20261025
+  cancel-in-progress: false
+jobs:
+  designcraft-existing-draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require exact draft and verified immutable APK assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "KosmosSG/artcraft-android"
+          gh api repos/$GITHUB_REPOSITORY/releases/423114230 > release.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open("release.json"))
+          assert r["tag_name"]=="designcraft-v0.12.0-android.3"
+          assert r["target_commitish"]=="release/designcraft-v0.12.0-android.3"
+          assert not r["prerelease"]
+          assert r["draft"] or r["published_at"]
+          sha="sha256:61b1c5ace867c89d906d45c665c8b0c178b7fa0579126de2a37fc2dc2ac5dd22"
+          assets={a["name"]:a for a in r["assets"]}
+          for name in ["DesignCraft-v0.12.0-android.3-arm64-v8a.apk","DesignCraft-0.12.0-android.3-arm64-v8a.apk"]:
+              assert assets[name]["digest"]==sha and assets[name]["size"]==88189943 and assets[name]["state"]=="uploaded"
+          for name in ["SHA256SUMS.txt","verification.json","release-verification.json","designcraft-update.json"]:
+              assert assets[name]["size"]>0 and assets[name]["state"]=="uploaded"
+          print("PASS: existing DesignCraft draft contains the exact permanent-signed owner-approved APKs")
+          PY
+      - name: Publish draft without re-upload, rebuild, or re-sign
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test "$(jq -r .draft release.json)" = true; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/423114230" -F draft=false -f make_latest=false > publication.json
+          fi
+          gh api repos/$GITHUB_REPOSITORY/releases/tags/designcraft-v0.12.0-android.3 > final.json
+          jq -e '.draft==false and .prerelease==false and .id==423114230' final.json
+          jq -r '.html_url,.assets[]|objects|.browser_download_url // empty' final.json
+  signed-public-artifact-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: PDFCraft
+            version: 0.12.1-android.3
+            code: 16780291
+            package: com.artcraft.pdfcraft
+            source: ba604057f77eb0ae45dac85914280121d0e9eb12
+            run: 40114901778
+            artifact: PDFCraft-approved-icons-PERMANENT-SIGNED-TESTING
+            sha: f8f3b7bb806bac9eb62c25f4eea762a7912382afb67c72d38e7997112afffb4a
+          - app: DeckCraft
+            version: 0.9.0-android.2
+            code: 100000002
+            package: com.artcraft.deckcraft
+            source: 50955410377d009951aaf39d34342d9ee1fa0661
+            run: 40114908137
+            artifact: DeckCraft-approved-icons-PERMANENT-SIGNED-TESTING
+            sha: 96a0596e1651656d5728a0358515b77e311f73b473f6a472111c9ad75f98c277
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APP: ${{ matrix.app }}
+      VERSION: ${{ matrix.version }}
+      CODE: ${{ matrix.code }}
+      PACKAGE: ${{ matrix.package }}
+      SOURCE: ${{ matrix.source }}
+      RUN_ID: ${{ matrix.run }}
+      ARTIFACT: ${{ matrix.artifact }}
+      EXPECTED_SHA: ${{ matrix.sha }}
+    steps:
+      - name: Validate pinned signing run and absent target release/tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "KosmosSG/artcraft-android"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > signed-run.json
+          jq -e --arg app "$APP" '.status=="completed" and .conclusion=="success" and .name==($app+" approved icon permanent signing candidate ONLY") and .path==".github/workflows/approved-icon-signing-only.yml"' signed-run.json
+          tag="$(echo "$APP" | tr '[:upper:]' '[:lower:]')-v$VERSION"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs/tags" > tags.json
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
+          python3 - "$tag" <<'PY'
+          import json,sys
+          tag=sys.argv[1]
+          assert not any(t['ref']=='refs/tags/'+tag for t in json.load(open('tags.json'))), 'Tag reserved, refusing overwrite'
+          assert not any(r['tag_name']==tag for r in json.load(open('releases.json'))), 'Release exists, refusing overwrite'
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE" --jq .sha | grep -Fx "$SOURCE"
+      - name: Download original permanently signed GitHub Actions artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir stage
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$ARTIFACT" -D stage
+          apk="stage/$APP-v$VERSION-arm64-v8a.apk"
+          test -s "$apk"
+          echo "$EXPECTED_SHA  $apk" | sha256sum --check
+          grep -Fx "$EXPECTED_SHA  $APP-v$VERSION-arm64-v8a.apk" stage/SHA256SUMS.txt
+          test -s stage/verification.json
+          python3 - <<'PY'
+          import os,json,re
+          v=json.load(open('stage/verification.json'))
+          e=os.environ
+          assert v['apk_sha256']==e['EXPECTED_SHA']
+          assert v['certificate_sha256'] and re.fullmatch('[a-f0-9]{64}',v['certificate_sha256'])
+          assert v['production_signing_verified'] is True
+          assert v['signed_payload_unchanged'] is True
+          assert v['source_run']==int(e['RUN_ID'])
+          assert v['source_commit']==e['SOURCE']
+          print("PASS: retained signing provenance",e["APP"],v["certificate_sha256"])
+          PY
+      - name: Independently check package, version, signature and ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0' >/dev/null
+          apk="stage/$APP-v$VERSION-arm64-v8a.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > signer.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" > badging.txt
+          python3 - <<'PY'
+          import os,json,re,zipfile
+          from pathlib import Path
+          e=os.environ
+          cert=json.load(open('stage/verification.json'))['certificate_sha256']
+          found=re.findall(r'certificate SHA-256 digest: ([0-9a-fA-F]{64})',Path('signer.txt').read_text())
+          assert found and set(x.lower() for x in found)=={cert}
+          badge=Path('badging.txt').read_text()
+          p=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badge,re.M)
+          assert p and p.groups()==(e['PACKAGE'],e['CODE'],e['VERSION']),p.groups() if p else 'bad package'
+          path=Path('stage')/(e['APP']+'-v'+e['VERSION']+'-arm64-v8a.apk')
+          with zipfile.ZipFile(path) as z:
+              assert z.testzip() is None
+              libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+          print("PASS: independent APK signature, Android identity, ABI, checksum")
+          PY
+      - name: Publish only a new stable release with unchanged signed assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(echo "$APP" | tr '[:upper:]' '[:lower:]')-v$VERSION"
+          apk="$APP-v$VERSION-arm64-v8a.apk"
+          cp "stage/$apk" "$apk"
+          cp stage/SHA256SUMS.txt SHA256SUMS.txt
+          cp stage/verification.json verification.json
+          python3 - <<'PY'
+          import os,json,datetime
+          e=os.environ
+          original=json.load(open('verification.json'))
+          result=dict(app=e['APP'],tag=e['APP'].lower()+'-v'+e['VERSION'],apk_file=e['APP']+'-v'+e['VERSION']+'-arm64-v8a.apk',apk_sha256=e['EXPECTED_SHA'],certificate_sha256=original['certificate_sha256'],source_commit=e['SOURCE'],source_run=int(e['RUN_ID']),signed_artifact_unchanged=True,owner_device_test_reported=True,owner_publication_authorized=True,publication_date='2026-10-25')
+          open('release-verification.json','w').write(json.dumps(result,indent=2)+'\n')
+          PY
+          cat > notes.md <<EOF
+          $APP v$VERSION for Android ARM64, unofficial ArtCraft Android port.
+          
+          Approved launcher/adaptive/legacy/native icons. Owner reports testing and authorizes public stable release of this exact permanently signed APK (without rebuild or re-signing).
+          
+          Package: $PACKAGE
+          VersionName: $VERSION
+          VersionCode: $CODE
+          APK SHA-256: $EXPECTED_SHA
+          Source commit: $SOURCE
+          
+          The retained original verification.json predates owner acceptance and is preserved unchanged. release-verification.json records the subsequent owner report and release checks. Install over a previous production APK with the same signing identity. Back up important documents first.
+          
+          Existing releases and all signing keys were preserved. Distributed through GitHub Releases, not Google Play.
+          EOF
+          gh release create "$tag" "$apk" SHA256SUMS.txt verification.json release-verification.json --repo "$GITHUB_REPOSITORY" --target "$SOURCE" --title "$APP v$VERSION" --notes-file notes.md --latest=false
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > final.json
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open('final.json'));e=os.environ
+          assert not r['draft'] and not r['prerelease']
+          a={x['name']:x for x in r['assets']}
+          file=e['APP']+'-v'+e['VERSION']+'-arm64-v8a.apk'
+          assert a[file]['digest']=='sha256:'+e['EXPECTED_SHA'] and a[file]['state']=='uploaded'
+          print('STABLE_RELEASE',r['html_url'],'APK',a[file]['browser_download_url'])
+          PY

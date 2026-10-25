@@ -60,7 +60,7 @@ def patch(root):
     text = java.read_text()
     # MagicPad: Escape must reach upstream canvas while Android's invisible
     # text-input host relinquishes focus. Never swallow a hardware key here.
-    text = replace_once(text, 'public final class DesignCraftActivity extends NativeActivity {', '''public final class DesignCraftActivity extends NativeActivity {
+    text = replace_once(text, 'public final class DesignCraftActivity extends GameActivity {', '''public final class DesignCraftActivity extends GameActivity {
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {
@@ -70,7 +70,7 @@ def patch(root):
     }''')
     text = replace_once(text, '                view.clearFocus();', '''                view.clearFocus();
                 // Release the hidden IME host after Escape and restore physical
-                // shortcut focus to NativeActivity's actual visible surface.
+                // shortcut focus to GameActivity's actual visible surface.
                 android.view.Window win = getWindow();
                 android.view.View content = win == null ? null :
                         win.getDecorView().findViewById(android.R.id.content);

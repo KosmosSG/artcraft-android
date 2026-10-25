@@ -59,6 +59,24 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
     raw.events = kept;
 }
 
+/// On some Android keyboard paths Escape is reported as BrowserBack by egui.
+/// Treat it as Escape ONLY while the VectorCraft Type editor is active.
+/// Outside editing, Android Back/navigation semantics remain unchanged.
+/// Preserve key-up events so downstream state cannot become stuck.
+pub fn normalize_type_editor_escape(raw: &mut egui::RawInput, type_editing: bool) -> usize {
+    if !type_editing { return 0; }
+    let mut translated = 0;
+    for event in &mut raw.events {
+        if let egui::Event::Key { key, physical_key, pressed, .. } = event {
+            if *key == egui::Key::BrowserBack && physical_key.is_none() {
+                *key = egui::Key::Escape;
+                if *pressed { translated += 1; }
+            }
+        }
+    }
+    translated
+}
+
 /// Minimal event counters for tablet debugging; never retain actual typed text.
 #[derive(Default)]
 pub struct KeyboardDiagnostics {

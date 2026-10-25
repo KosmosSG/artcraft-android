@@ -87,6 +87,7 @@ pub enum CanvasHardwareCommand {
     Selection,
     Type,
     Pen,
+    DismissContextBar,
 }
 
 pub fn canvas_hardware_command(
@@ -95,6 +96,7 @@ pub fn canvas_hardware_command(
     field_focused: bool,
     composing: bool,
     modal_open: bool,
+    context_bar_has_selection: bool,
 ) -> Option<CanvasHardwareCommand> {
     if field_focused || composing || modal_open { return None; }
     for event in &raw.events {
@@ -106,6 +108,9 @@ pub fn canvas_hardware_command(
                     return Some(CanvasHardwareCommand::ExitType);
                 }
             } else {
+                if *key == egui::Key::Escape && context_bar_has_selection {
+                    return Some(CanvasHardwareCommand::DismissContextBar);
+                }
                 let physical = physical_key.unwrap_or(*key);
                 match physical {
                     egui::Key::V => return Some(CanvasHardwareCommand::Selection),
@@ -128,17 +133,18 @@ pub fn consume_canvas_hardware_command(raw: &mut egui::RawInput, cmd: CanvasHard
         CanvasHardwareCommand::Selection => egui::Key::V,
         CanvasHardwareCommand::Type => egui::Key::T,
         CanvasHardwareCommand::Pen => egui::Key::P,
+        CanvasHardwareCommand::DismissContextBar => egui::Key::Escape,
     };
     raw.events.retain(|event| match event {
         egui::Event::Key { key: logical, physical_key, pressed: true, .. } => {
-            if cmd == CanvasHardwareCommand::ExitType {
+            if matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::DismissContextBar) {
                 !(*logical == egui::Key::Escape ||
                   (*logical == egui::Key::BrowserBack && physical_key.is_none()))
             } else {
                 physical_key.unwrap_or(*logical) != key
             }
         }
-        egui::Event::Text(text) if cmd != CanvasHardwareCommand::ExitType => {
+        egui::Event::Text(text) if !matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::DismissContextBar) => {
             !(text.len() == 1 && text.eq_ignore_ascii_case(key.name()))
         }
         _ => true,
@@ -247,12 +253,30 @@ mod tests {
         raw.events
     }
     #[test]
+    fn second_escape_dismisses_context_bar_but_preserves_tools() {
+        let esc = RawInput { events: vec![key(Key::Escape, true)], ..Default::default() };
+        assert_eq!(canvas_hardware_command(&esc, false, false, false, false, true),
+            Some(CanvasHardwareCommand::DismissContextBar));
+        assert_eq!(canvas_hardware_command(&esc, true, false, false, false, true),
+            Some(CanvasHardwareCommand::ExitType));
+        assert_eq!(canvas_hardware_command(&esc, false, false, false, false, false), None);
+        assert_eq!(canvas_hardware_command(&esc, false, true, false, false, true), None);
+        assert_eq!(canvas_hardware_command(&esc, false, false, false, true, true), None);
+        let mut raw = esc;
+        consume_canvas_hardware_command(&mut raw, CanvasHardwareCommand::DismissContextBar);
+        assert!(raw.events.is_empty());
+        let t = RawInput { events: vec![key(Key::T, true)], ..Default::default() };
+        assert_eq!(canvas_hardware_command(&t, false, false, false, false, false),
+            Some(CanvasHardwareCommand::Type));
+    }
+
+    #[test]
     fn type_shortcut_returns_after_escape_exits_editor() {
         // Two distinct raw frames: the first contains Escape during Type editing,
         // the second contains T after the tool has returned to Selection.
         let esc = RawInput { events: vec![key(Key::Escape, true)], ..Default::default() };
         assert_eq!(
-            canvas_hardware_command(&esc, true, false, false, false),
+            canvas_hardware_command(&esc, true, false, false, false, false),
             Some(CanvasHardwareCommand::ExitType),
         );
         let mut after = RawInput {
@@ -260,7 +284,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            canvas_hardware_command(&after, false, false, false, false),
+            canvas_hardware_command(&after, false, false, false, false, false),
             Some(CanvasHardwareCommand::Type),
         );
         consume_canvas_hardware_command(&mut after, CanvasHardwareCommand::Type);
@@ -273,11 +297,11 @@ mod tests {
                                     (Key::T, CanvasHardwareCommand::Type),
                                     (Key::P, CanvasHardwareCommand::Pen)] {
             let raw = RawInput { events: vec![key(pressed, true)], ..Default::default() };
-            assert_eq!(canvas_hardware_command(&raw, false, false, false, false), Some(expected));
-            assert_eq!(canvas_hardware_command(&raw, true, false, false, false), None);
-            assert_eq!(canvas_hardware_command(&raw, false, true, false, false), None);
-            assert_eq!(canvas_hardware_command(&raw, false, false, true, false), None);
-            assert_eq!(canvas_hardware_command(&raw, false, false, false, true), None);
+            assert_eq!(canvas_hardware_command(&raw, false, false, false, false, false), Some(expected));
+            assert_eq!(canvas_hardware_command(&raw, true, false, false, false, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, true, false, false, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, false, true, false, false), None);
+            assert_eq!(canvas_hardware_command(&raw, false, false, false, true, false), None);
         }
     }
 
@@ -286,9 +310,9 @@ mod tests {
         let back = Event::Key { key: Key::BrowserBack, physical_key: None,
             pressed: true, repeat: false, modifiers: Modifiers::NONE };
         let raw = RawInput { events: vec![back], ..Default::default() };
-        assert_eq!(canvas_hardware_command(&raw, true, false, false, false), Some(CanvasHardwareCommand::ExitType));
-        assert_eq!(canvas_hardware_command(&raw, false, false, false, false), None);
-        assert_eq!(canvas_hardware_command(&raw, true, false, true, false), None);
+        assert_eq!(canvas_hardware_command(&raw, true, false, false, false, false), Some(CanvasHardwareCommand::ExitType));
+        assert_eq!(canvas_hardware_command(&raw, false, false, false, false, false), None);
+        assert_eq!(canvas_hardware_command(&raw, true, false, true, false, false), None);
         let mut escaped = raw;
         consume_canvas_hardware_command(&mut escaped, CanvasHardwareCommand::ExitType);
         assert!(escaped.events.is_empty());

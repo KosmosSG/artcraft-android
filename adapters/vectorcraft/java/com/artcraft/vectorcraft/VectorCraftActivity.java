@@ -333,6 +333,55 @@ public final class VectorCraftActivity extends NativeActivity {
         });
     }
 
+    /**
+     * The Type editor has exited via a physical Escape key. Release the invisible
+     * EditText and return hardware-key focus to NativeActivity's drawing surface.
+     * This is deliberately separate from normal IME hide so regular text entry
+     * and Chinese composition are unchanged while the Type editor is active.
+     */
+    public void vcEndTypeEditing() {
+        imeWanted = false;
+        runOnUiThread(() -> {
+            try {
+                final EditText view = imeView;
+                if (view != null) {
+                    InputMethodManager imm =
+                            (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+                    }
+                    view.clearFocus();
+                    view.setText("");
+                }
+                // A NativeActivity SurfaceView is normally the sibling of the
+                // hidden IME host. Request focus on that surface, NOT on the
+                // hidden EditText, so the next hardware T/V/P reaches winit.
+                final Window window = getWindow();
+                final View container = window == null ? null :
+                        window.getDecorView().findViewById(android.R.id.content);
+                if (container instanceof android.view.ViewGroup) {
+                    android.view.ViewGroup group = (android.view.ViewGroup) container;
+                    for (int i = 0; i < group.getChildCount(); ++i) {
+                        View child = group.getChildAt(i);
+                        if (child != view && child.isShown()) {
+                            child.setFocusable(true);
+                            child.setFocusableInTouchMode(true);
+                            if (child.requestFocus()) {
+                                Log.i(TAG, "Type Escape returned focus to native surface");
+                                break;
+                            }
+                        }
+                    }
+                }
+                // The hidden EditText can generate a final synthetic composition
+                // update during reset. It must not bleed into the next tool.
+                imeEvents.clear();
+            } catch (Throwable error) {
+                Log.w(TAG, "Cannot restore native keyboard focus after Type Escape", error);
+            }
+        });
+    }
+
     /** Hide the soft keyboard and release the IME host view. Called by the Rust shell via JNI. */
     public void imeHide() {
         imeWanted = false;

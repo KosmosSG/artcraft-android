@@ -247,6 +247,27 @@ mod tests {
         raw.events
     }
     #[test]
+    fn type_shortcut_returns_after_escape_exits_editor() {
+        // Two distinct raw frames: the first contains Escape during Type editing,
+        // the second contains T after the tool has returned to Selection.
+        let esc = RawInput { events: vec![key(Key::Escape, true)], ..Default::default() };
+        assert_eq!(
+            canvas_hardware_command(&esc, true, false, false, false),
+            Some(CanvasHardwareCommand::ExitType),
+        );
+        let mut after = RawInput {
+            events: vec![key(Key::T, true), Event::Text("t".into())],
+            ..Default::default()
+        };
+        assert_eq!(
+            canvas_hardware_command(&after, false, false, false, false),
+            Some(CanvasHardwareCommand::Type),
+        );
+        consume_canvas_hardware_command(&mut after, CanvasHardwareCommand::Type);
+        assert!(after.events.iter().all(|event| !matches!(event, Event::Text(_))));
+    }
+
+    #[test]
     fn physical_keys_bypass_shortcut_ui_only_on_idle_canvas() {
         for (pressed, expected) in [(Key::V, CanvasHardwareCommand::Selection),
                                     (Key::T, CanvasHardwareCommand::Type),

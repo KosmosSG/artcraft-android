@@ -8,6 +8,7 @@ screen-tested, GPU-accelerated or permanently signed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import zipfile
@@ -53,7 +54,8 @@ def validate(apk: Path) -> dict:
     if missing_native or missing_java:
         raise ValueError(f"Native FilmCraft commands missing: {missing_native}; "
                          f"Java Android feature methods missing: {missing_java}")
-    return {"compiled_android_menu": True,
+    return {"apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
+            "compiled_android_menu": True,
             "native_commands": [x.decode() for x in NATIVE_COMMANDS],
             "java_methods": [x.decode() for x in JAVA_METHODS],
             "device_tested": False, "gpu_compositor_verified": False,

@@ -1053,7 +1053,25 @@ impl eframe::App for VectorCraftAndroidApp {
                         });
                 });
         }
-        // The editor now uses the space left after the bottom pad.
+        // LightCraft's About → Updates tab reads these native states directly.
+        // Publish BEFORE the upstream ui() call, which draws About VectorCraft.
+        let status = if self.updates.message.is_empty() {
+            "Select Check for Updates to query GitHub Releases.".to_owned()
+        } else {
+            self.updates.message.clone()
+        };
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_status"), status);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.installed_version"),
+                env!("CARGO_PKG_VERSION").to_owned());
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_checking"), self.updates.checking);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.include_preview"), self.updates.include_preview);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.startup_enabled"), self.startup_updates);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.release_page"),
+                self.updates.release_url.clone().unwrap_or_default());
+        });
+        // The editor uses space left after the bottom shortcut dock; About is
+        // the genuine upstream dialog, not a separate floating update overlay.
         self.inner.ui(ui);
 
         // Small Android-only entry point: no upstream desktop preferences are changed.
@@ -1062,6 +1080,27 @@ impl eframe::App for VectorCraftAndroidApp {
         let mut select_shared = false;
         let mut refresh_shared = false;
         let mut check_updates = false;
+        let (tab_check, tab_startup_changed, tab_startup_desired,
+             tab_preview_changed, tab_preview_desired, tab_open_release) =
+             ctx.data_mut(|d| {
+                let bool_value = |d: &egui::util::IdTypeMap, key: &str| {
+                    d.get_temp::<bool>(egui::Id::new(key)).unwrap_or(false)
+                };
+                // Avoid a stale repeated request on every repaint.
+                let check = bool_value(d, "artcraft.vectorcraft.check_updates_requested");
+                let startup_changed = bool_value(d, "artcraft.vectorcraft.startup_changed");
+                let startup = bool_value(d, "artcraft.vectorcraft.startup_desired");
+                let preview_changed = bool_value(d, "artcraft.vectorcraft.preview_changed");
+                let preview = bool_value(d, "artcraft.vectorcraft.preview_desired");
+                let open = bool_value(d, "artcraft.vectorcraft.open_release_requested");
+                for key in ["artcraft.vectorcraft.check_updates_requested",
+                            "artcraft.vectorcraft.startup_changed",
+                            "artcraft.vectorcraft.preview_changed",
+                            "artcraft.vectorcraft.open_release_requested"] {
+                    d.insert_temp(egui::Id::new(key), false);
+                }
+                (check, startup_changed, startup, preview_changed, preview, open)
+             });
         let mut customize_shortcuts = false;
         let mut dock_undo = false;
         let mut dock_redo = false;
@@ -1070,6 +1109,27 @@ impl eframe::App for VectorCraftAndroidApp {
         // Genuine upstream Type, Help, and Window menu clicks are passed back to the
         // Android host; no desktop menu commands or user shortcut assignments change.
         let menu = vectorcraft_ui_egui::menus::take_android_menu_bits();
+        if tab_check { check_updates = true; }
+        if tab_startup_changed { self.startup_updates = tab_startup_desired; }
+        if tab_preview_changed && tab_preview_desired != self.updates.include_preview {
+            match self.bridge.set_include_preview_updates(tab_preview_desired) {
+                Ok(()) => {
+                    self.updates.include_preview = tab_preview_desired;
+                    self.updates.message =
+                        "Update channel saved. Select Check for Updates to refresh.".into();
+                    self.updates.release_url = None;
+                }
+                Err(error) => self.updates.message =
+                    format!("Could not save update channel: {error}"),
+            }
+        }
+        if tab_open_release {
+            if let Some(url) = self.updates.release_url.as_deref() {
+                if let Err(error) = self.bridge.open_update_page(url) {
+                    self.updates.message = format!("Could not open GitHub release: {error}");
+                }
+            }
+        }
         if menu & 1 != 0 { import = true; }
         if menu & 2 != 0 { select_shared = true; }
         if menu & 4 != 0 { refresh_shared = true; }

@@ -2,7 +2,7 @@ name: PhotoCraft v0.14 Android compatibility and Test APK
 
 on:
   push:
-    branches: [development/photocraft-v014-android1-20261023, development/photocraft-v014-update-dock-20261023]
+    branches: [development/photocraft-v014-android1-20261023, development/photocraft-v014-update-dock-20261023, refine/photocraft-esc-focus-20261025]
     paths:
       - '.github/workflows/photocraft-v014-compat.yml'
       - 'configs/photocraft-v0.14.0-android.1.json'
@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   guarded-android-test:
-    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/development/photocraft-v014-android1-20261023' || github.ref == 'refs/heads/development/photocraft-v014-update-dock-20261023')
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/development/photocraft-v014-android1-20261023' || github.ref == 'refs/heads/development/photocraft-v014-update-dock-20261023' || github.ref == 'refs/heads/refine/photocraft-esc-focus-20261025')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Validate app-specific keyboard focus handoff
+        run: python3 tools/keyboard/escape_focus_check.py photocraft
       - name: Guard official pin, every original Android feature and release restrictions
         run: |
           set -euo pipefail
@@ -134,6 +136,10 @@ jobs:
           PY
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/signing.txt
           sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Record exact keyboard candidate source
+        run: |
+          mkdir -p candidate
+          printf "%s\n" "$GITHUB_SHA" > candidate/keyboard-source-sha.txt
       - name: Upload Test-only APK artifact; no GitHub Release
         if: success()
         uses: actions/upload-artifact@v5

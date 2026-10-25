@@ -105,6 +105,14 @@ public final class VectorCraftActivity extends NativeActivity {
                     + " S=" + event.isShiftPressed()
                     + " A=" + event.isAltPressed() + "]";
         }
+        // A focused invisible IME host may retain keyboard focus after editing;
+        // physical Escape must return to the drawing surface. Keep the original
+        // Escape event and every V/T key flowing to GameActivity without consuming.
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE && imeWanted) {
+            if (imeView != null) imeView.clearFocus();
+            imeHide();
+        }
         // Observe only; never consume or inject key events into NativeActivity.
         return super.dispatchKeyEvent(event);
     }

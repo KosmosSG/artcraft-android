@@ -48,6 +48,33 @@ def patch(root):
     (root / "src/tablet.rs").write_text(Path(__file__).with_name("tablet.rs").read_text())
     java = next((root / "java").rglob("DesignCraftActivity.java"))
     text = java.read_text()
+    # MagicPad: Escape must reach upstream canvas while Android's invisible
+    # text-input host relinquishes focus. Never swallow a hardware key here.
+    text = replace_once(text, 'public final class DesignCraftActivity extends NativeActivity {', '''public final class DesignCraftActivity extends NativeActivity {
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {
+            imeHide();
+        }
+        return super.dispatchKeyEvent(event);
+    }''')
+    text = replace_once(text, '                view.clearFocus();', '''                view.clearFocus();
+                // Release the hidden IME host after Escape and restore physical
+                // shortcut focus to NativeActivity's actual visible surface.
+                android.view.Window win = getWindow();
+                android.view.View content = win == null ? null :
+                        win.getDecorView().findViewById(android.R.id.content);
+                if (content instanceof android.view.ViewGroup) {
+                    android.view.ViewGroup group = (android.view.ViewGroup) content;
+                    for (int i = 0; i < group.getChildCount(); i++) {
+                        android.view.View child = group.getChildAt(i);
+                        if (child != view && child.isShown()) {
+                            child.setFocusable(true);
+                            child.setFocusableInTouchMode(true);
+                            if (child.requestFocus()) break;
+                        }
+                    }
+                }''')
     text = replace_once(text, '        super.onCreate(savedInstanceState);', '''        super.onCreate(savedInstanceState);
         if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false)) dcCheckUpdates(false);
         dcRestoreSharedFontsOnStartup();''')

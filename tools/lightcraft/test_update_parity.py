@@ -1,0 +1,86 @@
+"""LightCraft's Android-only update controls must preserve the PhotoCraft parity contract."""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parent
+
+
+class LightCraftUpdatesSourceContract(unittest.TestCase):
+    def test_java_startup_preference_defaults_off_and_persists(self):
+        java = (ROOT / "lightcraft_updates.java.inc").read_text()
+        self.assertIn('getBoolean("check_at_startup", false)', java)
+        self.assertIn('putBoolean("check_at_startup", enabled).apply()', java)
+        self.assertIn("lcGetStartupUpdateCheck()", java)
+        self.assertIn("lcSetStartupUpdateCheck(boolean enabled)", java)
+        self.assertIn('setConnectTimeout(8000)', java)
+        self.assertIn('setReadTimeout(8000)', java)
+        self.assertIn('lcGetIncludePreviewUpdates()', java)
+        self.assertIn('lcSetIncludePreviewUpdates(boolean enabled)', java)
+        self.assertIn('getBoolean("include_preview_releases", true)', java)
+        self.assertIn('putBoolean("include_preview_releases", enabled).apply()', java)
+        self.assertIn('lcGetInstalledVersion()', java)
+
+    def test_exact_lightcraft_release_scope(self):
+        java = (ROOT / "lightcraft_updates.java.inc").read_text()
+        self.assertIn('release.optBoolean("draft")', java)
+        self.assertIn('release.optBoolean("prerelease")', java)
+        self.assertIn('(!includePreview && release.optBoolean("prerelease"))', java)
+        self.assertIn('release.optBoolean("draft")', java)
+        self.assertIn('result.put("channel", includePreview', java)
+        self.assertIn("LightCraft-v", java)
+        self.assertIn("LightCraft-", java)
+        self.assertIn('"uploaded".equals(state)', java)
+        self.assertIn('asset.optLong("size", 0L) > 0L', java)
+        self.assertNotIn('name.contains("arm64")', java)
+        self.assertIn('latestCode > installedCode', java)
+        self.assertIn("https://api.github.com/repos/KosmosSG/artcraft-android/releases?", java)
+
+    def test_rust_manual_and_startup_controls(self):
+        rust = (ROOT / "lightcraft_updates.rs").read_text()
+        self.assertIn('artcraft.lightcraft.check_updates_requested', rust)
+        self.assertIn('artcraft.lightcraft.startup_changed', rust)
+        self.assertIn('lcGetStartupUpdateCheck', rust)
+        self.assertIn('lcSetStartupUpdateCheck', rust)
+        self.assertIn('lcGetIncludePreviewUpdates', rust)
+        self.assertIn('lcSetIncludePreviewUpdates', rust)
+        self.assertIn('lcGetInstalledVersion', rust)
+        self.assertIn('artcraft.lightcraft.channel_changed', rust)
+        self.assertIn('artcraft.lightcraft.installed_version', rust)
+        self.assertIn('JValue::Bool(enabled)', rust)
+        self.assertNotIn('JValue::Bool(if enabled { 1 } else { 0 })', rust)
+        self.assertIn('self.begin_check(app, true)', rust)
+        self.assertIn('artcraft.lightcraft.update_status', rust)
+        self.assertNotIn('egui::Window::new("LightCraft — Check for Updates")', rust)
+        self.assertNotIn('egui::Window::new("LightCraft — Startup Update Settings")', rust)
+        self.assertIn('Self::open_page(app, url)', rust)
+        self.assertNotIn("ACTION_INSTALL_PACKAGE", rust)
+
+    def test_help_menu_directly_below_about(self):
+        integration = (ROOT / "apply_android_fixes.py").read_text()
+        self.assertIn('("app.about", "About LightCraft"', integration)
+        self.assertIn('"app.artcraftStartupUpdateSettings"', integration)
+        self.assertIn('Help menu layout directly under About LightCraft', integration)
+        self.assertIn('LightCraft Android Help command handler', integration)
+        self.assertIn('native About dialog update controls', integration)
+        self.assertIn('("updates", "Updates")', integration)
+        self.assertIn('artcraft.lightcraft.check_updates_requested', integration)
+        self.assertIn('artcraft.lightcraft.startup_changed', integration)
+        self.assertIn('LightCraft Updates', integration)
+        self.assertIn('Stable Releases Only', integration)
+        self.assertIn('Stable + Preview Releases', integration)
+        self.assertIn('Installed Version: {installed}', integration)
+        self.assertNotIn('let installed = format!("Installed: {}"', integration)
+
+    def test_exact_icon_not_cropped_or_repainted(self):
+        integration = (ROOT / "apply_android_fixes.py").read_text()
+        self.assertIn("exact approved adaptive icon", integration)
+        self.assertIn("foreground.alpha_composite(icon", integration)
+        self.assertIn("side = round(CANVAS_PX * 0.70)", integration)
+        self.assertNotIn("side = round(CANVAS_PX * 0.85)", integration)
+        self.assertIn("sample = pristine.getpixel", integration)
+        self.assertNotIn("_lightcraft_borderless", integration)
+        self.assertNotIn("pixels[x,y] =", integration)
+
+
+if __name__ == "__main__":
+    unittest.main()

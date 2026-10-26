@@ -78,6 +78,16 @@ public final class PhotoCraftActivity extends NativeActivity {
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
     private boolean pcEscapeCaptured = false;
+    private volatile int pcEscapeSeen = 0;
+    private volatile int pcEscapeQueued = 0;
+    private volatile int pcEscapePolled = 0;
+    private volatile int pcTypeEnded = 0;
+
+    public String pcKeyboardStatus() {
+        return "Java Esc seen=" + pcEscapeSeen + " queued=" + pcEscapeQueued
+                + " polled=" + pcEscapePolled + " ended=" + pcTypeEnded
+                + " imeWanted=" + imeWanted;
+    }
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
     // the private path of each staged copy, drained one per call by the Rust shell through
@@ -316,6 +326,7 @@ public final class PhotoCraftActivity extends NativeActivity {
      */
     private boolean relayTypeEscape(KeyEvent event) {
         if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) pcEscapeSeen++;
         if (pcEscapeCaptured) {
             if (event.getAction() == KeyEvent.ACTION_UP) {
                 imeEvents.offer("E");
@@ -326,6 +337,7 @@ public final class PhotoCraftActivity extends NativeActivity {
         if (event.getAction() == KeyEvent.ACTION_DOWN && imeWanted
                 && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             pcEscapeCaptured = true;
+            pcEscapeQueued++;
             imeEvents.offer("e");
             return true;
         }
@@ -340,6 +352,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     /** Called only after PhotoCraft has actually finished inline Type editing. */
     public void pcEndTypeEditing() {
+        pcTypeEnded++;
         runOnUiThread(() -> {
             imeHide();
             // Reset can emit a final composition callback: discard it after the
@@ -393,7 +406,9 @@ public final class PhotoCraftActivity extends NativeActivity {
      * the remainder is the payload; returns {@code null} when the queue is empty.
      */
     public String imePoll() {
-        return imeEvents.poll();
+        String event = imeEvents.poll();
+        if ("e".equals(event)) pcEscapePolled++;
+        return event;
     }
 
     /**

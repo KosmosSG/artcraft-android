@@ -73,6 +73,15 @@ pub fn artcraft_finish_type_escape(app: &mut PhotocraftApp) -> bool {
     true
 }
 
+#[cfg(target_os = "android")]
+pub fn artcraft_escape_state(app: &PhotocraftApp, ctx: &egui::Context) -> String {
+    format!("At Esc: field={} keyboard={} inline={} dialogs={} discard={} transform={} menu={} menukeys={} dropdown={} toolmenu={}",
+        ctx.text_edit_focused(), ctx.egui_wants_keyboard_input(), app.ui.text_edit.is_some(),
+        app.ui.dialogs.len(), app.discard.is_some(), crate::type_transform::active(app),
+        crate::menu_nav::is_open(ctx), crate::menu_keys::is_focused(ctx),
+        crate::widgets::dropdown_list_open(ctx), app.ui.canvas_tool_menu.is_some())
+}
+
 const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
 const FONT_CATALOG_ID: &str = "window.artcraftFontCatalog";
 const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";

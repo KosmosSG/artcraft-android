@@ -203,6 +203,17 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn keyboard_status(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pcKeyboardStatus"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            let value = JString::cast_local(env, value)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+
     fn end_type_editing(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -758,6 +769,9 @@ struct PhotoCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     type_escape_requested: bool,
+    escape_native_count: usize,
+    escape_bridge_count: usize,
+    escape_snapshot: String,
     modifiers: AndroidModifiers,
     shortcut_pad: shortcut_pad::ShortcutPad,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -967,6 +981,23 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+        if option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-E1") {
+            let java = self.bridge.keyboard_status().unwrap_or_else(|e| e);
+            egui::Area::new(egui::Id::new("photocraft_escape_probe"))
+                .order(egui::Order::Tooltip)
+                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(8.0, -8.0))
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_max_width(760.0);
+                        ui.label(format!("PC-E1 | Esc native={} bridge={} | editing={}",
+                            self.escape_native_count, self.escape_bridge_count,
+                            self.inner.ui.text_edit.is_some()));
+                        ui.label(&java);
+                        ui.label(&self.escape_snapshot);
+                    });
+                });
+        }
         let inner = &self.inner;
         let editing_text = inner.ui.text_edit.is_some();
         let hidden = photocraft_ui_egui::menus::artcraft_shortcut_pad_chrome_hidden(inner);
@@ -1069,10 +1100,21 @@ impl eframe::App for PhotoCraftAndroidApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let escape_count = |raw: &egui::RawInput| raw.events.iter().filter(|e| matches!(e,
+            egui::Event::Key { key: egui::Key::Escape, pressed: true, .. })).count();
+        let native = escape_count(raw);
         self.ime.poll(raw);
+        let bridged = escape_count(raw).saturating_sub(native);
+        self.escape_native_count += native;
+        self.escape_bridge_count += bridged;
         apply_android_modifiers(&mut self.modifiers, raw);
         self.type_escape_requested =
             photocraft_ui_egui::menus::artcraft_type_escape_requested(&self.inner, ctx, raw);
+        if native + bridged > 0 {
+            self.escape_snapshot = photocraft_ui_egui::menus::artcraft_escape_state(&self.inner, ctx);
+            self.escape_snapshot.push_str(&format!(" eligible={} modifiers={:?}",
+                self.type_escape_requested, raw.modifiers));
+        }
         self.inner.raw_input_hook(ctx, raw);
     }
 }
@@ -1185,6 +1227,9 @@ fn android_main(android_app: AndroidApp) {
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 type_escape_requested: false,
+                escape_native_count: 0,
+                escape_bridge_count: 0,
+                escape_snapshot: "No Escape received yet".into(),
                 modifiers: AndroidModifiers::default(),
                 shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),
                 intent_inbox: app_intent_inbox.clone(),

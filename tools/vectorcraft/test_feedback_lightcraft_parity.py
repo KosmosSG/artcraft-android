@@ -61,7 +61,8 @@ class FeedbackUI(unittest.TestCase):
             self.assertIn(marker,self.java)
         self.assertIn('com.artcraft.vectorcraft',self.activity)
         self.assertNotIn('keyboardtest',self.shell)
-        self.assertIn('CanvasHardwareCommand::DismissContextBar',self.shell)
+        self.assertIn('CanvasHardwareCommand::PreserveContextBar',self.shell)
+        self.assertNotIn('self.inner.ui.task_bar = false;',self.shell)
 
 if __name__=="__main__":
     unittest.main()

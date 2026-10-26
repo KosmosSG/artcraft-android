@@ -30,6 +30,15 @@ mod glue;
 use self::glue::NativeActivityGlue;
 pub use self::glue::set_nonblocking_callbacks;
 
+// Candidate diagnostics: last key-down code/scan code, never text content.
+#[cfg(feature = "artcraft-native-escape")]
+static ARTCRAFT_KEY_PROBE: Mutex<(u64, i32, i32)> = Mutex::new((0, -1, -1));
+
+#[cfg(feature = "artcraft-native-escape")]
+pub fn artcraft_native_key_probe() -> (u64, i32, i32) {
+    *ARTCRAFT_KEY_PROBE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub const LOOPER_ID_MAIN: libc::c_int = 1;
 pub const LOOPER_ID_INPUT: libc::c_int = 2;
 //pub const LOOPER_ID_USER: ::std::os::raw::c_uint = 3;
@@ -598,6 +607,21 @@ impl InputIteratorInner<'_> {
         if let Ok(Some(ndk_event)) = queue.event() {
             log::trace!("queue: got event: {ndk_event:?}");
 
+            #[cfg(feature = "artcraft-native-escape")]
+            if option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-E2") {
+                if let ndk::event::InputEvent::KeyEvent(event) = &ndk_event {
+                    // SAFETY: this is a live key event owned by the queue.
+                    let (action, code, scan) = unsafe {
+                        let ptr = event.ptr().as_ptr();
+                        (ndk_sys::AKeyEvent_getAction(ptr), ndk_sys::AKeyEvent_getKeyCode(ptr),
+                         ndk_sys::AKeyEvent_getScanCode(ptr))
+                    };
+                    if action == ndk_sys::AKEY_EVENT_ACTION_DOWN as i32 {
+                        let mut probe = ARTCRAFT_KEY_PROBE.lock().unwrap_or_else(|e| e.into_inner());
+                        *probe = (probe.0 + 1, code, scan);
+                    }
+                }
+            }
             // PhotoCraft opts in: NativeActivity pre-dispatch can send Escape
             // straight to the IME, bypassing both Java view hooks and winit.
             // Deliver BOTH edges through the normal callback/finish_event path.

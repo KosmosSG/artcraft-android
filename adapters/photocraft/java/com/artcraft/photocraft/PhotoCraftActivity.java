@@ -90,11 +90,21 @@ public final class PhotoCraftActivity extends NativeActivity {
     private volatile int pcEscapeQueued = 0;
     private volatile int pcEscapePolled = 0;
     private volatile int pcTypeEnded = 0;
+    private volatile int pcLastKey = -1;
+    private volatile int pcLastScan = -1;
+    private volatile int pcBackCalls = 0;
+
+    @Override
+    public void onBackPressed() {
+        pcBackCalls++;
+        super.onBackPressed();
+    }
 
     public String pcKeyboardStatus() {
         return "Java Esc seen=" + pcEscapeSeen + " queued=" + pcEscapeQueued
                 + " polled=" + pcEscapePolled + " ended=" + pcTypeEnded
-                + " imeWanted=" + imeWanted;
+                + " imeWanted=" + imeWanted
+                + " lastCode=" + pcLastKey + " scan=" + pcLastScan + " backCalls=" + pcBackCalls;
     }
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
@@ -334,6 +344,10 @@ public final class PhotoCraftActivity extends NativeActivity {
      * Escape ended Type editing or was owned by a field/modal/composition.
      */
     private boolean relayTypeEscape(KeyEvent event) {
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) {
+            pcLastKey = event.getKeyCode();
+            pcLastScan = event.getScanCode();
+        }
         if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
         if (event.getAction() == KeyEvent.ACTION_DOWN) pcEscapeSeen++;
         if (pcEscapeCaptured) {

@@ -451,6 +451,8 @@ pub use activity_impl::StateLoader;
 pub use activity_impl::StateSaver;
 #[cfg(feature = "native-activity")]
 pub use activity_impl::set_nonblocking_callbacks;
+#[cfg(all(feature = "native-activity", feature = "artcraft-native-escape"))]
+pub use activity_impl::artcraft_native_key_probe;
 
 /// An application event delivered during [`AndroidApp::poll_events`]
 #[non_exhaustive]

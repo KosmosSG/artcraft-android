@@ -992,7 +992,7 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
-        if option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-E1") {
+        if option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-E2") {
             let java = self.bridge.keyboard_status().unwrap_or_else(|e| e);
             egui::Area::new(egui::Id::new("photocraft_escape_probe"))
                 .order(egui::Order::Tooltip)
@@ -1001,9 +1001,11 @@ impl eframe::App for PhotoCraftAndroidApp {
                 .show(ui.ctx(), |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.set_max_width(760.0);
-                        ui.label(format!("PC-E1 | Esc native={} bridge={} | editing={}",
+                        ui.label(format!("PC-E2 | Esc native={} bridge={} | editing={}",
                             self.escape_native_count, self.escape_bridge_count,
                             self.inner.ui.text_edit.is_some()));
+                        let (count, code, scan) = android_activity::artcraft_native_key_probe();
+                        ui.label(format!("NDK before IME: downs={count} code={code} scan={scan}"));
                         ui.label(&java);
                         ui.label(&self.escape_snapshot);
                     });

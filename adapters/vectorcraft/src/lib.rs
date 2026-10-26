@@ -235,6 +235,20 @@ impl AndroidFileBridge {
 
     // LightCraft-style persistent update channel, stored in Android's private
     // SharedPreferences. JNI failures are surfaced to the About → Updates UI.
+    /// Actual installed Android versionName (e.g. 0.14.0-android.11),
+    /// not official upstream Cargo workspace version (0.14.0).
+    fn installed_version_name(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("vcInstalledVersionName"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok("unknown".into()); }
+            let value = JString::cast_local(env, value)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+
     fn get_include_preview_updates(&self) -> Result<bool, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -725,6 +739,7 @@ struct VectorCraftAndroidApp {
     android_tools_open: bool,
     touch_dock: bool,
     startup_updates: bool,
+    installed_version: String,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
@@ -1066,7 +1081,7 @@ impl eframe::App for VectorCraftAndroidApp {
         ui.ctx().data_mut(|d| {
             d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_status"), status);
             d.insert_temp(egui::Id::new("artcraft.vectorcraft.installed_version"),
-                env!("CARGO_PKG_VERSION").to_owned());
+                self.installed_version.clone());
             d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_checking"), self.updates.checking);
             d.insert_temp(egui::Id::new("artcraft.vectorcraft.include_preview"), self.updates.include_preview);
             d.insert_temp(egui::Id::new("artcraft.vectorcraft.startup_enabled"), self.startup_updates);
@@ -1333,6 +1348,10 @@ fn android_main(android_app: AndroidApp) {
                 android_tools_open: false,
                 touch_dock,
                 startup_updates,
+                installed_version: app_bridge.installed_version_name().unwrap_or_else(|error| {
+                    log::warn!("Could not retrieve installed Android version: {error}");
+                    "unknown".into()
+                }),
                 updates: {
                     let mut state = UpdateDialogState::default();
                     // Like LightCraft, preview channel is a persistent Android

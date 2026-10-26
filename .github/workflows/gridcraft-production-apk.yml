@@ -105,7 +105,11 @@ jobs:
       - name: Compile and production sign ARM64 GridCraft using approved latest Gc icons
         run: |
           set -euo pipefail
-          # The pinned GridCraft launcher generator requires the extracted transparent\n          # lettering PNG alongside the selected icon master. Preserve both exact assets.\n          test -s "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png"\n          cp "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png" "$GITHUB_WORKSPACE/tools/approved-branding/assets/launcher-lettering.png"\n          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/GridCraft.png"
+          # The pinned GridCraft launcher generator requires the extracted transparent
+          # lettering PNG alongside the selected icon master. Preserve both exact assets.
+          test -s "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png"
+          cp "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png" "$GITHUB_WORKSPACE/tools/approved-branding/assets/launcher-lettering.png"
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/GridCraft.png"
       - name: Verify signed APK and retain private artifact
         shell: bash
         run: |

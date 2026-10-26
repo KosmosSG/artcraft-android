@@ -13,24 +13,6 @@ def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
-    source = replace_once(source, "        self.ime.poll(raw);", '''        self.ime.poll(raw);
-        // Physical Escape releases a genuinely focused egui editor; the
-        // original shortcut and modal handlers still receive Escape.
-        let android_escape_from_text = raw.events.iter().any(|event| matches!(event,
-            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }
-                if !modifiers.command && !modifiers.alt))
-            && (ctx.text_edit_focused() || self.inner.canvas_ime());
-        if android_escape_from_text {
-            // A transient Android-only dismissal: keep Window > Contextual Task Bar
-            // enabled, but hide the HUD until the next canvas pointer selection.
-            ctx.data_mut(|data| data.insert_temp(
-                egui::Id::new("designcraft.android.escape_hide_taskbar"), true));
-            if ctx.text_edit_focused() {
-                ctx.memory_mut(|memory| {
-                    if let Some(id) = memory.focused() { memory.surrender_focus(id); }
-                });
-            }
-        }''')
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
     source = replace_once(source, "        system_fonts::install_system_fonts(ui.ctx());", "        self.tablet.ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);\n        system_fonts::install_system_fonts(ui.ctx());")
     source = replace_once(source, "Box::new(move |_cc| Ok(Box::new(shell)))", "Box::new(move |cc| { tablet::record_gpu(cc); Ok(Box::new(shell)) })")
@@ -73,26 +55,35 @@ def patch(root):
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             imeHide();
+            artcraftRestoreCanvasFocus();
         }
+        if (!imeWanted) artcraftRestoreCanvasFocus();
         return super.dispatchKeyEvent(event);
     }''')
-    text = replace_once(text, '                view.clearFocus();', '''                view.clearFocus();
-                // Release the hidden IME host after Escape and restore physical
-                // shortcut focus to GameActivity's actual visible surface.
-                android.view.Window win = getWindow();
-                android.view.View content = win == null ? null :
-                        win.getDecorView().findViewById(android.R.id.content);
-                if (content instanceof android.view.ViewGroup) {
-                    android.view.ViewGroup group = (android.view.ViewGroup) content;
-                    for (int i = 0; i < group.getChildCount(); i++) {
-                        android.view.View child = group.getChildAt(i);
-                        if (child != view && child.isShown()) {
-                            child.setFocusable(true);
-                            child.setFocusableInTouchMode(true);
-                            if (child.requestFocus()) break;
-                        }
-                    }
-                }''')
+    text = replace_once(text, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();')
+    text = text[:text.rfind('}')] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + text[text.rfind('}'):]
     text = replace_once(text, '        super.onCreate(savedInstanceState);', '''        super.onCreate(savedInstanceState);
         if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false)) dcCheckUpdates(false);
         dcRestoreSharedFontsOnStartup();''')

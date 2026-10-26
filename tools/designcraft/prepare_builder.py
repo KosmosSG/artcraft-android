@@ -30,26 +30,7 @@ def prepare(root: Path, version: str, code: int):
     source = source.replace(hook, 'python3 "$ROOT/designcraft-support/patch_launcher.py" "$ANDROID_DIR"\n\n' + hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
     install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
-    # The approved upstream v0.12.0 Task Bar remains on in Preferences. The
-    # physical-Escape text-edit handoff hides it only until the next pointer
-    # selection, without permanently toggling Window > Contextual Task Bar.
-    taskbar = root / "source/designcraft/crates/ui-egui/src/taskbar.rs"
-    bar = taskbar.read_text()
-    anchor = '    let grip_id = egui::Id::new((GRIP, ctx.viewport_id(), app.pane));'
-    if bar.count(anchor) != 1:
-        raise ValueError("Reviewed DesignCraft Task Bar anchor changed")
-    bar = bar.replace(anchor, anchor + """
-    #[cfg(target_os = "android")]
-    {
-        let hide = egui::Id::new("designcraft.android.escape_hide_taskbar");
-        if ctx.input(|i| i.pointer.any_pressed()) {
-            ctx.data_mut(|data| data.remove::<bool>(hide));
-        }
-        if ctx.data(|data| data.get_temp::<bool>(hide).unwrap_or(false)) {
-            return;
-        }
-    }""", 1)
-    taskbar.write_text(bar)
+    # Keep the Contextual Task Bar visible when canvas text editing ends.
     fonts = root / "templates/android/system_fonts.rs"
     text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
     fonts.write_text(text)

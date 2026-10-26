@@ -37,6 +37,10 @@ class FeedbackUI(unittest.TestCase):
             'Check for Updates', 'Preview releases may be untested'):
             with self.subTest(marker=marker): self.assertIn(marker,self.about)
         self.assertIn('self.inner.ui.about = true;',self.shell)
+        self.assertIn('vcInstalledVersionName', self.shell)
+        self.assertIn('vcInstalledVersionName', self.activity)
+        self.assertIn('self.installed_version.clone()', self.shell)
+        self.assertNotIn('env!("CARGO_PKG_VERSION").to_owned()', self.shell)
         self.assertIn('egui::Id::new("about_tab"), 3u8',self.shell)
         self.assertNotIn('egui::Panel::bottom("vectorcraft.android.update_status")',self.shell)
         for marker in ('artcraft.vectorcraft.update_status',

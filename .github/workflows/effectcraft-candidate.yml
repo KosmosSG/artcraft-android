@@ -2,7 +2,7 @@ name: EffectCraft v0.16.0 ARM64 candidate (ephemeral; never publish)
 
 on:
   push:
-    branches: [review/effectcraft-font-fix-android3-20261024]
+    branches: [review/effectcraft-font-fix-android3-20261024, refine/effectcraft-esc-focus-20261025]
     paths:
       - 'tools/effectcraft/**'
       - 'adapters/effectcraft/**'
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/review/effectcraft-font-fix-android3-20261024'
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/review/effectcraft-font-fix-android3-20261024' || github.ref == 'refs/heads/refine/effectcraft-esc-focus-20261025')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -47,6 +47,7 @@ jobs:
           python3 -m py_compile tools/effectcraft/integrate_updater.py
           python3 -m py_compile tools/effectcraft/prepare_candidate.py
           python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+          python3 tools/effectcraft/verify_next_production_apk.py --self-test
           rustc --edition=2021 --test adapters/effectcraft/src/font_library.rs -o "$RUNNER_TEMP/effectcraft-font-tests"
           "$RUNNER_TEMP/effectcraft-font-tests"
 

@@ -1,0 +1,33 @@
+name: EffectCraft next production identity gate (read-only)
+
+on:
+  push:
+    branches: [refine/effectcraft-esc-focus-20261025]
+    paths:
+      - 'tools/effectcraft/verify_next_production_apk.py'
+      - '.github/workflows/effectcraft-next-release-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Fail-closed Python validator syntax and negative-case tests
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/effectcraft/verify_next_production_apk.py
+          python3 tools/effectcraft/verify_next_production_apk.py --self-test
+      - name: Show scope and next signoff requirements
+        run: |
+          echo 'Read-only preflight passed; this is NOT a signed production APK.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Next version: 0.16.0-android.5, versionCode 16781317.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Original EffectCraft permanent signing identity must match published .4 and private signing-identity.json.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Must verify final APK SHA-256, package, ABI, icon, functions and HONOR MagicPad 4 owner test before GitHub Release.' >> "$GITHUB_STEP_SUMMARY"

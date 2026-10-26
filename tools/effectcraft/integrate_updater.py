@@ -61,6 +61,71 @@ menu.write_text(m)
 j = java.read_text().rstrip()
 if not j.endswith("}") or "ecCheckForUpdates" in j:
     raise SystemExit("STOP: generated Java Activity template changed")
+# Only this EffectCraft-only temporary builder template is patched. A physical
+# Escape retains the upstream editor event and restores canvas focus after IME
+# input; ordinary letters and Chinese composition are left completely alone.
+declarations = [f'public final class __CLASS__ extends {base} {{'
+                for base in ('NativeActivity', 'GameActivity')]
+matched = [declaration for declaration in declarations if j.count(declaration) == 1]
+if len(matched) != 1 or 'boolean dispatchKeyEvent(' in j:
+    raise SystemExit('STOP: unsupported or already patched EffectCraft Activity')
+j = once(j, matched[0], matched[0] + '''
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+            imeHide();
+            artcraftRestoreCanvasFocus();
+        }
+        if (!imeWanted) artcraftRestoreCanvasFocus();
+        // Bypass focused EditText/SurfaceView dispatch: GameActivity's public
+        // handlers enqueue the original event (including modifiers and key-up).
+        // Let the IME keep printable input while editing; Escape always reaches
+        // the native editor, even if Android has already hidden its keyboard.
+        if (event != null
+                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0
+                && (event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                    || (!imeWanted && !event.isSystem()))) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                super.onKeyDown(event.getKeyCode(), event);
+                return true;
+            }
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+                super.onKeyUp(event.getKeyCode(), event);
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }''', "EffectCraft physical Escape passthrough")
+# NativeActivity delivers keys through dispatchKeyEvent, not Activity.onKeyDown.
+if 'extends NativeActivity' in matched[0]:
+    start = j.index("        // Bypass focused EditText/SurfaceView dispatch:")
+    end = j.index("        return super.dispatchKeyEvent(event);", start)
+    j = j[:start] + j[end:]
+j = once(j, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'EffectCraft native surface focus')
+j = j[:-1] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView
+                || node.getClass().getName().equals("android.app.NativeActivity$NativeContentView")) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + '\n}'
 # This temporary template is used solely to generate EffectCraft's Android Activity.
 j = j[:-1] + addon.read_text() + (root / "tools/effectcraft/FontsBridge.java.inc").read_text() + "\n}\n"
 j = once(j, "        super.onActivityResult(requestCode, resultCode, data);", "        super.onActivityResult(requestCode, resultCode, data);\n        if (ecFontActivityResult(requestCode, resultCode, data)) return;", "font picker callback")
@@ -98,6 +163,8 @@ after = '''    if app == "effectcraft":
                    "        self.updates.poll(ctx);\\\\n        self.inner.logic(ctx, frame);")
         replace_ec("        self.inner.ui(ui, frame);",
                    "        self.inner.ui(ui, frame);\\\\n        self.updates.ui(ui.ctx());")
+        replace_ec('        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\\n        // Normalize the keyboard event before egui and app text-edit guards.\\n        for event in &mut raw.events {\\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\\n                    *key = egui::Key::Escape;\\n                    *physical_key = Some(egui::Key::Escape);\\n                }\\n            }\\n        }\\n        if raw.events.iter().any(|event| matches!(event,\\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\\n                if !modifiers.any())) {\\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\\n        }\\n')
+        replace_ec('        self.inner.ui(ui, frame);', '        let android_escape = ui.ctx().data_mut(|d|\\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && self.inner.session.state.text_edit.is_some()\\n            {\\n            if let Err(error) = self.inner.session.execute("text.endEdit", serde_json::json!({})) {\\n                log::warn!("Android text exit: {error}");\\n            }\\n            ui.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });\\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\\n        }\\n        self.inner.ui(ui, frame);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && ui.ctx().text_edit_focused() {\\n            ui.memory_mut(|m| {\\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\\n            });\\n        }\\n')
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",
                      staging_dir / "src/effectcraft_updater.rs")
         import runpy

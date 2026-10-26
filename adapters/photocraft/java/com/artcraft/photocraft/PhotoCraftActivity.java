@@ -77,6 +77,14 @@ public final class PhotoCraftActivity extends NativeActivity {
     private EditText imeView;
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
+    private volatile boolean pcDiscardPrompt = false;
+
+    // A button-only modal owns hardware keys, even while an inline Type edit
+    // remains parked underneath. Do not finish that edit on Cancel.
+    public void pcSetDiscardPrompt(boolean active) {
+        pcDiscardPrompt = active;
+        if (active) imeHide();
+    }
     private boolean pcEscapeCaptured = false;
     private volatile int pcEscapeSeen = 0;
     private volatile int pcEscapeQueued = 0;
@@ -280,13 +288,14 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     /** Show the soft keyboard by focusing the IME host view. Called by the Rust shell via JNI. */
     public void imeShow() {
+        if (pcDiscardPrompt) return;
         final EditText view = imeView;
         if (view == null) {
             return;
         }
         imeWanted = true;
         runOnUiThread(() -> {
-            if (!imeWanted) {
+            if (!imeWanted || pcDiscardPrompt) {
                 return;
             }
             try {
@@ -301,7 +310,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                 // Some devices ignore the request until focus and layout have settled; retry once on
                 // the next message-loop turn (guarded so a following hide wins).
                 view.post(() -> {
-                    if (!imeWanted) {
+                    if (!imeWanted || pcDiscardPrompt) {
                         return;
                     }
                     try {
@@ -393,7 +402,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                     }
                 }
                 // Drop the scratch buffer between sessions so it cannot grow without bound.
-                view.setText("");
+                if (!pcDiscardPrompt) view.setText("");
             } catch (Throwable error) {
                 Log.w(TAG, "Could not hide the soft keyboard", error);
             }

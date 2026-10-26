@@ -214,6 +214,16 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn set_discard_prompt(&self, active: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcSetDiscardPrompt"),
+                jni_sig!("(Z)V"), &[JValue::Bool(active as jni::sys::jboolean)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn end_type_editing(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -769,6 +779,7 @@ struct PhotoCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     type_escape_requested: bool,
+    discard_prompt_active: bool,
     escape_native_count: usize,
     escape_bridge_count: usize,
     escape_snapshot: String,
@@ -1025,6 +1036,19 @@ impl eframe::App for PhotoCraftAndroidApp {
         // LightCraft-style Updates now lives in the Android modal opened from Help.
         // Do not consume permanent bottom-screen space with the old status dock.
         self.inner.ui(ui, _frame);
+        let discard = photocraft_ui_egui::menus::artcraft_discard_prompt_owns_keyboard(&self.inner);
+        if discard != self.discard_prompt_active {
+            match self.bridge.set_discard_prompt(discard) {
+                Ok(()) => self.discard_prompt_active = discard,
+                Err(error) => log::warn!("Android discard dialog focus handoff failed: {error}"),
+            }
+            ui.ctx().request_repaint();
+        }
+        if discard {
+            // The canvas editor underneath the modal can still emit an IME
+            // request. It must not reclaim Android focus from Yes/No/Cancel.
+            ui.ctx().output_mut(|output| output.ime = None);
+        }
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
             let requested = data.get_temp::<bool>(id).unwrap_or(false);
@@ -1227,6 +1251,7 @@ fn android_main(android_app: AndroidApp) {
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 type_escape_requested: false,
+                discard_prompt_active: false,
                 escape_native_count: 0,
                 escape_bridge_count: 0,
                 escape_snapshot: "No Escape received yet".into(),

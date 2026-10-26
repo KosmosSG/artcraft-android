@@ -82,6 +82,12 @@ pub fn artcraft_escape_state(app: &PhotocraftApp, ctx: &egui::Context) -> String
         crate::widgets::dropdown_list_open(ctx), app.ui.canvas_tool_menu.is_some())
 }
 
+#[cfg(target_os = "android")]
+pub fn artcraft_discard_prompt_owns_keyboard(app: &PhotocraftApp) -> bool {
+    app.discard.is_some() && !app.file_dialog_open() && !app.saving()
+        && app.ui.dialogs.is_empty()
+}
+
 const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
 const FONT_CATALOG_ID: &str = "window.artcraftFontCatalog";
 const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";

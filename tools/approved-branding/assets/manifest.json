@@ -1,0 +1,46 @@
+{
+  "filename": "GridCraft.png",
+  "source_sha256": "c8081b31c79cc55eeb75c76eff9ee6e1045fb335e9e1354688272aaaec2f361f",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#006818",
+  "letter_color": "#ABE880",
+  "glyph_source_bounds": [
+    306,
+    579,
+    1783,
+    1474
+  ],
+  "adaptive_foreground_size": [
+    217,
+    131
+  ],
+  "app": "gridcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "536892420eb66a69b48c6bb5330f49bb2c9379f95a56df70ad82de6800595783",
+    "res/mipmap-mdpi/ic_launcher_round.png": "536892420eb66a69b48c6bb5330f49bb2c9379f95a56df70ad82de6800595783",
+    "res/values/colors.xml": "c0d3a72b139bd53af3a19603ac5dd19efde5b2859a63e3723ba2d6882869ab88",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "46e4975ff6dc097036bbf6a3a8b92297e7e03c61ee40a380564c8e7d629f549b",
+    "res/mipmap-xxhdpi/ic_launcher.png": "acd4066964ca94d1a726f2acda09c85194245f4539eb0740073014ddab2fbe4e",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "acd4066964ca94d1a726f2acda09c85194245f4539eb0740073014ddab2fbe4e",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "130f20d76419f36daa6ae3db43a3d63d14fc390041872aa199da4fa96ec88a84",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "178998ece43b60b84c8d914a61d0802c0b149acc90b19f8591c617901ee66214",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "ea155fde6264426b658ca4dbab6ca8c7fa714b998898a7f6dedb78390dd12fe2",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "4843e7c5c3cdfad132fe00e5f637b5343d061f45f777c21847f6630450912dd0",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "8dd96c7099bd797ec7023e7cd282c783c2cd979b2692c233804d03e077703c3a",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "8dd96c7099bd797ec7023e7cd282c783c2cd979b2692c233804d03e077703c3a",
+    "res/mipmap-xhdpi/ic_launcher.png": "42f8f5dddc235f3687326143b5a26002d27614c9d9fd4b98b6d5ee9634ba925a",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "42f8f5dddc235f3687326143b5a26002d27614c9d9fd4b98b6d5ee9634ba925a",
+    "res/mipmap-hdpi/ic_launcher.png": "cefcf809b3bb869fd3b96c6d8e37ca54fcb53a11db2ff7f8209667131c3ac7fe",
+    "res/mipmap-hdpi/ic_launcher_round.png": "cefcf809b3bb869fd3b96c6d8e37ca54fcb53a11db2ff7f8209667131c3ac7fe"
+  },
+  "display_name": "GridCraft",
+  "version_name": "0.11.1-android.2",
+  "version_code": 16780034,
+  "previous_version_code": 16780033,
+  "package": "com.artcraft.gridcraft.candidate"
+}

@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   source-provenance:
-    if: github.repository == 'KosmosSG/artcraft-android' && ((github.event_name == 'pull_request' && startsWith(github.head_ref, 'review/gridcraft-')) || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/review/gridcraft-')))
+    if: github.repository == 'KosmosSG/artcraft-android' && ((github.event_name == 'pull_request' && (startsWith(github.head_ref, 'review/gridcraft-') || startsWith(github.head_ref, 'development/gridcraft-'))) || (github.event_name == 'workflow_dispatch' && (startsWith(github.ref, 'refs/heads/review/gridcraft-') || startsWith(github.ref, 'refs/heads/development/gridcraft-'))))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

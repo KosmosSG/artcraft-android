@@ -1,0 +1,147 @@
+name: GridCraft production ARM64 signed APK (private artifact, no release)
+on:
+  workflow_dispatch:
+  push:
+    branches: [development/gridcraft-v0111-fonts-updates-20261023]
+    paths: ['.github/workflows/gridcraft-production-apk.yml']
+permissions:
+  contents: read
+concurrency:
+  group: gridcraft-production-signed
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/gridcraft-v0111-fonts-updates-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+      GRIDCRAFT_KEYSTORE_BASE64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+      GRIDCRAFT_KEYSTORE_PASSWORD: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+      GRIDCRAFT_KEY_ALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+      GRIDCRAFT_KEY_PASSWORD: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify source and approved Gc icon checksums
+        run: |
+          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/approved-branding -p 'test_*.py' -v
+          python3 tools/gridcraft/verify_source.py
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/gridcraft
+          ref: ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK and font fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-freefont-otf
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Apply GridCraft feature overlay, approved launcher and build signer configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          python3 tools/gridcraft/install_overlay.py builder
+          python3 tools/approved-branding/approved_branding.py install builder gridcraft
+          # The upstream builder normally self-generates a DISPOSABLE key.
+          # Patch exactly the known pinned block; fail closed if upstream differs.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('builder/lib/build-common.sh')
+          s=p.read_text()
+          begin='say 5 "Preparing a builder-owned signing key..."'
+          end='# The same key reaches Gradle at build time through ARTCRAFT_KEYSTORE* environment variables'
+          assert s.count(begin)==1 and s.count(end)==1
+          a=s.index(begin); b=s.index(end)
+          s=s[:a]+'''say 5 "Using verified dedicated GridCraft production signing key..."
+          KEY="keys/artcraft-builder.jks"
+          KEY_PASSWORD="$GRIDCRAFT_KEYSTORE_PASSWORD"
+          test -s "$KEY" || fail "Missing GridCraft permanent keystore"
+          test "$GRIDCRAFT_KEY_ALIAS" = gridcraft || fail "Wrong GridCraft alias"
+          test "$GRIDCRAFT_KEY_PASSWORD" = "$GRIDCRAFT_KEYSTORE_PASSWORD" || fail "PKCS12 passwords differ"
+          '''+s[b:]
+          old='ARTCRAFT_KEY_ALIAS="artcraftbuilder"'
+          assert s.count(old)==1
+          s=s.replace(old,'ARTCRAFT_KEY_ALIAS="gridcraft"')
+          p.write_text(s)
+          PY
+          bash -n builder/lib/build-common.sh
+      - name: Safely decode production keystore and confirm permanent certificate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in GRIDCRAFT_KEYSTORE_BASE64 GRIDCRAFT_KEYSTORE_PASSWORD GRIDCRAFT_KEY_ALIAS GRIDCRAFT_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
+          done
+          test "$GRIDCRAFT_KEY_ALIAS" = gridcraft
+          mkdir -p builder/keys
+          printf '%s' "$GRIDCRAFT_KEYSTORE_BASE64" | base64 --decode > builder/keys/artcraft-builder.jks
+          export GRIDCRAFT_KEYSTORE_PASSWORD
+          cert="$(keytool -exportcert -rfc -keystore builder/keys/artcraft-builder.jks -storetype PKCS12 -storepass:env GRIDCRAFT_KEYSTORE_PASSWORD -alias gridcraft | openssl x509 -noout -fingerprint -sha256 | sed 's/^.*=//')"
+          test "$cert" = '09:D2:92:70:9D:4D:CC:E8:4A:65:E8:28:BD:D8:A2:CE:93:DE:62:FA:4D:C6:C5:84:BD:62:69:83:9D:A8:09:0D' || { echo "::error::Signer mismatch"; exit 1; }
+      - name: Compile and production sign ARM64 GridCraft using approved latest Gc icons
+        run: |
+          set -euo pipefail
+          # The pinned GridCraft launcher generator requires the extracted transparent
+          # lettering PNG alongside the selected icon master. Preserve both exact assets.
+          test -s "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png"
+          cp "$GITHUB_WORKSPACE/assets/gridcraft/launcher-lettering.png" "$GITHUB_WORKSPACE/tools/approved-branding/assets/launcher-lettering.png"
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/GridCraft.png"
+      - name: Verify signed APK and retain private artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -name 'gridcraft-*.apk' -print -quit)"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" > /tmp/gridcraft-signature.txt
+          grep -qi '09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d' /tmp/gridcraft-signature.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/gridcraft-badging.txt
+          grep -F "name='com.artcraft.gridcraft'" /tmp/gridcraft-badging.txt
+          grep -F "versionName='0.11.1-android.2'" /tmp/gridcraft-badging.txt
+          grep -F "versionCode='16780034'" /tmp/gridcraft-badging.txt
+          python3 - "$APK" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in z.namelist())
+              assert 'classes.dex' in z.namelist()
+              assert not any(n.endswith(('.jks','.p12','.keystore')) for n in z.namelist())
+          PY
+          mkdir -p production
+          cp "$APK" production/GridCraft-v0.11.1-android.2-arm64-v8a.apk
+          (cd production && sha256sum *.apk > SHA256SUMS.txt)
+          echo "Signed APK verified; PRIVATE build artifact only; device acceptance and public release are separate."
+      - name: Upload signed build as Actions artifact (not a public release)
+        uses: actions/upload-artifact@v5
+        with:
+          name: GridCraft-v0.11.1-android.2-production-owner-test
+          path: production/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove secret keystore from runner
+        if: always()
+        run: rm -rf builder/keys /tmp/gridcraft-signature.txt

@@ -1,0 +1,142 @@
+name: GridCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/gridcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: gridcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout pinned Android builder
+      uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - name: Checkout reviewed upstream GridCraft v0.11.1
+      uses: actions/checkout@v5
+      with:
+        repository: storytold/gridcraft
+        ref: ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+        path: builder/source/gridcraft
+        persist-credentials: false
+    - name: Validate exact source and stage GridCraft-only Android extensions
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+
+        test "$(git -C builder/source/gridcraft rev-parse HEAD)" = ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+
+        python3 tools/gridcraft/install_overlay.py builder
+
+        bash -n builder/lib/build-common.sh
+
+        python3 - <<''PY''
+
+        import tomllib
+
+        from pathlib import Path
+
+        source=Path(''builder/source/gridcraft/Cargo.toml'')
+
+        assert tomllib.loads(source.read_text())[''workspace''][''package''][''version'']==''0.11.1''
+
+        builder=Path(''builder/lib/build-common.sh'').read_text()
+
+        assert builder.count(''GRIDCRAFT_OVERLAY_HOOK_V1'')==1
+
+        assert Path(''builder/tools/gridcraft_android/gridcraft_tools.rs'').is_file()
+
+        print(''PASS: pinned source and isolated font/updater overlay staged'')
+
+        PY
+
+        '
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+    - name: Test real TTF and OTF discovery, live refresh and egui rendering
+      run: 'sudo apt-get update -qq
+
+        sudo apt-get install -y fonts-freefont-otf
+
+        cp builder/source/gridcraft/crates/ui-egui/src/fonts.rs tools/gridcraft/font-validation/src/fonts.rs
+
+        cargo test --manifest-path tools/gridcraft/font-validation/Cargo.toml -- --test-threads=1
+
+        '
+    - name: Install Android NDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+
+        "$SDKMANAGER" --install ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Install launcher image dependency
+      run: python3 -m pip install 'Pillow==11.3.0'
+    - name: Compile isolated GridCraft ARM64 package with disposable builder key
+      shell: bash
+      run: "set -euo pipefail\n# NEVER target the future production package or use an established signer.\nICON=\"$GITHUB_WORKSPACE/assets/gridcraft/launcher-source.png\"\
+        \nif [ -f \"$ICON\" ]; then\n  # Use exact user-approved Gc artwork, not generated/stock app icons.\n  echo \"ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca\
+        \  $ICON\" | sha256sum -c -\npython3 -m pip install Pillow==11.3.0\npython3 ./tools/approved-branding/approved_branding.py\
+        \ install builder gridcraft\n  bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon=\"\
+        $ICON\"\nelse\n  echo \"::warning::Approved Gc artwork not yet committed: candidate keeps upstream stock icon and\
+        \ is NOT eligible for public release\"\n  bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate\n\
+        fi\n"
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: GridCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: GridCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys

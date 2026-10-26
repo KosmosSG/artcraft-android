@@ -38,7 +38,7 @@ mod system_fonts;
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
 
-// Device-tested MagicPad physical keyboard recovery and guarded Contextual Task Bar Escape.
+// Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
 use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
 
@@ -967,18 +967,22 @@ impl eframe::App for VectorCraftAndroidApp {
                         Err(error) => log::warn!("Type editor Escape failed: {error}"),
                     }
                     if handled {
+                        // The Type tool has exited. Release stale egui text-field focus
+                        // as well as Android's hidden IME host so V/T/P can work while
+                        // the selected text object's contextual task bar stays visible.
+                        ctx.memory_mut(|memory| {
+                            if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                        });
                         if let Err(error) = self.bridge.end_type_editing() {
                             log::warn!("Android keyboard focus handoff failed: {error}");
                         }
                     }
                 }
-                CanvasHardwareCommand::DismissContextBar => {
-                    // Second Escape uses the existing Hide Bar state; it does
-                    // not change the user's keyboard shortcut assignments.
-                    self.inner.ui.task_bar = false;
-                    ctx.memory_mut(|memory| {
-                        if let Some(id) = memory.focused() { memory.surrender_focus(id); }
-                    });
+                CanvasHardwareCommand::PreserveContextBar => {
+                    // An idle Escape must not dismiss the contextual task bar
+                    // or deselect the active object. The first Escape already
+                    // released the Type editor/IME focus; subsequent V/T/P remain
+                    // available without hiding the bar. Manual Hide Bar still works.
                     handled = true;
                 }
                 CanvasHardwareCommand::Selection
@@ -990,7 +994,7 @@ impl eframe::App for VectorCraftAndroidApp {
                             CanvasHardwareCommand::Type => "type",
                             CanvasHardwareCommand::Pen => "pen",
                             CanvasHardwareCommand::ExitType
-                            | CanvasHardwareCommand::DismissContextBar => unreachable!(),
+                            | CanvasHardwareCommand::PreserveContextBar => unreachable!(),
                         };
                         self.inner.select_tool(tool);
                         handled = true;

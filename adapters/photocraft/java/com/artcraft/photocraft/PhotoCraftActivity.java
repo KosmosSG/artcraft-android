@@ -77,6 +77,10 @@ public final class PhotoCraftActivity extends NativeActivity {
     private EditText imeView;
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
+    // A hardware Escape received by the invisible IME view must be delivered to
+    // the PhotoCraft editor exactly once, including when NativeActivity does not
+    // forward the focused EditText's event to its SurfaceView.
+    private boolean escapeKeyCaptured = false;
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
     // the private path of each staged copy, drained one per call by the Rust shell through
@@ -301,17 +305,48 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
-    /** Physical Escape must first reach the native editor, then return its
-     * hardware-key focus to the canvas instead of the invisible IME EditText.
-     * Do not consume the event: upstream still owns edit cancel and popups.
+    /** A focused IME EditText can eat physical Escape before NativeActivity sees it.
+     * Route exactly one unmodified Escape press through the existing IME queue, so
+     * upstream Type decides commit versus cancel. Never synthesize V/T/tool keys.
+     * Press and release are consumed as a pair to avoid a duplicate native Escape.
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
-                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
-            imeHide();
+        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE) {
+            if (escapeKeyCaptured) {
+                if (event.getAction() == KeyEvent.ACTION_UP) escapeKeyCaptured = false;
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN && imeWanted
+                    && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+                escapeKeyCaptured = true;
+                imeEvents.offer("e");
+                imeHide();
+                return true;
+            }
         }
+        // When native canvas has focus, the original Escape and every other key
+        // continue along Android's normal route with all modifiers unchanged.
         return super.dispatchKeyEvent(event);
+    }
+
+    /** Descend to the visible native canvas, not the first (possibly hidden)
+     * overlay child: GameActivity/NativeActivity may nest their SurfaceView.
+     */
+    private boolean restoreCanvasKeyboardFocus(View node) {
+        if (node == null || node == imeView || !node.isShown()) return false;
+        if (node instanceof android.view.SurfaceView) {
+            node.setFocusable(true);
+            node.setFocusableInTouchMode(true);
+            return node.requestFocus();
+        }
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (restoreCanvasKeyboardFocus(group.getChildAt(i))) return true;
+            }
+        }
+        return false;
     }
 
     /** Called only after PhotoCraft has actually finished inline Type editing. */
@@ -344,17 +379,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                 final Window activeWindow = getWindow();
                 final View content = activeWindow == null ? null
                         : activeWindow.getDecorView().findViewById(android.R.id.content);
-                if (content instanceof android.view.ViewGroup) {
-                    android.view.ViewGroup group = (android.view.ViewGroup) content;
-                    for (int i = 0; i < group.getChildCount(); i++) {
-                        View child = group.getChildAt(i);
-                        if (child != view && child.isShown()) {
-                            child.setFocusable(true);
-                            child.setFocusableInTouchMode(true);
-                            if (child.requestFocus()) break;
-                        }
-                    }
-                }
+                restoreCanvasKeyboardFocus(content);
                 // Drop the scratch buffer between sessions so it cannot grow without bound.
                 view.setText("");
             } catch (Throwable error) {

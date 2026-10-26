@@ -1,0 +1,75 @@
+name: Publish owner-tested GridCraft v0.11.1-android.2
+on:
+  push:
+    branches: [development/gridcraft-v0111-fonts-updates-20261023]
+    paths: ['.github/workflows/gridcraft-publish-tested.yml']
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: gridcraft-stable-release-v0.11.1-android.2
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: gridcraft-v0.11.1-android.2
+      SOURCE_RUN: '40261209041'
+      APK: GridCraft-v0.11.1-android.2-arm64-v8a.apk
+    steps:
+      - name: Download the exact owner-tested signed artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verified
+          gh run download "$SOURCE_RUN" -R "$GITHUB_REPOSITORY" -n GridCraft-v0.11.1-android.2-production-owner-test -D verified
+          test -s "verified/$APK"
+          test -s verified/SHA256SUMS.txt
+          (cd verified && sha256sum -c SHA256SUMS.txt)
+      - name: Verify production package, version, ABI and permanent signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+          "$SDKMANAGER" --install 'build-tools;35.0.0'
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/apksigner" verify --verbose "verified/$APK"
+          "$BT/apksigner" verify --print-certs "verified/$APK" > /tmp/gridcraft-signature.txt
+          grep -qi '09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d' /tmp/gridcraft-signature.txt
+          "$BT/aapt" dump badging "verified/$APK" > /tmp/gridcraft-badging.txt
+          grep -F "name='com.artcraft.gridcraft'" /tmp/gridcraft-badging.txt
+          grep -F "versionName='0.11.1-android.2'" /tmp/gridcraft-badging.txt
+          grep -F "versionCode='16780034'" /tmp/gridcraft-badging.txt
+          python3 - "verified/$APK" <<'PY'
+          import zipfile,sys
+          with zipfile.ZipFile(sys.argv[1]) as f:
+              names=f.namelist()
+              assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names)
+              assert 'classes.dex' in names
+              assert not any(n.endswith(('.jks','.p12','.keystore')) for n in names)
+          PY
+      - name: Publish public stable GitHub Release (preserve existing tags/releases)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Stable GridCraft release already exists: $TAG; refusing overwrite."
+            exit 1
+          fi
+          if git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists; refusing overwrite."
+            exit 1
+          fi
+          gh release create "$TAG" "verified/$APK" verified/SHA256SUMS.txt \
+            -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'GridCraft v0.11.1-android.2 (ARM64)' \
+            --notes 'Stable owner-tested Android release for HONOR MagicPad 4 / ARM64. Uses the approved Gc launcher/icon resources, dedicated permanent GridCraft signing identity, and reviewed custom-font/update integration. Built and verified in GitHub Actions run 40261209041. The attached SHA256SUMS.txt corresponds to the exact signed APK; no signing secrets are distributed.' \
+            --latest=false
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease,assets
+      - name: Cleanup verification evidence
+        if: always()
+        run: rm -f /tmp/gridcraft-signature.txt /tmp/gridcraft-badging.txt

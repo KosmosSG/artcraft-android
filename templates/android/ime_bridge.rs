@@ -143,6 +143,16 @@ pub mod ime {
                     after_chars,
                 }))
             }
+            // PhotoCraft's focused Android IME host can intercept physical Escape.
+            // Its Activity queues one 'e' only when it consumes that key's press
+            // and release, preventing double cancel/commit in the native editor.
+            'e' if payload.is_empty() => Some(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: Some(egui::Key::Escape),
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::default(),
+            }),
             'a' => {
                 let action: i32 = payload.trim().parse().ok()?;
                 // IME_ACTION_NONE (0) carries no meaning; any real action (Done/Go/Search/Send)

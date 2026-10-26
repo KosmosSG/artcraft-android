@@ -74,25 +74,35 @@ j = once(j, matched[0], matched[0] + '''
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             imeHide();
+            artcraftRestoreCanvasFocus();
         }
+        if (!imeWanted) artcraftRestoreCanvasFocus();
         return super.dispatchKeyEvent(event);
     }''', "EffectCraft physical Escape passthrough")
-j = once(j, '                view.clearFocus();', '''                view.clearFocus();
-                // Give physical shortcuts back to GameActivity's visible surface.
-                android.view.Window win = getWindow();
-                android.view.View content = win == null ? null :
-                        win.getDecorView().findViewById(android.R.id.content);
-                if (content instanceof android.view.ViewGroup) {
-                    android.view.ViewGroup group = (android.view.ViewGroup) content;
-                    for (int i = 0; i < group.getChildCount(); i++) {
-                        android.view.View child = group.getChildAt(i);
-                        if (child != view && child.isShown()) {
-                            child.setFocusable(true);
-                            child.setFocusableInTouchMode(true);
-                            if (child.requestFocus()) break;
-                        }
-                    }
-                }''', "EffectCraft return keyboard focus to canvas")
+j = once(j, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'EffectCraft native surface focus')
+j = j[:-1] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + '\n}'
 # This temporary template is used solely to generate EffectCraft's Android Activity.
 j = j[:-1] + addon.read_text() + (root / "tools/effectcraft/FontsBridge.java.inc").read_text() + "\n}\n"
 j = once(j, "        super.onActivityResult(requestCode, resultCode, data);", "        super.onActivityResult(requestCode, resultCode, data);\n        if (ecFontActivityResult(requestCode, resultCode, data)) return;", "font picker callback")

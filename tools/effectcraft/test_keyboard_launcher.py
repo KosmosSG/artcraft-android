@@ -22,7 +22,7 @@ class KeyboardLauncher(unittest.TestCase):
                 self.assertIn("event.hasNoModifiers()", java)
                 self.assertIn("event.getRepeatCount() == 0", java)
                 self.assertIn("return super.dispatchKeyEvent(event);", java)
-                self.assertIn("child.requestFocus()", java)
+                self.assertIn("surface.requestFocus()", java)
 
     def test_unknown_or_already_patched_activity_stops(self):
         with self.assertRaises(SystemExit): self.patch("UnexpectedActivity")

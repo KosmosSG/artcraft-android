@@ -96,11 +96,17 @@ j = once(j, matched[0], matched[0] + '''
         }
         return super.dispatchKeyEvent(event);
     }''', "EffectCraft physical Escape passthrough")
+# NativeActivity delivers keys through dispatchKeyEvent, not Activity.onKeyDown.
+if 'extends NativeActivity' in matched[0]:
+    start = j.index("        // Bypass focused EditText/SurfaceView dispatch:")
+    end = j.index("        return super.dispatchKeyEvent(event);", start)
+    j = j[:start] + j[end:]
 j = once(j, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'EffectCraft native surface focus')
 j = j[:-1] + """
     private android.view.View artcraftNativeSurface(android.view.View node) {
         if (node == null || !node.isShown()) return null;
-        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.SurfaceView
+                || node.getClass().getName().equals("android.app.NativeActivity$NativeContentView")) return node;
         if (node instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) node;
             for (int i = 0; i < group.getChildCount(); i++) {
@@ -157,6 +163,8 @@ after = '''    if app == "effectcraft":
                    "        self.updates.poll(ctx);\\\\n        self.inner.logic(ctx, frame);")
         replace_ec("        self.inner.ui(ui, frame);",
                    "        self.inner.ui(ui, frame);\\\\n        self.updates.ui(ui.ctx());")
+        replace_ec('        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\\n        if raw.events.iter().any(|event| matches!(event,\\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\\n                if !modifiers.any())) {\\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\\n        }\\n')
+        replace_ec('        self.inner.ui(ui, frame);', '        let android_escape = ui.ctx().data_mut(|d|\\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && self.inner.session.state.text_edit.is_some()\\n            && ui.memory(|m| m.focused().is_none_or(|id| id == egui::Id::new("viewer-text-focus"))) {\\n            if let Err(error) = self.inner.session.execute("text.endEdit", serde_json::json!({})) {\\n                log::warn!("Android text exit: {error}");\\n            }\\n            ui.memory_mut(|m| m.surrender_focus(egui::Id::new("viewer-text-focus")));\\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\\n        }\\n        self.inner.ui(ui, frame);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && ui.ctx().text_edit_focused() {\\n            ui.memory_mut(|m| {\\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\\n            });\\n        }\\n')
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",
                      staging_dir / "src/effectcraft_updater.rs")
         import runpy

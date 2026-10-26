@@ -23,6 +23,14 @@ class KeyboardLauncher(unittest.TestCase):
                 self.assertIn("event.getRepeatCount() == 0", java)
                 self.assertIn("return super.dispatchKeyEvent(event);", java)
                 self.assertIn("surface.requestFocus()", java)
+                if base == "NativeActivity":
+                    self.assertNotIn("super.onKeyDown", java)
+                    self.assertNotIn("super.onKeyUp", java)
+                    self.assertIn("android.app.NativeActivity$NativeContentView", java)
+                else:
+                    self.assertIn("super.onKeyDown", java)
+                    self.assertIn("super.onKeyUp", java)
+
 
     def test_unknown_or_already_patched_activity_stops(self):
         with self.assertRaises(SystemExit): self.patch("UnexpectedActivity")

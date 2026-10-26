@@ -77,6 +77,26 @@ public final class PhotoCraftActivity extends NativeActivity {
     private EditText imeView;
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
+    // PhotoCraft reports its final rendered text owner before egui applies IME output.
+    // A closing dialog can leave IME output from its now-removed TextEdit in that frame.
+    private volatile boolean pcTextInputActive = false;
+    private volatile String pcKeyboardFocus = "initial";
+
+    public void pcSetTextInputActive(boolean active) {
+        pcTextInputActive = active;
+        runOnUiThread(() -> {
+            if (!pcTextInputActive && (imeWanted || (imeView != null && imeView.hasFocus()))) {
+                imeHide();
+            }
+            View focused = getCurrentFocus();
+            pcKeyboardFocus = focused == null ? "none" : focused.getClass().getSimpleName();
+        });
+    }
+
+    public String pcKeyboardStatus() {
+        return "textOwner=" + pcTextInputActive + " imeWanted=" + imeWanted
+                + " androidFocus=" + pcKeyboardFocus;
+    }
     // A hardware Escape received by the invisible IME view must be delivered to
     // the PhotoCraft editor exactly once, including when NativeActivity does not
     // forward the focused EditText's event to its SurfaceView.
@@ -268,13 +288,14 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     /** Show the soft keyboard by focusing the IME host view. Called by the Rust shell via JNI. */
     public void imeShow() {
+        if (!pcTextInputActive) return;
         final EditText view = imeView;
         if (view == null) {
             return;
         }
         imeWanted = true;
         runOnUiThread(() -> {
-            if (!imeWanted) {
+            if (!imeWanted || !pcTextInputActive) {
                 return;
             }
             try {
@@ -289,7 +310,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                 // Some devices ignore the request until focus and layout have settled; retry once on
                 // the next message-loop turn (guarded so a following hide wins).
                 view.post(() -> {
-                    if (!imeWanted) {
+                    if (!imeWanted || !pcTextInputActive) {
                         return;
                     }
                     try {

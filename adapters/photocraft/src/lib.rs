@@ -203,6 +203,27 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    fn set_text_input_active(&self, active: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcSetTextInputActive"),
+                jni_sig!("(Z)V"), &[JValue::Bool(active)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn keyboard_status(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pcKeyboardStatus"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            let value = JString::cast_local(env, value)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+
     fn end_type_editing(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -757,17 +778,20 @@ struct KeyboardProbe {
     native_presses: u64,
     bridged_presses: u64,
     last_key: &'static str,
+    ime_events: u64,
+    native_status: String,
     before_dispatch: String,
 }
 
 impl KeyboardProbe {
     fn enabled() -> bool {
-        option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-K3")
+        option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-K4")
     }
 
     fn observe(&mut self, events: &[egui::Event], bridged: bool) {
         if !Self::enabled() { return; }
         for event in events {
+            if matches!(event, egui::Event::Ime(_)) { self.ime_events += 1; }
             if let egui::Event::Key { key, pressed: true, .. } = event {
                 if bridged { self.bridged_presses += 1; }
                 else { self.native_presses += 1; }
@@ -790,6 +814,7 @@ struct PhotoCraftAndroidApp {
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
     keyboard_probe: KeyboardProbe,
+    text_input_active: Option<bool>,
     shortcut_pad: shortcut_pad::ShortcutPad,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
@@ -1053,16 +1078,32 @@ impl eframe::App for PhotoCraftAndroidApp {
         let was_editing_type = self.inner.ui.text_edit.is_some();
         self.inner.ui(ui, _frame);
         self.restore_keyboard_after_close(ui.ctx(), had_dialog, was_editing_type);
+        // The final UI state, not a now-closed widget's earlier platform output,
+        // determines whether Android may focus its invisible editable view.
+        let text_input_active = ui.ctx().text_edit_focused() || self.inner.ui.text_edit.is_some();
+        if !text_input_active {
+            ui.ctx().output_mut(|output| output.ime = None);
+        }
+        if self.text_input_active != Some(text_input_active) {
+            match self.bridge.set_text_input_active(text_input_active) {
+                Ok(()) => self.text_input_active = Some(text_input_active),
+                Err(error) => log::warn!("Android text-owner handoff failed: {error}"),
+            }
+        }
         if KeyboardProbe::enabled() {
+            self.keyboard_probe.native_status = self.bridge.keyboard_status().unwrap_or_else(|e| e);
+
             egui::Area::new(egui::Id::new("photocraft_keyboard_probe"))
                 .order(egui::Order::Tooltip)
                 .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(8.0, -8.0))
                 .interactable(false)
                 .show(ui.ctx(), |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.label(format!("Keyboard test PC-K3 | native={} bridge={} last={} tool={:?}",
+                        ui.label(format!("Keyboard test PC-K4 | native={} bridge={} last={} tool={:?}",
                             self.keyboard_probe.native_presses, self.keyboard_probe.bridged_presses,
                             self.keyboard_probe.last_key, self.inner.ui.tool));
+                        ui.label(format!("IME events={} | {}",
+                            self.keyboard_probe.ime_events, self.keyboard_probe.native_status));
                         ui.label(&self.keyboard_probe.before_dispatch);
                         ui.label(format!("Now: document={} field={} inline={} dialogs={}",
                             self.inner.session.active().is_some(), ui.ctx().text_edit_focused(),
@@ -1273,6 +1314,7 @@ fn android_main(android_app: AndroidApp) {
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
                 keyboard_probe: KeyboardProbe::default(),
+                text_input_active: None,
                 shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,

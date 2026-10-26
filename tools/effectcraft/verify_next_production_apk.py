@@ -22,7 +22,7 @@ PREVIOUS_APK_SHA256 = "9f034a891e03a1623479106c128a2a90aa45ef70e3c78a64437b78ae1
 
 
 def check_signer(output: str) -> None:
-    digests = re.findall(r"Signer #(\\d+) certificate SHA-256 digest: ([0-9a-fA-F:]+)", output)
+    digests = re.findall(r"Signer #(\d+) certificate SHA-256 digest: ([0-9a-fA-F:]+)", output)
     if len(digests) != 1 or digests[0][0] != "1":
         raise ValueError("Expected exactly one Android APK signer")
     digest = digests[0][1].replace(":", "").lower()
@@ -32,7 +32,7 @@ def check_signer(output: str) -> None:
 
 def check_badging(output: str) -> None:
     line = next((row for row in output.splitlines() if row.startswith("package:")), "")
-    match = re.search(r"name='([^']+)' versionCode='(\\d+)' versionName='([^']+)'", line)
+    match = re.search(r"name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", line)
     if not match or match.group(1) != PACKAGE:
         raise ValueError("Incorrect package identity")
     if int(match.group(2)) != VERSION_CODE or match.group(3) != VERSION_NAME:
@@ -75,7 +75,7 @@ def self_test() -> None:
         raise AssertionError("Wrong signer was accepted")
     except ValueError:
         pass
-    valid = "package: name='com.artcraft.effectcraft' versionCode='16781317' versionName='0.16.0-android.5'\\nlaunchable-activity: name='com.artcraft.effectcraft.EffectCraftActivity'"
+    valid = "package: name='com.artcraft.effectcraft' versionCode='16781317' versionName='0.16.0-android.5'\nlaunchable-activity: name='com.artcraft.effectcraft.EffectCraftActivity'"
     check_badging(valid)
     for broken in (valid.replace("16781317", "16781316"), valid.replace(PACKAGE, "com.test.effectcraft"),
                    valid.replace("0.16.0-android.5", "0.16.0-android.4")):

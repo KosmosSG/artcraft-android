@@ -16,12 +16,20 @@ def patch(root):
     source = replace_once(source, "        self.ime.poll(raw);", '''        self.ime.poll(raw);
         // Physical Escape releases a genuinely focused egui editor; the
         // original shortcut and modal handlers still receive Escape.
-        if raw.events.iter().any(|event| matches!(event,
-            egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))
-            && ctx.text_edit_focused() {
-            ctx.memory_mut(|memory| {
-                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
-            });
+        let android_escape_from_text = raw.events.iter().any(|event| matches!(event,
+            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }
+                if !modifiers.command && !modifiers.alt))
+            && (ctx.text_edit_focused() || self.inner.canvas_ime());
+        if android_escape_from_text {
+            // A transient Android-only dismissal: keep Window > Contextual Task Bar
+            // enabled, but hide the HUD until the next canvas pointer selection.
+            ctx.data_mut(|data| data.insert_temp(
+                egui::Id::new("designcraft.android.escape_hide_taskbar"), true));
+            if ctx.text_edit_focused() {
+                ctx.memory_mut(|memory| {
+                    if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                });
+            }
         }''')
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
     source = replace_once(source, "        system_fonts::install_system_fonts(ui.ctx());", "        self.tablet.ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);\n        system_fonts::install_system_fonts(ui.ctx());")

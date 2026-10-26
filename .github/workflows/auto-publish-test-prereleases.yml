@@ -137,11 +137,10 @@ jobs:
       - name: Independently verify original APK, installed update safety and preview identity
         id: verify
         shell: bash
-        env:
-          APKSIGNER: ${{ env.ANDROID_HOME }}/build-tools/35.0.0/apksigner
-          AAPT: ${{ env.ANDROID_HOME }}/build-tools/35.0.0/aapt
         run: |
           set -euo pipefail
+          export APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          export AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > known-releases.json
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re, shutil, subprocess, sys, zipfile

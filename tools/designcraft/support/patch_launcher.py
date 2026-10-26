@@ -12,6 +12,9 @@ def replace_once(text, old, new):
 def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
+    source = replace_once(source, '        self.inner.ui(ui);', '        self.inner.ui(ui);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n')
+    source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n')
+    source = replace_once(source, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && !ui.ctx().text_edit_focused()\n            && self.inner.session.active().is_some_and(|doc| doc.selection.text.is_some()) {\n            // End the engine\'s type session, not just Android\'s invisible EditText.\n            self.inner.select_tool("selection");\n            if let Err(error) = self.inner.run("text.exitToFrame", serde_json::json!({})) {\n                log::warn!("Android text exit: {error}");\n            }\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());')
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
     source = replace_once(source, "        system_fonts::install_system_fonts(ui.ctx());", "        self.tablet.ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);\n        system_fonts::install_system_fonts(ui.ctx());")
@@ -48,6 +51,59 @@ def patch(root):
     (root / "src/tablet.rs").write_text(Path(__file__).with_name("tablet.rs").read_text())
     java = next((root / "java").rglob("DesignCraftActivity.java"))
     text = java.read_text()
+    # MagicPad: Escape must reach upstream canvas while Android's invisible
+    # text-input host relinquishes focus. Never swallow a hardware key here.
+    text = replace_once(text, 'public final class DesignCraftActivity extends GameActivity {', '''public final class DesignCraftActivity extends GameActivity {
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+            imeHide();
+            artcraftRestoreCanvasFocus();
+        }
+        if (!imeWanted) artcraftRestoreCanvasFocus();
+        // Bypass focused EditText/SurfaceView dispatch: GameActivity's public
+        // handlers enqueue the original event (including modifiers and key-up).
+        // Let the IME keep printable input while editing; Escape always reaches
+        // the native editor, even if Android has already hidden its keyboard.
+        if (event != null
+                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0
+                && (event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                    || (!imeWanted && !event.isSystem()))) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                super.onKeyDown(event.getKeyCode(), event);
+                return true;
+            }
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+                super.onKeyUp(event.getKeyCode(), event);
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }''')
+    text = replace_once(text, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();')
+    text = text[:text.rfind('}')] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + text[text.rfind('}'):]
     text = replace_once(text, '        super.onCreate(savedInstanceState);', '''        super.onCreate(savedInstanceState);
         if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("dc_startup_check", false)) dcCheckUpdates(false);
         dcRestoreSharedFontsOnStartup();''')

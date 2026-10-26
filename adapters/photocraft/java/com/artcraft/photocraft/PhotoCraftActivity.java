@@ -247,6 +247,9 @@ public final class PhotoCraftActivity extends NativeActivity {
                     return false;
                 }
             };
+            // This hidden host may own focus only during an explicit IME session.
+            imeView.setFocusable(false);
+            imeView.setFocusableInTouchMode(false);
             imeView.setBackground(null);
             imeView.setCursorVisible(false);
             imeView.setTextColor(0);
@@ -373,6 +376,10 @@ public final class PhotoCraftActivity extends NativeActivity {
                 if (imm != null) {
                     imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
                 }
+                // clearFocus alone can let Android immediately select this hidden
+                // EditText again while the canvas/dialog focus is changing.
+                view.setFocusableInTouchMode(false);
+                view.setFocusable(false);
                 view.clearFocus();
                 // Restore focus to NativeActivity's visible surface; a hidden
                 // EditText must not intercept the next V/T/P tool shortcut.

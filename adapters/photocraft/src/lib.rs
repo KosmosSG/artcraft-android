@@ -805,6 +805,28 @@ fn drain_incoming(bridge: &AndroidFileBridge, inbox: &Inbox, warmup: &mut i64) {
 }
 
 impl PhotoCraftAndroidApp {
+    // Both logic and UI can close a dialog or finish canvas text editing.
+    // Only release focus after that owner disappears, never during live typing
+    // or when another modal is still present.
+    fn restore_keyboard_after_close(
+        &self, ctx: &egui::Context, had_dialog: bool, was_editing_type: bool,
+    ) {
+        let dialog_closed = had_dialog && self.inner.ui.dialogs.is_empty();
+        let type_closed = was_editing_type && self.inner.ui.text_edit.is_none();
+        if (dialog_closed || type_closed)
+            && self.inner.ui.dialogs.is_empty()
+            && self.inner.ui.text_edit.is_none()
+        {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+            });
+            if let Err(error) = self.bridge.end_type_editing() {
+                log::warn!("Android editor keyboard handoff failed: {error}");
+            }
+            ctx.request_repaint();
+        }
+    }
+
     /// The staged copy of a document, if `path` names one: a *direct* child of the app's own
     /// `media/` directory (see PhotoCraftActivity.newStageFile). Anything else on the device is
     /// never touched.
@@ -949,12 +971,9 @@ impl eframe::App for PhotoCraftAndroidApp {
         // Let the app own Escape/commit/cancel before returning hardware focus.
         // No hardcoded tools: PhotoCraft's custom shortcut registry stays in charge.
         let was_editing_type = self.inner.ui.text_edit.is_some();
+        let had_dialog = !self.inner.ui.dialogs.is_empty();
         self.inner.logic(ctx, frame);
-        if was_editing_type && self.inner.ui.text_edit.is_none() {
-            if let Err(error) = self.bridge.end_type_editing() {
-                log::warn!("Android Type keyboard handoff failed: {error}");
-            }
-        }
+        self.restore_keyboard_after_close(ctx, had_dialog, was_editing_type);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -985,7 +1004,10 @@ impl eframe::App for PhotoCraftAndroidApp {
         }
         // LightCraft-style Updates now lives in the Android modal opened from Help.
         // Do not consume permanent bottom-screen space with the old status dock.
+        let had_dialog = !self.inner.ui.dialogs.is_empty();
+        let was_editing_type = self.inner.ui.text_edit.is_some();
         self.inner.ui(ui, _frame);
+        self.restore_keyboard_after_close(ui.ctx(), had_dialog, was_editing_type);
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
             let requested = data.get_temp::<bool>(id).unwrap_or(false);

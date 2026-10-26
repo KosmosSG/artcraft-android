@@ -25,10 +25,20 @@ def main(app: str) -> None:
             "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java",
             "boolean dispatchKeyEvent(KeyEvent event)",
             "KeyEvent.KEYCODE_ESCAPE", "&& imeWanted",
-            "imeHide();", "return super.dispatchKeyEvent(event);",
-            "view.clearFocus();", "child.requestFocus()",
+            'imeEvents.offer("e");', "escapeKeyCaptured = true;",
+            "return super.dispatchKeyEvent(event);",
+            "restoreCanvasKeyboardFocus(View node)",
+            "node instanceof android.view.SurfaceView",
+            "restoreCanvasKeyboardFocus(content);",
         )
-        assert source.index("imeHide();", source.index("boolean dispatchKeyEvent")) < source.index("return super.dispatchKeyEvent(event);")
+        dispatch = source[source.index("public boolean dispatchKeyEvent"):source.index("/** Descend to the visible native canvas")]
+        assert dispatch.index('imeEvents.offer("e")') < dispatch.index("imeHide();")
+        assert "event.getRepeatCount() == 0 && event.hasNoModifiers()" in dispatch
+        assert "event.getAction() == KeyEvent.ACTION_UP" in dispatch
+        require("templates/android/ime_bridge.rs",
+                "'e' if payload.is_empty() => Some(egui::Event::Key",
+                "key: egui::Key::Escape", "pressed: true", "repeat: false",
+                "modifiers: egui::Modifiers::default()")
         require("adapters/photocraft/src/lib.rs",
                 "egui::Key::Escape, pressed: true", "ctx.text_edit_focused()",
                 "memory.surrender_focus(id)", "self.inner.raw_input_hook(ctx, raw);")

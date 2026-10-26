@@ -72,6 +72,17 @@ public final class VectorCraftActivity extends NativeActivity {
     public void vcRequestFontFolder(long id) { extras.requestFontFolder(id); }
     public void vcRefreshFontFolder(long id) { extras.refreshFontFolder(id); }
     public void vcCheckForUpdates() { extras.checkForUpdates(); }
+    // Report the real installed Android APK versionName, not upstream Rust's
+    // workspace version (0.14.0), which omits the android.N release suffix.
+    public String vcInstalledVersionName() {
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return version == null || version.isEmpty() ? "unknown" : version;
+        } catch (Exception error) {
+            Log.w(TAG, "Unable to read installed VectorCraft version", error);
+            return "unknown";
+        }
+    }
     public boolean vcGetIncludePreviewUpdates() { return extras.includePreviewUpdates(); }
     public void vcSetIncludePreviewUpdates(boolean enabled) { extras.setIncludePreviewUpdates(enabled); }
     public String vcPollUpdateResult() { return extras.pollUpdate(); }

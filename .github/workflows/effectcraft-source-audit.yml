@@ -1,0 +1,38 @@
+name: EffectCraft pinned-source audit (draft only)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/effectcraft/**'
+      - 'adapters/effectcraft/**'
+      - '.github/workflows/effectcraft-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'review/effectcraft-'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify pinned EffectCraft release and identity guards (read-only)
+        run: python3 tools/effectcraft/verify_upstream.py
+      - name: Run EffectCraft-only updater selection regression tests
+        run: python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+      - name: Verify EffectCraft-only private font importer safeguards
+        run: |
+          rustc --edition=2021 --test adapters/effectcraft/src/font_library.rs -o "$RUNNER_TEMP/effectcraft-font-tests"
+          "$RUNNER_TEMP/effectcraft-font-tests"
+      - name: Discover newer official stable release without making changes
+        run: python3 tools/effectcraft/detect_upstream.py | tee effectcraft-upstream-status.json
+      - name: Include source audit in job summary
+        run: |
+          echo '### EffectCraft upstream (read-only)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat effectcraft-upstream-status.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

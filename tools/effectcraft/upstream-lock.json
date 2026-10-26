@@ -1,0 +1,21 @@
+{
+  "app": "effectcraft",
+  "upstream_repository": "storytold/effectcraft",
+  "official_tag": "v0.16.0",
+  "official_commit": "9581b53c3f8945683252af0eb5fac79e0e43aed4",
+  "official_release_url": "https://github.com/storytold/effectcraft/releases/tag/v0.16.0",
+  "source_license": "MIT OR Apache-2.0",
+  "reference_builder_repository": "MostafaXS1/artcraft-android",
+  "reference_builder_commit": "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
+  "android_revision": 2,
+  "android_version_name": "0.16.0-android.2",
+  "candidate_apk_name": "EffectCraft-v0.16.0-android.2-arm64-v8a.apk",
+  "expected_abi": "arm64-v8a",
+  "proposed_package": "com.artcraft.effectcraft",
+  "version_code": 16781314,
+  "signing_certificate_sha256": null,
+  "permanent_signing_ready": false,
+  "public_release_enabled": false,
+  "uploaded_icon_sha256": "6686489c6b64965610274461bcce0cc8ad2c27bf0bb5d7ef48ee4a303ea59389",
+  "icon_in_apk_verified": false
+}

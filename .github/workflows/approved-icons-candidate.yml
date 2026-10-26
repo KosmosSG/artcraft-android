@@ -4,6 +4,7 @@ name: DesignCraft approved icons ARM64 candidate (never publish)
     branches:
     - icons/designcraft-approved-20261024
     - refine/designcraft-esc-focus-20261025
+    - release/designcraft-esc-android4-20261027
     paths:
     - tools/designcraft/**
     - tools/keyboard/**
@@ -54,7 +55,7 @@ jobs:
     - name: Validate menus, icon masks, launcher generation and update policy
       shell: bash
       run: "set -euo pipefail\npython3 -m pip install 'Pillow==11.3.0'\npython3 -m unittest discover -s tools/designcraft\
-        \ -p 'test_*.py' -v\npython3 tools/designcraft/prepare_builder.py builder 0.12.0-android.2 16800003\npython3 tools/designcraft/make_icon.py\
+        \ -p 'test_*.py' -v\npython3 tools/designcraft/prepare_builder.py builder 0.12.0-android.4 16800005\npython3 tools/designcraft/make_icon.py\
         \ builder/dc-icon.png\npython3 tools/designcraft/stage_launcher.py builder\nmkdir -p \"$RUNNER_TEMP/designcraft-java\"\
         \n# The complete private Gradle build compiles GameActivity and its AndroidX dependencies.\n# This fast host test\
         \ exercises the pure release policy independently of Android.\njavac -source 17 -target 17 \\\n  -d \"$RUNNER_TEMP/designcraft-java\"\

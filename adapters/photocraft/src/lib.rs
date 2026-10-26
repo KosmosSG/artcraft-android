@@ -751,6 +751,37 @@ struct UpdateDialogState {
     release_url: Option<String>,
 }
 
+// Candidate-only, noninteractive display. Never retain typed text or document data.
+#[derive(Default)]
+struct KeyboardProbe {
+    native_presses: u64,
+    bridged_presses: u64,
+    last_key: &'static str,
+    before_dispatch: String,
+}
+
+impl KeyboardProbe {
+    fn enabled() -> bool {
+        option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-K3")
+    }
+
+    fn observe(&mut self, events: &[egui::Event], bridged: bool) {
+        if !Self::enabled() { return; }
+        for event in events {
+            if let egui::Event::Key { key, pressed: true, .. } = event {
+                if bridged { self.bridged_presses += 1; }
+                else { self.native_presses += 1; }
+                self.last_key = match key {
+                    egui::Key::T => "T",
+                    egui::Key::V => "V",
+                    egui::Key::Escape => "Esc",
+                    _ => "other",
+                };
+            }
+        }
+    }
+}
+
 struct PhotoCraftAndroidApp {
     inner: PhotocraftApp,
     bridge: AndroidFileBridge,
@@ -758,6 +789,7 @@ struct PhotoCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    keyboard_probe: KeyboardProbe,
     shortcut_pad: shortcut_pad::ShortcutPad,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
@@ -972,6 +1004,19 @@ impl eframe::App for PhotoCraftAndroidApp {
         // No hardcoded tools: PhotoCraft's custom shortcut registry stays in charge.
         let was_editing_type = self.inner.ui.text_edit.is_some();
         let had_dialog = !self.inner.ui.dialogs.is_empty();
+        if KeyboardProbe::enabled() && ctx.input(|i| i.events.iter().any(|e|
+            matches!(e, egui::Event::Key { pressed: true, .. })))
+        {
+            self.keyboard_probe.before_dispatch = format!(
+                "At key: field={} inline={} dialogs={} menu={} bar={} dropdown={} ctrl={} shift={} alt={}",
+                ctx.text_edit_focused(), self.inner.ui.text_edit.is_some(),
+                self.inner.ui.dialogs.len(),
+                photocraft_ui_egui::menu_nav::is_open(ctx),
+                photocraft_ui_egui::menu_keys::is_focused(ctx),
+                photocraft_ui_egui::widgets::dropdown_list_open(ctx),
+                ctx.input(|i| i.modifiers.ctrl), ctx.input(|i| i.modifiers.shift),
+                ctx.input(|i| i.modifiers.alt));
+        }
         self.inner.logic(ctx, frame);
         self.restore_keyboard_after_close(ctx, had_dialog, was_editing_type);
     }
@@ -1008,6 +1053,23 @@ impl eframe::App for PhotoCraftAndroidApp {
         let was_editing_type = self.inner.ui.text_edit.is_some();
         self.inner.ui(ui, _frame);
         self.restore_keyboard_after_close(ui.ctx(), had_dialog, was_editing_type);
+        if KeyboardProbe::enabled() {
+            egui::Area::new(egui::Id::new("photocraft_keyboard_probe"))
+                .order(egui::Order::Tooltip)
+                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(8.0, -8.0))
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label(format!("Keyboard test PC-K3 | native={} bridge={} last={} tool={:?}",
+                            self.keyboard_probe.native_presses, self.keyboard_probe.bridged_presses,
+                            self.keyboard_probe.last_key, self.inner.ui.tool));
+                        ui.label(&self.keyboard_probe.before_dispatch);
+                        ui.label(format!("Now: document={} field={} inline={} dialogs={}",
+                            self.inner.session.active().is_some(), ui.ctx().text_edit_focused(),
+                            self.inner.ui.text_edit.is_some(), self.inner.ui.dialogs.len()));
+                    });
+                });
+        }
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
             let requested = data.get_temp::<bool>(id).unwrap_or(false);
@@ -1083,7 +1145,10 @@ impl eframe::App for PhotoCraftAndroidApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.keyboard_probe.observe(&raw.events, false);
+        let native_events = raw.events.len();
         self.ime.poll(raw);
+        self.keyboard_probe.observe(&raw.events[native_events..], true);
         // Android's invisible IME view and egui own separate focus states.
         // Release stale TextEdit focus on physical Escape, leaving the event
         // available to the upstream editor and its original shortcut mappings.
@@ -1207,6 +1272,7 @@ fn android_main(android_app: AndroidApp) {
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                keyboard_probe: KeyboardProbe::default(),
                 shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,

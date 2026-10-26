@@ -23,6 +23,7 @@ jobs:
       ARTCRAFT_TARGET_SDK: '35'
       ARTCRAFT_BUILD_TOOLS_VERSION: 35.0.0
       CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_KEYBOARD_DIAGNOSTICS: PC-K3
     steps:
     - uses: actions/checkout@v5
       with:

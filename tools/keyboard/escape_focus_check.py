@@ -30,7 +30,7 @@ def main(app: str) -> None:
         )
         assert source.index("imeHide();", source.index("boolean dispatchKeyEvent")) < source.index("return super.dispatchKeyEvent(event);")
         require("adapters/photocraft/src/lib.rs",
-                "egui::Key::Escape, pressed: true", "ctx.text_edit_focused()",
+                "artcraft_finish_type_escape(&mut self.inner, ctx, raw)", "self.bridge.end_type_editing()",
                 "memory.surrender_focus(id)", "self.inner.raw_input_hook(ctx, raw);")
     elif app == "designcraft":
         path = "tools/designcraft/support/patch_launcher.py"

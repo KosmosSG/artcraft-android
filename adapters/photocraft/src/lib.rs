@@ -1062,17 +1062,16 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
-        // Android's invisible IME view and egui own separate focus states.
-        // Release stale TextEdit focus on physical Escape, leaving the event
-        // available to the upstream editor and its original shortcut mappings.
-        if raw.events.iter().any(|event| matches!(event,
-            egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))
-            && ctx.text_edit_focused() {
+        apply_android_modifiers(&mut self.modifiers, raw);
+        if photocraft_ui_egui::menus::artcraft_finish_type_escape(&mut self.inner, ctx, raw) {
             ctx.memory_mut(|memory| {
                 if let Some(id) = memory.focused() { memory.surrender_focus(id); }
             });
+            if let Err(error) = self.bridge.end_type_editing() {
+                log::warn!("Android Type Escape focus handoff failed: {error}");
+            }
+            ctx.request_repaint();
         }
-        apply_android_modifiers(&mut self.modifiers, raw);
         self.inner.raw_input_hook(ctx, raw);
     }
 }

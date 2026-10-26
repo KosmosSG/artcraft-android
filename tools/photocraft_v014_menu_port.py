@@ -40,6 +40,34 @@ pub fn artcraft_shortcut_pad_chrome_hidden(app: &PhotocraftApp) -> bool {
     app.ui.view.hides_chrome()
 }
 
+// Match VectorCraft's guarded direct Type exit, using PhotoCraft's own
+// commit/cancel semantics and preference. Never remap printable shortcuts.
+#[cfg(target_os = "android")]
+pub fn artcraft_finish_type_escape(app: &mut PhotocraftApp, ctx: &egui::Context, raw: &mut egui::RawInput) -> bool {
+    let Some(edit) = app.ui.text_edit.as_ref() else { return false };
+    if ctx.text_edit_focused() || edit.preedit.is_some()
+        || !app.ui.dialogs.is_empty() || app.discard.is_some()
+        || crate::type_transform::active(app)
+        || crate::menu_nav::is_open(ctx) || crate::menu_keys::is_focused(ctx)
+        || crate::widgets::dropdown_list_open(ctx)
+        || app.ui.canvas_tool_menu.is_some()
+        || raw.events.iter().any(|e| matches!(e, egui::Event::Ime(_) | egui::Event::Text(_) | egui::Event::Paste(_)))
+    { return false; }
+    let escape = |e: &egui::Event| matches!(e,
+        egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }
+        if !modifiers.any());
+    if !raw.events.iter().any(escape) { return false; }
+    if edit.mask || !app.session.prefs().type_.use_esc_to_commit {
+        crate::type_tool::cancel(app);
+    } else {
+        crate::type_tool::commit(app);
+    }
+    if app.ui.text_edit.is_some() { return false; }
+    // Consume only the handled press; all other events retain their order.
+    if let Some(at) = raw.events.iter().position(escape) { raw.events.remove(at); }
+    true
+}
+
 const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
 const FONT_CATALOG_ID: &str = "window.artcraftFontCatalog";
 const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";

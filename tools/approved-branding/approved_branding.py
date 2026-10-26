@@ -129,6 +129,18 @@ def apply(builder, source, android, app):
         s=once(s,'[package.metadata.android]','[package.metadata.android]\nversion_code = '+str(cfg['version_code']))
     manifest.write_text(s)
     touched=ui_brand(source,app)
+    # PhotoCraft v0.14 still compiles its legacy embedded icon constant even
+    # when the approved Android paint path returns early. Point that constant
+    # to the approved launcher asset installed above, rather than a deleted drawable.
+    if app == 'photocraft':
+        brand = source/'crates/ui-egui/src/brand.rs'
+        text = brand.read_text()
+        old = '../../../apps/photocraft-android/res/drawable/ic_launcher.png'
+        new = '../../../apps/photocraft-android/res/mipmap-xxxhdpi/ic_launcher.png'
+        if old in text:
+            if not (res/'mipmap-xxxhdpi/ic_launcher.png').is_file():
+                raise ValueError('Approved PhotoCraft embedded launcher asset missing')
+            brand.write_text(once(text, old, new))
     (android/'approved-branding-evidence.json').write_text(json.dumps({'app':app,'source_sha256':cfg['source_sha256'],'ui_files':touched,'compiled_apk_verified':False,'device_tested':False},indent=2)+'\n')
     print('PASS: approved launcher resources and Android native UI branding installed for '+app)
 

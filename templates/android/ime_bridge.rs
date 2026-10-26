@@ -143,6 +143,15 @@ pub mod ime {
                     after_chars,
                 }))
             }
+            // PhotoCraft consumes the matching Android physical key events.
+            // Keep both edges so Escape cannot remain held in egui.
+            'e' | 'E' if payload.is_empty() => Some(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: Some(egui::Key::Escape),
+                pressed: tag == 'e',
+                repeat: false,
+                modifiers: egui::Modifiers::default(),
+            }),
             'a' => {
                 let action: i32 = payload.trim().parse().ok()?;
                 // IME_ACTION_NONE (0) carries no meaning; any real action (Done/Go/Search/Send)

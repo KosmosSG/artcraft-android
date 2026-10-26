@@ -77,6 +77,7 @@ public final class PhotoCraftActivity extends NativeActivity {
     private EditText imeView;
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
+    private boolean pcEscapeCaptured = false;
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
     // the private path of each staged copy, drained one per call by the Rust shell through
@@ -224,6 +225,12 @@ public final class PhotoCraftActivity extends NativeActivity {
                 }
 
                 @Override
+                public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+                    // Physical Esc can otherwise be eaten by the active IME.
+                    return relayTypeEscape(event) || super.onKeyPreIme(keyCode, event);
+                }
+
+                @Override
                 public boolean onKeyDown(int keyCode, KeyEvent event) {
                     // Let hardware key events fall through to the native input queue (winit), exactly
                     // as they did before this view existed; the soft keyboard talks to us through the
@@ -301,16 +308,31 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
-    /** Physical Escape must first reach the native editor, then return its
-     * hardware-key focus to the canvas instead of the invisible IME EditText.
-     * Do not consume the event: upstream still owns edit cancel and popups.
+    /** Deliver a complete Escape pair once, before the IME can swallow it.
+     * Do not hide/reset the IME here: only the native editor knows whether
+     * Escape ended Type editing or was owned by a field/modal/composition.
      */
+    private boolean relayTypeEscape(KeyEvent event) {
+        if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
+        if (pcEscapeCaptured) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                imeEvents.offer("E");
+                pcEscapeCaptured = false;
+            }
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN && imeWanted
+                && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+            pcEscapeCaptured = true;
+            imeEvents.offer("e");
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
-                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
-            imeHide();
-        }
+        if (relayTypeEscape(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 

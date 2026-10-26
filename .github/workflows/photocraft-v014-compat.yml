@@ -15,6 +15,8 @@ on:
       - 'tools/photocraft_v014_brand_port.py'
       - 'adapters/photocraft/**'
       - 'templates/android/**'
+      - 'tools/approved-branding/**'
+      - 'tools/keyboard/**'
   workflow_dispatch:
 
 # Never publish, access permanent signing secrets or synchronize upstream.
@@ -98,6 +100,13 @@ jobs:
           python3 tools/photocraft_v012_candidate.py stage
           python3 tools/photocraft_v012_candidate.py verify
           test ! -e keys/artcraft-builder.jks
+      - name: Install exact latest approved launcher and native UI artwork
+        run: |
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/approved-branding/approved_branding.py check
+          python3 -m unittest discover -s tools/approved-branding -p 'test_*.py' -v
+          python3 tools/approved-branding/install_packager.py
+          python3 tools/approved-branding/approved_branding.py install . photocraft
       - name: Compile ARM64 Test APK using a temporary local-only signing key
         timeout-minutes: 130
         run: |
@@ -136,6 +145,11 @@ jobs:
           PY
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/signing.txt
           sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Verify actual APK approved artwork and isolated identity
+        run: |
+          python3 tools/approved-branding/verify_apk.py . icon-verification
+          mkdir -p candidate/icon-verification
+          cp icon-verification/*.json icon-verification/*.txt candidate/icon-verification/
       - name: Record exact keyboard candidate source
         run: |
           mkdir -p candidate

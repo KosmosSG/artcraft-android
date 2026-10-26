@@ -25,10 +25,14 @@ def main(app: str) -> None:
             "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java",
             "boolean dispatchKeyEvent(KeyEvent event)",
             "KeyEvent.KEYCODE_ESCAPE", "&& imeWanted",
-            "imeHide();", "return super.dispatchKeyEvent(event);",
+            "relayTypeEscape(event)", "return super.dispatchKeyEvent(event);",
             "view.clearFocus();", "child.requestFocus()",
         )
-        assert source.index("imeHide();", source.index("boolean dispatchKeyEvent")) < source.index("return super.dispatchKeyEvent(event);")
+        relay = source[source.index("private boolean relayTypeEscape"):source.index("/** Called only after")]
+        assert 'imeEvents.offer("e")' in relay and 'imeEvents.offer("E")' in relay
+        assert "imeHide();" not in relay
+        assert "onKeyPreIme(int keyCode, KeyEvent event)" in source
+        require("templates/android/ime_bridge.rs", "'e' | 'E' if payload.is_empty()", "pressed: tag == 'e'")
         require("adapters/photocraft/src/lib.rs",
                 "artcraft_finish_type_escape(&mut self.inner, ctx, raw)", "self.bridge.end_type_editing()",
                 "memory.surrender_focus(id)", "self.inner.raw_input_hook(ctx, raw);")

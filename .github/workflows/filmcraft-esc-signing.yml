@@ -1,0 +1,127 @@
+name: FilmCraft accepted Escape candidate permanent signing
+
+on:
+  push:
+    branches: [release/filmcraft-esc-signing-20261027]
+    paths: [.github/workflows/filmcraft-esc-signing.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: filmcraft-permanent-signing
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      signed_sha256: ${{ steps.apk.outputs.sha }}
+      commit: ${{ steps.candidate.outputs.commit }}
+    steps:
+      - name: Validate reviewed build and permanent signing prerequisites
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: '40341013408'
+          COMMIT: '870269f5f9654a3090dbf4b199d1a38d784d1568'
+          PREVIOUS: '1000001'
+          BACKUP_OK: ${{ secrets.FILMCRAFT_BACKUP_VERIFIED }}
+          HISTORY_OK: ${{ secrets.FILMCRAFT_HISTORY_AUDITED }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ && "$COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PREVIOUS" =~ ^[0-9]+$ ]] && (( 10#$PREVIOUS < 1000002 ))
+          [[ "$BACKUP_OK" == "YES" && "$HISTORY_OK" == "YES" ]] || { echo "::error::FilmCraft permanent signer backup and installation/version history must be verified"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/candidate-run.json"
+          jq -e --arg sha "$COMMIT" \
+            '.conclusion == "success" and .event == "push" and .head_sha == $sha and .head_branch == "refine/filmcraft-esc-focus-20261025" and .path == ".github/workflows/filmcraft-integrated-candidate.yml"' \
+            "$RUNNER_TEMP/candidate-run.json"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" \
+            -n FilmCraft-integrated-0.10.0-android.2-NOT-FOR-RELEASE -D candidate
+          test "$(find candidate -name '*.apk' | wc -l)" = 1
+
+      - name: Set up Java 21 for Android signing tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Verify candidate, align and sign with FilmCraft's own permanent key
+        id: apk
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FILMCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.FILMCRAFT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.FILMCRAFT_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FILMCRAFT_KEY_ALIAS }}
+          CERT_SHA256: ${{ secrets.FILMCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for var in KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD KEY_ALIAS CERT_SHA256; do
+            [[ -n "${!var}" ]] || { echo "::error::Missing permanent FilmCraft signing secret $var"; exit 1; }
+          done
+          [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
+          KEYSTORE="$RUNNER_TEMP/filmcraft-permanent.p12"
+          trap 'rm -f "$KEYSTORE" "$RUNNER_TEMP/filmcraft-aligned.apk"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$TOOLS/apksigner" && test -x "$TOOLS/zipalign" && test -x "$TOOLS/aapt"
+          ORIGINAL="$(find candidate -name '*.apk' -print -quit)"
+          "$TOOLS/apksigner" verify --verbose "$ORIGINAL"
+          "$TOOLS/aapt" dump badging "$ORIGINAL" > "$RUNNER_TEMP/original-badging.txt"
+          python3 - "$RUNNER_TEMP/original-badging.txt" "$ORIGINAL" <<'PY'
+          import re, sys, zipfile
+          from pathlib import Path
+          s = Path(sys.argv[1]).read_text()
+          m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", s, re.M)
+          if not m or m.groups() != ('com.artcraft.filmcraft', '1000002', '0.10.0-android.2'):
+              raise SystemExit("Candidate package/version mismatch")
+          with zipfile.ZipFile(sys.argv[2]) as z:
+              libs = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+          PY
+          mkdir -p release
+          TARGET=release/FilmCraft-v0.10.0-android.2-arm64-v8a.apk
+          "$TOOLS/zipalign" -P 16 -f 4 "$ORIGINAL" "$RUNNER_TEMP/filmcraft-aligned.apk"
+          "$TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "$TARGET" "$RUNNER_TEMP/filmcraft-aligned.apk"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$TARGET" > "$RUNNER_TEMP/verified-signer.txt"
+          python3 - "$RUNNER_TEMP/verified-signer.txt" "$CERT_SHA256" <<'PY'
+          import re, sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text()
+          hashes = re.findall(r"certificate SHA-256 digest:\s*([0-9a-fA-F]{64})", text, flags=re.I)
+          if not hashes or hashes[0].lower() != sys.argv[2].lower():
+              raise SystemExit("Refusing release: original FilmCraft certificate SHA-256 mismatch")
+          PY
+          "$TOOLS/zipalign" -c -P 16 4 "$TARGET"
+          "$TOOLS/aapt" dump badging "$TARGET" > "$RUNNER_TEMP/signed-badging.txt"
+          cmp "$RUNNER_TEMP/original-badging.txt" "$RUNNER_TEMP/signed-badging.txt"
+          python3 - "$ORIGINAL" "$TARGET" <<'PY'
+          import sys, zipfile
+          def payload(p):
+              with zipfile.ZipFile(p) as z:
+                  return {n:z.read(n) for n in z.namelist() if not n.startswith('META-INF/')}
+          assert payload(sys.argv[1]) == payload(sys.argv[2]), 'Signing altered APK application payload'
+          PY
+          (cd release && sha256sum FilmCraft-v0.10.0-android.2-arm64-v8a.apk > SHA256SUMS.txt)
+          SHA="$(sha256sum "$TARGET" | awk '{print $1}')"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Permanent FilmCraft certificate, fixed package/version, ARM64 and byte-identical app payload verified." >> "$GITHUB_STEP_SUMMARY"
+          echo "APK SHA-256: $SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain permanently signed APK for private device testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmCraft-v0.10.0-android.2-PERMANENTLY-SIGNED
+          path: release/
+          if-no-files-found: error
+          retention-days: 90

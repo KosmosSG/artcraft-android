@@ -41,7 +41,8 @@ def main(app: str) -> None:
         path = "tools/filmcraft/runtime_patch.py"
         source = require(
             path, "KEYCODE_ESCAPE", "&& imeWanted",
-            "return super.dispatchKeyEvent(event);", "child.requestFocus()",
+            "return super.dispatchKeyEvent(event);", "surface.requestFocus()",
+            "fcFindNativeSurface", "android.view.SurfaceView",
             "ctx.text_edit_focused()", "memory.surrender_focus(id)",
         )
         ast.parse(source, filename=path)

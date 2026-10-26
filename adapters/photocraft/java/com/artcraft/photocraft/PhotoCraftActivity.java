@@ -209,6 +209,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
                         @Override
                         public boolean sendKeyEvent(KeyEvent event) {
+                            if (relayTypeEscape(event)) return true;
                             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                                 int code = event.getKeyCode();
                                 if (code == KeyEvent.KEYCODE_DEL) {
@@ -232,6 +233,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
                 @Override
                 public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    if (relayTypeEscape(event)) return true;
                     // Let hardware key events fall through to the native input queue (winit), exactly
                     // as they did before this view existed; the soft keyboard talks to us through the
                     // InputConnection instead. This keeps physical keyboards working.
@@ -240,7 +242,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
                 @Override
                 public boolean onKeyUp(int keyCode, KeyEvent event) {
-                    return false;
+                    return relayTypeEscape(event);
                 }
 
                 @Override

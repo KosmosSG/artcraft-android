@@ -757,6 +757,7 @@ struct PhotoCraftAndroidApp {
     picker: Arc<PickerState>,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
+    type_escape_requested: bool,
     modifiers: AndroidModifiers,
     shortcut_pad: shortcut_pad::ShortcutPad,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -950,7 +951,14 @@ impl eframe::App for PhotoCraftAndroidApp {
         // No hardcoded tools: PhotoCraft's custom shortcut registry stays in charge.
         let was_editing_type = self.inner.ui.text_edit.is_some();
         self.inner.logic(ctx, frame);
+        if std::mem::take(&mut self.type_escape_requested) {
+            photocraft_ui_egui::menus::artcraft_finish_type_escape(&mut self.inner);
+        }
         if was_editing_type && self.inner.ui.text_edit.is_none() {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+            });
+            ctx.request_repaint();
             if let Err(error) = self.bridge.end_type_editing() {
                 log::warn!("Android Type keyboard handoff failed: {error}");
             }
@@ -1063,15 +1071,8 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
-        if photocraft_ui_egui::menus::artcraft_finish_type_escape(&mut self.inner, ctx, raw) {
-            ctx.memory_mut(|memory| {
-                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
-            });
-            if let Err(error) = self.bridge.end_type_editing() {
-                log::warn!("Android Type Escape focus handoff failed: {error}");
-            }
-            ctx.request_repaint();
-        }
+        self.type_escape_requested =
+            photocraft_ui_egui::menus::artcraft_type_escape_requested(&self.inner, ctx, raw);
         self.inner.raw_input_hook(ctx, raw);
     }
 }
@@ -1183,6 +1184,7 @@ fn android_main(android_app: AndroidApp) {
     state
 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
+                type_escape_requested: false,
                 modifiers: AndroidModifiers::default(),
                 shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),
                 intent_inbox: app_intent_inbox.clone(),

@@ -1,0 +1,303 @@
+name: Automatically publish verified ArtCraft test APKs as Pre-releases
+
+# Runs from the default branch only. Candidate workflows remain read-only and
+# have no GitHub Releases write permission. Stable releases are never touched.
+on:
+  workflow_run:
+    workflows:
+      - "PhotoCraft v0.14 Android compatibility and Test APK"
+      - "PhotoCraft approved icons ARM64 candidate (never publish)"
+      - "VectorCraft v0.14.0-android.11 signed feedback candidate (NO PUBLISH)"
+      - "VectorCraft v0.14 Keyboard Test APK (separate install)"
+      - "VectorCraft v0.16 Popup Test APK (never publish)"
+      - "VectorCraft v0.14 font and updater feedback Test APK (never publish)"
+      - "DesignCraft approved icons ARM64 candidate (never publish)"
+      - "DesignCraft ARM64 candidate"
+      - "EffectCraft v0.16.0 ARM64 candidate (ephemeral; never publish)"
+      - "EffectCraft approved icons ARM64 candidate (never publish)"
+      - "EffectCraft v0.14.0 ARM64 candidate (ephemeral; never publish)"
+      - "FilmCraft integrated fonts updates and approved icons (never publish)"
+      - "FilmCraft fonts/updater/icon ARM64 candidate (non-release)"
+      - "GridCraft production ARM64 signed APK (private artifact, no release)"
+      - "GridCraft v0.11.1 Android ARM64 candidate (isolated, no public release)"
+      - "DeckCraft permanently signed ARM64 review APK (no auto-publish)"
+      - "DeckCraft ARM64 candidate (ephemeral; never publish)"
+      - "LightCraft approved icons ARM64 candidate (never publish)"
+      - "LightCraft ARM64 candidate (no production signing or release)"
+      - "WordCraft ARM64 candidate (ephemeral; never publish)"
+      - "PDFCraft ARM64 ephemeral candidate (not a release)"
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: "Successful candidate Actions run ID for a one-off review of a missed workflow_run event"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: artcraft-auto-test-preview-${{ github.event.workflow_run.id || inputs.candidate_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish-test-preview:
+    if: >-
+      github.repository == 'KosmosSG/artcraft-android' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == 'KosmosSG/artcraft-android' &&
+        github.event.workflow_run.actor.login == 'KosmosSG' &&
+        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.candidate_run_id }}
+      EXPECTED_OWNER: KosmosSG
+    steps:
+      - name: Use guarded publisher code from the default branch (never candidate code)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Install Android build tools for independent APK checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0' >/dev/null
+      - name: Authenticate candidate provenance and fetch retained APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > candidate-run.json
+          python3 - <<'PY'
+          import json, os, sys
+          run = json.load(open('candidate-run.json'))
+          allowed = {
+            'photocraft': {'photocraft-v014-compat.yml', 'approved-icons-candidate.yml'},
+            'vectorcraft': {'vectorcraft-v014-android11-signed-candidate.yml', 'vectorcraft-v014-keyboard-test-apk.yml', 'vectorcraft-v016-popup-test.yml', 'vectorcraft-v014-feedback-test-apk.yml'},
+            'designcraft': {'approved-icons-candidate.yml', 'designcraft-candidate.yml'},
+            'effectcraft': {'effectcraft-candidate.yml', 'approved-icons-candidate.yml'},
+            'filmcraft': {'filmcraft-integrated-candidate.yml', 'filmcraft-candidate.yml'},
+            'gridcraft': {'gridcraft-production-apk.yml', 'gridcraft-candidate.yml'},
+            'deckcraft': {'deckcraft-permanent-signed-review.yml', 'deckcraft-candidate.yml'},
+            'lightcraft': {'approved-icons-candidate.yml', 'lightcraft-candidate.yml'},
+            'wordcraft': {'wordcraft-candidate.yml'},
+            'pdfcraft': {'pdfcraft-candidate.yml'},
+          }
+          # Names of branch-local workflows vary. Require exact vetted Actions
+          # workflow names too; a malicious or unrelated job cannot be promoted.
+          names = {
+            'PhotoCraft v0.14 Android compatibility and Test APK': 'photocraft',
+            'PhotoCraft approved icons ARM64 candidate (never publish)': 'photocraft',
+            'VectorCraft v0.14.0-android.11 signed feedback candidate (NO PUBLISH)': 'vectorcraft',
+            'VectorCraft v0.14 Keyboard Test APK (separate install)': 'vectorcraft',
+            'VectorCraft v0.16 Popup Test APK (never publish)': 'vectorcraft',
+            'VectorCraft v0.14 font and updater feedback Test APK (never publish)': 'vectorcraft',
+            'DesignCraft approved icons ARM64 candidate (never publish)': 'designcraft',
+            'DesignCraft ARM64 candidate': 'designcraft',
+            'EffectCraft v0.16.0 ARM64 candidate (ephemeral; never publish)': 'effectcraft',
+            'EffectCraft approved icons ARM64 candidate (never publish)': 'effectcraft',
+            'EffectCraft v0.14.0 ARM64 candidate (ephemeral; never publish)': 'effectcraft',
+            'FilmCraft integrated fonts updates and approved icons (never publish)': 'filmcraft',
+            'FilmCraft fonts/updater/icon ARM64 candidate (non-release)': 'filmcraft',
+            'GridCraft production ARM64 signed APK (private artifact, no release)': 'gridcraft',
+            'GridCraft v0.11.1 Android ARM64 candidate (isolated, no public release)': 'gridcraft',
+            'DeckCraft permanently signed ARM64 review APK (no auto-publish)': 'deckcraft',
+            'DeckCraft ARM64 candidate (ephemeral; never publish)': 'deckcraft',
+            'LightCraft approved icons ARM64 candidate (never publish)': 'lightcraft',
+            'LightCraft ARM64 candidate (no production signing or release)': 'lightcraft',
+            'WordCraft ARM64 candidate (ephemeral; never publish)': 'wordcraft',
+            'PDFCraft ARM64 ephemeral candidate (not a release)': 'pdfcraft',
+          }
+          name = run.get('name', '')
+          app = names.get(name)
+          path = run.get('path', '').split('/')[-1]
+          if not app or path not in allowed[app]:
+              sys.exit(f'STOP: unapproved workflow name/path: {name!r} {path!r}')
+          if (run.get('status'), run.get('conclusion')) != ('completed', 'success'):
+              sys.exit('STOP: source build was not successful')
+          if run.get('repository', {}).get('full_name') != 'KosmosSG/artcraft-android':
+              sys.exit('STOP: wrong build repository')
+          if run.get('head_repository', {}).get('full_name') != 'KosmosSG/artcraft-android':
+              sys.exit('STOP: candidate came from a fork')
+          if run.get('actor', {}).get('login') != 'KosmosSG':
+              sys.exit('STOP: candidate not started by repository owner')
+          if run.get('event') not in {'push', 'workflow_dispatch'}:
+              sys.exit('STOP: PR/fork-generated build cannot become a public preview')
+          open('app.txt', 'w').write(app)
+          print('Eligible owner-controlled build:', app, run['id'], run['head_sha'])
+          PY
+          mkdir -p stage
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -D stage
+      - name: Independently verify original APK, installed update safety and preview identity
+        id: verify
+        shell: bash
+        env:
+          APKSIGNER: ${{ env.ANDROID_HOME }}/build-tools/35.0.0/apksigner
+          AAPT: ${{ env.ANDROID_HOME }}/build-tools/35.0.0/aapt
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > known-releases.json
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil, subprocess, sys, zipfile
+          def command(*args):
+              return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT)
+          def identity(path):
+              badge = command(os.environ['AAPT'], 'dump', 'badging', str(path))
+              match = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badge, re.M)
+              if not match:
+                  sys.exit('STOP: unreadable APK package and version')
+              cert = command(os.environ['APKSIGNER'], 'verify', '--verbose', '--print-certs', str(path))
+              digests = re.findall(r'certificate SHA-256 digest: ([a-fA-F0-9]{64})', cert)
+              if len(set(d.lower() for d in digests)) != 1 or not digests:
+                  sys.exit('STOP: APK has no unambiguous valid signing certificate')
+              return match.group(1), int(match.group(2)), match.group(3), digests[0].lower()
+          app = pathlib.Path('app.txt').read_text()
+          run = json.loads(pathlib.Path('candidate-run.json').read_text())
+          apks = list(pathlib.Path('stage').rglob('*.apk'))
+          if len(apks) != 1:
+              sys.exit(f'STOP: expected exactly one APK in candidate artifacts, found {len(apks)}')
+          apk = apks[0]
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          pkg, code, version, signer = identity(apk)
+          expected = f'com.artcraft.{app}'
+          suffix = pkg[len(expected):].lower() if pkg.startswith(expected) else ''
+          if pkg == expected:
+              mode = 'upgradable'
+          elif pkg.startswith(expected + '.') and any(s in suffix for s in ('test', 'preview', 'candidate')):
+              mode = 'separate-test-install'
+          else:
+              sys.exit(f'STOP: APK package {pkg!r} is not approved for {app}')
+          if not re.fullmatch(r'\d+\.\d+\.\d+-android\.\d+', version):
+              sys.exit(f'STOP: unsupported Android preview version {version!r}')
+          if code <= 0:
+              sys.exit('STOP: invalid Android versionCode')
+          with zipfile.ZipFile(apk) as z:
+              if z.testzip() is not None:
+                  sys.exit('STOP: APK ZIP checksum failure')
+              names = z.namelist()
+              libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              if not libs or not all(n.startswith('lib/arm64-v8a/') for n in libs):
+                  sys.exit('STOP: not a validated ARM64-only APK')
+              if any(n.lower().endswith(('.jks', '.keystore', '.p12')) for n in names):
+                  sys.exit('STOP: unexpected signing key material inside APK')
+          for sums in pathlib.Path('stage').rglob('SHA256SUMS.txt'):
+              for line in sums.read_text().splitlines():
+                  m = re.fullmatch(r'([a-fA-F0-9]{64})\s+\*?(.+)', line.strip())
+                  if m and pathlib.Path(m.group(2)).name == apk.name and m.group(1).lower() != digest:
+                      sys.exit('STOP: recorded APK SHA-256 differs')
+          for proof in pathlib.Path('stage').rglob('verification.json'):
+              try:
+                  record = json.loads(proof.read_text())
+              except (ValueError, UnicodeError):
+                  sys.exit('STOP: malformed signed APK verification JSON')
+              for key, expected_value in [('apk_sha256', digest), ('certificate_sha256', signer)]:
+                  actual = record.get(key)
+                  if isinstance(actual, str) and actual.lower().replace(':', '') != expected_value:
+                      sys.exit(f'STOP: retained verification disagrees on {key}')
+          releases = json.loads(pathlib.Path('known-releases.json').read_text())
+          stable = sorted((
+              r for r in releases if not r['draft'] and not r['prerelease']
+              and r['tag_name'].lower().startswith(app + '-v')
+              and '-preview.' not in r['tag_name'].lower()
+              and any(a['name'].lower().endswith('.apk') for a in r.get('assets', []))
+          ), key=lambda r: r.get('published_at') or '', reverse=True)
+          if mode == 'upgradable' and stable:
+              baseline = stable[0]
+              possible = [a['name'] for a in baseline['assets'] if a['name'].lower().endswith('.apk')]
+              selected = next((a for a in possible if a.lower().startswith(app + '-v') and 'arm64' in a.lower()), None)
+              if not selected:
+                  sys.exit('STOP: no canonical stable APK to validate upgrade identity')
+              pathlib.Path('baseline').mkdir(exist_ok=True)
+              command('gh', 'release', 'download', baseline['tag_name'],
+                      '--repo', os.environ['GITHUB_REPOSITORY'],
+                      '--pattern', selected, '--dir', 'baseline')
+              prior_pkg, prior_code, _, prior_signer = identity(pathlib.Path('baseline') / selected)
+              if pkg != prior_pkg or signer != prior_signer:
+                  sys.exit('STOP: candidate cannot update stable app (different package/signing key)')
+              if code <= prior_code:
+                  print(f'SKIP: candidate versionCode {code} does not exceed installed stable {prior_code}')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('eligible=false\n')
+                  sys.exit(0)
+          elif mode == 'upgradable' and not stable:
+              sys.exit('STOP: first public release requires explicit production signer approval')
+          tag = f'{app}-v{version}-preview.{run["id"]}'
+          if subprocess.run(['gh', 'release', 'view', tag, '--repo',
+                             os.environ['GITHUB_REPOSITORY']], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL).returncode == 0:
+              print('SKIP: identical candidate run already has a GitHub Release')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('eligible=false\n')
+              sys.exit(0)
+          pathlib.Path('publish').mkdir(exist_ok=True)
+          copy = pathlib.Path('publish') / f'{app.capitalize()}-v{version}-arm64-v8a.apk'
+          # Use the original signed APK bytes, not a rebuild or a re-sign.
+          shutil.copyfile(apk, copy)
+          (pathlib.Path('publish') / 'SHA256SUMS.txt').write_text(f'{digest}  {copy.name}\n')
+          proof = dict(app=app, candidate_run_id=run['id'], source_commit=run['head_sha'],
+                       source_workflow=run['path'], source_branch=run.get('head_branch'),
+                       apk_sha256=digest, certificate_sha256=signer, package_name=pkg,
+                       version_name=version, version_code=code, mode=mode,
+                       original_signed_bytes_preserved=True,
+                       preview_only=True, owner_device_testing_pending=True)
+          (pathlib.Path('publish') / 'test-verification.json').write_text(json.dumps(proof, indent=2) + '\n')
+          note = (f'TESTING PRE-RELEASE for {app.title()} v{version}. Not a stable release.\n\n'
+                  f'Automatic publication of the successful owner-controlled candidate Actions run #{run["id"]}.\n'
+                  f'Build source commit: {run["head_sha"]}\n'
+                  f'Android package: {pkg}\nVersionCode: {code}\n'
+                  f'APK SHA-256: {digest}\nCertificate SHA-256: {signer}\n\n'
+                  + ('This APK uses the SAME package and signing certificate as the latest stable APK. '
+                     'It is eligible to update that release; device testing is still required.\n'
+                     if mode == 'upgradable' else
+                     'SEPARATE TEST INSTALL: this APK has an isolated test package; it does NOT update the stable app. '
+                     'Do not uninstall the stable app or delete user data.\n')
+                  + '\nNo automatic Stable release is authorized by this workflow.\n')
+          (pathlib.Path('publish') / 'RELEASE_NOTES.md').write_text(note)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              for key, value in {'eligible':'true','tag':tag, 'app':app,'version':version,
+                                 'sha':digest,'apk_name':copy.name,'source_sha':run['head_sha']}.items():
+                  f.write(f'{key}={value}\n')
+          print('PASS: verified test Pre-release:', tag, mode, digest)
+          PY
+      - name: Publish Pre-release ONLY (do not move latest Stable or overwrite old tags)
+        if: steps.verify.outputs.eligible == 'true'
+        env:
+          TAG: ${{ steps.verify.outputs.tag }}
+          APP: ${{ steps.verify.outputs.app }}
+          VERSION: ${{ steps.verify.outputs.version }}
+          APK_NAME: ${{ steps.verify.outputs.apk_name }}
+          SOURCE_SHA: ${{ steps.verify.outputs.source_sha }}
+          EXPECTED_SHA: ${{ steps.verify.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -z "$TAG"
+          test -f "publish/$APK_NAME"
+          echo "$EXPECTED_SHA  publish/$APK_NAME" | sha256sum --check
+          gh release create "$TAG" \
+            "publish/$APK_NAME" \
+            publish/SHA256SUMS.txt \
+            publish/test-verification.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "$APP v$VERSION — Automated Testing Preview (run $RUN_ID)" \
+            --notes-file publish/RELEASE_NOTES.md \
+            --prerelease \
+            --latest=false
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > released.json
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open('released.json'))
+          assert not r['draft'] and r['prerelease'], 'STOP: expected public Pre-release only'
+          a = next(x for x in r['assets'] if x['name'] == os.environ['APK_NAME'])
+          assert a['digest'] == 'sha256:' + os.environ['EXPECTED_SHA']
+          assert a['state'] == 'uploaded'
+          print('PUBLIC_TEST_PRE_RELEASE', r['html_url'])
+          print('APK_DOWNLOAD', a['browser_download_url'])
+          PY

@@ -58,6 +58,23 @@ def patch(root):
             artcraftRestoreCanvasFocus();
         }
         if (!imeWanted) artcraftRestoreCanvasFocus();
+        // Bypass focused EditText/SurfaceView dispatch: GameActivity's public
+        // handlers enqueue the original event (including modifiers and key-up).
+        // Let the IME keep printable input while editing; Escape always reaches
+        // the native editor, even if Android has already hidden its keyboard.
+        if (event != null
+                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0
+                && (event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
+                    || (!imeWanted && !event.isSystem()))) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                super.onKeyDown(event.getKeyCode(), event);
+                return true;
+            }
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+                super.onKeyUp(event.getKeyCode(), event);
+                return true;
+            }
+        }
         return super.dispatchKeyEvent(event);
     }''')
     text = replace_once(text, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();')

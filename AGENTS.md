@@ -13,6 +13,13 @@ Scope: every ArtCraft Android app maintained in this repository, including futur
 - Use the standard Android naming convention: **AppName vX.Y.Z-android.N** (title), `appname-vX.Y.Z-android.N` (tag), `AppName-vX.Y.Z-android.N-arm64-v8a.apk` (canonical APK). Retain an identical-bytes legacy alias when an older installed updater genuinely requires it.
 - Implement app-native behavior compatible with its architecture. PhotoCraft is the design/behavior reference; copying its implementation blindly is not sufficient.
 
+## Physical keyboard, text editing and Escape behavior (COMPATIBILITY STANDARD)
+
+- Read [docs/ARTCRAFT_ANDROID_KEYBOARD_COMPATIBILITY.md](docs/ARTCRAFT_ANDROID_KEYBOARD_COMPATIBILITY.md) before touching the Android keyboard bridge, shortcut router, Type/Text tools, hidden IME EditText, contextual bars, or custom shortcut settings.
+- On HONOR MagicPad 4, **Escape must exit text editing, release stale Android/egui text input focus, and leave the app's normal hardware shortcuts immediately usable**. A second Escape may dismiss the application's contextual bar only through its actual supported UI state/action, when no modal dialog or IME composition owns the key. Never globally remap Android Back or hard-code VectorCraft's V/T/P mapping into applications with different keymaps.
+- Preserve Chinese IME/composition, ordinary typing, KeyUp, command/shift/alt modifiers, clipboard, autosave, custom shortcut overrides, package name, fonts, updates and existing app-specific functionality. Use per-app opt-in tests plus owner device verification before releases.
+- Document source checks, compiled ARM64 package/signature checks, and owner tests separately; structural checks are not proof that a keyboard shortcut works on the tablet.
+
 ## Required evidence for each app
 
 1. Read [docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md](docs/ARTCRAFT_ANDROID_FONT_UPDATE_STANDARD.md), [configs/feature-parity.json](configs/feature-parity.json), and [tools/suite_feature_parity.py](tools/suite_feature_parity.py) before starting a new app or release workflow.

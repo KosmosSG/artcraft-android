@@ -1137,7 +1137,10 @@ impl eframe::App for PhotoCraftAndroidApp {
         if native + bridged > 0 {
             self.escape_snapshot = photocraft_ui_egui::menus::artcraft_escape_state(&self.inner, ctx);
             self.escape_snapshot.push_str(&format!(" eligible={} modifiers={:?}",
-                self.type_escape_requested, raw.modifiers));
+                self.type_escape_requested, raw.events.iter().find_map(|event| match event {
+                    egui::Event::Key { key: egui::Key::Escape, pressed: true, modifiers, .. } => Some(*modifiers),
+                    _ => None,
+                })));
         }
         self.inner.raw_input_hook(ctx, raw);
     }

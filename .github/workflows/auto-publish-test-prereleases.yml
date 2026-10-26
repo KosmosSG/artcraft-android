@@ -26,6 +26,21 @@ on:
       - "LightCraft ARM64 candidate (no production signing or release)"
       - "WordCraft ARM64 candidate (ephemeral; never publish)"
       - "PDFCraft ARM64 ephemeral candidate (not a release)"
+      - "PhotoCraft keyboard fix and latest released icons ARM64 candidate"
+      - "PhotoCraft v0.12 combined-feature Test APK"
+      - "VectorCraft v0.14 Physical Tool Keys Fix Test APK"
+      - "VectorCraft approved icons ARM64 candidate (never publish)"
+      - "VectorCraft approved icon permanent signing candidate ONLY"
+      - "VectorCraft v0.14 EffectCraft-style Update Dialog Test APK (never publish)"
+      - "VectorCraft v0.16 disposable Android Test APK (never publish)"
+      - "FilmCraft approved icons ARM64 candidate (never publish)"
+      - "FilmCraft pinned ephemeral Android candidate (non-release)"
+      - "GridCraft approved icons ARM64 candidate (never publish)"
+      - "DeckCraft approved icons ARM64 candidate (never publish)"
+      - "DeckCraft approved icon permanent signing candidate ONLY"
+      - "WordCraft approved icons ARM64 candidate (never publish)"
+      - "PDFCraft approved icons ARM64 candidate (never publish)"
+      - "PDFCraft approved icon permanent signing candidate ONLY"
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -78,16 +93,23 @@ jobs:
           import json, os, sys
           run = json.load(open('candidate-run.json'))
           allowed = {
-            'photocraft': {'photocraft-v014-compat.yml', 'approved-icons-candidate.yml'},
-            'vectorcraft': {'vectorcraft-v014-android11-signed-candidate.yml', 'vectorcraft-v014-keyboard-test-apk.yml', 'vectorcraft-v016-popup-test.yml', 'vectorcraft-v014-feedback-test-apk.yml'},
+            'photocraft': {'photocraft-v014-compat.yml', 'photocraft-v012-candidate.yml', 'approved-icons-candidate.yml'},
+            'vectorcraft': {'vectorcraft-v014-android11-signed-candidate.yml',
+                            'vectorcraft-v014-keyboard-test-apk.yml', 'vectorcraft-v016-test-apk.yml',
+                            'vectorcraft-v014-feedback-test-apk.yml', 'approved-icons-candidate.yml',
+                            'approved-icon-signing-only.yml'},
             'designcraft': {'approved-icons-candidate.yml', 'designcraft-candidate.yml'},
             'effectcraft': {'effectcraft-candidate.yml', 'approved-icons-candidate.yml'},
-            'filmcraft': {'filmcraft-integrated-candidate.yml', 'filmcraft-candidate.yml'},
-            'gridcraft': {'gridcraft-production-apk.yml', 'gridcraft-candidate.yml'},
-            'deckcraft': {'deckcraft-permanent-signed-review.yml', 'deckcraft-candidate.yml'},
+            'filmcraft': {'filmcraft-integrated-candidate.yml', 'filmcraft-ephemeral-candidate.yml',
+                          'approved-icons-candidate.yml'},
+            'gridcraft': {'gridcraft-production-apk.yml', 'gridcraft-android-candidate.yml',
+                          'approved-icons-candidate.yml'},
+            'deckcraft': {'deckcraft-signed-ci.yml', 'deckcraft-candidate.yml',
+                          'approved-icons-candidate.yml', 'approved-icon-signing-only.yml'},
             'lightcraft': {'approved-icons-candidate.yml', 'lightcraft-candidate.yml'},
-            'wordcraft': {'wordcraft-candidate.yml'},
-            'pdfcraft': {'pdfcraft-candidate.yml'},
+            'wordcraft': {'wordcraft-candidate.yml', 'approved-icons-candidate.yml'},
+            'pdfcraft': {'pdfcraft-candidate.yml', 'approved-icons-candidate.yml',
+                         'approved-icon-signing-only.yml'},
           }
           # Names of branch-local workflows vary. Require exact vetted Actions
           # workflow names too; a malicious or unrelated job cannot be promoted.
@@ -113,6 +135,21 @@ jobs:
             'LightCraft ARM64 candidate (no production signing or release)': 'lightcraft',
             'WordCraft ARM64 candidate (ephemeral; never publish)': 'wordcraft',
             'PDFCraft ARM64 ephemeral candidate (not a release)': 'pdfcraft',
+            'PhotoCraft keyboard fix and latest released icons ARM64 candidate': 'photocraft',
+            'PhotoCraft v0.12 combined-feature Test APK': 'photocraft',
+            'VectorCraft v0.14 Physical Tool Keys Fix Test APK': 'vectorcraft',
+            'VectorCraft approved icons ARM64 candidate (never publish)': 'vectorcraft',
+            'VectorCraft approved icon permanent signing candidate ONLY': 'vectorcraft',
+            'VectorCraft v0.14 EffectCraft-style Update Dialog Test APK (never publish)': 'vectorcraft',
+            'VectorCraft v0.16 disposable Android Test APK (never publish)': 'vectorcraft',
+            'FilmCraft approved icons ARM64 candidate (never publish)': 'filmcraft',
+            'FilmCraft pinned ephemeral Android candidate (non-release)': 'filmcraft',
+            'GridCraft approved icons ARM64 candidate (never publish)': 'gridcraft',
+            'DeckCraft approved icons ARM64 candidate (never publish)': 'deckcraft',
+            'DeckCraft approved icon permanent signing candidate ONLY': 'deckcraft',
+            'WordCraft approved icons ARM64 candidate (never publish)': 'wordcraft',
+            'PDFCraft approved icons ARM64 candidate (never publish)': 'pdfcraft',
+            'PDFCraft approved icon permanent signing candidate ONLY': 'pdfcraft',
           }
           name = run.get('name', '')
           app = names.get(name)

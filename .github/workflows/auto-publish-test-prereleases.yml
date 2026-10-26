@@ -3,6 +3,9 @@ name: Automatically publish verified ArtCraft test APKs as Pre-releases
 # Runs from the default branch only. Candidate workflows remain read-only and
 # have no GitHub Releases write permission. Stable releases are never touched.
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/auto-publish-test-prereleases.yml']
   workflow_run:
     workflows:
       - "PhotoCraft v0.14 Android compatibility and Test APK"
@@ -58,6 +61,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-workflow:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile embedded Python validators and confirm no Stable release promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, textwrap
+          source = pathlib.Path('.github/workflows/auto-publish-test-prereleases.yml').read_text()
+          parts = re.findall(r"^          python3 - <<'PY'\n(.*?)^          PY$", source, re.S | re.M)
+          assert len(parts) >= 3, f'Expected all candidate verification Python blocks, found {len(parts)}'
+          for i, block in enumerate(parts):
+              compile(textwrap.dedent(block), f'artcraft_preflight_{i}.py', 'exec')
+          assert '            --prerelease \\' in source
+          assert '            --latest=false' in source
+          assert 'github.event.workflow_run.conclusion == \'success\'' in source
+          print(f'PASS: compiled {len(parts)} embedded Python blocks; auto-promotion is Pre-release only')
+          PY
   publish-test-preview:
     if: >-
       github.repository == 'KosmosSG/artcraft-android' &&

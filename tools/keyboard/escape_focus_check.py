@@ -26,15 +26,15 @@ def main(app: str) -> None:
             "boolean dispatchKeyEvent(KeyEvent event)",
             "KeyEvent.KEYCODE_ESCAPE", "&& imeWanted",
             "imeHide();", "return super.dispatchKeyEvent(event);",
-            "view.clearFocus();", "child.requestFocus()",
+            "view.clearFocus();", "artcraftRestoreCanvasFocus()",
         )
         assert source.index("imeHide();", source.index("boolean dispatchKeyEvent")) < source.index("return super.dispatchKeyEvent(event);")
     elif app == "designcraft":
         path = "tools/designcraft/support/patch_launcher.py"
         source = require(
             path, "KeyEvent.KEYCODE_ESCAPE", "&& imeWanted",
-            "return super.dispatchKeyEvent(event);", "child.requestFocus()",
-            "ctx.text_edit_focused()", "memory.surrender_focus(id)",
+            "return super.dispatchKeyEvent(event);", "artcraftRestoreCanvasFocus()",
+            "android.view.SurfaceView",
         )
         ast.parse(source, filename=path)
     elif app == "filmcraft":
@@ -43,14 +43,14 @@ def main(app: str) -> None:
             path, "KEYCODE_ESCAPE", "&& imeWanted",
             "return super.dispatchKeyEvent(event);", "surface.requestFocus()",
             "fcFindNativeSurface", "android.view.SurfaceView",
-            "ctx.text_edit_focused()", "memory.surrender_focus(id)",
+            "android.view.SurfaceView",
         )
         ast.parse(source, filename=path)
     elif app == "effectcraft":
         path = "tools/effectcraft/integrate_updater.py"
         source = require(
             path, "KeyEvent.KEYCODE_ESCAPE", "&& imeWanted",
-            "return super.dispatchKeyEvent(event);", "child.requestFocus()",
+            "return super.dispatchKeyEvent(event);", "artcraftRestoreCanvasFocus()",
             'once(j,', "imeHide();",
         )
         ast.parse(source, filename=path)
@@ -66,9 +66,14 @@ def main(app: str) -> None:
              "filmcraft": "tools/filmcraft/runtime_patch.py",
              "effectcraft": "tools/effectcraft/integrate_updater.py"}[app],
             "event.getRepeatCount() == 0", "event.hasNoModifiers()")
+    source = (ROOT / 'tools/filmcraft/runtime_patch.py').read_text()
+    assert 'memory.surrender_focus(id)' not in source, 'Do not destroy the text editor Escape lock before input processing'
+    assert 'escape_hide_taskbar' not in source
     print(f"PASS: {app} Escape-to-canvas focus markers; APK/device verification still needed")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit("usage: python escape_focus_check.py <app>")
     main(sys.argv[1])
+    import subprocess
+    subprocess.run([sys.executable, str(ROOT / "tools/keyboard/test_native_focus.py")], check=True)

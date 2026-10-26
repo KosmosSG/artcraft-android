@@ -51,16 +51,6 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         rust, '        self.inner.logic(ctx, frame);',
         '        self.features.poll(ctx);\n        self.inner.logic(ctx, frame);',
         "Feature event polling")
-    # Physical Escape must leave Android's text-edit focus without stealing other
-    # keyboard shortcuts. Do not synthesize V/T: the upstream keymap owns them.
-    rust = require_once(
-        rust, '        self.ime.poll(raw);',
-        '        self.ime.poll(raw);\n'
-        '        if raw.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))\n'
-        '            && ctx.text_edit_focused() {\n'
-        '            ctx.memory_mut(|memory| { if let Some(id) = memory.focused() { memory.surrender_focus(id); } });\n'
-        '        }',
-        "Android Escape text focus handoff")
     rust = require_once(
         rust, '        system_fonts::install_system_fonts(ui.ctx());',
         '        system_fonts::install_system_fonts(ui.ctx());\n'
@@ -96,6 +86,7 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         '                surface.requestFocus();\n'
         '            }\n'
         '        }\n'
+        '        if (!imeWanted) artcraftRestoreCanvasFocus();\n'
         '        return super.dispatchKeyEvent(event);\n'
         '    }\n'
         '    private android.view.View fcFindNativeSurface(android.view.View node) {\n'
@@ -111,6 +102,30 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         '        return null;\n'
         '    }\n',
         "Escape release Android IME focus")
+    java = require_once(java, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'Restore native surface after any text exit')
+    java = java[:java.rfind('}')] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + java[java.rfind('}'):]
     if 'private static final int FC_FONT_PICK' not in java:
         if not java.rstrip().endswith('}'):
             raise RuntimeError("Java activity is not a complete class")

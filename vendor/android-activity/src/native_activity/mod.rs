@@ -598,7 +598,27 @@ impl InputIteratorInner<'_> {
         if let Ok(Some(ndk_event)) = queue.event() {
             log::trace!("queue: got event: {ndk_event:?}");
 
-            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
+            // PhotoCraft opts in: NativeActivity pre-dispatch can send Escape
+            // straight to the IME, bypassing both Java view hooks and winit.
+            // Deliver BOTH edges through the normal callback/finish_event path.
+            // Printable keys, composition, Back and other apps keep pre-dispatch.
+            #[cfg(feature = "artcraft-native-escape")]
+            let native_escape = match &ndk_event {
+                ndk::event::InputEvent::KeyEvent(event) => {
+                    // SAFETY: event owns a live NDK key-event reference here.
+                    (unsafe { ndk_sys::AKeyEvent_getKeyCode(event.ptr().as_ptr()) })
+                        == ndk_sys::AKEYCODE_ESCAPE as i32
+                }
+                _ => false,
+            };
+            #[cfg(not(feature = "artcraft-native-escape"))]
+            let native_escape = false;
+            let dispatched = if native_escape {
+                Some(ndk_event)
+            } else {
+                queue.pre_dispatch(ndk_event)
+            };
+            if let Some(ndk_event) = dispatched {
                 let event = match ndk_event {
                     ndk::event::InputEvent::MotionEvent(e) => {
                         input::InputEvent::MotionEvent(input::MotionEvent::new(e))

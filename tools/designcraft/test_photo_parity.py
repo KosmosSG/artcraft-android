@@ -36,6 +36,19 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn('if (!validHeader)', java)
         self.assertNotIn('target.delete();', java)
 
+    def test_android_font_cache_is_writable_and_keeps_system_font_discovery(self):
+        system_fonts = Path("templates/android/system_fonts.rs").read_text()
+        android_font = Path("tools/designcraft/support/tablet.rs").read_text()
+        shared_font = Path("tools/designcraft/support/font_methods.java").read_text()
+        self.assertIn('let user_fonts = home.join(".local/share/fonts");', system_fonts)
+        self.assertIn('create_dir_all(&user_fonts)', system_fonts)
+        self.assertIn('user_fonts.join("android-system")', system_fonts)
+        self.assertIn('read_link(&user_fonts)', system_fonts)
+        self.assertNotIn('home.join(".local/share/fonts"),\n        base.join("fonts")', system_fonts)
+        self.assertIn('join(".local/share/fonts/imported")', android_font)
+        self.assertIn('"home/.local/share/fonts/shared"', shared_font)
+        self.assertIn('app.run("font.reload"', android_font)
+
     def test_updater_rejects_disposable_test_package(self):
         java = Path("tools/designcraft/support/update_methods.java").read_text()
         self.assertIn('if (!"com.artcraft.designcraft".equals(getPackageName()))', java)

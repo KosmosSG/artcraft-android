@@ -4,6 +4,7 @@ name: EffectCraft approved icons ARM64 candidate (never publish)
     branches:
     - icons/effectcraft-approved-20261024
     - refine/effectcraft-esc-focus-20261025
+    - release/effectcraft-esc-android5-20261027
     paths:
     - tools/effectcraft/**
     - tools/keyboard/**

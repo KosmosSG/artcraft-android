@@ -92,6 +92,7 @@ public final class PhotoCraftActivity extends NativeActivity {
     private volatile int pcTypeEnded = 0;
     private volatile int pcLastKey = -1;
     private volatile int pcLastScan = -1;
+    private volatile int pcLastSource = -1;
     private volatile int pcBackCalls = 0;
 
     @Override
@@ -101,10 +102,10 @@ public final class PhotoCraftActivity extends NativeActivity {
     }
 
     public String pcKeyboardStatus() {
-        return "Java Esc seen=" + pcEscapeSeen + " queued=" + pcEscapeQueued
+        return "Java E3 Esc seen=" + pcEscapeSeen + " queued=" + pcEscapeQueued
                 + " polled=" + pcEscapePolled + " ended=" + pcTypeEnded
                 + " imeWanted=" + imeWanted
-                + " lastCode=" + pcLastKey + " scan=" + pcLastScan + " backCalls=" + pcBackCalls;
+                + " lastCode=" + pcLastKey + " scan=" + pcLastScan + " source=" + pcLastSource + " backCalls=" + pcBackCalls;
     }
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
@@ -347,8 +348,15 @@ public final class PhotoCraftActivity extends NativeActivity {
         if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) {
             pcLastKey = event.getKeyCode();
             pcLastScan = event.getScanCode();
+            pcLastSource = event.getSource();
         }
-        if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_ESCAPE) return false;
+        if (event == null) return false;
+        // HONOR's physical Esc is delivered here as Back / Linux KEY_BACK.
+        // Match the observed hardware scan code, not a source classification:
+        // IME/OEM routing may change the source. Gesture/soft Back has no such scan.
+        boolean escape = event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
+                || (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getScanCode() == 158);
+        if (!escape) return false;
         if (event.getAction() == KeyEvent.ACTION_DOWN) pcEscapeSeen++;
         if (pcEscapeCaptured) {
             if (event.getAction() == KeyEvent.ACTION_UP) {

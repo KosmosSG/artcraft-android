@@ -31,6 +31,9 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
     if 'java_sources = "java"' not in manifest:
         raise RuntimeError("FilmCraft Java SAF bridge is missing")
 
+    rust = require_once(rust, '        self.inner.ui(ui, frame);', '        self.inner.ui(ui, frame);\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n', "Release Android field focus")
+    rust = require_once(rust, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n', 'Capture Android Escape')
+    rust = require_once(rust, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.dialog.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && self.inner.ui.gfx_edit.is_some()\n            && ui.memory(|m| m.focused().is_none_or(|id| id == egui::Id::new("gfx-text-edit"))) {\n            // Same editing-state cleanup as the monitor\'s end_edit; keep layer selection.\n            self.inner.ui.gfx_edit = None;\n            ui.memory_mut(|m| m.surrender_focus(egui::Id::new("gfx-text-edit")));\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());', 'End Android text edit')
     rust = require_once(
         rust, 'mod system_fonts;', 'mod system_fonts;\nmod filmcraft_features;',
         "Rust feature module")
@@ -51,16 +54,6 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         rust, '        self.inner.logic(ctx, frame);',
         '        self.features.poll(ctx);\n        self.inner.logic(ctx, frame);',
         "Feature event polling")
-    # Physical Escape must leave Android's text-edit focus without stealing other
-    # keyboard shortcuts. Do not synthesize V/T: the upstream keymap owns them.
-    rust = require_once(
-        rust, '        self.ime.poll(raw);',
-        '        self.ime.poll(raw);\n'
-        '        if raw.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::Escape, pressed: true, .. }))\n'
-        '            && ctx.text_edit_focused() {\n'
-        '            ctx.memory_mut(|memory| { if let Some(id) = memory.focused() { memory.surrender_focus(id); } });\n'
-        '        }',
-        "Android Escape text focus handoff")
     rust = require_once(
         rust, '        system_fonts::install_system_fonts(ui.ctx());',
         '        system_fonts::install_system_fonts(ui.ctx());\n'
@@ -84,13 +77,75 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         'public final class FilmCraftActivity extends GameActivity {\n'
         '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n'
         '        if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE\n'
-        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted) {\n'
+        '                && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {\n'
         '            if (imeView != null) imeView.clearFocus();\n'
         '            imeHide();\n'
+        '            // Never focus a different overlay or a container: GameActivity\'s\n'
+        '            // actual SurfaceView owns the hardware-key dispatch.\n'
+        '            android.view.View surface = fcFindNativeSurface(getWindow().getDecorView());\n'
+        '            if (surface != null) {\n'
+        '                surface.setFocusable(true);\n'
+        '                surface.setFocusableInTouchMode(true);\n'
+        '                surface.requestFocus();\n'
+        '            }\n'
+        '        }\n'
+        '        if (!imeWanted) artcraftRestoreCanvasFocus();\n'
+        "        // Bypass focused EditText/SurfaceView dispatch: GameActivity's public\n"
+        '        // handlers enqueue the original event (including modifiers and key-up).\n'
+        '        // Let the IME keep printable input while editing; Escape always reaches\n'
+        '        // the native editor, even if Android has already hidden its keyboard.\n'
+        '        if (event != null\n'
+        '                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0\n'
+        '                && (event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE\n'
+        '                    || (!imeWanted && !event.isSystem()))) {\n'
+        '            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {\n'
+        '                super.onKeyDown(event.getKeyCode(), event);\n'
+        '                return true;\n'
+        '            }\n'
+        '            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {\n'
+        '                super.onKeyUp(event.getKeyCode(), event);\n'
+        '                return true;\n'
+        '            }\n'
         '        }\n'
         '        return super.dispatchKeyEvent(event);\n'
+        '    }\n'
+        '    private android.view.View fcFindNativeSurface(android.view.View node) {\n'
+        '        if (node == null || !node.isShown()) return null;\n'
+        '        if (node instanceof android.view.SurfaceView) return node;\n'
+        '        if (node instanceof android.view.ViewGroup) {\n'
+        '            android.view.ViewGroup group = (android.view.ViewGroup) node;\n'
+        '            for (int i = 0; i < group.getChildCount(); i++) {\n'
+        '                android.view.View found = fcFindNativeSurface(group.getChildAt(i));\n'
+        '                if (found != null) return found;\n'
+        '            }\n'
+        '        }\n'
+        '        return null;\n'
         '    }\n',
         "Escape release Android IME focus")
+    java = require_once(java, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'Restore native surface after any text exit')
+    java = java[:java.rfind('}')] + """
+    private android.view.View artcraftNativeSurface(android.view.View node) {
+        if (node == null || !node.isShown()) return null;
+        if (node instanceof android.view.SurfaceView) return node;
+        if (node instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = artcraftNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void artcraftRestoreCanvasFocus() {
+        android.view.Window win = getWindow();
+        android.view.View surface = win == null ? null : artcraftNativeSurface(win.getDecorView());
+        if (surface != null && !surface.hasFocus()) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            surface.requestFocus();
+        }
+    }
+""" + java[java.rfind('}'):]
     if 'private static final int FC_FONT_PICK' not in java:
         if not java.rstrip().endswith('}'):
             raise RuntimeError("Java activity is not a complete class")

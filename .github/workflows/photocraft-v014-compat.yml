@@ -2,7 +2,7 @@ name: PhotoCraft v0.14 Android compatibility and Test APK
 
 on:
   push:
-    branches: [development/photocraft-v014-android1-20261023, development/photocraft-v014-update-dock-20261023, refine/photocraft-esc-focus-20261025]
+    branches: [development/photocraft-v014-android1-20261023, development/photocraft-v014-update-dock-20261023, refine/photocraft-vectorcraft-type-exit-20261026]
     paths:
       - '.github/workflows/photocraft-v014-compat.yml'
       - 'configs/photocraft-v0.14.0-android.1.json'
@@ -15,6 +15,9 @@ on:
       - 'tools/photocraft_v014_brand_port.py'
       - 'adapters/photocraft/**'
       - 'templates/android/**'
+      - 'vendor/android-activity/**'
+      - 'tools/approved-branding/**'
+      - 'tools/keyboard/**'
   workflow_dispatch:
 
 # Never publish, access permanent signing secrets or synchronize upstream.
@@ -23,7 +26,7 @@ permissions:
 
 jobs:
   guarded-android-test:
-    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/development/photocraft-v014-android1-20261023' || github.ref == 'refs/heads/development/photocraft-v014-update-dock-20261023' || github.ref == 'refs/heads/refine/photocraft-esc-focus-20261025')
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/development/photocraft-v014-android1-20261023' || github.ref == 'refs/heads/development/photocraft-v014-update-dock-20261023' || github.ref == 'refs/heads/refine/photocraft-vectorcraft-type-exit-20261026')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -31,6 +34,7 @@ jobs:
       ARTCRAFT_TARGET_SDK: '35'
       ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
       CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_KEYBOARD_DIAGNOSTICS: 'PC-E2'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -58,6 +62,10 @@ jobs:
         with:
           toolchain: '1.95.0'
           targets: aarch64-linux-android
+      - name: Test keyboard Back-to-Escape mapping boundaries
+        run: |
+          rustc --edition 2021 --test vendor/android-activity/src/native_activity/keyboard_escape.rs -o "$RUNNER_TEMP/keyboard-escape-tests"
+          "$RUNNER_TEMP/keyboard-escape-tests"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -98,6 +106,13 @@ jobs:
           python3 tools/photocraft_v012_candidate.py stage
           python3 tools/photocraft_v012_candidate.py verify
           test ! -e keys/artcraft-builder.jks
+      - name: Install exact latest approved launcher and native UI artwork
+        run: |
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/approved-branding/approved_branding.py check
+          python3 -m unittest discover -s tools/approved-branding -p 'test_*.py' -v
+          python3 tools/approved-branding/install_packager.py
+          python3 tools/approved-branding/approved_branding.py install . photocraft
       - name: Compile ARM64 Test APK using a temporary local-only signing key
         timeout-minutes: 130
         run: |
@@ -136,6 +151,11 @@ jobs:
           PY
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/signing.txt
           sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Verify actual APK approved artwork and isolated identity
+        run: |
+          python3 tools/approved-branding/verify_apk.py . icon-verification
+          mkdir -p candidate/icon-verification
+          cp icon-verification/*.json icon-verification/*.txt candidate/icon-verification/
       - name: Record exact keyboard candidate source
         run: |
           mkdir -p candidate

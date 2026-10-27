@@ -40,6 +40,54 @@ pub fn artcraft_shortcut_pad_chrome_hidden(app: &PhotocraftApp) -> bool {
     app.ui.view.hides_chrome()
 }
 
+// Match VectorCraft's guarded direct Type exit, using PhotoCraft's own
+// commit/cancel semantics and preference. Never remap printable shortcuts.
+#[cfg(target_os = "android")]
+pub fn artcraft_type_escape_requested(app: &PhotocraftApp, ctx: &egui::Context, raw: &egui::RawInput) -> bool {
+    if app.ui.text_edit.is_none() { return false; }
+    if ctx.text_edit_focused()
+        || !app.ui.dialogs.is_empty() || app.discard.is_some()
+        || crate::type_transform::active(app)
+        || crate::menu_nav::is_open(ctx) || crate::menu_keys::is_focused(ctx)
+        || crate::widgets::dropdown_list_open(ctx)
+        || app.ui.canvas_tool_menu.is_some()
+    { return false; }
+    let escape = |e: &egui::Event| matches!(e,
+        egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }
+        if !modifiers.any());
+    raw.events.iter().any(escape)
+}
+
+// Run AFTER upstream logic has applied this frame's text/IME events. Preedit is
+// already stored in the text layer; native commit preserves it just as clicking
+// outside the layer does. Never discard an Escape because text shared its frame.
+#[cfg(target_os = "android")]
+pub fn artcraft_finish_type_escape(app: &mut PhotocraftApp) -> bool {
+    let Some(edit) = app.ui.text_edit.as_ref() else { return false };
+    if edit.mask || !app.session.prefs().type_.use_esc_to_commit {
+        crate::type_tool::cancel(app);
+    } else {
+        crate::type_tool::commit(app);
+    }
+    if app.ui.text_edit.is_some() { return false; }
+    true
+}
+
+#[cfg(target_os = "android")]
+pub fn artcraft_escape_state(app: &PhotocraftApp, ctx: &egui::Context) -> String {
+    format!("At Esc: field={} keyboard={} inline={} dialogs={} discard={} transform={} menu={} menukeys={} dropdown={} toolmenu={}",
+        ctx.text_edit_focused(), ctx.egui_wants_keyboard_input(), app.ui.text_edit.is_some(),
+        app.ui.dialogs.len(), app.discard.is_some(), crate::type_transform::active(app),
+        crate::menu_nav::is_open(ctx), crate::menu_keys::is_focused(ctx),
+        crate::widgets::dropdown_list_open(ctx), app.ui.canvas_tool_menu.is_some())
+}
+
+#[cfg(target_os = "android")]
+pub fn artcraft_discard_prompt_owns_keyboard(app: &PhotocraftApp) -> bool {
+    app.discard.is_some() && !app.file_dialog_open() && !app.saving()
+        && app.ui.dialogs.is_empty()
+}
+
 const CUSTOM_FONTS_ID: &str = "window.artcraftCustomFonts";
 const FONT_CATALOG_ID: &str = "window.artcraftFontCatalog";
 const SHARED_SELECT_ID: &str = "window.artcraftSharedFontsSelect";

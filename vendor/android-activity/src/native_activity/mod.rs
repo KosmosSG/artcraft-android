@@ -21,6 +21,8 @@ use crate::{
 };
 
 pub mod input;
+#[cfg(feature = "artcraft-native-escape")]
+mod keyboard_escape;
 use crate::input::{
     device_key_character_map, Axis, ImeOptions, InputType, KeyCharacterMap, TextInputAction,
     TextInputState, TextSpan,
@@ -29,6 +31,15 @@ use crate::input::{
 mod glue;
 use self::glue::NativeActivityGlue;
 pub use self::glue::set_nonblocking_callbacks;
+
+// Candidate diagnostics: last key-down code/scan code, never text content.
+#[cfg(feature = "artcraft-native-escape")]
+static ARTCRAFT_KEY_PROBE: Mutex<(u64, i32, i32)> = Mutex::new((0, -1, -1));
+
+#[cfg(feature = "artcraft-native-escape")]
+pub fn artcraft_native_key_probe() -> (u64, i32, i32) {
+    *ARTCRAFT_KEY_PROBE.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 pub const LOOPER_ID_MAIN: libc::c_int = 1;
 pub const LOOPER_ID_INPUT: libc::c_int = 2;
@@ -598,7 +609,48 @@ impl InputIteratorInner<'_> {
         if let Ok(Some(ndk_event)) = queue.event() {
             log::trace!("queue: got event: {ndk_event:?}");
 
-            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
+            #[cfg(feature = "artcraft-native-escape")]
+            if option_env!("ARTCRAFT_KEYBOARD_DIAGNOSTICS") == Some("PC-E2") {
+                if let ndk::event::InputEvent::KeyEvent(event) = &ndk_event {
+                    // SAFETY: this is a live key event owned by the queue.
+                    let (action, code, scan) = unsafe {
+                        let ptr = event.ptr().as_ptr();
+                        (ndk_sys::AKeyEvent_getAction(ptr), ndk_sys::AKeyEvent_getKeyCode(ptr),
+                         ndk_sys::AKeyEvent_getScanCode(ptr))
+                    };
+                    if action == ndk_sys::AKEY_EVENT_ACTION_DOWN as i32 {
+                        let mut probe = ARTCRAFT_KEY_PROBE.lock().unwrap_or_else(|e| e.into_inner());
+                        *probe = (probe.0 + 1, code, scan);
+                    }
+                }
+            }
+            // PhotoCraft opts in: NativeActivity pre-dispatch can send Escape
+            // straight to the IME, bypassing both Java view hooks and winit.
+            // Deliver BOTH edges through the normal callback/finish_event path.
+            // Printable keys, composition, software Back and other apps keep pre-dispatch.
+            #[cfg(feature = "artcraft-native-escape")]
+            let native_escape = match &ndk_event {
+                ndk::event::InputEvent::KeyEvent(event) => {
+                    // SAFETY: event owns a live NDK key-event reference here.
+                    unsafe {
+                        let ptr = event.ptr().as_ptr();
+                        let code = ndk_sys::AKeyEvent_getKeyCode(ptr);
+                        code == ndk_sys::AKEYCODE_ESCAPE as i32
+                            || keyboard_escape::keyboard_back_is_escape(
+                                code, ndk_sys::AKeyEvent_getScanCode(ptr),
+                                ndk_sys::AInputEvent_getSource(ptr))
+                    }
+                }
+                _ => false,
+            };
+            #[cfg(not(feature = "artcraft-native-escape"))]
+            let native_escape = false;
+            let dispatched = if native_escape {
+                Some(ndk_event)
+            } else {
+                queue.pre_dispatch(ndk_event)
+            };
+            if let Some(ndk_event) = dispatched {
                 let event = match ndk_event {
                     ndk::event::InputEvent::MotionEvent(e) => {
                         input::InputEvent::MotionEvent(input::MotionEvent::new(e))

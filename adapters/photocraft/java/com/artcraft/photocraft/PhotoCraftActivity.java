@@ -77,6 +77,36 @@ public final class PhotoCraftActivity extends NativeActivity {
     private EditText imeView;
     // True between imeShow() and imeHide(); suppresses a deferred show that a quick hide overtook.
     private volatile boolean imeWanted = false;
+    private volatile boolean pcDiscardPrompt = false;
+
+    // A button-only modal owns hardware keys, even while an inline Type edit
+    // remains parked underneath. Do not finish that edit on Cancel.
+    public void pcSetDiscardPrompt(boolean active) {
+        pcDiscardPrompt = active;
+        if (active) imeHide();
+    }
+    private boolean pcEscapeCaptured = false;
+    private volatile int pcEscapeSeen = 0;
+    private volatile int pcEscapeQueued = 0;
+    private volatile int pcEscapePolled = 0;
+    private volatile int pcTypeEnded = 0;
+    private volatile int pcLastKey = -1;
+    private volatile int pcLastScan = -1;
+    private volatile int pcLastSource = -1;
+    private volatile int pcBackCalls = 0;
+
+    @Override
+    public void onBackPressed() {
+        pcBackCalls++;
+        super.onBackPressed();
+    }
+
+    public String pcKeyboardStatus() {
+        return "Java E3 Esc seen=" + pcEscapeSeen + " queued=" + pcEscapeQueued
+                + " polled=" + pcEscapePolled + " ended=" + pcTypeEnded
+                + " imeWanted=" + imeWanted
+                + " lastCode=" + pcLastKey + " scan=" + pcLastScan + " source=" + pcLastSource + " backCalls=" + pcBackCalls;
+    }
 
     // Documents the system asked this app to open (an ACTION_VIEW/ACTION_SEND it is registered for):
     // the private path of each staged copy, drained one per call by the Rust shell through
@@ -208,6 +238,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
                         @Override
                         public boolean sendKeyEvent(KeyEvent event) {
+                            if (relayTypeEscape(event)) return true;
                             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                                 int code = event.getKeyCode();
                                 if (code == KeyEvent.KEYCODE_DEL) {
@@ -224,7 +255,14 @@ public final class PhotoCraftActivity extends NativeActivity {
                 }
 
                 @Override
+                public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+                    // Physical Esc can otherwise be eaten by the active IME.
+                    return relayTypeEscape(event) || super.onKeyPreIme(keyCode, event);
+                }
+
+                @Override
                 public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    if (relayTypeEscape(event)) return true;
                     // Let hardware key events fall through to the native input queue (winit), exactly
                     // as they did before this view existed; the soft keyboard talks to us through the
                     // InputConnection instead. This keeps physical keyboards working.
@@ -233,7 +271,7 @@ public final class PhotoCraftActivity extends NativeActivity {
 
                 @Override
                 public boolean onKeyUp(int keyCode, KeyEvent event) {
-                    return false;
+                    return relayTypeEscape(event);
                 }
 
                 @Override
@@ -261,13 +299,14 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     /** Show the soft keyboard by focusing the IME host view. Called by the Rust shell via JNI. */
     public void imeShow() {
+        if (pcDiscardPrompt) return;
         final EditText view = imeView;
         if (view == null) {
             return;
         }
         imeWanted = true;
         runOnUiThread(() -> {
-            if (!imeWanted) {
+            if (!imeWanted || pcDiscardPrompt) {
                 return;
             }
             try {
@@ -282,7 +321,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                 // Some devices ignore the request until focus and layout have settled; retry once on
                 // the next message-loop turn (guarded so a following hide wins).
                 view.post(() -> {
-                    if (!imeWanted) {
+                    if (!imeWanted || pcDiscardPrompt) {
                         return;
                     }
                     try {
@@ -301,21 +340,50 @@ public final class PhotoCraftActivity extends NativeActivity {
         });
     }
 
-    /** Physical Escape must first reach the native editor, then return its
-     * hardware-key focus to the canvas instead of the invisible IME EditText.
-     * Do not consume the event: upstream still owns edit cancel and popups.
+    /** Deliver a complete Escape pair once, before the IME can swallow it.
+     * Do not hide/reset the IME here: only the native editor knows whether
+     * Escape ended Type editing or was owned by a field/modal/composition.
      */
+    private boolean relayTypeEscape(KeyEvent event) {
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) {
+            pcLastKey = event.getKeyCode();
+            pcLastScan = event.getScanCode();
+            pcLastSource = event.getSource();
+        }
+        if (event == null) return false;
+        // HONOR's physical Esc is delivered here as Back / Linux KEY_BACK.
+        // Match the observed hardware scan code, not a source classification:
+        // IME/OEM routing may change the source. Gesture/soft Back has no such scan.
+        boolean escape = event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
+                || (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getScanCode() == 158);
+        if (!escape) return false;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) pcEscapeSeen++;
+        if (pcEscapeCaptured) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                imeEvents.offer("E");
+                pcEscapeCaptured = false;
+            }
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN && imeWanted
+                && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
+            pcEscapeCaptured = true;
+            pcEscapeQueued++;
+            imeEvents.offer("e");
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE
-                && event.getAction() == KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
-            imeHide();
-        }
+        if (relayTypeEscape(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
     /** Called only after PhotoCraft has actually finished inline Type editing. */
     public void pcEndTypeEditing() {
+        pcTypeEnded++;
         runOnUiThread(() -> {
             imeHide();
             // Reset can emit a final composition callback: discard it after the
@@ -356,7 +424,7 @@ public final class PhotoCraftActivity extends NativeActivity {
                     }
                 }
                 // Drop the scratch buffer between sessions so it cannot grow without bound.
-                view.setText("");
+                if (!pcDiscardPrompt) view.setText("");
             } catch (Throwable error) {
                 Log.w(TAG, "Could not hide the soft keyboard", error);
             }
@@ -369,7 +437,9 @@ public final class PhotoCraftActivity extends NativeActivity {
      * the remainder is the payload; returns {@code null} when the queue is empty.
      */
     public String imePoll() {
-        return imeEvents.poll();
+        String event = imeEvents.poll();
+        if ("e".equals(event)) pcEscapePolled++;
+        return event;
     }
 
     /**

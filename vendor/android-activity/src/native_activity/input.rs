@@ -509,6 +509,18 @@ impl KeyEvent<'_> {
         // capture unknown variants added in new versions of Android.
         let keycode =
             unsafe { ndk_sys::AKeyEvent_getKeyCode(self.ndk_event.ptr().as_ptr()) as u32 };
+        #[cfg(feature = "artcraft-native-escape")]
+        {
+            // SAFETY: self retains a live NDK key event. Normalize both edges
+            // at the shared source so winit's physical and logical keys agree.
+            let ptr = self.ndk_event.ptr().as_ptr();
+            let (scan, source) = unsafe {
+                (ndk_sys::AKeyEvent_getScanCode(ptr), ndk_sys::AInputEvent_getSource(ptr))
+            };
+            if super::keyboard_escape::keyboard_back_is_escape(keycode as i32, scan, source) {
+                return Keycode::Escape;
+            }
+        }
         keycode.into()
     }
 

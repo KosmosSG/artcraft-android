@@ -23,6 +23,8 @@ rust-version = "1.85.0"
 default = []
 game-activity = ["simd_cesu8"]
 native-activity = []
+# Opt-in: native editors own physical Escape before IME pre-dispatch.
+artcraft-native-escape = []
 api-level-30 = ["ndk/api-level-30"]
 
 [dependencies]

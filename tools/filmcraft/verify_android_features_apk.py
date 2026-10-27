@@ -46,7 +46,7 @@ def validate(apk: Path) -> dict:
             raise ValueError("Missing ARM64 native library")
         lib = b"".join(zipfile_obj.read(name) for name in lib_names)
         dex_names = [name for name in names
-                     if re.fullmatch(r"classes(?:[2-9][0-9]*)?\.dex", name)]
+                     if re.fullmatch(r"classes(?:(?:[2-9]|[1-9][0-9]+))?\.dex", name)]
         if not dex_names:
             raise ValueError("Missing Java DEX bytecode")
         dex = b"".join(zipfile_obj.read(name) for name in dex_names)

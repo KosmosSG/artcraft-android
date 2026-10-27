@@ -21,6 +21,8 @@ use crate::{
 };
 
 pub mod input;
+#[cfg(feature = "artcraft-native-escape")]
+mod keyboard_escape;
 use crate::input::{
     device_key_character_map, Axis, ImeOptions, InputType, KeyCharacterMap, TextInputAction,
     TextInputState, TextSpan,
@@ -625,13 +627,19 @@ impl InputIteratorInner<'_> {
             // PhotoCraft opts in: NativeActivity pre-dispatch can send Escape
             // straight to the IME, bypassing both Java view hooks and winit.
             // Deliver BOTH edges through the normal callback/finish_event path.
-            // Printable keys, composition, Back and other apps keep pre-dispatch.
+            // Printable keys, composition, software Back and other apps keep pre-dispatch.
             #[cfg(feature = "artcraft-native-escape")]
             let native_escape = match &ndk_event {
                 ndk::event::InputEvent::KeyEvent(event) => {
                     // SAFETY: event owns a live NDK key-event reference here.
-                    (unsafe { ndk_sys::AKeyEvent_getKeyCode(event.ptr().as_ptr()) })
-                        == ndk_sys::AKEYCODE_ESCAPE as i32
+                    unsafe {
+                        let ptr = event.ptr().as_ptr();
+                        let code = ndk_sys::AKeyEvent_getKeyCode(ptr);
+                        code == ndk_sys::AKEYCODE_ESCAPE as i32
+                            || keyboard_escape::keyboard_back_is_escape(
+                                code, ndk_sys::AKeyEvent_getScanCode(ptr),
+                                ndk_sys::AInputEvent_getSource(ptr))
+                    }
                 }
                 _ => false,
             };

@@ -62,6 +62,10 @@ jobs:
         with:
           toolchain: '1.95.0'
           targets: aarch64-linux-android
+      - name: Test keyboard Back-to-Escape mapping boundaries
+        run: |
+          rustc --edition 2021 --test vendor/android-activity/src/native_activity/keyboard_escape.rs -o "$RUNNER_TEMP/keyboard-escape-tests"
+          "$RUNNER_TEMP/keyboard-escape-tests"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

@@ -15,11 +15,12 @@ NEW = '''    // Android physical keyboard mnemonics for the unsaved-document dia
     // Run AFTER modal widgets have been drawn, but BEFORE saving d back to app.
     // Only the actual Save Changes dialog may capture these keys.
     if d.kind == crate::unsaved::KIND && !after_panel
-        && !ctx.text_edit_focused()
         && !egui::Popup::is_any_open(ctx)
     {
+        // A stale focused Type editor must NOT disable the modal hotkeys.
+        // Consume eligible *physical key events* before the canvas gets them.
+        // Do not treat text/IME composition commits as accelerator keys.
         let pressed = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
-        // Respect the active modal and ignore modified shortcuts/IME composition.
         if pressed(egui::Key::C) || pressed(egui::Key::Escape) {
             cancel = true;
         } else if pressed(egui::Key::D) {

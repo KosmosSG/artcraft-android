@@ -8,7 +8,7 @@ class UnsavedKeyboardPatchTest(unittest.TestCase):
     def test_patch_scoped_to_unsaved_dialog(self):
         patch = (HERE / "patch_android_unsaved_shortcuts.py").read_text()
         self.assertIn("d.kind == crate::unsaved::KIND", patch)
-        self.assertIn("ctx.text_edit_focused()", patch)
+        self.assertIn("A stale focused Type editor must NOT disable the modal hotkeys.", patch)
         self.assertIn("Popup::is_any_open(ctx)", patch)
         for key in ("C", "D", "S", "Escape"):
             self.assertIn("egui::Key::" + key, patch)

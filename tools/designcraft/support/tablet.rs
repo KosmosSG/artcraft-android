@@ -1,9 +1,27 @@
 //! DesignCraft-specific Android controls using reviewed public command and font APIs.
 use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
 use super::{saf, SafState, saf_next_id, ImportRequest};
 
 static GPU: OnceLock<String> = OnceLock::new();
 static FONT_RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
+static ANDROID_GENERIC: AtomicU64 = AtomicU64::new(0);
+static ANDROID_SCROLL: AtomicU64 = AtomicU64::new(0);
+static ANDROID_TOUCHPAD_MOVE: AtomicU64 = AtomicU64::new(0);
+static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
+static FALLBACK_WHEEL: AtomicU64 = AtomicU64::new(0);
+
+pub fn record_wheel_events(raw: &egui::RawInput, fallback_injected: bool) {
+    let count = raw.events.iter()
+        .filter(|event| matches!(event, egui::Event::MouseWheel { .. })).count();
+    if count > 0 {
+        NATIVE_WHEEL.fetch_add(count as u64 - u64::from(fallback_injected), Ordering::Relaxed);
+        if fallback_injected {
+            FALLBACK_WHEEL.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
 
 /// Read MagicOS/Android ACTION_SCROLL as a fallback if winit failed to emit
 /// MouseWheel. Activity dispatch keeps all other native events intact.
@@ -15,6 +33,13 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
         let activity_raw = app.activity_as_ptr() as jni::sys::jobject;
         // Borrow AndroidApp's global Activity, never take ownership of it.
         let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+        let counts = env.call_method(&*activity, jni_str!("dcInputEventCounts"),
+                                     jni_sig!("()J"), &[])?.j()? as u64;
+        ANDROID_GENERIC.store(counts >> 32, Ordering::Relaxed);
+        ANDROID_SCROLL.store(counts & 0xffff_ffff, Ordering::Relaxed);
+        let moves = env.call_method(&*activity, jni_str!("dcTouchpadMoveCount"),
+                                    jni_sig!("()I"), &[])?.i()?;
+        ANDROID_TOUCHPAD_MOVE.store(moves.max(0) as u64, Ordering::Relaxed);
         env.call_method(&*activity, jni_str!("dcPollTrackpadScroll"),
                         jni_sig!("()J"), &[])?.j()
     });
@@ -67,6 +92,7 @@ pub fn install_font(name: &str, bytes: &[u8]) -> Result<(), String> {
 pub struct Tablet {
     dock: bool,
     diagnostics: bool,
+    input_diagnostics: bool,
     toolbar_visible: bool,
     feedback: Option<(String, bool, f64)>,
 }
@@ -87,7 +113,7 @@ impl Default for Tablet {
             .is_some_and(|value| value == b"enabled\n");
         let toolbar_visible = toolbar_setting().and_then(|p| std::fs::read(p).ok())
             .is_none_or(|value| value == b"shown\n");
-        Self { dock, diagnostics: false, toolbar_visible, feedback: None }
+        Self { dock, diagnostics: false, input_diagnostics: false, toolbar_visible, feedback: None }
     }
 }
 
@@ -192,6 +218,9 @@ impl Tablet {
                 app.status_error("Android toolbar", error);
             }
         }
+        if actions & 128 != 0 {
+            self.input_diagnostics = !self.input_diagnostics;
+        }
         if self.toolbar_visible {
         egui::Panel::bottom("designcraft-android-controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -240,6 +269,25 @@ impl Tablet {
         });
         }
         self.show_notification(ui);
+        if self.input_diagnostics {
+            egui::Window::new("Trackpad Input Diagnostics")
+                .open(&mut self.input_diagnostics)
+                .default_width(310.0)
+                .show(ui.ctx(), |ui| {
+                    ui.label("Open Type menu, hover within the list, then perform a two-finger trackpad scroll.");
+                    for (label, count) in [
+                        ("Android generic events", ANDROID_GENERIC.load(Ordering::Relaxed)),
+                        ("Android ACTION_SCROLL", ANDROID_SCROLL.load(Ordering::Relaxed)),
+                        ("Android trackpad moves", ANDROID_TOUCHPAD_MOVE.load(Ordering::Relaxed)),
+                        ("Winit mouse-wheel events", NATIVE_WHEEL.load(Ordering::Relaxed)),
+                        ("JNI fallback wheel events", FALLBACK_WHEEL.load(Ordering::Relaxed)),
+                    ] {
+                        ui.horizontal(|ui| { ui.label(label); ui.strong(count.to_string()); });
+                    }
+                    ui.label("If counts stay zero, the gesture has not reached that input stage.");
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));
+                });
+        }
         if self.diagnostics {
             egui::Window::new("Android graphics diagnostics").open(&mut self.diagnostics).show(ui.ctx(), |ui| {
                 ui.label(GPU.get().map(String::as_str).unwrap_or("Adapter details unavailable"));

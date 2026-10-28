@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/effectcraft/patch_unsaved_dcs.py'
       - '.github/workflows/effectcraft-dcs-validation.yml'
+      - 'tools/effectcraft/test_patch_unsaved_dcs.py'
 permissions:
   contents: read
 jobs:
@@ -19,6 +20,7 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git upstream
           test "$(git -C upstream rev-parse HEAD)" = '9581b53c3f8945683252af0eb5fac79e0e43aed4'
+          python3 tools/effectcraft/test_patch_unsaved_dcs.py upstream
           python3 tools/effectcraft/patch_unsaved_dcs.py upstream
           grep -Fq 'Save (S)' upstream/crates/ui-egui/src/panels/unsaved.rs
           grep -Fq 'Cancel (C)' upstream/crates/ui-egui/src/panels/unsaved.rs

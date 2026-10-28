@@ -8,10 +8,11 @@ mod android_dcs_regression {
     fn press(app: &mut EffectcraftApp, ctx: &egui::Context, event: egui::Event) {
         let mut raw = egui::RawInput::default();
         raw.events.push(event);
-        let _ = ctx.run_ui(raw, |ui| {
+        let mut output = ctx.run_ui(raw, |ui| {
             app.android_capture_unsaved_dcs(ui.ctx());
             crate::panels::dialogs::show(app, ui.ctx());
         });
+        output.textures_delta.clear();
     }
     fn dirty() -> (EffectcraftApp, egui::Context) {
         let ctx = egui::Context::default();
@@ -58,11 +59,12 @@ mod android_dcs_regression {
     #[test]
     fn dcs_repeat_and_ime_commit_are_not_actions() {
         let ctx = egui::Context::default();
-        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
             ui.input_mut(|i| i.events = vec![key(egui::Key::D, egui::Modifiers::NONE, true), egui::Event::Text("中文".into())]);
             assert_eq!(take_dcs(ui.ctx()), None);
             assert!(ui.input(|i| matches!(i.events.first(), Some(egui::Event::Text(t)) if t == "中文")));
         });
+        output.textures_delta.clear();
     }
     #[test]
     fn dcs_failed_save_keeps_modified_project() {

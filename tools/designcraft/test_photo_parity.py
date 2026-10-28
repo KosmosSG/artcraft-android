@@ -126,6 +126,9 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn("android.view.MotionEvent.AXIS_HSCROLL", patched)
         self.assertIn("super.dispatchGenericMotionEvent(event)", patched)
         self.assertIn("public synchronized long dcPollTrackpadScroll()", patched)
+        self.assertIn("public synchronized long dcInputEventCounts()", patched)
+        self.assertIn("public synchronized int dcTouchpadMoveCount()", patched)
+        self.assertIn("super.dispatchTouchEvent(event)", patched)
         with self.assertRaises(ValueError):
             append_trackpad_bridge(patched)
 
@@ -141,6 +144,13 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn("modifiers: egui::Modifiers::NONE", launcher)
         self.assertNotIn("modifiers: raw.modifiers", launcher)
         self.assertIn("ctx.request_repaint_after", launcher)
+        self.assertIn("tablet::record_wheel_events(raw, fallback_injected)", launcher)
+        self.assertIn("pub fn record_wheel_events(", native)
+        self.assertIn('jni_str!("dcInputEventCounts")', native)
+        self.assertIn('jni_str!("dcTouchpadMoveCount")', native)
+        self.assertIn("Trackpad Input Diagnostics", native)
+        self.assertIn("window.artcraftInputDiagnostics", menus)
+        self.assertNotIn("vertical_scroll_offset(target)", menus)
         self.assertIn("mouse_wheel: true", menus)
         self.assertNotIn('egui::Button::new("▲ Scroll up")', menus)
         self.assertNotIn('egui::Button::new("▼ More items")', menus)

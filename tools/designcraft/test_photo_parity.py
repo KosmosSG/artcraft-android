@@ -57,6 +57,21 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn('app.run("font.reload"', rust)
         self.assertIn('dcRestoreSharedFontsOnStartup()', java)
 
+    def test_candidate_java_update_policy_uses_generated_activity_package(self):
+        from support.patch_launcher import update_policy_for_activity
+        production = Path("tools/designcraft/support/DesignCraftUpdatePolicy.java").read_text()
+        for suffix in ("", ".candidate"):
+            package = "com.artcraft.designcraft" + suffix
+            activity = "package " + package + ";\\npublic class DesignCraftActivity {}"
+            actual = update_policy_for_activity(activity, production)
+            self.assertTrue(actual.startswith("package " + package + ";"))
+            self.assertEqual(actual.replace("package " + package + ";",
+                                            "package com.artcraft.designcraft;", 1), production)
+            # The helper's production-update identity gate is unchanged.
+            self.assertIn('!"com.artcraft.designcraft".equals(pkg)', actual)
+        with self.assertRaises(ValueError):
+            update_policy_for_activity("package com.unknown;", production)
+
     def test_updater_rejects_disposable_test_package(self):
         java = Path("tools/designcraft/support/update_methods.java").read_text()
         self.assertIn('if (!"com.artcraft.designcraft".equals(getPackageName()))', java)

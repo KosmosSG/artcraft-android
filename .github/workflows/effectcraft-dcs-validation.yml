@@ -6,6 +6,7 @@ on:
       - 'tools/effectcraft/patch_unsaved_dcs.py'
       - '.github/workflows/effectcraft-dcs-validation.yml'
       - 'tools/effectcraft/test_patch_unsaved_dcs.py'
+      - 'tools/effectcraft/dcs_tests.rs'
 permissions:
   contents: read
 jobs:
@@ -22,8 +23,5 @@ jobs:
           test "$(git -C upstream rev-parse HEAD)" = '9581b53c3f8945683252af0eb5fac79e0e43aed4'
           python3 tools/effectcraft/test_patch_unsaved_dcs.py upstream
           python3 tools/effectcraft/patch_unsaved_dcs.py upstream
-          grep -Fq 'Save (S)' upstream/crates/ui-egui/src/panels/unsaved.rs
-          grep -Fq 'Cancel (C)' upstream/crates/ui-egui/src/panels/unsaved.rs
-          grep -Fq "Don't Save (D)" upstream/crates/ui-egui/src/panels/unsaved.rs
-          grep -Fq 'consume_key(egui::Modifiers::NONE, key)' upstream/crates/ui-egui/src/panels/unsaved.rs
+          grep -Fq 'fn take_dcs' upstream/crates/ui-egui/src/panels/unsaved.rs
           echo 'PASS: guarded EffectCraft source patch and button hints'

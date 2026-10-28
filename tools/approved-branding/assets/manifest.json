@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "c2de95181d085de3fa02f56d9f648f7c69532bcda47a2584024f74b1ff6e66d1"
   },
   "display_name": "EffectCraft",
-  "version_name": "0.16.0-android.5",
-  "version_code": 16781317,
-  "previous_version_code": 16781316,
+  "version_name": "0.16.0-android.6",
+  "version_code": 16781318,
+  "previous_version_code": 16781317,
   "package": "com.artcraft.effectcraft"
 }

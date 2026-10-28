@@ -10,6 +10,8 @@ import sys
 if len(sys.argv) != 2:
     raise SystemExit("Usage: integrate_updater.py <builder-root>")
 root = Path(sys.argv[1]).resolve()
+from patch_unsaved_dcs import apply as apply_unsaved_dcs
+apply_unsaved_dcs(root / "source/effectcraft")
 menu = root / "source/effectcraft/crates/ui-egui/src/menus.rs"
 builder = root / "lib/build-common.sh"
 java = root / "templates/android/SafActivity.java"
@@ -70,7 +72,30 @@ matched = [declaration for declaration in declarations if j.count(declaration) =
 if len(matched) != 1 or 'boolean dispatchKeyEvent(' in j:
     raise SystemExit('STOP: unsupported or already patched EffectCraft Activity')
 j = once(j, matched[0], matched[0] + '''
+    private final java.util.concurrent.atomic.AtomicInteger ecDialogAction = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean ecDialogActive;
+    private final java.util.HashSet<Integer> ecDialogKeys = new java.util.HashSet<>();
+    public int ecUnsavedDialog(boolean active) {
+        ecDialogActive = active;
+        int action = ecDialogAction.getAndSet(0);
+        return active ? action : 0;
+    }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
+            int code = event.getKeyCode();
+            if (ecDialogKeys.contains(code)) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_UP) ecDialogKeys.remove(code);
+                return true;
+            }
+            int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
+            if (ecDialogActive && action != 0 && event.hasNoModifiers()
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                ecDialogKeys.add(code);
+                if (event.getRepeatCount() == 0) ecDialogAction.compareAndSet(0, action);
+                return true;
+            }
+        }
+
         if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ESCAPE
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && imeWanted && event.getRepeatCount() == 0 && event.hasNoModifiers()) {
             imeHide();
@@ -162,7 +187,7 @@ after = '''    if app == "effectcraft":
         replace_ec("        self.inner.logic(ctx, frame);",
                    "        self.updates.poll(ctx);\\\\n        self.inner.logic(ctx, frame);")
         replace_ec("        self.inner.ui(ui, frame);",
-                   "        self.inner.ui(ui, frame);\\\\n        self.updates.ui(ui.ctx());")
+                   "        self.inner.android_capture_unsaved_dcs(ui.ctx());\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.inner.ui(ui, frame);\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.updates.ui(ui.ctx());")
         replace_ec('        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\\n        // Normalize the keyboard event before egui and app text-edit guards.\\n        for event in &mut raw.events {\\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\\n                    *key = egui::Key::Escape;\\n                    *physical_key = Some(egui::Key::Escape);\\n                }\\n            }\\n        }\\n        if raw.events.iter().any(|event| matches!(event,\\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\\n                if !modifiers.any())) {\\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\\n        }\\n')
         replace_ec('        self.inner.ui(ui, frame);', '        let android_escape = ui.ctx().data_mut(|d|\\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && self.inner.session.state.text_edit.is_some()\\n            {\\n            if let Err(error) = self.inner.session.execute("text.endEdit", serde_json::json!({})) {\\n                log::warn!("Android text exit: {error}");\\n            }\\n            ui.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });\\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\\n        }\\n        self.inner.ui(ui, frame);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && ui.ctx().text_edit_focused() {\\n            ui.memory_mut(|m| {\\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\\n            });\\n        }\\n')
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",

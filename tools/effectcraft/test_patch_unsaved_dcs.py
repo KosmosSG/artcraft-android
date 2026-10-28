@@ -6,9 +6,14 @@ import sys
 import unittest
 from patch_unsaved_dcs import apply
 
-SOURCE = Path(sys.argv.pop(1)).joinpath("crates/ui-egui/src/panels/unsaved.rs").read_bytes()
+import os
+fixture = os.environ.get("EFFECTCRAFT_UPSTREAM")
+if __name__ == "__main__" and len(sys.argv) > 1:
+    fixture = sys.argv.pop(1)
+SOURCE = Path(fixture).joinpath("crates/ui-egui/src/panels/unsaved.rs").read_bytes() if fixture else None
 REL = Path("crates/ui-egui/src/panels/unsaved.rs")
 
+@unittest.skipIf(SOURCE is None, "requires pinned upstream fixture")
 class PatchSafety(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

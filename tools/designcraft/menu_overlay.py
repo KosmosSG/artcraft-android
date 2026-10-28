@@ -110,6 +110,17 @@ pub fn ui_label(id: &str) -> Option<(&''')
             let (mut target, _available, previous_rect) =
                 prior.unwrap_or((0.0, 0.0, egui::Rect::NOTHING));
             let overflow = prior.is_some_and(|(_, max, _)| max > 2.0);
+            // Keep wheel/trackpad scrolling coherent with the controlled offset.
+            // We read the wheel before the menu rows consume it; the Android
+            // ScrollArea below does not consume it again.
+            if !ui.is_sizing_pass() {
+                let wheel = ui.input(|i| {
+                    if i.pointer.hover_pos().is_some_and(|p| previous_rect.contains(p)) {
+                        i.smooth_scroll_delta.y
+                    } else { 0.0 }
+                });
+                target = (target - wheel).clamp(0.0, _available.max(0.0));
+            }
             if ui.is_sizing_pass() { target = 0.0; }
 
             // Navigation buttons stay outside the scrolling region. They work
@@ -141,13 +152,15 @@ pub fn ui_label(id: &str) -> Option<(&''')
                 .scroll_source(egui::containers::scroll_area::ScrollSource {
                     scroll_bar: true,
                     drag: egui::containers::scroll_area::DragScroll::Never,
-                    mouse_wheel: true,
+                    mouse_wheel: false,
                 })
                 .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .vertical_scroll_offset(target);
             let rendered = scroll.show(ui, add_contents);
             let max_offset = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);
-            let mut next = rendered.state.clamped_offset().y;
+            // egui 0.36's State does not expose clamped_offset();
+            // use our explicitly controlled offset plus the measured limits.
+            let mut next = target.clamp(0.0, max_offset);
             if overflow {
                 ui.horizontal(|ui| {
                     if ui.add_enabled(next < max_offset - 1.0, egui::Button::new("▼ More items")).clicked() {

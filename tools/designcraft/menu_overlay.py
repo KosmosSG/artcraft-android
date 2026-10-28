@@ -93,26 +93,9 @@ pub fn ui_label(id: &str) -> Option<(&''')
     #[cfg(target_os = "android")]
     let max_height = max_height.min((ui.ctx().content_rect().height() * 0.72).max(180.0));
     let contents = |ui: &mut egui::Ui| {""")
-    text = replace_once(text,
-        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
-        if ui.is_sizing_pass() {""",
-        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
-        #[cfg(target_os = "android")]
-        {
-            // Wheel/trackpad, visible scrollbar thumb, and direct finger dragging.
-            // Explicit Always handles Android stylus/touch hosts which report no
-            // has_touch_screen flag while still supplying pointer-drag events.
-            scroll = scroll.scroll_source(egui::containers::scroll_area::ScrollSource {
-                scroll_bar: true,
-                drag: egui::containers::scroll_area::DragScroll::Always,
-                mouse_wheel: true,
-            }).scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
-        }
-        if ui.is_sizing_pass() {""")
-    # The first Android attempt switched egui's built-in DragScroll mode, but
-    # that still didn't move the long Type menu in real HONOR MagicPad testing.
-    # Keep the existing ScrollArea's wheel + scrollbar, but drive vertical touch
-    # movement explicitly from egui's pointer delta over the clipped viewport.
+    # The first attempt switched egui's built-in DragScroll::Always, but
+    # that still did not move the long Type menu in HONOR MagicPad testing.
+    # Drive vertical touch movement explicitly from egui pointer deltas.
     # Provide tap-operated page controls as a reliable accessibility fallback.
     text = replace_once(text,
         """        scroll.show(ui, add_contents).inner

@@ -102,11 +102,11 @@ pub fn ui_label(id: &str) -> Option<(&''')
             // Wheel/trackpad, visible scrollbar thumb, and direct finger dragging.
             // Explicit Always handles Android stylus/touch hosts which report no
             // has_touch_screen flag while still supplying pointer-drag events.
-            scroll = scroll.scroll_source(egui::scroll_area::ScrollSource {
+            scroll = scroll.scroll_source(egui::containers::scroll_area::ScrollSource {
                 scroll_bar: true,
-                drag: egui::scroll_area::DragScroll::Always,
+                drag: egui::containers::scroll_area::DragScroll::Always,
                 mouse_wheel: true,
-            }).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
+            }).scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
         }
         if ui.is_sizing_pass() {""")
     path.write_text(text)

@@ -72,6 +72,35 @@ class DesignCraftAndroidParity(unittest.TestCase):
         with self.assertRaises(ValueError):
             update_policy_for_activity("package com.unknown;", production)
 
+    def test_font_notification_and_persistent_android_toolbar_window_menu(self):
+        rust = Path("tools/designcraft/support/tablet.rs").read_text()
+        menus = Path("tools/designcraft/menu_overlay.py").read_text()
+        launcher = Path("tools/designcraft/support/patch_launcher.py").read_text()
+        self.assertIn('window.artcraftAndroidToolbar', menus)
+        self.assertIn('ARTCRAFT_ANDROID_ACTIONS.fetch_or(64', menus)
+        self.assertIn('if actions & 64 != 0', rust)
+        self.assertIn('set_toolbar_visible(!self.toolbar_visible)', rust)
+        self.assertIn('android-toolbar-visible', rust)
+        self.assertIn('if self.toolbar_visible {', rust)
+        self.assertIn('self.show_notification(ui);', rust)
+        self.assertIn('designcraft-font-import-notification', rust)
+        self.assertIn('format!("Imported font: {name}")', launcher)
+
+    def test_approved_icon_and_top_left_navigation_in_candidate(self):
+        builder = Path("tools/designcraft/prepare_builder.py").read_text()
+        stage = Path("tools/designcraft/support/apply_approved_branding.py").read_text()
+        workflow = Path(".github/workflows/designcraft-font-import-preview.yml").read_text()
+        self.assertIn('apply_approved_branding.py', builder)
+        self.assertIn('designcraft-approved', builder)
+        self.assertIn('approved_branding.check_assets()', stage)
+        self.assertIn('approved_branding.apply(builder, source, android, "designcraft")', stage)
+        self.assertIn('android_approved_brand::home_button(ui, home)', stage)
+        self.assertIn('home_response.clicked()', stage)
+        self.assertIn('version +', stage)
+        self.assertIn('tools/approved-branding/assets/DesignCraft.png', workflow)
+        self.assertIn('verify_approved_candidate.py', workflow)
+        self.assertNotIn('tools/designcraft/make_icon.py builder/dc-icon.png', workflow)
+
     def test_updater_rejects_disposable_test_package(self):
         java = Path("tools/designcraft/support/update_methods.java").read_text()
         self.assertIn('if (!"com.artcraft.designcraft".equals(getPackageName()))', java)

@@ -5,6 +5,27 @@ use super::{saf, SafState, saf_next_id, ImportRequest};
 static GPU: OnceLock<String> = OnceLock::new();
 static FONT_RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 
+/// Read MagicOS/Android ACTION_SCROLL as a fallback if winit failed to emit
+/// MouseWheel. Activity dispatch keeps all other native events intact.
+pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
+    use jni::{jni_sig, jni_str, objects::JObject};
+    // The AndroidApp keeps the VM alive for the entire shell lifetime.
+    let vm = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+    let bits = vm.attach_current_thread(|env| -> jni::errors::Result<i64> {
+        let activity_raw = app.activity_as_ptr() as jni::sys::jobject;
+        // Borrow AndroidApp's global Activity, never take ownership of it.
+        let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+        env.call_method(&*activity, jni_str!("dcPollTrackpadScroll"),
+                        jni_sig!("()J"), &[])?.j()
+    });
+    let Ok(bits) = bits else { return (0.0, 0.0); };
+    let bits = bits as u64;
+    let x = f32::from_bits(bits as u32);
+    let y = f32::from_bits((bits >> 32) as u32);
+    if !x.is_finite() || !y.is_finite() { return (0.0, 0.0); }
+    (x, y)
+}
+
 pub fn record_gpu(cc: &eframe::CreationContext<'_>) {
     let text = match &cc.wgpu_render_state {
         Some(state) => {

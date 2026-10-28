@@ -116,6 +116,33 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn('verify_approved_candidate.py', workflow)
         self.assertNotIn('tools/designcraft/make_icon.py builder/dc-icon.png', workflow)
 
+    def test_android_trackpad_scroll_reaches_egui_without_menu_pagers(self):
+        from support.patch_launcher import append_trackpad_bridge
+        base = "package com.artcraft.designcraft.candidate;\npublic final class DesignCraftActivity extends GameActivity {}"
+        patched = append_trackpad_bridge(base)
+        self.assertIn("dispatchGenericMotionEvent(android.view.MotionEvent event)", patched)
+        self.assertIn("android.view.MotionEvent.ACTION_SCROLL", patched)
+        self.assertIn("android.view.MotionEvent.AXIS_VSCROLL", patched)
+        self.assertIn("android.view.MotionEvent.AXIS_HSCROLL", patched)
+        self.assertIn("super.dispatchGenericMotionEvent(event)", patched)
+        self.assertIn("public synchronized long dcPollTrackpadScroll()", patched)
+        with self.assertRaises(ValueError):
+            append_trackpad_bridge(patched)
+
+        native = Path("tools/designcraft/support/tablet.rs").read_text()
+        launcher = Path("tools/designcraft/support/patch_launcher.py").read_text()
+        menus = Path("tools/designcraft/menu_overlay.py").read_text()
+        self.assertIn("pub fn poll_trackpad_scroll(", native)
+        self.assertIn('jni_sig!("()J")', native)
+        self.assertIn('jni_str!("dcPollTrackpadScroll")', native)
+        self.assertIn("tablet::poll_trackpad_scroll(&self.app)", launcher)
+        self.assertIn("!raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel", launcher)
+        self.assertIn("egui::MouseWheelUnit::Line", launcher)
+        self.assertIn("ctx.request_repaint_after", launcher)
+        self.assertIn("mouse_wheel: true", menus)
+        self.assertNotIn('egui::Button::new("▲ Scroll up")', menus)
+        self.assertNotIn('egui::Button::new("▼ More items")', menus)
+
     def test_updater_rejects_disposable_test_package(self):
         java = Path("tools/designcraft/support/update_methods.java").read_text()
         self.assertIn('if (!"com.artcraft.designcraft".equals(getPackageName()))', java)

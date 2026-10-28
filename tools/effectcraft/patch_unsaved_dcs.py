@@ -13,7 +13,7 @@ def apply(root: Path) -> None:
         ('let (label, key) = if revert { ("  Revert  ", "dialog.unsaved.revert") } else { ("   Save   ", "dialog.unsaved.save") };',
          'let (label, key) = if revert { ("  Revert  ", "dialog.unsaved.revert") } else { ("Save (S)", "dialog.unsaved.save") };'),
         ('let r = ui.button(tr("Cancel"));\n            app.auto.add("dialog.unsaved.cancel", r.rect, "Cancel");',
-         'let r = ui.button(if revert { tr("Cancel") } else { "Cancel (C)".into() });\n            app.auto.add("dialog.unsaved.cancel", r.rect, "Cancel");'),
+         'let r = ui.button(if revert { tr("Cancel").to_string() } else { "Cancel (C)".to_string() });\n            app.auto.add("dialog.unsaved.cancel", r.rect, "Cancel");'),
         ('let r = ui.button(tr("Don\'t Save"));',
          'let r = ui.button("Don\'t Save (D)");'),
         ('    if answer.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {',

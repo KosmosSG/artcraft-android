@@ -24,6 +24,8 @@ def update_policy_for_activity(activity_source, policy_source):
 
 def append_trackpad_bridge(text: str) -> str:
     """Capture native Android generic scrolling without intercepting other input."""
+    if "dcPollTrackpadScroll" in text:
+        raise ValueError("DesignCraft trackpad bridge already installed")
     anchor = "public final class DesignCraftActivity extends GameActivity {"
     bridge = """public final class DesignCraftActivity extends GameActivity {
     // Android dispatches MagicOS trackpad gestures as generic ACTION_SCROLL

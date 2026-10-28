@@ -77,7 +77,7 @@ def patch(root):
         '\n        if (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) {' +
         '\n            raw.events.push(egui::Event::MouseWheel {' +
         '\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
-        '\n                phase: egui::TouchPhase::Move, modifiers: raw.modifiers,' +
+        '\n                phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE,' +
         '\n            });' +
         '\n        }' +
         '\n        if egui::Popup::is_any_open(ctx) {' +

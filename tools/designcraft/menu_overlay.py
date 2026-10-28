@@ -80,6 +80,35 @@ pub fn ui_label(id: &str) -> Option<(&''')
     }
     tree
 }""")
+    # Android's GameActivity touch input is sometimes exposed to egui without
+    # has_touch_screen=true, causing ScrollArea's default DragScroll::OnTouch
+    # to reject swipes. Menu popups are already scrollable upstream, but long
+    # lists need an explicit Android drag source and a bounded viewport.
+    text = replace_once(text,
+        """    let max_height = menu_max_height(ui, button);
+    let contents = |ui: &mut egui::Ui| {""",
+        """    let max_height = menu_max_height(ui, button);
+    // Make long dropdowns a genuinely scrollable viewport on Android tablets.
+    // Keep native desktop menu sizing/interaction entirely unchanged.
+    #[cfg(target_os = "android")]
+    let max_height = max_height.min((ui.ctx().content_rect().height() * 0.72).max(180.0));
+    let contents = |ui: &mut egui::Ui| {""")
+    text = replace_once(text,
+        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
+        if ui.is_sizing_pass() {""",
+        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
+        #[cfg(target_os = "android")]
+        {
+            // Wheel/trackpad, visible scrollbar thumb, and direct finger dragging.
+            // Explicit Always handles Android stylus/touch hosts which report no
+            // has_touch_screen flag while still supplying pointer-drag events.
+            scroll = scroll.scroll_source(egui::scroll_area::ScrollSource {
+                scroll_bar: true,
+                drag: egui::scroll_area::DragScroll::Always,
+                mouse_wheel: true,
+            }).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
+        }
+        if ui.is_sizing_pass() {""")
     path.write_text(text)
 
 if __name__ == "__main__":

@@ -138,6 +138,8 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn("tablet::poll_trackpad_scroll(&self.app)", launcher)
         self.assertIn("!raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel", launcher)
         self.assertIn("egui::MouseWheelUnit::Line", launcher)
+        self.assertIn("modifiers: egui::Modifiers::NONE", launcher)
+        self.assertNotIn("modifiers: raw.modifiers", launcher)
         self.assertIn("ctx.request_repaint_after", launcher)
         self.assertIn("mouse_wheel: true", menus)
         self.assertNotIn('egui::Button::new("▲ Scroll up")', menus)

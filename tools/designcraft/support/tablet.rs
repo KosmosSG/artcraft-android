@@ -307,7 +307,12 @@ impl Tablet {
                     let action = ((motion >> 16) & 0xffff) as u16;
                     let pointers = (motion & 0xffff) as u16;
                     ui.label(format!("Last Android motion: action={action} source=0x{source:x} pointers={pointers}"));
-                    ui.label("After a two-finger gesture, compare ACTION_SCROLL / gesture axes with native/fallback wheel counts.");
+                    let (menu_events, menu_offset, menu_limit) =
+                        designcraft_ui_egui::menus::artcraft_menu_scroll_diagnostics();
+                    ui.label(format!("Menu wheel events: {menu_events}"));
+                    ui.label(format!("Menu scroll: {:.0} / {:.0} pt", menu_offset, menu_limit));
+                    ui.label("After a two-finger gesture, check that Menu wheel events and Menu scroll increase.");
+                    ui.label("Hover inside the Type list; the viewport is scrollable without extra buttons.");
                     ui.label("No scroll event at either input stage suggests a device input dispatch issue.");
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));
                 });

@@ -17,6 +17,10 @@ static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
 static FALLBACK_WHEEL: AtomicU64 = AtomicU64::new(0);
 static RAW_HOVER_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
 static TRACKPAD_REVERSE: AtomicBool = AtomicBool::new(false);
+// Android gesture distance on MagicPad arrives as ~0.01 wheel lines/event.
+// Apply a separate, adjustable gain ONLY to the JNI fallback. Native mouse
+// wheels and finger Touch events retain their existing behavior.
+static TRACKPAD_GAIN_BITS: AtomicU32 = AtomicU32::new(0);
 static LAST_TRACKPAD_RAW_Y_BITS: AtomicU32 = AtomicU32::new(0);
 static LAST_TRACKPAD_MENU_GESTURE: Mutex<Option<std::time::Instant>> =
     Mutex::new(None);
@@ -124,7 +128,33 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
     if y.abs() > 0.0001 {
         LAST_TRACKPAD_RAW_Y_BITS.store(y.to_bits(), Ordering::Relaxed);
     }
-    (x, if TRACKPAD_REVERSE.load(Ordering::Relaxed) { -y } else { y })
+    let gain = f32::from_bits(TRACKPAD_GAIN_BITS.load(Ordering::Relaxed));
+    let gain = if gain.is_finite() && (1.0..=20.0).contains(&gain) {
+        gain
+    } else {
+        12.0
+    };
+    let orientation = if TRACKPAD_REVERSE.load(Ordering::Relaxed) { -1.0 } else { 1.0 };
+    ((x * gain).clamp(-64.0, 64.0), (orientation * y * gain).clamp(-64.0, 64.0))
+}
+
+fn trackpad_gain_setting() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|home|
+        std::path::PathBuf::from(home).join(".local/share/designcraft/android-trackpad-gain"))
+}
+
+fn persist_trackpad_gain(gain: f32) -> Result<(), String> {
+    if !gain.is_finite() || !(1.0..=20.0).contains(&gain) {
+        return Err("Trackpad gain outside supported range".to_owned());
+    }
+    let path = trackpad_gain_setting().ok_or("Trackpad preference directory unavailable")?;
+    std::fs::create_dir_all(path.parent().ok_or("Invalid trackpad preference path")?)
+        .map_err(|error| error.to_string())?;
+    let pending = path.with_extension("tmp");
+    std::fs::write(&pending, format!("{gain:.1}\n")).map_err(|error| error.to_string())?;
+    std::fs::rename(pending, path).map_err(|error| error.to_string())?;
+    TRACKPAD_GAIN_BITS.store(gain.to_bits(), Ordering::Relaxed);
+    Ok(())
 }
 
 fn trackpad_direction_setting() -> Option<std::path::PathBuf> {
@@ -209,6 +239,12 @@ impl Default for Tablet {
         let reversed = trackpad_direction_setting().and_then(|p| std::fs::read(p).ok())
             .is_some_and(|bytes| bytes == b"reversed\n");
         TRACKPAD_REVERSE.store(reversed, Ordering::Relaxed);
+        let gain = trackpad_gain_setting()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|value| value.trim().parse::<f32>().ok())
+            .filter(|gain| gain.is_finite() && (1.0..=20.0).contains(gain))
+            .unwrap_or(12.0);
+        TRACKPAD_GAIN_BITS.store(gain.to_bits(), Ordering::Relaxed);
         Self { dock, diagnostics: false, input_diagnostics: false, toolbar_visible, feedback: None }
     }
 }
@@ -407,7 +443,19 @@ impl Tablet {
                         }
                         ui.ctx().request_repaint();
                     }
-                    ui.label("Try the same two-finger gesture with reverse off and on.");
+                    let mut gain = f32::from_bits(TRACKPAD_GAIN_BITS.load(Ordering::Relaxed));
+                    if !gain.is_finite() || !(1.0..=20.0).contains(&gain) {
+                        gain = 12.0;
+                    }
+                    if ui.add(egui::Slider::new(&mut gain, 1.0..=20.0)
+                        .text("Trackpad scroll sensitivity").step_by(1.0)).changed() {
+                        if let Err(error) = persist_trackpad_gain(gain) {
+                            ui.label(format!("Cannot save trackpad sensitivity: {error}"));
+                        }
+                        ui.ctx().request_repaint();
+                    }
+                    ui.label("Default 12× makes tiny MagicPad wheel samples usable.");
+                    ui.label("Try two-finger scrolling with reverse off/on if direction is wrong.");
                     ui.label("Touchscreen finger swipe uses its own unchanged input path.");
                     ui.label("Hover inside the Type list; the viewport is scrollable without extra buttons.");
                     ui.label("No scroll event at either input stage suggests a device input dispatch issue.");

@@ -58,7 +58,13 @@ def prepare(root: Path, version: str, code: int):
     if source.count(hook) != 1:
         raise ValueError("Launcher completion hook changed")
     source = source.replace(hook, 'python3 "$ROOT/designcraft-support/patch_launcher.py" "$ANDROID_DIR"\n\n' + hook)
+    branding_hook = 'say 5 "Preparing a builder-owned signing key..."'
+    if source.count(branding_hook) != 1:
+        raise ValueError("Pinned Android branding insertion point changed")
+    source = source.replace(branding_hook,
+        'python3 "$ROOT/designcraft-support/apply_approved_branding.py" "$ROOT" "$ANDROID_DIR" "$VERSION_NAME"\\n\\n' + branding_hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
+    shutil.copytree(Path(__file__).parents[1] / "approved-branding", root / "designcraft-approved", dirs_exist_ok=True)
     install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
     # DesignCraft's TTF/OTF importer writes under $HOME/.local/share/fonts/imported,
     # and its SAF shared-folder cache uses the same internal app-data root.

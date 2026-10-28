@@ -33,9 +33,16 @@ def append_trackpad_bridge(text: str) -> str:
     // native queue does not forward them as a winit MouseWheel.
     private float dcPendingScrollX = 0f;
     private float dcPendingScrollY = 0f;
+    private int dcGenericEvents = 0;
+    private int dcScrollEvents = 0;
+    private int dcTouchpadMoves = 0;
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (event != null) {
+            synchronized (this) { dcGenericEvents++; }
+        }
         if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
+            synchronized (this) { dcScrollEvents++; }
             float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
             float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
             if (Float.isFinite(dx) && Float.isFinite(dy)
@@ -49,6 +56,24 @@ def append_trackpad_bridge(text: str) -> str:
         // Never consume here: let GameActivity deliver native mouse and key
         // events too. The Rust fallback only injects when winit lacks a wheel.
         return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE
+                && (event.getSource() & android.view.InputDevice.SOURCE_TOUCHPAD)
+                    == android.view.InputDevice.SOURCE_TOUCHPAD) {
+            synchronized (this) { dcTouchpadMoves++; }
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    // High 32 bits generic dispatch, low 32 bits ACTION_SCROLL dispatch.
+    public synchronized long dcInputEventCounts() {
+        return ((long) dcGenericEvents << 32) | (dcScrollEvents & 0xffffffffL);
+    }
+    // Hardware trackpad movement that doesn't arrive as ACTION_SCROLL.
+    public synchronized int dcTouchpadMoveCount() {
+        return dcTouchpadMoves;
     }
 
     // Atomic pair, avoids interleaving coordinates between the UI and Rust

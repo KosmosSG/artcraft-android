@@ -386,11 +386,14 @@ impl Tablet {
                     let action = ((motion >> 16) & 0xffff) as u16;
                     let pointers = (motion & 0xffff) as u16;
                     ui.label(format!("Last Android motion: action={action} source=0x{source:x} pointers={pointers}"));
-                    let (menu_events, menu_touch_events, menu_offset, menu_limit) =
+                    let (menu_events, menu_touch_events, menu_offset, menu_limit,
+                        requested_scroll, at_edge_count) =
                         designcraft_ui_egui::menus::artcraft_menu_scroll_diagnostics();
                     ui.label(format!("Menu wheel events: {menu_events}"));
                     ui.label(format!("Menu touch-scroll events: {menu_touch_events}"));
                     ui.label(format!("Menu scroll: {:.0} / {:.0} pt", menu_offset, menu_limit));
+                    ui.label(format!("Last menu wheel request: {requested_scroll:+.1} pt (positive = down)"));
+                    ui.label(format!("Wheel events blocked at boundary: {at_edge_count}"));
                     let raw_y = f32::from_bits(LAST_TRACKPAD_RAW_Y_BITS.load(Ordering::Relaxed));
                     ui.label(format!("Last incoming trackpad Y: {raw_y:+.3} lines"));
                     let mut reverse = TRACKPAD_REVERSE.load(Ordering::Relaxed);

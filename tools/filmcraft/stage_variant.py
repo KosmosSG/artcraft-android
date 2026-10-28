@@ -18,7 +18,7 @@ REPLACEMENT = """    code = version_code(version)
         if version != "0.10.0":
             raise SystemExit("STOP: FilmCraft upstream version no longer matches v0.10.0")
         version = os.environ.get("FILMCRAFT_ANDROID_VERSION_NAME", "")
-        if version != "0.10.0-android.1":
+        if version != "0.10.0-android.3":
             raise SystemExit("STOP: invalid FilmCraft Android candidate versionName")
         value = os.environ.get("FILMCRAFT_EPHEMERAL_VERSION_CODE", "")
         if not value.isascii() or not value.isdecimal():

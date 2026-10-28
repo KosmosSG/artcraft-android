@@ -24,7 +24,7 @@ NATIVE_COMMANDS = (
     b"android.filmcraft.buildInfo",
     b"filmcraft.android.menu.action",
     b"filmcraft.android.menu.status",
-    b"0.10.0-android.2",
+    b"0.10.0-android.3",
 )
 JAVA_METHODS = (
     b"fcRequestFontImport",

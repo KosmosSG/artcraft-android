@@ -167,6 +167,13 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
             + first_permission,
             1,
         )
+    rust = require_once(rust, '        self.inner.ui(ui, frame);',
+        '        self.inner.android_capture_unsaved_dcs(ui.ctx());\n'
+        '        self.features.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\n'
+        '        self.inner.ui(ui, frame);\n'
+        '        self.features.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());', 'FilmCraft modal keys')
+    java = require_once(java, '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n',
+        '\n    private final java.util.concurrent.atomic.AtomicInteger fcDialogAction = new java.util.concurrent.atomic.AtomicInteger();\n    private volatile boolean fcDialogActive;\n    private final java.util.HashSet<Integer> fcDialogKeys = new java.util.HashSet<>();\n    public int fcUnsavedDialog(boolean active) {\n        fcDialogActive = active;\n        int action = fcDialogAction.getAndSet(0);\n        return active ? action : 0;\n    }\n    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {\n            int code = event.getKeyCode();\n            if (fcDialogKeys.contains(code)) {\n                if (event.getAction() == android.view.KeyEvent.ACTION_UP) fcDialogKeys.remove(code);\n                return true;\n            }\n            int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;\n            if (fcDialogActive && action != 0 && event.hasNoModifiers()\n                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {\n                fcDialogKeys.add(code);\n                if (event.getRepeatCount() == 0) fcDialogAction.compareAndSet(0, action);\n                return true;\n            }\n        }\n\n', 'FilmCraft modal dispatch')
     return rust, java, manifest
 
 

@@ -101,7 +101,7 @@ impl Tablet {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(if *error { "⚠" } else { "✓" });
-                        ui.label(message);
+                        ui.label(message.as_str());
                     });
                 });
             });

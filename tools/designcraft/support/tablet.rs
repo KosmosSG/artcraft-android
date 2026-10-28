@@ -8,6 +8,10 @@ static FONT_RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 static ANDROID_GENERIC: AtomicU64 = AtomicU64::new(0);
 static ANDROID_SCROLL: AtomicU64 = AtomicU64::new(0);
 static ANDROID_TOUCHPAD_MOVE: AtomicU64 = AtomicU64::new(0);
+static ANDROID_GESTURE_AXES: AtomicU64 = AtomicU64::new(0);
+static ANDROID_GENERIC_MOVE: AtomicU64 = AtomicU64::new(0);
+static ANDROID_TOUCH_MOVE: AtomicU64 = AtomicU64::new(0);
+static ANDROID_LAST_MOTION: AtomicU64 = AtomicU64::new(0);
 static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
 static FALLBACK_WHEEL: AtomicU64 = AtomicU64::new(0);
 
@@ -40,6 +44,17 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
         let moves = env.call_method(&*activity, jni_str!("dcTouchpadMoveCount"),
                                     jni_sig!("()I"), &[])?.i()?;
         ANDROID_TOUCHPAD_MOVE.store(moves.max(0) as u64, Ordering::Relaxed);
+        for (method, counter) in [
+            (jni_str!("dcGestureAxisEventCount"), &ANDROID_GESTURE_AXES),
+            (jni_str!("dcGenericMoveCount"), &ANDROID_GENERIC_MOVE),
+            (jni_str!("dcTouchMoveCount"), &ANDROID_TOUCH_MOVE),
+        ] {
+            let count = env.call_method(&*activity, method, jni_sig!("()I"), &[])?.i()?;
+            counter.store(count.max(0) as u64, Ordering::Relaxed);
+        }
+        let last = env.call_method(&*activity, jni_str!("dcLastMotionInfo"),
+                                   jni_sig!("()J"), &[])?.j()?;
+        ANDROID_LAST_MOTION.store(last as u64, Ordering::Relaxed);
         env.call_method(&*activity, jni_str!("dcPollTrackpadScroll"),
                         jni_sig!("()J"), &[])?.j()
     });
@@ -278,13 +293,22 @@ impl Tablet {
                     for (label, count) in [
                         ("Android generic events", ANDROID_GENERIC.load(Ordering::Relaxed)),
                         ("Android ACTION_SCROLL", ANDROID_SCROLL.load(Ordering::Relaxed)),
+                        ("Android gesture-scroll axes", ANDROID_GESTURE_AXES.load(Ordering::Relaxed)),
+                        ("Generic move / hover", ANDROID_GENERIC_MOVE.load(Ordering::Relaxed)),
+                        ("Touch move events", ANDROID_TOUCH_MOVE.load(Ordering::Relaxed)),
                         ("Android trackpad moves", ANDROID_TOUCHPAD_MOVE.load(Ordering::Relaxed)),
                         ("Winit mouse-wheel events", NATIVE_WHEEL.load(Ordering::Relaxed)),
                         ("JNI fallback wheel events", FALLBACK_WHEEL.load(Ordering::Relaxed)),
                     ] {
                         ui.horizontal(|ui| { ui.label(label); ui.strong(count.to_string()); });
                     }
-                    ui.label("If counts stay zero, the gesture has not reached that input stage.");
+                    let motion = ANDROID_LAST_MOTION.load(Ordering::Relaxed);
+                    let source = (motion >> 32) as u32;
+                    let action = ((motion >> 16) & 0xffff) as u16;
+                    let pointers = (motion & 0xffff) as u16;
+                    ui.label(format!("Last Android motion: action={action} source=0x{source:x} pointers={pointers}"));
+                    ui.label("After a two-finger gesture, compare ACTION_SCROLL / gesture axes with native/fallback wheel counts.");
+                    ui.label("No scroll event at either input stage suggests a device input dispatch issue.");
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));
                 });
         }

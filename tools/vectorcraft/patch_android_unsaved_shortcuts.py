@@ -42,7 +42,21 @@ def patch(root: Path) -> None:
         raise RuntimeError("Unreviewed upstream modal code; refusing to patch")
     if "Android physical keyboard mnemonics for the unsaved-document dialog." in source:
         raise RuntimeError("Patch already applied")
-    dialogs.write_text(source.replace(OLD, NEW))
+    source = source.replace(OLD, NEW)
+    # Labels are scoped to the unsaved modal; every other dialog remains unchanged.
+    labels = {
+        'widgets::primary_button_enabled(ui, label, ok_enabled).clicked()':
+            'widgets::primary_button_enabled(ui, if d.kind == crate::unsaved::KIND { "Save (S)" } else { label }, ok_enabled).clicked()',
+        'widgets::secondary_button(ui, if spec.ok.is_some() { "Cancel" } else { "Close" }).clicked()':
+            'widgets::secondary_button(ui, if d.kind == crate::unsaved::KIND { "Cancel (C)" } else if spec.ok.is_some() { "Cancel" } else { "Close" }).clicked()',
+        'discard = widgets::secondary_button(ui, label).clicked();':
+            'discard = widgets::secondary_button(ui, if d.kind == crate::unsaved::KIND { "Don\'t Save (D)" } else { label }).clicked();',
+    }
+    for before, after in labels.items():
+        if source.count(before) != 1:
+            raise RuntimeError(f"Unexpected upstream dialog label site: {before}")
+        source = source.replace(before, after)
+    dialogs.write_text(source)
     save = root / "crates/ui-egui/src/dialogs/save_changes.rs"
     expected = ('ok: Some("Save"),', 'discard: Some("Don\'t Save"),',
                 'confirm: |app, _| crate::unsaved::confirm(app),')

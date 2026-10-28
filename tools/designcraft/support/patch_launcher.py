@@ -204,7 +204,7 @@ def patch(root):
         '\n            });' +
         '\n        }' +
         '\n        let popup_open = egui::Popup::is_any_open(ctx);' +
-        '\n        tablet::suppress_trackpad_menu_hover(raw, popup_open, fallback_injected);' +
+        '\n        tablet::suppress_trackpad_menu_hover(ctx, raw, popup_open, fallback_injected);' +
         '\n        tablet::record_wheel_events(raw, fallback_injected);' +
         '\n        if egui::Popup::is_any_open(ctx) {' +
         '\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +

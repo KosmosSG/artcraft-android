@@ -4,6 +4,7 @@ on:
     branches: [fix/designcraft-font-import-writable-cache-20261028]
     paths:
       - 'tools/designcraft/**'
+      - 'tools/approved-branding/**'
       - '.github/workflows/designcraft-font-import-preview.yml'
   workflow_dispatch:
 permissions:
@@ -43,7 +44,7 @@ jobs:
           python3 -m pip install 'Pillow==11.3.0'
           python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
           python3 tools/designcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
-          python3 tools/designcraft/make_icon.py builder/dc-icon.png
+          python3 tools/approved-branding/approved_branding.py check
           grep -F 'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));' builder/templates/android/system_fonts.rs
           grep -F 'link.join("android-system")' builder/templates/android/system_fonts.rs
       - uses: actions/setup-java@v4
@@ -60,7 +61,7 @@ jobs:
           "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Compile ARM64 test APK using DISPOSABLE signing only
-        run: bash builder/build.sh -designcraft -appname='DesignCraft Test' -packagename=com.artcraft.designcraft.candidate -appicon="$GITHUB_WORKSPACE/builder/dc-icon.png"
+        run: bash builder/build.sh -designcraft -appname='DesignCraft Test' -packagename=com.artcraft.designcraft.candidate -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DesignCraft.png"
       - name: Verify test-only package, signing, version and ARM64 payload
         run: |
           set -euo pipefail
@@ -71,6 +72,7 @@ jobs:
           test -f "$APK"
           CERT=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/Signer #1 certificate SHA-256 digest: //p')
           python3 tools/designcraft/verify_apk.py "$APK" "$AAPT" "$APKSIGNER" "$VERSION_NAME" "$VERSION_CODE" "$CERT" > candidate/verification.json
+          python3 tools/designcraft/verify_approved_candidate.py "$APK" "$AAPT" > candidate/approved-branding.json
           cp "$APK" "candidate/DesignCraft-0.12.0-android.5-DISPOSABLE-TEST.apk"
           sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
           echo 'TEMPORARY SIGNATURE and SEPARATE test package. Cannot update production DesignCraft. No permanent keys used. Not a public release.' >> "$GITHUB_STEP_SUMMARY"

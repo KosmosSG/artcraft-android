@@ -12,6 +12,9 @@ if len(sys.argv) != 2:
 root = Path(sys.argv[1]).resolve()
 from patch_unsaved_dcs import apply as apply_unsaved_dcs
 apply_unsaved_dcs(root / "source/effectcraft")
+from font_paths import patch_android_font_paths
+font_template = root / "templates/android/system_fonts.rs"
+font_template.write_text(patch_android_font_paths(font_template.read_text()))
 menu = root / "source/effectcraft/crates/ui-egui/src/menus.rs"
 builder = root / "lib/build-common.sh"
 java = root / "templates/android/SafActivity.java"

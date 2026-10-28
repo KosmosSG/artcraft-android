@@ -23,14 +23,23 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('"Window" => &["window.artcraftShortcutPad"', after)
             self.assertIn('entries.extend(ids.iter().map(|id| cmd_item(id, Value::Null)))', after)
             self.assertIn('entries.push(Item::Sep)', after)
-            # Existing upstream ScrollArea needs explicit Android drag support:
-            # touch/stylus GameActivity hosts need not set has_touch_screen.
-            self.assertIn('drag: egui::containers::scroll_area::DragScroll::Always', after)
+            # Android real-device retry: avoid egui's row-owned drag handler and
+            # expose deterministic page buttons if touch deltas are not delivered.
+            self.assertIn('drag: egui::containers::scroll_area::DragScroll::Never', after)
             self.assertIn('scroll_bar: true', after)
             self.assertIn('mouse_wheel: true', after)
-            self.assertIn('ScrollBarVisibility::VisibleWhenNeeded', after)
+            self.assertIn('ScrollBarVisibility::AlwaysVisible', after)
+            self.assertIn('i.pointer.delta().y', after)
+            self.assertIn('i.pointer.is_decidedly_dragging()', after)
+            self.assertIn('ui.id().with("designcraft-android-menu-scroll")', after)
+            self.assertIn('egui::Button::new("▲ Scroll up")', after)
+            self.assertIn('egui::Button::new("▼ More items")', after)
+            self.assertIn('rendered.state.clamped_offset().y', after)
+            self.assertIn('rendered.content_size.y - rendered.inner_rect.height()', after)
+            self.assertIn('.vertical_scroll_offset(target)', after)
             self.assertIn('(ui.ctx().content_rect().height() * 0.72).max(180.0)', after)
             self.assertIn('#[cfg(target_os = "android")]\n    let max_height', after)
+            self.assertIn('#[cfg(not(target_os = "android"))]', after)
 
             self.assertNotIn('entries.splice(0..0, android)', after)
             with self.assertRaises(ValueError):

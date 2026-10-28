@@ -1,0 +1,98 @@
+name: DesignCraft .5 FONT-ONLY original-package APK candidate (never sign permanently)
+on:
+  push:
+    branches: [release/designcraft-font-import-only-android5-20261028]
+    paths:
+      - 'tools/designcraft/**'
+      - 'tools/approved-branding/**'
+      - '.github/workflows/designcraft-font-import-only-production-candidate.yml'
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-font-only-production-candidate-20261028
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION: 0.12.0-android.5
+      VERSION_NAME: 0.12.0-android.5
+      CODE: '16800006'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/designcraft
+          ref: 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          path: builder/source/designcraft
+          persist-credentials: false
+      - name: Verify source isolation and stage verified font fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/designcraft rev-parse HEAD)" = 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/designcraft/prepare_builder.py builder "$VERSION" "$CODE"
+          python3 tools/approved-branding/approved_branding.py check
+          grep -F 'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));' builder/templates/android/system_fonts.rs
+          grep -F 'link.join("android-system")' builder/templates/android/system_fonts.rs
+          ! grep -R -E 'trackpad-menu|trackpad_scroll|dcPollTrackpadScroll|trackpad_menu_scrolling|artcraftInputDiagnostics|ARTCRAFT_MENU_SCROLL_EVENTS' tools/designcraft/menu_overlay.py tools/designcraft/support/tablet.rs tools/designcraft/support/patch_launcher.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android build tools
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Compile production package with temporary builder key
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -designcraft -appname=DesignCraft -packagename=com.artcraft.designcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DesignCraft.png"
+      - name: Verify original package, monotonic version and exact approved artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          APK=$(find builder/output -maxdepth 1 -name '*.apk' -type f)
+          test -f "$APK"
+          python3 tools/designcraft/verify_font_import_production.py "$APK" "$ANDROID_HOME/build-tools/35.0.0" "$GITHUB_SHA" > candidate/verification.json
+          cp "$APK" candidate/DesignCraft-0.12.0-android.5-TEMP-SIGNATURE-NOT-FOR-INSTALL.apk
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          printf '%s\n' "$GITHUB_SHA" > candidate/font-only-source-sha.txt
+          echo 'NOT A RELEASE: candidate has a temporary builder signature, reserved for secure permanent re-signing in DesignCraft signing-private.' >> "$GITHUB_STEP_SUMMARY"
+          cat candidate/verification.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DesignCraft-font-only-v0.12.0-android.5-original-package-candidate
+          path: candidate/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: DesignCraft-font-only-v0.12.0-android.5-build-diagnostics
+          path: |
+            builder/logs/
+            builder/source/designcraft/apps/designcraft-android/src/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Destroy temporary Android signer
+        if: always()
+        run: rm -rf builder/keys

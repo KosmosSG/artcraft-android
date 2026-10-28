@@ -9,6 +9,19 @@ def replace_once(text, old, new):
     return text.replace(old, new)
 
 
+def update_policy_for_activity(activity_source, policy_source):
+    """Keep the helper class in the generated Activity's actual Java package."""
+    activity_package = next(
+        (line for line in activity_source.splitlines() if line.startswith("package ")), None)
+    if activity_package not in (
+        "package com.artcraft.designcraft;",
+        "package com.artcraft.designcraft.candidate;",
+    ):
+        raise ValueError("Unexpected generated DesignCraft Java package")
+    # No production policy values, signing identity, or updater gates are changed.
+    return replace_once(policy_source, "package com.artcraft.designcraft;", activity_package)
+
+
 def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
@@ -25,7 +38,7 @@ def patch(root):
                                     log::error!("Font import: {error}");
                                     tablet::font_result(Err(error));
                                 } else {
-                                    tablet::font_result(Ok("Font imported".to_owned()));
+                                    tablet::font_result(Ok(format!("Imported font: {name}")));
                                 }
                             } else {
                                 ''' + old + '''
@@ -126,8 +139,9 @@ def patch(root):
         methods += Path(__file__).with_name(filename).read_text() + '\n'
     index = text.rfind('}')
     java.write_text(text[:index] + methods + text[index:])
+    policy = Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text()
     (java.parent / "DesignCraftUpdatePolicy.java").write_text(
-        Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text())
+        update_policy_for_activity(text, policy))
     manifest = root / 'Cargo.toml'
     manifest.write_text(manifest.read_text() + '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n')
 

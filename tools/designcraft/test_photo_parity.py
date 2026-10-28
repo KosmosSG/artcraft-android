@@ -36,18 +36,26 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn('if (!validHeader)', java)
         self.assertNotIn('target.delete();', java)
 
-    def test_android_font_cache_is_writable_and_keeps_system_font_discovery(self):
-        system_fonts = Path("templates/android/system_fonts.rs").read_text()
-        android_font = Path("tools/designcraft/support/tablet.rs").read_text()
-        shared_font = Path("tools/designcraft/support/font_methods.java").read_text()
-        self.assertIn('let user_fonts = home.join(".local/share/fonts");', system_fonts)
-        self.assertIn('create_dir_all(&user_fonts)', system_fonts)
-        self.assertIn('user_fonts.join("android-system")', system_fonts)
-        self.assertIn('read_link(&user_fonts)', system_fonts)
-        self.assertNotIn('home.join(".local/share/fonts"),\n        base.join("fonts")', system_fonts)
-        self.assertIn('join(".local/share/fonts/imported")', android_font)
-        self.assertIn('"home/.local/share/fonts/shared"', shared_font)
-        self.assertIn('app.run("font.reload"', android_font)
+    def test_android_font_cache_is_writable_and_scanned_after_import(self):
+        from prepare_builder import patch_android_font_paths
+        # Assert against the exact pinned builder file, not an unused suite copy.
+        upstream = Path("builder/templates/android/system_fonts.rs").read_text()
+        staged = patch_android_font_paths(upstream)
+        self.assertIn('std::fs::read_link(&link)', staged)
+        self.assertIn('std::fs::remove_file(&link)', staged)
+        self.assertIn('std::fs::create_dir_all(&link)', staged)
+        self.assertIn('link.join("android-system")', staged)
+        self.assertIn('std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));', staged)
+        self.assertNotIn('std::env::set_var("XDG_DATA_HOME", &base);', staged)
+        with self.assertRaises(ValueError):
+            patch_android_font_paths(staged)
+
+        rust = Path("tools/designcraft/support/tablet.rs").read_text()
+        java = Path("tools/designcraft/support/font_methods.java").read_text()
+        self.assertIn('join(".local/share/fonts/imported")', rust)
+        self.assertIn('"home/.local/share/fonts/shared"', java)
+        self.assertIn('app.run("font.reload"', rust)
+        self.assertIn('dcRestoreSharedFontsOnStartup()', java)
 
     def test_updater_rejects_disposable_test_package(self):
         java = Path("tools/designcraft/support/update_methods.java").read_text()

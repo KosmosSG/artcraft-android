@@ -244,6 +244,34 @@ pub fn artcraft_menu_scroll_diagnostics() -> (u64, u64, f32, f32) {
 
 #[cfg(target_os = "android")]
 pub fn artcraft_take_android_actions() -> u32 {""")
+    # The Android trackpad wheel may be delivered alongside pointer samples.
+    # Even if the native adapter filters the moving pointer, egui holds the
+    # previous hover position in InputState, which can activate nested menus.
+    # Prevent opening submenu popups only during the 180ms scroll gesture.
+    text = replace_once(text,
+        """    let id = SubMenu::id_from_widget_id(ui.next_auto_id());
+    let open = MenuState::from_ui(ui, |state, _| state.open_item == Some(id));""",
+        """    let id = SubMenu::id_from_widget_id(ui.next_auto_id());
+    #[cfg(target_os = "android")]
+    let suppress_hover = ui.ctx().data(|data|
+        data.get_temp::<bool>(egui::Id::new("artcraft.trackpad_menu_scrolling"))
+            .unwrap_or(false));
+    #[cfg(not(target_os = "android"))]
+    let suppress_hover = false;
+    if suppress_hover {
+        // Keep the top-level popup open; only close its hover-triggered child.
+        MenuState::from_ui(ui, |state, _| state.open_item = None);
+    }
+    let open = !suppress_hover &&
+        MenuState::from_ui(ui, |state, _| state.open_item == Some(id));""")
+    text = replace_once(text,
+        """    let response = ui.add(button.button);
+    ui.style_mut().visuals.widgets.inactive = inactive;
+    let clip = ui.clip_rect();""",
+        """    let response = ui.add(button.button);
+    ui.style_mut().visuals.widgets.inactive = inactive;
+    if suppress_hover { return (response, None); }
+    let clip = ui.clip_rect();""")
     # Android's GameActivity touch input is sometimes exposed to egui without
     # has_touch_screen=true, causing ScrollArea's default DragScroll::OnTouch
     # to reject swipes. Menu popups are already scrollable upstream, but long

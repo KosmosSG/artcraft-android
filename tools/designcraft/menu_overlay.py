@@ -84,6 +84,99 @@ pub fn ui_label(id: &str) -> Option<(&''')
     }
     tree
 }""")
+    # Synthetic wheel events are now confirmed by HONOR MagicPad 4 diagnostics:
+    # 23 Java gesture-scroll and 23 egui MouseWheel events, but no menu movement.
+    # The stock egui scroll-area path requires rect_contains_pointer, which can
+    # reject the popup's hovering pointer when a separate diagnostics window is
+    # open. Use the raw egui wheel event (already normalized by the Android
+    # bridge), then apply an explicitly bounded per-popup offset.
+    text = replace_once(text,
+        """        scroll.show(ui, add_contents).inner
+    };""",
+        """        #[cfg(target_os = "android")]
+        {
+            // Temp state is scoped to this popup, not shared between menus.
+            // Keep the previous visible viewport for a direct geometry test;
+            // ui.rect_contains_pointer() can return false for a popup layered
+            // above the canvas or beside another diagnostics window.
+            let menu_id = ui.id().with("designcraft-menu-trackpad-offset");
+            let previous = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect)>(menu_id));
+            let (mut offset, previous_limit, previous_rect) = previous.unwrap_or((
+                0.0, 0.0, egui::Rect::NOTHING,
+            ));
+            let wheel = ui.input(|input| {
+                let Some(pointer) = input.pointer.hover_pos() else { return 0.0; };
+                // First show: the popup has no measured viewport yet.
+                let inside = previous_rect.contains(pointer) ||
+                    (previous.is_none() && ui.max_rect().contains(pointer));
+                if !inside { return 0.0; }
+                input.raw.events.iter().filter_map(|event| {
+                    if let egui::Event::MouseWheel { unit, delta, modifiers, .. } = event {
+                        if modifiers.ctrl || modifiers.command { return None; }
+                        Some(match unit {
+                            egui::MouseWheelUnit::Line => delta.y * 40.0,
+                            egui::MouseWheelUnit::Page => delta.y * max_height,
+                            egui::MouseWheelUnit::Point => delta.y,
+                        })
+                    } else { None }
+                }).sum::<f32>()
+            });
+            if wheel.is_finite() && wheel.abs() > 0.01 {
+                // Positive wheel moves content down and scroll offset up;
+                // do not reapply stale wheel deltas on frames without input.
+                offset = (offset - wheel).clamp(0.0, previous_limit.max(0.0));
+                ARTCRAFT_MENU_SCROLL_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                ui.ctx().request_repaint();
+            }
+            // Do not enable a second wheel consumer or add paging controls.
+            scroll = scroll
+                .scroll_source(egui::containers::scroll_area::ScrollSource {
+                    scroll_bar: true,
+                    drag: egui::containers::scroll_area::DragScroll::OnTouch,
+                    mouse_wheel: false,
+                })
+                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .vertical_scroll_offset(offset);
+            let rendered = scroll.show(ui, add_contents);
+            let limit = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);
+            let new_offset = offset.clamp(0.0, limit);
+            ui.data_mut(|d| d.insert_temp(menu_id, (new_offset, limit, rendered.inner_rect)));
+            ARTCRAFT_MENU_SCROLL_OFFSET_BITS.store(
+                new_offset.to_bits(), std::sync::atomic::Ordering::Relaxed,
+            );
+            ARTCRAFT_MENU_SCROLL_LIMIT_BITS.store(
+                limit.to_bits(), std::sync::atomic::Ordering::Relaxed,
+            );
+            rendered.inner
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            scroll.show(ui, add_contents).inner
+        }
+    };""")
+    text = replace_once(text,
+        """#[cfg(target_os = "android")]
+pub fn artcraft_take_android_actions() -> u32 {""",
+        """#[cfg(target_os = "android")]
+static ARTCRAFT_MENU_SCROLL_EVENTS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+#[cfg(target_os = "android")]
+static ARTCRAFT_MENU_SCROLL_OFFSET_BITS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+#[cfg(target_os = "android")]
+static ARTCRAFT_MENU_SCROLL_LIMIT_BITS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+
+#[cfg(target_os = "android")]
+pub fn artcraft_menu_scroll_diagnostics() -> (u64, f32, f32) {
+    use std::sync::atomic::Ordering;
+    (ARTCRAFT_MENU_SCROLL_EVENTS.load(Ordering::Relaxed),
+     f32::from_bits(ARTCRAFT_MENU_SCROLL_OFFSET_BITS.load(Ordering::Relaxed)),
+     f32::from_bits(ARTCRAFT_MENU_SCROLL_LIMIT_BITS.load(Ordering::Relaxed)))
+}
+
+#[cfg(target_os = "android")]
+pub fn artcraft_take_android_actions() -> u32 {""")
     # Android's GameActivity touch input is sometimes exposed to egui without
     # has_touch_screen=true, causing ScrollArea's default DragScroll::OnTouch
     # to reject swipes. Menu popups are already scrollable upstream, but long

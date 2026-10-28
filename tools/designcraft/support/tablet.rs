@@ -26,6 +26,7 @@ static LAST_TRACKPAD_MENU_GESTURE: Mutex<Option<std::time::Instant>> =
 /// This deliberately leaves wheel, click, key and real touchscreen events
 /// untouched, and only affects already-open menus.
 pub fn suppress_trackpad_menu_hover(
+    ctx: &egui::Context,
     raw: &mut egui::RawInput,
     popup_open: bool,
     fallback_injected: bool,
@@ -42,21 +43,29 @@ pub fn suppress_trackpad_menu_hover(
                 std::time::Duration::from_millis(180))
         }
     };
-    if !active || raw.events.iter().any(|event|
+    let real_touch_active = raw.events.iter().any(|event|
         matches!(event, egui::Event::Touch {
             phase: egui::TouchPhase::Start | egui::TouchPhase::Move, ..
         })
-    ) {
-        return;
-    }
+    );
+    let block_hover = active && !real_touch_active;
+    // Popup submenu drawing runs after this native input-preparation pass.
+    // Expose a one-frame guard so hovering a now-scrolling row cannot reopen
+    // submenus merely because egui kept the prior cursor position.
+    ctx.data_mut(|data| {
+        data.insert_temp(egui::Id::new("artcraft.trackpad_menu_scrolling"), block_hover);
+    });
+    if !block_hover { return; }
     let original = raw.events.len();
     raw.events.retain(|event| !matches!(
         event, egui::Event::PointerMoved(_) | egui::Event::PointerGone
     ));
     let suppressed = original - raw.events.len();
-    if suppressed > 0 {
-        RAW_HOVER_SUPPRESSED.fetch_add(suppressed as u64, Ordering::Relaxed);
-    }
+    // egui preserves the previous pointer location unless explicitly given
+    // PointerGone. Clear that stale hover while the separate wheel event
+    // scrolls the popup; ordinary pointer motion resumes after 180 ms.
+    raw.events.push(egui::Event::PointerGone);
+    RAW_HOVER_SUPPRESSED.fetch_add((suppressed + 1) as u64, Ordering::Relaxed);
 }
 
 pub fn record_wheel_events(raw: &egui::RawInput, fallback_injected: bool) {

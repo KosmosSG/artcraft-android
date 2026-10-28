@@ -10,6 +10,7 @@ static ANDROID_SCROLL: AtomicU64 = AtomicU64::new(0);
 static ANDROID_TOUCHPAD_MOVE: AtomicU64 = AtomicU64::new(0);
 static ANDROID_GESTURE_AXES: AtomicU64 = AtomicU64::new(0);
 static ANDROID_GENERIC_MOVE: AtomicU64 = AtomicU64::new(0);
+static ANDROID_HOVER_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
 static ANDROID_TOUCH_MOVE: AtomicU64 = AtomicU64::new(0);
 static ANDROID_LAST_MOTION: AtomicU64 = AtomicU64::new(0);
 static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
@@ -47,6 +48,7 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
         for (method, counter) in [
             (jni_str!("dcGestureAxisEventCount"), &ANDROID_GESTURE_AXES),
             (jni_str!("dcGenericMoveCount"), &ANDROID_GENERIC_MOVE),
+            (jni_str!("dcSuppressedHoverCount"), &ANDROID_HOVER_SUPPRESSED),
             (jni_str!("dcTouchMoveCount"), &ANDROID_TOUCH_MOVE),
         ] {
             let count = env.call_method(&*activity, method, jni_sig!("()I"), &[])?.i()?;
@@ -295,6 +297,7 @@ impl Tablet {
                         ("Android ACTION_SCROLL", ANDROID_SCROLL.load(Ordering::Relaxed)),
                         ("Android gesture-scroll axes", ANDROID_GESTURE_AXES.load(Ordering::Relaxed)),
                         ("Generic move / hover", ANDROID_GENERIC_MOVE.load(Ordering::Relaxed)),
+                        ("Trackpad hover suppressed", ANDROID_HOVER_SUPPRESSED.load(Ordering::Relaxed)),
                         ("Touch move events", ANDROID_TOUCH_MOVE.load(Ordering::Relaxed)),
                         ("Android trackpad moves", ANDROID_TOUCHPAD_MOVE.load(Ordering::Relaxed)),
                         ("Winit mouse-wheel events", NATIVE_WHEEL.load(Ordering::Relaxed)),

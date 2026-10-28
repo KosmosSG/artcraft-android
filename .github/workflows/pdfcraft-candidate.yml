@@ -3,7 +3,7 @@ name: PDFCraft ARM64 ephemeral candidate (not a release)
 on:
   push:
     branches:
-      - development/pdfcraft-v013-android-updates-20261024
+      - integration/pdfcraft-v014-arm64-candidate-20261028
     paths:
       - .github/workflows/pdfcraft-candidate.yml
       - lib/build-common.sh
@@ -23,16 +23,16 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/pdfcraft-v013-android-updates-20261024'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/pdfcraft-v014-arm64-candidate-20261028'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      PDFCRAFT_ANDROID_VERSION_NAME: 0.13.0-android.1
-      PDFCRAFT_REF: v0.13.0
-      PDFCRAFT_SHA: 53199fb4fa36f3c95b539add6218c57aeb2f823c
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.14.0-android.1
+      PDFCRAFT_REF: v0.14.0
+      PDFCRAFT_SHA: 5a78b223871add8e3883856205cc653d741e0e94
       PDFCRAFT_ICON_SHA256: acb206f5bb7759a38e604d0d1295753dd08a67fd9d38b19d27f86d8e737c2085
-      # Expected cargo-apk2 code for pinned v0.13.0, NOT reserved for published updates.
-      EXPECTED_EPHEMERAL_VERSION_CODE: '16780544'
+      # Expected cargo-apk2 code for pinned v0.14.0, NOT reserved for published updates.
+      EXPECTED_EPHEMERAL_VERSION_CODE: '16780800'
 
     steps:
       - name: Checkout isolated candidate only
@@ -50,6 +50,11 @@ jobs:
           git clone --depth 1 --branch "$PDFCRAFT_REF" "$REMOTE" source/pdfcraft
           test "$(git -C source/pdfcraft rev-parse HEAD)" = "$PDFCRAFT_SHA"
           test "$(git -C source/pdfcraft remote get-url origin)" = "$REMOTE"
+          python3 - <<'PY'
+          import pathlib, tomllib
+          cargo = tomllib.loads(pathlib.Path("source/pdfcraft/Cargo.toml").read_text())
+          assert cargo["workspace"]["package"]["version"] == "0.14.0", "Unexpected upstream workspace version"
+          PY
           echo "Official PDFCraft $PDFCRAFT_REF resolves to $PDFCRAFT_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test guarded Android adapter generation
@@ -121,21 +126,21 @@ jobs:
           # This is never a PDFCraft permanent signing identity.
           test ! -f keys/artcraft-builder.jks
           bash build.sh -pdfcraft -appname=PdfCraft -appicon=assets/pdfcraft/approved-icon.png
-          test -f output/pdfcraft-0.13.0.apk
-          mv output/pdfcraft-0.13.0.apk output/pdfcraft-0.13.0-android.1.apk
+          test -f output/pdfcraft-0.14.0.apk
+          mv output/pdfcraft-0.14.0.apk output/pdfcraft-0.14.0-android.1.apk
 
       - name: Verify packaged ABI, identity, version, icon and ephemeral signature
         shell: bash
         run: |
           set -euo pipefail
-          APK="output/pdfcraft-0.13.0-android.1.apk"
+          APK="output/pdfcraft-0.14.0-android.1.apk"
           SDK_ROOT="${ANDROID_HOME}"
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
           AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
           APKSIGNER="$SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner"
           "$AAPT2" dump badging "$APK" | tee output/pdfcraft-badging.txt
           grep -q "package: name='com.artcraft.pdfcraft'" output/pdfcraft-badging.txt
-          grep -q "versionName='0.13.0-android.1'" output/pdfcraft-badging.txt
+          grep -q "versionName='0.14.0-android.1'" output/pdfcraft-badging.txt
           grep -q "versionCode='$EXPECTED_EPHEMERAL_VERSION_CODE'" output/pdfcraft-badging.txt
           unzip -Z1 "$APK" | tee output/pdfcraft-archive.txt
           grep -q '^lib/arm64-v8a/.*\.so$' output/pdfcraft-archive.txt
@@ -154,9 +159,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: PDFCraft-0.13.0-android.1-EPHEMERAL-NOT-UPDATE
+          name: PDFCraft-0.14.0-android.1-EPHEMERAL-NOT-UPDATE
           path: |
-            output/pdfcraft-0.13.0-android.1.apk
+            output/pdfcraft-0.14.0-android.1.apk
             output/pdfcraft-badging.txt
             output/pdfcraft-archive.txt
             output/pdfcraft-ephemeral-certificate.txt

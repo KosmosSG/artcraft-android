@@ -1,7 +1,7 @@
 name: DesignCraft release checks
 on:
   push:
-    branches: [fix/designcraft-android2-icon-menus-20261023]
+    branches: [fix/designcraft-android2-icon-menus-20261023, fix/designcraft-font-import-writable-cache-20261028]
     paths: ['tools/designcraft/**', '.github/workflows/designcraft-release-checks.yml']
   workflow_dispatch:
 permissions:

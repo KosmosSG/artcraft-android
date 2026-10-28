@@ -1,0 +1,97 @@
+name: DesignCraft .5 font-import ARM64 candidate (disposable signer)
+on:
+  push:
+    branches: [fix/designcraft-font-import-writable-cache-20261028]
+    paths:
+      - 'tools/designcraft/**'
+      - 'tools/approved-branding/**'
+      - '.github/workflows/designcraft-font-import-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-font-import-preview
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION_NAME: 0.12.0-android.5
+      VERSION_CODE: '16800006'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/designcraft
+          ref: 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          path: builder/source/designcraft
+          persist-credentials: false
+      - name: Verify source, font-path regression tests and stage Android enhancements
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/designcraft rev-parse HEAD)" = 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/designcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          python3 tools/approved-branding/approved_branding.py check
+          grep -F 'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));' builder/templates/android/system_fonts.rs
+          grep -F 'link.join("android-system")' builder/templates/android/system_fonts.rs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android SDK 35 and NDK 27.2
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Compile ARM64 test APK using DISPOSABLE signing only
+        run: bash builder/build.sh -designcraft -appname='DesignCraft Test' -packagename=com.artcraft.designcraft.candidate -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DesignCraft.png"
+      - name: Verify test-only package, signing, version and ARM64 payload
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APK=$(find builder/output -maxdepth 1 -name '*.apk' -type f)
+          test -f "$APK"
+          CERT=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/Signer #1 certificate SHA-256 digest: //p')
+          python3 tools/designcraft/verify_apk.py "$APK" "$AAPT" "$APKSIGNER" "$VERSION_NAME" "$VERSION_CODE" "$CERT" > candidate/verification.json
+          python3 tools/designcraft/verify_approved_candidate.py "$APK" "$AAPT" > candidate/approved-branding.json
+          cp "$APK" "candidate/DesignCraft-0.12.0-android.5-DISPOSABLE-TEST.apk"
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          echo 'TEMPORARY SIGNATURE and SEPARATE test package. Cannot update production DesignCraft. No permanent keys used. Not a public release.' >> "$GITHUB_STEP_SUMMARY"
+          cat candidate/verification.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: DesignCraft-0.12.0-android.5-font-import-private-test
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: designcraft-font-import-build-diagnostics
+          path: |
+            builder/logs/
+            builder/source/designcraft/apps/designcraft-android/src/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Destroy disposable signing key
+        if: always()
+        run: rm -rf builder/keys

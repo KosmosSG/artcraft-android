@@ -9,11 +9,206 @@ def replace_once(text, old, new):
     return text.replace(old, new)
 
 
+def update_policy_for_activity(activity_source, policy_source):
+    """Keep the helper class in the generated Activity's actual Java package."""
+    activity_package = next(
+        (line for line in activity_source.splitlines() if line.startswith("package ")), None)
+    if activity_package not in (
+        "package com.artcraft.designcraft;",
+        "package com.artcraft.designcraft.candidate;",
+    ):
+        raise ValueError("Unexpected generated DesignCraft Java package")
+    # No production policy values, signing identity, or updater gates are changed.
+    return replace_once(policy_source, "package com.artcraft.designcraft;", activity_package)
+
+
+def append_trackpad_bridge(text: str) -> str:
+    """Capture native Android generic scrolling without intercepting other input."""
+    if "dcPollTrackpadScroll" in text:
+        raise ValueError("DesignCraft trackpad bridge already installed")
+    anchor = "public final class DesignCraftActivity extends GameActivity {"
+    bridge = """public final class DesignCraftActivity extends GameActivity {
+    // Listen to BOTH classic mouse-wheel axes and Android 14+ two-finger
+    // touchpad gesture-scroll axes (distance in display pixels). Preserve
+    // normal GameActivity dispatch and do not treat ordinary cursor movement
+    // as scrolling.
+    private float dcPendingScrollX = 0f;
+    private float dcPendingScrollY = 0f;
+    private int dcGenericEvents = 0;
+    private int dcScrollEvents = 0;
+    private int dcGestureAxisEvents = 0;
+    private int dcGenericMoves = 0;
+    private int dcTouchMoves = 0;
+    private int dcTouchpadMoves = 0;
+    private int dcSuppressedHoverEvents = 0;
+    private long dcLastTrackpadScrollAtMs = -10000L;
+    private int dcLastAction = -1;
+    private int dcLastSource = 0;
+    private int dcLastPointers = 0;
+
+    private synchronized void dcRememberEvent(android.view.MotionEvent event) {
+        dcLastAction = event.getActionMasked();
+        dcLastSource = event.getSource();
+        dcLastPointers = event.getPointerCount();
+    }
+
+    private void dcAccumulateScroll(float dx, float dy) {
+        if (!Float.isFinite(dx) || !Float.isFinite(dy)
+                || (dx == 0f && dy == 0f)) return;
+        synchronized (this) {
+            dcPendingScrollX = Math.max(-64f, Math.min(64f, dcPendingScrollX + dx));
+            dcPendingScrollY = Math.max(-64f, Math.min(64f, dcPendingScrollY + dy));
+        }
+    }
+
+    private boolean dcCaptureGestureScroll(android.view.MotionEvent event) {
+        // API 34 introduced the two-finger gesture axes. Unlike VSCROLL,
+        // these are pixel distances, not wheel notches, and may arrive on
+        // ACTION_MOVE (not ACTION_SCROLL). Do not infer scrolling from x/y.
+        if (event == null || android.os.Build.VERSION.SDK_INT < 34) return false;
+        float gx = event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE);
+        float gy = event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE);
+        if (!Float.isFinite(gx) || !Float.isFinite(gy) ||
+                (gx == 0f && gy == 0f)) return false;
+        synchronized (this) {
+            dcGestureAxisEvents++;
+            // MagicOS can dispatch these gesture-distance samples as mouse
+            // HOVER_MOVE. The native GameActivity must not ALSO treat them
+            // as pointer movement over popup menu items.
+            dcLastTrackpadScrollAtMs = android.os.SystemClock.uptimeMillis();
+        }
+        float pxPerLine = 40f * getResources().getDisplayMetrics().density;
+        if (pxPerLine < 1f) pxPerLine = 40f;
+        // Android gesture distance is the requested content movement.
+        // egui wheel delta is positive when scrolling UP, hence inversion.
+        dcAccumulateScroll(-gx / pxPerLine, -gy / pxPerLine);
+        return true;
+    }
+
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (event != null) {
+            synchronized (this) {
+                dcGenericEvents++;
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE ||
+                        event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_MOVE) {
+                    dcGenericMoves++;
+                }
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
+                    dcScrollEvents++;
+                }
+            }
+            dcRememberEvent(event);
+            boolean gesture = dcCaptureGestureScroll(event);
+            if (gesture) {
+                // The gesture was explicitly converted into wheel input for
+                // DesignCraft. Stop the same Android motion from also moving
+                // the native pointer and activating hover-only submenus.
+                synchronized (this) { dcSuppressedHoverEvents++; }
+                return true;
+            }
+            int action = event.getActionMasked();
+            boolean hoverMotion =
+                    action == android.view.MotionEvent.ACTION_HOVER_MOVE ||
+                    action == android.view.MotionEvent.ACTION_HOVER_ENTER ||
+                    action == android.view.MotionEvent.ACTION_HOVER_EXIT ||
+                    action == android.view.MotionEvent.ACTION_MOVE;
+            // Gesture samples and cursor hover samples may be interleaved.
+            // Freeze hover briefly without blocking clicks, keys or physical
+            // touchscreen events. Only applies to mouse-sourced generic input.
+            if (hoverMotion &&
+                    (event.getSource() & android.view.InputDevice.SOURCE_MOUSE)
+                    == android.view.InputDevice.SOURCE_MOUSE) {
+                long age;
+                synchronized (this) {
+                    age = android.os.SystemClock.uptimeMillis() - dcLastTrackpadScrollAtMs;
+                }
+                if (age >= 0 && age <= 120L) {
+                    synchronized (this) { dcSuppressedHoverEvents++; }
+                    return true;
+                }
+            }
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL && !gesture) {
+                float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
+                float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
+                // AXIS_SCROLL is a fallback for a generic (non-directional)
+                // scrolling source, e.g. rotary, if no vertical axis is set.
+                if (dx == 0f && dy == 0f && android.os.Build.VERSION.SDK_INT >= 26) {
+                    dy = event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL);
+                }
+                dcAccumulateScroll(dx, dy);
+            }
+        }
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event != null) {
+            synchronized (this) {
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                    dcTouchMoves++;
+                    if ((event.getSource() & android.view.InputDevice.SOURCE_TOUCHPAD)
+                            == android.view.InputDevice.SOURCE_TOUCHPAD) {
+                        dcTouchpadMoves++;
+                    }
+                }
+            }
+            dcRememberEvent(event);
+            dcCaptureGestureScroll(event);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    // Stable diagnostic counters only: no coordinates, key contents or files.
+    public synchronized long dcInputEventCounts() {
+        return ((long) dcGenericEvents << 32) | (dcScrollEvents & 0xffffffffL);
+    }
+    public synchronized int dcTouchpadMoveCount() { return dcTouchpadMoves; }
+    public synchronized int dcGestureAxisEventCount() { return dcGestureAxisEvents; }
+    public synchronized int dcGenericMoveCount() { return dcGenericMoves; }
+    public synchronized int dcSuppressedHoverCount() { return dcSuppressedHoverEvents; }
+    public synchronized int dcTouchMoveCount() { return dcTouchMoves; }
+    public synchronized long dcLastMotionInfo() {
+        return (((long) dcLastSource & 0xffffffffL) << 32)
+            | ((long) (dcLastAction & 0xffff) << 16)
+            | (dcLastPointers & 0xffffL);
+    }
+
+    // Atomic pair, avoids interleaving coordinates between UI and Rust threads.
+    // Upper 32 bits = vertical, lower 32 bits = horizontal.
+    public synchronized long dcPollTrackpadScroll() {
+        long xy = ((long) Float.floatToIntBits(dcPendingScrollY) << 32)
+                | (Float.floatToIntBits(dcPendingScrollX) & 0xffffffffL);
+        dcPendingScrollX = 0f;
+        dcPendingScrollY = 0f;
+        return xy;
+    }
+"""
+    return replace_once(text, anchor, bridge)
+
+
 def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
     source = replace_once(source, '        self.inner.ui(ui);', '        self.inner.ui(ui);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n')
     source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n')
+    source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);',
+        '        self.handle_clipboard_shortcuts(raw);' +
+        '\n        // DesignCraft Android fallback: collect trackpad scroll from the Activity.' +
+        '\n        // Avoid double injection when winit already emitted MouseWheel.' +
+        '\n        let (dx, dy) = tablet::poll_trackpad_scroll(&self.app);' +
+        '\n        let fallback_injected = (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. }));' +
+        '\n        if fallback_injected {' +
+        '\n            raw.events.push(egui::Event::MouseWheel {' +
+        '\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
+        '\n                phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE,' +
+        '\n            });' +
+        '\n        }' +
+        '\n        let popup_open = egui::Popup::is_any_open(ctx);' +
+        '\n        tablet::suppress_trackpad_menu_hover(ctx, raw, popup_open, fallback_injected);' +
+        '\n        tablet::record_wheel_events(raw, fallback_injected);' +
+        '\n        if egui::Popup::is_any_open(ctx) {' +
+        '\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +
+        '\n        }')
     source = replace_once(source, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && !ui.ctx().text_edit_focused()\n            && self.inner.session.active().is_some_and(|doc| doc.selection.text.is_some()) {\n            // End the engine\'s type session, not just Android\'s invisible EditText.\n            self.inner.select_tool("selection");\n            if let Err(error) = self.inner.run("text.exitToFrame", serde_json::json!({})) {\n                log::warn!("Android text exit: {error}");\n            }\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());')
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
@@ -25,7 +220,7 @@ def patch(root):
                                     log::error!("Font import: {error}");
                                     tablet::font_result(Err(error));
                                 } else {
-                                    tablet::font_result(Ok("Font imported".to_owned()));
+                                    tablet::font_result(Ok(format!("Imported font: {name}")));
                                 }
                             } else {
                                 ''' + old + '''
@@ -125,9 +320,12 @@ def patch(root):
     for filename in ('font_methods.java', 'update_methods.java'):
         methods += Path(__file__).with_name(filename).read_text() + '\n'
     index = text.rfind('}')
-    java.write_text(text[:index] + methods + text[index:])
+    text = text[:index] + methods + text[index:]
+    text = append_trackpad_bridge(text)
+    java.write_text(text)
+    policy = Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text()
     (java.parent / "DesignCraftUpdatePolicy.java").write_text(
-        Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text())
+        update_policy_for_activity(text, policy))
     manifest = root / 'Cargo.toml'
     manifest.write_text(manifest.read_text() + '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n')
 

@@ -6,6 +6,36 @@ import shutil
 from menu_overlay import apply as install_android_menus
 
 
+def patch_android_font_paths(text: str) -> str:
+    """Align the pinned DesignCraft Android font scanner with writable font imports."""
+    legacy_link = '''        if !link.exists() {
+            let _ = std::os::unix::fs::symlink("/system/fonts", &link);
+        }
+'''
+    writable_link = '''        // Only replace legacy links to Android's read-only system directory;
+        // leave real user directories and already-imported fonts untouched.
+        if std::fs::read_link(&link).ok().as_deref()
+            == Some(std::path::Path::new("/system/fonts"))
+        {
+            let _ = std::fs::remove_file(&link);
+        }
+        if std::fs::create_dir_all(&link).is_ok() {
+            let system_link = link.join("android-system");
+            if std::fs::symlink_metadata(&system_link).is_err() {
+                let _ = std::os::unix::fs::symlink("/system/fonts", &system_link);
+            }
+        }
+'''
+    if text.count(legacy_link) != 1:
+        raise ValueError("Pinned Android font directory bootstrap changed; review required")
+    text = text.replace(legacy_link, writable_link)
+    xdg = 'std::env::set_var("XDG_DATA_HOME", &base);'
+    if text.count(xdg) != 1:
+        raise ValueError("Pinned Android XDG font search path changed; review required")
+    return text.replace(xdg,
+        'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));')
+
+
 def prepare(root: Path, version: str, code: int):
     if not re.fullmatch(r"\d+\.\d+\.\d+-android\.[1-9]\d*", version):
         raise ValueError("Expected MAJOR.MINOR.PATCH-android.REVISION")
@@ -28,23 +58,25 @@ def prepare(root: Path, version: str, code: int):
     if source.count(hook) != 1:
         raise ValueError("Launcher completion hook changed")
     source = source.replace(hook, 'python3 "$ROOT/designcraft-support/patch_launcher.py" "$ANDROID_DIR"\n\n' + hook)
+    branding_hook = 'say 5 "Preparing a builder-owned signing key..."'
+    if source.count(branding_hook) != 1:
+        raise ValueError("Pinned Android branding insertion point changed")
+    source = source.replace(branding_hook,
+        'python3 "$ROOT/designcraft-support/apply_approved_branding.py" "$ROOT" "$ANDROID_DIR" "$VERSION_NAME"\n\n' + branding_hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
+    shutil.copytree(Path(__file__).parents[1] / "approved-branding", root / "designcraft-approved", dirs_exist_ok=True)
     install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
-    # Keep the Contextual Task Bar visible when canvas text editing ends.
+    # DesignCraft's TTF/OTF importer writes under $HOME/.local/share/fonts/imported,
+    # and its SAF shared-folder cache uses the same internal app-data root.
+    # The pinned builder otherwise points XDG_DATA_HOME to `base`, so DesignCraft's
+    # font database scans `base/fonts` instead of the imported fonts. Keep the
+    # override DesignCraft-only; no other Craft apps' font paths are changed.
     fonts = root / "templates/android/system_fonts.rs"
-    text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
-    fonts.write_text(text)
-    # Generate both legacy and adaptive layers from the approved glossy source.
-    icon_module = root / "lib/app_icons.py"
-    icon_source = icon_module.read_text()
-    icon_anchor = "    Image, _ = _pillow()\n    source = pick_source(src, app, explicit)"
-    if icon_source.count(icon_anchor) != 1:
-        raise ValueError("Pinned icon generator changed")
-    icon_module.write_text(icon_source.replace(icon_anchor,
-        "    if app == 'designcraft' and explicit is not None:\n"
-        "        import designcraft_launcher\n"
-        "        return designcraft_launcher.generate(explicit, res_dir)\n" + icon_anchor, 1))
-    shutil.copyfile(Path(__file__).with_name("launcher_icon.py"), root / "lib/designcraft_launcher.py")
+    fonts.write_text(patch_android_font_paths(fonts.read_text()))
+    # The legacy Dc launcher generator only accepts SHA pins for the old icon.
+    # Let the pinned generic builder create its temporary placeholder, then
+    # overwrite compiled launcher sources with verified approved-branding assets
+    # in apply_approved_branding.py before signing.
     script.write_text(source)
     project.write_text(generated)
 

@@ -55,4 +55,26 @@ mod android_dcs_regression {
         assert_eq!(app.session.active_comp().unwrap().layers.len(), 1);
         let _ = std::fs::remove_file(path);
     }
+    #[test]
+    fn dcs_repeat_and_ime_commit_are_not_actions() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.input_mut(|i| i.events = vec![key(egui::Key::D, egui::Modifiers::NONE, true), egui::Event::Text("中文".into())]);
+            assert_eq!(take_dcs(ui.ctx()), None);
+            assert!(ui.input(|i| matches!(i.events.first(), Some(egui::Event::Text(t)) if t == "中文")));
+        });
+    }
+    #[test]
+    fn dcs_failed_save_keeps_modified_project() {
+        let (mut app, ctx) = dirty();
+        let parent = std::env::temp_dir().join(format!("ec-dcs-file-{}", std::process::id()));
+        std::fs::write(&parent, b"not a directory").unwrap();
+        app.session.path = Some(parent.join("cannot-save.ecproj").to_string_lossy().into_owned());
+        crate::menus::invoke(&mut app, &ctx, "file.closeProject", json!({})).unwrap();
+        press(&mut app, &ctx, key(egui::Key::S, egui::Modifiers::NONE, false));
+        assert!(app.session.is_dirty());
+        assert_eq!(app.session.project.comps().count(), 1);
+        let _ = std::fs::remove_file(parent);
+    }
+
 }

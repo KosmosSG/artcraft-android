@@ -30,7 +30,7 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('mouse_wheel: true', after)
             self.assertIn('ScrollBarVisibility::VisibleWhenNeeded', after)
             self.assertIn('(ui.ctx().content_rect().height() * 0.72).max(180.0)', after)
-            self.assertIn('#[cfg(target_os = "android")]\\n    let max_height', after)
+            self.assertIn('#[cfg(target_os = "android")]\n    let max_height', after)
 
             self.assertNotIn('entries.splice(0..0, android)', after)
             with self.assertRaises(ValueError):

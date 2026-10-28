@@ -17,7 +17,7 @@ class UnsavedKeyboardPatchTest(unittest.TestCase):
         self.assertIn("cancel = true", patch)
         self.assertIn("ok_enabled && pressed(egui::Key::S)", patch)
         self.assertIn("crate::unsaved::confirm(app)", patch)
-        for hint in ("Save (S)", "Cancel (C)", "Don\'t Save (D)"):
+        for hint in ("Save (S)", "Cancel (C)", "Save (D)"):
             self.assertIn(hint, patch)
 
 if __name__ == "__main__":

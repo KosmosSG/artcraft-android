@@ -93,93 +93,29 @@ pub fn ui_label(id: &str) -> Option<(&''')
     #[cfg(target_os = "android")]
     let max_height = max_height.min((ui.ctx().content_rect().height() * 0.72).max(180.0));
     let contents = |ui: &mut egui::Ui| {""")
-    # The first attempt switched egui's built-in DragScroll::Always, but
-    # that still did not move the long Type menu in HONOR MagicPad testing.
-    # Drive vertical touch movement explicitly from egui pointer deltas.
-    # Provide tap-operated page controls as a reliable accessibility fallback.
+    # Long menus are already rendered inside egui::ScrollArea. The previous
+    # Android patch accidentally disabled wheel handling (mouse_wheel:false)
+    # and forced a per-frame scroll offset, so a mouse could not scroll it.
+    # Return wheel/trackpad scrolling to egui's own persistent ScrollArea state,
+    # preserve bounded menu height, and remove both paging buttons.
     text = replace_once(text,
-        """        scroll.show(ui, add_contents).inner
-    };""",
-        """        #[cfg(target_os = "android")]
+        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
+        if ui.is_sizing_pass() {""",
+        """        let mut scroll = egui::ScrollArea::vertical().max_height(max_height).min_scrolled_height(1.0);
+        #[cfg(target_os = "android")]
         {
-            // Per popup (and per submenu) state: no cross-menu scroll leakage.
-            // A touch drag on a menu row may be captured by that row before
-            // ScrollArea's drag recognizer runs, so read the raw pointer delta.
-            let nav_id = ui.id().with("designcraft-android-menu-scroll");
-            let prior = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect)>(nav_id));
-            let (mut target, _available, previous_rect) =
-                prior.unwrap_or((0.0, 0.0, egui::Rect::NOTHING));
-            let overflow = prior.is_some_and(|(_, max, _)| max > 2.0);
-            // Keep wheel/trackpad scrolling coherent with the controlled offset.
-            // We read the wheel before the menu rows consume it; the Android
-            // ScrollArea below does not consume it again.
-            if !ui.is_sizing_pass() {
-                let wheel = ui.input(|i| {
-                    if i.pointer.hover_pos().is_some_and(|p| previous_rect.contains(p)) {
-                        i.smooth_scroll_delta.y
-                    } else { 0.0 }
-                });
-                target = (target - wheel).clamp(0.0, _available.max(0.0));
-            }
-            if ui.is_sizing_pass() { target = 0.0; }
-
-            // Navigation buttons stay outside the scrolling region. They work
-            // with touch, pen and mouse even when Android sends no drag delta.
-            if overflow {
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(target > 1.0, egui::Button::new("▲ Scroll up")).clicked() {
-                        target = (target - max_height * 0.58).max(0.0);
-                    }
-                });
-            }
-            if !ui.is_sizing_pass() {
-                let swipe = ui.input(|i| {
-                    let inside = i.pointer.interact_pos().is_some_and(|p| previous_rect.contains(p));
-                    if inside && i.pointer.primary_down() && i.pointer.is_decidedly_dragging() {
-                        i.pointer.delta().y
-                    } else { 0.0 }
-                });
-                if swipe.abs() > 0.01 {
-                    // Drag finger upwards => reveal lower menu commands.
-                    target = (target - swipe).max(0.0);
-                    ui.ctx().request_repaint();
-                }
-            }
-            // Control menu viewport height separately from the header/footer,
-            // so the whole popup remains within MagicPad's visible content.
+            // Input only while hovering the popup's scrollable list, not the canvas.
+            // The scroll area owns its offset; do not overwrite it every frame.
             scroll = scroll
-                .max_height((max_height - if overflow { 62.0 } else { 0.0 }).max(105.0))
                 .scroll_source(egui::containers::scroll_area::ScrollSource {
                     scroll_bar: true,
-                    drag: egui::containers::scroll_area::DragScroll::Never,
-                    mouse_wheel: false,
+                    drag: egui::containers::scroll_area::DragScroll::OnTouch,
+                    mouse_wheel: true,
                 })
-                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                .vertical_scroll_offset(target);
-            let rendered = scroll.show(ui, add_contents);
-            let max_offset = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);
-            // egui 0.36's State does not expose clamped_offset();
-            // use our explicitly controlled offset plus the measured limits.
-            let mut next = target.clamp(0.0, max_offset);
-            if overflow {
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(next < max_offset - 1.0, egui::Button::new("▼ More items")).clicked() {
-                        next = (next + max_height * 0.58).min(max_offset);
-                    }
-                });
-            }
-            ui.data_mut(|d| d.insert_temp(nav_id, (next, max_offset, rendered.inner_rect)));
-            if !overflow && max_offset > 2.0 {
-                // Show the page buttons after this first measurement.
-                ui.ctx().request_repaint();
-            }
-            rendered.inner
+                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
         }
         #[cfg(not(target_os = "android"))]
-        {
-            scroll.show(ui, add_contents).inner
-        }
-    };""")
+        if ui.is_sizing_pass() {""")
     path.write_text(text)
 
 if __name__ == "__main__":

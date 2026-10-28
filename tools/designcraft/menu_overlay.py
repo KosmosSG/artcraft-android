@@ -24,7 +24,9 @@ def apply(path: Path):
     #[cfg(target_os = "android")]
     ("window.artcraftShortcutPad", "Toggle Touch Shortcut Pad", None, "{}"),
     #[cfg(target_os = "android")]
-    ("window.artcraftAndroidToolbar", "Show/Hide Android Toolbar", None, "{}"),''')
+    ("window.artcraftAndroidToolbar", "Show/Hide Android Toolbar", None, "{}"),
+    #[cfg(target_os = "android")]
+    ("window.artcraftInputDiagnostics", "Trackpad Input Diagnostics…", None, "{}"),''')
     text = replace_once(text, 'pub fn ui_label(id: &str) -> Option<(&',
         '''#[cfg(target_os = "android")]
 static ARTCRAFT_ANDROID_ACTIONS: std::sync::atomic::AtomicU32 =
@@ -53,6 +55,8 @@ pub fn ui_label(id: &str) -> Option<(&''')
         "window.artcraftShortcutPad" => { ARTCRAFT_ANDROID_ACTIONS.fetch_or(32, std::sync::atomic::Ordering::Relaxed); Ok(Value::Null) }
         #[cfg(target_os = "android")]
         "window.artcraftAndroidToolbar" => { ARTCRAFT_ANDROID_ACTIONS.fetch_or(64, std::sync::atomic::Ordering::Relaxed); Ok(Value::Null) }
+        #[cfg(target_os = "android")]
+        "window.artcraftInputDiagnostics" => { ARTCRAFT_ANDROID_ACTIONS.fetch_or(128, std::sync::atomic::Ordering::Relaxed); Ok(Value::Null) }
         "window.minimize" => {''')
     text = replace_once(text,
         """pub fn menu_tree() -> Vec<(&'static str, Vec<Item>)> {
@@ -66,7 +70,7 @@ pub fn ui_label(id: &str) -> Option<(&''')
         let ids: &[&str] = match *menu {
             "Type" => &["app.artcraftImportFont", "app.artcraftSelectSharedFonts", "app.artcraftRefreshSharedFonts"],
             "Help" => &["help.artcraftCheckUpdates", "help.artcraftUpdateSettings"],
-            "Window" => &["window.artcraftShortcutPad", "window.artcraftAndroidToolbar"],
+            "Window" => &["window.artcraftShortcutPad", "window.artcraftAndroidToolbar", "window.artcraftInputDiagnostics"],
             _ => &[],
         };
         if !ids.is_empty() {

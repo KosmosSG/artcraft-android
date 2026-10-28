@@ -99,12 +99,14 @@ def patch(root):
         '\n        // DesignCraft Android fallback: collect trackpad scroll from the Activity.' +
         '\n        // Avoid double injection when winit already emitted MouseWheel.' +
         '\n        let (dx, dy) = tablet::poll_trackpad_scroll(&self.app);' +
-        '\n        if (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) {' +
+        '\n        let fallback_injected = (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. }));' +
+        '\n        if fallback_injected {' +
         '\n            raw.events.push(egui::Event::MouseWheel {' +
         '\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
         '\n                phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE,' +
         '\n            });' +
         '\n        }' +
+        '\n        tablet::record_wheel_events(raw, fallback_injected);' +
         '\n        if egui::Popup::is_any_open(ctx) {' +
         '\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +
         '\n        }')

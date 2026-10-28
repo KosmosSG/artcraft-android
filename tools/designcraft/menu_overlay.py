@@ -100,12 +100,18 @@ pub fn ui_label(id: &str) -> Option<(&''')
             // ui.rect_contains_pointer() can return false for a popup layered
             // above the canvas or beside another diagnostics window.
             let menu_id = ui.id().with("designcraft-menu-trackpad-offset");
-            let previous = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect)>(menu_id));
-            let (mut offset, previous_limit, previous_rect) = previous.unwrap_or((
-                0.0, 0.0, egui::Rect::NOTHING,
+            let previous = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect, Option<egui::Pos2>)>(menu_id));
+            let (mut offset, previous_limit, previous_rect, last_pointer) = previous.unwrap_or((
+                0.0, 0.0, egui::Rect::NOTHING, None,
             ));
+            // MagicOS can issue HOVER_EXIT when a two-finger gesture starts,
+            // clearing hover_pos while the gesture wheel event still arrives.
+            // Remember the last pointer position, but replace it whenever
+            // another live pointer location is reported.
+            let pointer_now = ui.input(|i| i.pointer.hover_pos());
+            let pointer = pointer_now.or(last_pointer);
             let wheel = ui.input(|input| {
-                let Some(pointer) = input.pointer.hover_pos() else { return 0.0; };
+                let Some(pointer) = pointer else { return 0.0; };
                 // First show: the popup has no measured viewport yet.
                 let inside = previous_rect.contains(pointer) ||
                     (previous.is_none() && ui.max_rect().contains(pointer));
@@ -140,7 +146,7 @@ pub fn ui_label(id: &str) -> Option<(&''')
             let rendered = scroll.show(ui, add_contents);
             let limit = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);
             let new_offset = offset.clamp(0.0, limit);
-            ui.data_mut(|d| d.insert_temp(menu_id, (new_offset, limit, rendered.inner_rect)));
+            ui.data_mut(|d| d.insert_temp(menu_id, (new_offset, limit, rendered.inner_rect, pointer)));
             ARTCRAFT_MENU_SCROLL_OFFSET_BITS.store(
                 new_offset.to_bits(), std::sync::atomic::Ordering::Relaxed,
             );

@@ -1,156 +1,194 @@
-# ArtCraft Android Builder
-## Go to [Releases](https://github.com/MostafaXS1/artcraft-android/releases/) to download the apps.
+> **Integration draft:** This branch is not a replacement for the current signed apps. See [integration status and build boundary](docs/ANDROID_V041_INTEGRATION.md).
 
-Build locally signed, 64-bit ARM (arm64) Android APKs from the official Storytold repositories for the ArtCraft apps.
+# ArtCraft Android
 
-The builder provides a repeatable path from an existing app repository to an installable Android package. It includes release and debug builds, optional app metadata overrides, a shared file-association registry, and persistent app-specific adapters for projects that need more than the generic launcher.
+> [!NOTE]
+> **About this project:** We are an independent group of people who love ArtCraft very much and want to make these apps available on Android. We are not affiliated with, related to, or endorsed by ArtCraft / Storytold, and all our ports are completely unofficial.
 
-Project links: [ArtCraft](https://getartcraft.com/) · [The Crafting Apps](https://getartcraft.com/apps)
+**The full ArtCraft PC experience, now on Android.**
 
-## Quick start
+[**Download the apps**](https://github.com/MostafaXS1/artcraft-android/releases/) · [ArtCraft website](https://getartcraft.com/) · [Explore the apps](https://getartcraft.com/apps)
+
+![ArtCraft Android](artcraft-android-1.png)
+
+ArtCraft Android brings the complete functionality of the ArtCraft PC applications to Android devices. The apps retain their PC capabilities while gaining native Android integrations for file access, touch input, keyboards, mice, trackpads, and other system features.
+
+Whether you're using a phone, tablet, or an Android device with a keyboard and mouse, ArtCraft gives you the same powerful creative tools available on PC, adapted to work naturally with Android.
+
+## The Full PC Experience on Android
+
+ArtCraft Android is not a stripped-down mobile edition. The applications are built with the exact source code used in their PC counterparts, with Android-specific adaptations that connect them to the platform's input, storage, and system APIs.
+
+### Native Android File Integration
+
+- **Storage Access Framework (SAF):** Open files and choose save destinations using Android's system document picker.
+- **Direct document access:** Work with files selected from Android document providers, including supported cloud storage providers and external storage locations.
+- **Save changes back:** SAF integration handles document staging and writes updated content back to the selected document.
+- **Open with:** Open supported files directly from compatible file managers and other Android applications.
+- **File sharing:** Receive files through Android's sharing and intent mechanisms where applicable.
+- **Drag and drop:** Open files by dragging them from compatible applications, including file managers and browsers.
+- **File associations:** A shared registry connects supported file types with the appropriate ArtCraft application.
+
+Your existing creative workflow stays available, with Android providing the system-level file access needed to make it work.
+
+### Touch, Mouse, Trackpad, and Keyboard
+
+ArtCraft Android adapts the applications' input handling to Android while preserving their PC functionality.
+
+- **Touch gestures:** Two-finger scrolling and momentum scrolling for navigating large documents and canvases.
+- **Mouse support:** Pointer movement, hover events, mouse buttons, and wheel scrolling.
+- **Trackpad support:** Desktop-style navigation and scrolling on compatible devices.
+- **Physical keyboards:** Keyboard shortcuts and modifier keys, including Ctrl, Alt, and Shift.
+- **Android soft keyboard:** Input Method Editor (IME) integration for text entry, composition, deletion, and editor actions.
+- **International text input:** Support for composed text and non-English input through Android's input system.
+- **System clipboard:** Copy, cut, and paste through Android's clipboard, including keyboard shortcuts.
+- **Back-button integration:** Android Back is mapped to the appropriate application behavior where supported by the runtime.
+
+Connect a keyboard and mouse, use a trackpad, or work directly on a touchscreen. The applications remain fully featured regardless of the input method.
+
+### Android System Integration
+
+- **System fonts:** Android system fonts are exposed to the application renderer. User font discovery is also supported where configured.
+- **Android printing:** Printing integrates with Android's print framework in supported workflows, including WordCraft and GridCraft.
+- **Persistent preferences:** Application settings and configuration can persist between launches.
+- **Display adaptation:** Full-screen presentation and appropriate UI scaling help the applications fit Android displays.
+- **System appearance:** Light and dark appearance support integrates with the Android environment where applicable.
+- **Release notifications:** The application can check for newer ArtCraft Android releases and notify you when updates are available.
+
+These capabilities are implemented through shared Android runtime components, platform compatibility patches, and app-specific adapters.
+
+
+[**Download the latest APKs**](https://github.com/MostafaXS1/artcraft-android/releases/)
+
+## Built for Android Without Removing PC Functionality
+
+The ArtCraft applications originate from the official Storytold repositories. ArtCraft Android adds the Android launch environment, shared platform integrations, and app-specific adapters required to run them on Android.
+
+The objective is to preserve the functionality of the PC applications while making them work properly with Android's storage, input, and system services.
+
+The Android build process uses templates, adapters, vendored changes, and compatibility patches as needed. This keeps the Android integration organized and makes it easier to maintain across the app suite.
+
+## Links
+
+- **Downloads:** [GitHub Releases](https://github.com/MostafaXS1/artcraft-android/releases/)
+- **ArtCraft website:** [getartcraft.com](https://getartcraft.com/)
+- **Explore the apps:** [getartcraft.com/apps](https://getartcraft.com/apps)
+- **Source code:** [ArtCraft Android repository](https://github.com/MostafaXS1/artcraft-android)
+- **Adapter documentation:** [`adapters/README.md`](adapters/README.md)
+- **Architecture documentation:** [`architecture.md`](architecture.md)
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
+
+---
+
+## Build from Source
+
+Build locally signed, 64-bit ARM Android APKs from the official Storytold repositories.
+
+### Requirements
+
+- Git
+- Rust and Cargo
+- Python 3
+- A Java Development Kit (JDK)
+- Android SDK and NDK build components
+
+The build scripts can discover or bootstrap supported Android build components when they are not already available.
+
+### Quick Start
 
 Run the scripts from any directory. Each script resolves its own location and switches to the project directory before building.
 
 ```sh
-bash build.sh -pdfcraft          # Optimized release APK
-bash build-debug.sh -pdfcraft    # Debug APK; larger and slower
+# Optimized release APK
+bash build.sh -pdfcraft
+
+# Debug APK for testing
+bash build-debug.sh -pdfcraft
 ```
 
-Replace `-pdfcraft` with any supported app name.
+Replace `-pdfcraft` with any supported application name.
 
-## Supported apps
+### Supported Build Targets
 
-```text
-photocraft vectorcraft filmcraft lightcraft pdfcraft effectcraft
-designcraft figcraft wordcraft soundcraft deckcraft cadcraft gridcraft
-```
+| App | Repo |
+| --- | --- |
+| photocraft, vectorcraft, filmcraft, lightcraft, pdfcraft, effectcraft, designcraft, figcraft, wordcraft, soundcraft, deckcraft, cadcraft, gridcraft | Storytold (official) |
+| subcraft | [Aalzard/subcraft](https://github.com/Aalzard/subcraft) *(Unofficial)* |
 
 App names are passed as command-line flags, such as `-photocraft` or `-vectorcraft`.
 
-## Options
+### Build Options
 
 | Option | Description |
 | --- | --- |
-| `-appname=<name>` | Override the Android display name. By default, the app's built-in title is used. |
-| `-packagename=<pkg>` | Override the Android package name. By default, the package is `com.artcraft.<app>`. |
-| `-appicon=<path>` | Use a custom launcher icon PNG. By default, the app's own icon is used. |
-| `-h`, `--help` | Show command help. |
+| `-stable` | Build against the latest stable upstream release tag. This is the default. |
+| `-main` or `-latest` | Build against the rolling upstream `main` branch. |
+| `-tag=<tag>` | Build against a specific Git tag, for example `-tag=v0.12.1`. |
+| `-branch=<branch>` | Build against a specific Git branch. |
+| `-appname=<name>` | Override the Android display name. |
+| `-packagename=<pkg>` | Override the Android package name. The default is `com.artcraft.<app>`. |
+| `-appicon=<path>` | Use a custom launcher icon PNG. |
+| `-h` or `--help` | Show command help. |
 
-## Examples
+### Build Examples
 
 ```sh
 # Build PhotoCraft
 bash build.sh -photocraft
 
-# Override the display name
-bash build.sh -photocraft -appname=notPhotoshop
+# Build a debug APK for testing
+bash build-debug.sh -photocraft
 
-# Override the Android package name
-bash build.sh -photocraft -packagename=com.adobe.photoshop
+# Build from a specific upstream branch
+bash build.sh -photocraft -branch=main
 
-# Use a custom launcher icon
-bash build.sh -photocraft -appicon=/path/to/icon.png
-
-# Set multiple options
-bash build.sh -photocraft \
-  -appname=MyApp \
-  -packagename=com.example.myapp \
-  -appicon=icon.png
+# Customize the Android application
+bash build.sh -vectorcraft \
+  -appname="My Vector App" \
+  -packagename=com.example.myvectorapp \
+  -appicon=/path/to/icon.png
 ```
 
-## Build outputs
+### Build Output
 
-| Path | Contents |
-| --- | --- |
-| `output/<app>-<version>.apk` | Optimized release APK, versioned from the app's own source manifest (e.g. `output/vectorcraft-0.12.0.apk`) |
-| `output/<app>-<version>-debug.apk` | Debug APK |
-| `source/<app>/` | Source checkout and generated NativeActivity crate |
-| `build/<app>/target/` | Isolated Cargo build output for the app |
-| `logs/` | Build logs for diagnosis |
-| `keys/artcraft-builder.jks` | Persistent local signing keystore |
+- **APK files:** `output/<app>-<version>.apk`
+- **Build logs:** `logs/`
+- **Checked-out source:** `source/<app>/`
+- **Build artifacts:** `build/<app>/target/`
 
-Build output is separated by app so that Cargo artifacts and source changes do not need to be shared between targets.
+Release APKs are optimized for installation and everyday use. Debug APKs are larger and slower, and are intended for testing and troubleshooting.
 
-## Source checkout behavior
+### Testing on a Device
 
-The builder is designed to preserve local work. It does not delete an existing source checkout, reset it, or pull over local changes. Subsequent builds reuse the existing checkout and any modifications made to the Android port.
+Install an APK and inspect its logs using Android Debug Bridge (ADB).
 
-Update app sources deliberately with Git after preserving your changes. Review the diff before switching versions or incorporating upstream changes.
+```sh
+# Install an APK
+adb install -r output/photocraft-*.apk
 
-## Porting model and adapter boundary
+# View application logs
+adb logcat -s com.artcraft.photocraft
 
-The generic launcher targets native Rust/egui applications that expose `Session`, `Services`, and a public `*App` type from `crates/engine` and `crates/ui-egui`.
+# Check requested permissions
+adb shell dumpsys package com.artcraft.photocraft | grep -A 15 "requested permissions"
+```
 
-Some applications need an app-specific adapter rather than the generic startup path. This can apply to apps with:
+### Signing and Source Checkouts
 
-- Specialized startup requirements, such as audio or media backends.
-- Services that are not available through the default launcher setup.
-- Dependencies that do not compile for Android without changes.
+Builds are signed with a local development keystore stored under `keys/`. Keep the keystore and its password safe if you want future builds to install as updates over earlier builds signed with the same key.
 
-A failed build is recorded under `logs/`. Use [`adapters/README.md`](adapters/README.md) to add a persistent adapter for an app. A successful APK build confirms that the Android launch shell compiled; it does not, by itself, establish that every app workflow is ready for mobile use. Verify file access, save and export behavior, audio, clipboard, lifecycle handling, and touch interaction on a device.
+Do not use the local development key for public distribution. Use a separately managed release-signing key for public releases.
 
-## Runtime integration
+Existing source checkouts are reused to preserve local Android port work. The build does not automatically reset or overwrite local source changes. Update existing checkouts deliberately with Git and review the diff before switching versions or incorporating upstream changes.
 
-### Preferences and recovery files
+## We Need Help Testing! (Call for Professionals & Users)
 
-Each launcher persists the app's preferences under `config` in the app's private storage and restores them at startup. Platform path helpers such as `HOME` and `XDG_*` are pointed at the same location so that app-written autosave and recovery files are stored there as well.
+Porting **14 complete creative desktop applications** to Android is a huge undertaking, and it is very hard for our small group to thoroughly test every single feature, workflow, and edge case across all 14 apps by ourselves.
 
-That storage is the app-specific external directory, `/storage/emulated/0/Android/data/com.artcraft.<app>/files`, rather than the internal `/data/user/0/<pkg>/files`. External storage is reachable from a phone file manager and over USB/MTP, which makes settings, autosaves and exports findable; internal storage is invisible without root. The internal directory is used only as a fallback when external storage is unavailable. Android 11+ hides `Android/data` from the on-device document picker, so use USB/MTP or `adb` to browse it.
+We don't have deep domain expertise across all of these diverse tools (DAW music production in SoundCraft, CAD drafting in CADCraft, video editing in FilmCraft, 3D texturing in SubCraft, vector graphics, desktop publishing, etc.). 
 
-A document opened through Storage Access Framework (SAF) is staged as `<files>/media/<document name>`, so the working copy the app edits is easy to find and the same document always maps to the same path. If that name is already taken by another document, a ` (2)`-style suffix is added rather than sharing the file (a name whose staged copy has since been deleted is free again — no suffix for a cleared document that comes back). When the app lets go of a document — the recent list is cleared, an entry is removed, or the capped list ages it out — and no open document shows it, its staged copy under `media/` is deleted; the original still lives at its SAF location, and the `uri:` mapping is kept so re-opening it reuses the same path. A one-time sweep, half a minute after start, also clears out staged copies that nothing refers to any more (leftovers from an older session or a crash).
-
-PhotoCraft and VectorCraft save through their adapters, which use the same external location.
-
-### System fonts
-
-The launcher uses Android's system fonts alongside each app's embedded fonts. It installs device font faces under `/system/fonts` and `/product/fonts` as lower-priority egui fallbacks, then links the font directory into the user font locations read by app-level scanners:
-
-- `$HOME/.fonts`
-- `$HOME/.local/share/fonts`
-- `$XDG_DATA_HOME/fonts`
-
-A minimal `fonts.conf` provides the font configuration. This supports scripts including CJK, Arabic, Hebrew, Indic scripts, Thai, Khmer, and Myanmar when suitable fonts are present on the device. Existing app rendering is left unchanged where the app already has glyph coverage. Exact coverage depends on the fonts included by the device manufacturer.
-
-### Soft keyboard and text input
-
-The Android soft keyboard is wired into every app. Each Activity installs an invisible, focusable `EditText`; its `InputConnection` controls keyboard visibility and forwards text commits, composition updates, deletions, and Enter to the Rust shell. The shell converts these into egui input-method events for the currently focused text field.
-
-The keyboard overlays the fullscreen native surface rather than resizing it.
-
-### Open-with and share-sheet integration
-
-Every app is registered with Android's **Open with** and share sheets for the file types it handles. The current associations include:
-
-| File types | Apps |
-| --- | --- |
-| PDF | PdfCraft, DesignCraft, VectorCraft |
-| Word documents | WordCraft |
-| Spreadsheets | GridCraft |
-| Presentations | DeckCraft |
-| Images and camera raw | PhotoCraft, LightCraft |
-| Video and audio | FilmCraft, SoundCraft |
-| CAD drawings | CADCraft |
-| App-specific project formats | The corresponding app |
-
-File associations are centralized in [`lib/file_associations.py`](lib/file_associations.py) and applied to launcher and adapter manifests to keep them consistent. Extensions Android's MIME database knows are matched by the type it actually reports (for example `.psd` is `image/x-photoshop`, not `image/vnd.adobe.photoshop`), and every extension is also matched by file name so that a provider which stamps a generic `application/octet-stream` still offers the app. Those by-name elements pair the escaped-dot pattern with `android:host="*"` — Android only evaluates a `pathPattern` when the element also declares an authority, and without one a scheme-plus-path element matches every `file://`/`content://` URI — and the same pattern is repeated in a second, VIEW-only element declaring `mimeType="*/*"`, because a filter that declares a MIME type only matches intents that carry one. An app is therefore offered for its own extensions and types and for nothing else.
-
-When a file is opened, shared, or passed through a link, the launcher copies it into app-private storage off the UI thread and opens it through the same path used by the app's own file picker. This is supported while the app is already running as well as on initial launch.
-
-## Signing and distribution
-
-The keystore in `keys/` is intended for local builds only. A randomly generated local password is stored in `keys/.keystore-password`.
-
-Keep the keystore and password safe and stable if you need to install later APKs as updates over an earlier build from this builder. Do not use this key for a public release. Public distribution requires a separate release-signing process and appropriate key management.
-
-## Troubleshooting
-
-Start with the relevant file in `logs/`. If the generic launcher cannot initialize an app or one of its dependencies does not support Android, review the adapter guidance in [`adapters/README.md`](adapters/README.md).
-
-For device-level validation, test the workflows that matter for the target app, including opening files from other apps, saving and exporting, keyboard input, audio or media playback, lifecycle transitions, and touch interaction.
-
-## Related projects
-
-- [ArtCraft website](https://getartcraft.com/)
-- [The Crafting Apps](https://getartcraft.com/apps)
-- [Storytold repositories on GitHub](https://github.com/storytold)
-
+**We would love help from professionals and everyday users!**
+* Please download the APKs, try your normal workflows, and tell us:
+  * **What works smoothly on PC but is broken, missing, or buggy on Android?**
+  * **What needs improvement with touch gestures, tablet layouts, or keyboard/mouse navigation?**
+* If you run into issues, crashes, or quirks, please [open an issue on GitHub](https://github.com/MostafaXS1/artcraft-android/issues) with your device info and reproduction steps. Every piece of feedback helps!

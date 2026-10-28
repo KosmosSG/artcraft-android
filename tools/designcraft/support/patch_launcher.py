@@ -28,56 +28,116 @@ def append_trackpad_bridge(text: str) -> str:
         raise ValueError("DesignCraft trackpad bridge already installed")
     anchor = "public final class DesignCraftActivity extends GameActivity {"
     bridge = """public final class DesignCraftActivity extends GameActivity {
-    // Android dispatches MagicOS trackpad gestures as generic ACTION_SCROLL
-    // with AXIS_VSCROLL / AXIS_HSCROLL. Store the deltas even if GameActivity's
-    // native queue does not forward them as a winit MouseWheel.
+    // Listen to BOTH classic mouse-wheel axes and Android 14+ two-finger
+    // touchpad gesture-scroll axes (distance in display pixels). Preserve
+    // normal GameActivity dispatch and do not treat ordinary cursor movement
+    // as scrolling.
     private float dcPendingScrollX = 0f;
     private float dcPendingScrollY = 0f;
     private int dcGenericEvents = 0;
     private int dcScrollEvents = 0;
+    private int dcGestureAxisEvents = 0;
+    private int dcGenericMoves = 0;
+    private int dcTouchMoves = 0;
     private int dcTouchpadMoves = 0;
+    private int dcLastAction = -1;
+    private int dcLastSource = 0;
+    private int dcLastPointers = 0;
+
+    private synchronized void dcRememberEvent(android.view.MotionEvent event) {
+        dcLastAction = event.getActionMasked();
+        dcLastSource = event.getSource();
+        dcLastPointers = event.getPointerCount();
+    }
+
+    private void dcAccumulateScroll(float dx, float dy) {
+        if (!Float.isFinite(dx) || !Float.isFinite(dy)
+                || (dx == 0f && dy == 0f)) return;
+        synchronized (this) {
+            dcPendingScrollX = Math.max(-64f, Math.min(64f, dcPendingScrollX + dx));
+            dcPendingScrollY = Math.max(-64f, Math.min(64f, dcPendingScrollY + dy));
+        }
+    }
+
+    private boolean dcCaptureGestureScroll(android.view.MotionEvent event) {
+        // API 34 introduced the two-finger gesture axes. Unlike VSCROLL,
+        // these are pixel distances, not wheel notches, and may arrive on
+        // ACTION_MOVE (not ACTION_SCROLL). Do not infer scrolling from x/y.
+        if (event == null || android.os.Build.VERSION.SDK_INT < 34) return false;
+        float gx = event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE);
+        float gy = event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE);
+        if (!Float.isFinite(gx) || !Float.isFinite(gy) ||
+                (gx == 0f && gy == 0f)) return false;
+        synchronized (this) { dcGestureAxisEvents++; }
+        float pxPerLine = 40f * getResources().getDisplayMetrics().density;
+        if (pxPerLine < 1f) pxPerLine = 40f;
+        // Android gesture distance is the requested content movement.
+        // egui wheel delta is positive when scrolling UP, hence inversion.
+        dcAccumulateScroll(-gx / pxPerLine, -gy / pxPerLine);
+        return true;
+    }
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         if (event != null) {
-            synchronized (this) { dcGenericEvents++; }
-        }
-        if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
-            synchronized (this) { dcScrollEvents++; }
-            float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
-            float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
-            if (Float.isFinite(dx) && Float.isFinite(dy)
-                    && (dx != 0f || dy != 0f)) {
-                synchronized (this) {
-                    dcPendingScrollX = Math.max(-64f, Math.min(64f, dcPendingScrollX + dx));
-                    dcPendingScrollY = Math.max(-64f, Math.min(64f, dcPendingScrollY + dy));
+            synchronized (this) {
+                dcGenericEvents++;
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE ||
+                        event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_MOVE) {
+                    dcGenericMoves++;
+                }
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
+                    dcScrollEvents++;
                 }
             }
+            dcRememberEvent(event);
+            boolean gesture = dcCaptureGestureScroll(event);
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL && !gesture) {
+                float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
+                float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
+                // AXIS_SCROLL is a fallback for a generic (non-directional)
+                // scrolling source, e.g. rotary, if no vertical axis is set.
+                if (dx == 0f && dy == 0f && android.os.Build.VERSION.SDK_INT >= 26) {
+                    dy = event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL);
+                }
+                dcAccumulateScroll(dx, dy);
+            }
         }
-        // Never consume here: let GameActivity deliver native mouse and key
-        // events too. The Rust fallback only injects when winit lacks a wheel.
         return super.dispatchGenericMotionEvent(event);
     }
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE
-                && (event.getSource() & android.view.InputDevice.SOURCE_TOUCHPAD)
-                    == android.view.InputDevice.SOURCE_TOUCHPAD) {
-            synchronized (this) { dcTouchpadMoves++; }
+        if (event != null) {
+            synchronized (this) {
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                    dcTouchMoves++;
+                    if ((event.getSource() & android.view.InputDevice.SOURCE_TOUCHPAD)
+                            == android.view.InputDevice.SOURCE_TOUCHPAD) {
+                        dcTouchpadMoves++;
+                    }
+                }
+            }
+            dcRememberEvent(event);
+            dcCaptureGestureScroll(event);
         }
         return super.dispatchTouchEvent(event);
     }
 
-    // High 32 bits generic dispatch, low 32 bits ACTION_SCROLL dispatch.
+    // Stable diagnostic counters only: no coordinates, key contents or files.
     public synchronized long dcInputEventCounts() {
         return ((long) dcGenericEvents << 32) | (dcScrollEvents & 0xffffffffL);
     }
-    // Hardware trackpad movement that doesn't arrive as ACTION_SCROLL.
-    public synchronized int dcTouchpadMoveCount() {
-        return dcTouchpadMoves;
+    public synchronized int dcTouchpadMoveCount() { return dcTouchpadMoves; }
+    public synchronized int dcGestureAxisEventCount() { return dcGestureAxisEvents; }
+    public synchronized int dcGenericMoveCount() { return dcGenericMoves; }
+    public synchronized int dcTouchMoveCount() { return dcTouchMoves; }
+    public synchronized long dcLastMotionInfo() {
+        return (((long) dcLastSource & 0xffffffffL) << 32)
+            | ((long) (dcLastAction & 0xffff) << 16)
+            | (dcLastPointers & 0xffffL);
     }
 
-    // Atomic pair, avoids interleaving coordinates between the UI and Rust
-    // threads. Upper 32 bits = vertical, lower 32 bits = horizontal.
+    // Atomic pair, avoids interleaving coordinates between UI and Rust threads.
+    // Upper 32 bits = vertical, lower 32 bits = horizontal.
     public synchronized long dcPollTrackpadScroll() {
         long xy = ((long) Float.floatToIntBits(dcPendingScrollY) << 32)
                 | (Float.floatToIntBits(dcPendingScrollX) & 0xffffffffL);

@@ -40,6 +40,8 @@ def append_trackpad_bridge(text: str) -> str:
     private int dcGenericMoves = 0;
     private int dcTouchMoves = 0;
     private int dcTouchpadMoves = 0;
+    private int dcSuppressedHoverEvents = 0;
+    private long dcLastTrackpadScrollAtMs = -10000L;
     private int dcLastAction = -1;
     private int dcLastSource = 0;
     private int dcLastPointers = 0;
@@ -68,7 +70,13 @@ def append_trackpad_bridge(text: str) -> str:
         float gy = event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE);
         if (!Float.isFinite(gx) || !Float.isFinite(gy) ||
                 (gx == 0f && gy == 0f)) return false;
-        synchronized (this) { dcGestureAxisEvents++; }
+        synchronized (this) {
+            dcGestureAxisEvents++;
+            // MagicOS can dispatch these gesture-distance samples as mouse
+            // HOVER_MOVE. The native GameActivity must not ALSO treat them
+            // as pointer movement over popup menu items.
+            dcLastTrackpadScrollAtMs = android.os.SystemClock.uptimeMillis();
+        }
         float pxPerLine = 40f * getResources().getDisplayMetrics().density;
         if (pxPerLine < 1f) pxPerLine = 40f;
         // Android gesture distance is the requested content movement.
@@ -91,6 +99,34 @@ def append_trackpad_bridge(text: str) -> str:
             }
             dcRememberEvent(event);
             boolean gesture = dcCaptureGestureScroll(event);
+            if (gesture) {
+                // The gesture was explicitly converted into wheel input for
+                // DesignCraft. Stop the same Android motion from also moving
+                // the native pointer and activating hover-only submenus.
+                synchronized (this) { dcSuppressedHoverEvents++; }
+                return true;
+            }
+            int action = event.getActionMasked();
+            boolean hoverMotion =
+                    action == android.view.MotionEvent.ACTION_HOVER_MOVE ||
+                    action == android.view.MotionEvent.ACTION_HOVER_ENTER ||
+                    action == android.view.MotionEvent.ACTION_HOVER_EXIT ||
+                    action == android.view.MotionEvent.ACTION_MOVE;
+            // Gesture samples and cursor hover samples may be interleaved.
+            // Freeze hover briefly without blocking clicks, keys or physical
+            // touchscreen events. Only applies to mouse-sourced generic input.
+            if (hoverMotion &&
+                    (event.getSource() & android.view.InputDevice.SOURCE_MOUSE)
+                    == android.view.InputDevice.SOURCE_MOUSE) {
+                long age;
+                synchronized (this) {
+                    age = android.os.SystemClock.uptimeMillis() - dcLastTrackpadScrollAtMs;
+                }
+                if (age >= 0 && age <= 120L) {
+                    synchronized (this) { dcSuppressedHoverEvents++; }
+                    return true;
+                }
+            }
             if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL && !gesture) {
                 float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
                 float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
@@ -129,6 +165,7 @@ def append_trackpad_bridge(text: str) -> str:
     public synchronized int dcTouchpadMoveCount() { return dcTouchpadMoves; }
     public synchronized int dcGestureAxisEventCount() { return dcGestureAxisEvents; }
     public synchronized int dcGenericMoveCount() { return dcGenericMoves; }
+    public synchronized int dcSuppressedHoverCount() { return dcSuppressedHoverEvents; }
     public synchronized int dcTouchMoveCount() { return dcTouchMoves; }
     public synchronized long dcLastMotionInfo() {
         return (((long) dcLastSource & 0xffffffffL) << 32)

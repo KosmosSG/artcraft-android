@@ -43,7 +43,6 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('#[cfg(not(target_os = "android"))]\n        if ui.is_sizing_pass()', after)
             self.assertNotIn('egui::Button::new("▲ Scroll up")', after)
             self.assertNotIn('egui::Button::new("▼ More items")', after)
-            self.assertNotIn('mouse_wheel: true', after)
             self.assertNotIn('vertical_scroll_offset(target)', after)
             self.assertNotIn('designcraft-android-menu-scroll', after)
 

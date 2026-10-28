@@ -38,7 +38,7 @@ def patch(root):
                                     log::error!("Font import: {error}");
                                     tablet::font_result(Err(error));
                                 } else {
-                                    tablet::font_result(Ok("Font imported".to_owned()));
+                                    tablet::font_result(Ok(format!("Imported font: {name}")));
                                 }
                             } else {
                                 ''' + old + '''

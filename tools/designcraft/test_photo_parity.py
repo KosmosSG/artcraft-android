@@ -62,7 +62,7 @@ class DesignCraftAndroidParity(unittest.TestCase):
         production = Path("tools/designcraft/support/DesignCraftUpdatePolicy.java").read_text()
         for suffix in ("", ".candidate"):
             package = "com.artcraft.designcraft" + suffix
-            activity = "package " + package + ";\\npublic class DesignCraftActivity {}"
+            activity = "package " + package + ";\npublic class DesignCraftActivity {}"
             actual = update_policy_for_activity(activity, production)
             self.assertTrue(actual.startswith("package " + package + ";"))
             self.assertEqual(actual.replace("package " + package + ";",

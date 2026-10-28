@@ -407,34 +407,17 @@ pub fn install_font_env(app: &android_activity::AndroidApp) {
     let home = base.join("home");
     let _ = std::fs::create_dir_all(home.join(".local/share"));
 
-    // Keep the XDG user-font directory WRITABLE. Linking the directory itself to
-    // /system/fonts makes SAF imports under .../fonts/imported or .../fonts/shared
-    // fail on Android's read-only system partition. Link system fonts *inside*
-    // a writable directory so upstream recursive scanners see both.
     #[cfg(unix)]
-    {
-        let user_fonts = home.join(".local/share/fonts");
-        if std::fs::read_link(&user_fonts).ok().as_deref()
-            == Some(std::path::Path::new("/system/fonts"))
-        {
-            // Migrate only the exact legacy symlink, never remove a user folder.
-            let _ = std::fs::remove_file(&user_fonts);
+    for link in [
+        home.join(".fonts"),
+        home.join(".local/share/fonts"),
+        base.join("fonts"),
+    ] {
+        if let Some(parent) = link.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
-        if std::fs::create_dir_all(&user_fonts).is_ok() {
-            let system_link = user_fonts.join("android-system");
-            if !system_link.exists() && std::fs::symlink_metadata(&system_link).is_err() {
-                let _ = std::os::unix::fs::symlink("/system/fonts", &system_link);
-            }
-        }
-        // Preserve the former .fonts and base/fonts discovery aliases for
-        // native consumers that still use them.
-        for link in [home.join(".fonts"), base.join("fonts")] {
-            if let Some(parent) = link.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if !link.exists() && std::fs::symlink_metadata(&link).is_err() {
-                let _ = std::os::unix::fs::symlink("/system/fonts", &link);
-            }
+        if !link.exists() {
+            let _ = std::os::unix::fs::symlink("/system/fonts", &link);
         }
     }
 

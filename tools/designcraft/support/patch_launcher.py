@@ -22,11 +22,65 @@ def update_policy_for_activity(activity_source, policy_source):
     return replace_once(policy_source, "package com.artcraft.designcraft;", activity_package)
 
 
+def append_trackpad_bridge(text: str) -> str:
+    """Capture native Android generic scrolling without intercepting other input."""
+    anchor = "public final class DesignCraftActivity extends GameActivity {"
+    bridge = """public final class DesignCraftActivity extends GameActivity {
+    // Android dispatches MagicOS trackpad gestures as generic ACTION_SCROLL
+    // with AXIS_VSCROLL / AXIS_HSCROLL. Store the deltas even if GameActivity's
+    // native queue does not forward them as a winit MouseWheel.
+    private float dcPendingScrollX = 0f;
+    private float dcPendingScrollY = 0f;
+
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
+            float dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
+            float dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
+            if (Float.isFinite(dx) && Float.isFinite(dy)
+                    && (dx != 0f || dy != 0f)) {
+                synchronized (this) {
+                    dcPendingScrollX = Math.max(-64f, Math.min(64f, dcPendingScrollX + dx));
+                    dcPendingScrollY = Math.max(-64f, Math.min(64f, dcPendingScrollY + dy));
+                }
+            }
+        }
+        // Never consume here: let GameActivity deliver native mouse and key
+        // events too. The Rust fallback only injects when winit lacks a wheel.
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    // Atomic pair, avoids interleaving coordinates between the UI and Rust
+    // threads. Upper 32 bits = vertical, lower 32 bits = horizontal.
+    public synchronized long dcPollTrackpadScroll() {
+        long xy = ((long) Float.floatToIntBits(dcPendingScrollY) << 32)
+                | (Float.floatToIntBits(dcPendingScrollX) & 0xffffffffL);
+        dcPendingScrollX = 0f;
+        dcPendingScrollY = 0f;
+        return xy;
+    }
+"""
+    return replace_once(text, anchor, bridge)
+
+
 def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
     source = replace_once(source, '        self.inner.ui(ui);', '        self.inner.ui(ui);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n')
     source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n')
+    source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);',
+        '        self.handle_clipboard_shortcuts(raw);' +
+        '\\n        // DesignCraft Android fallback: collect trackpad scroll from the Activity.' +
+        '\\n        // Avoid double injection when winit already emitted MouseWheel.' +
+        '\\n        let (dx, dy) = tablet::poll_trackpad_scroll(&self.app);' +
+        '\\n        if (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) {' +
+        '\\n            raw.events.push(egui::Event::MouseWheel {' +
+        '\\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
+        '\\n                phase: egui::TouchPhase::Move, modifiers: raw.modifiers,' +
+        '\\n            });' +
+        '\\n        }' +
+        '\\n        if egui::Popup::is_any_open(ctx) {' +
+        '\\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +
+        '\\n        }')
     source = replace_once(source, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && !ui.ctx().text_edit_focused()\n            && self.inner.session.active().is_some_and(|doc| doc.selection.text.is_some()) {\n            // End the engine\'s type session, not just Android\'s invisible EditText.\n            self.inner.select_tool("selection");\n            if let Err(error) = self.inner.run("text.exitToFrame", serde_json::json!({})) {\n                log::warn!("Android text exit: {error}");\n            }\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());')
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
@@ -138,7 +192,9 @@ def patch(root):
     for filename in ('font_methods.java', 'update_methods.java'):
         methods += Path(__file__).with_name(filename).read_text() + '\n'
     index = text.rfind('}')
-    java.write_text(text[:index] + methods + text[index:])
+    text = text[:index] + methods + text[index:]
+    text = append_trackpad_bridge(text)
+    java.write_text(text)
     policy = Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text()
     (java.parent / "DesignCraftUpdatePolicy.java").write_text(
         update_policy_for_activity(text, policy))

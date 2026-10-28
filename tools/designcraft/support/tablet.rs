@@ -15,6 +15,49 @@ static ANDROID_TOUCH_MOVE: AtomicU64 = AtomicU64::new(0);
 static ANDROID_LAST_MOTION: AtomicU64 = AtomicU64::new(0);
 static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
 static FALLBACK_WHEEL: AtomicU64 = AtomicU64::new(0);
+static RAW_HOVER_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
+static LAST_TRACKPAD_MENU_GESTURE: Mutex<Option<std::time::Instant>> =
+    Mutex::new(None);
+
+/// Native GameActivity/winit can still enqueue pointer-motion events even
+/// when the Java Activity has consumed the corresponding generic gesture.
+/// During a detected trackpad wheel gesture, freeze those hover updates so
+/// submenus do not open or jump while the popup's scroll offset moves.
+/// This deliberately leaves wheel, click, key and real touchscreen events
+/// untouched, and only affects already-open menus.
+pub fn suppress_trackpad_menu_hover(
+    raw: &mut egui::RawInput,
+    popup_open: bool,
+    fallback_injected: bool,
+) {
+    let now = std::time::Instant::now();
+    let active = {
+        let mut last = LAST_TRACKPAD_MENU_GESTURE.lock().unwrap_or_else(|e| e.into_inner());
+        if !popup_open {
+            *last = None;
+            false
+        } else {
+            if fallback_injected { *last = Some(now); }
+            last.is_some_and(|time| now.duration_since(time) <=
+                std::time::Duration::from_millis(180))
+        }
+    };
+    if !active || raw.events.iter().any(|event|
+        matches!(event, egui::Event::Touch {
+            phase: egui::TouchPhase::Start | egui::TouchPhase::Move, ..
+        })
+    ) {
+        return;
+    }
+    let original = raw.events.len();
+    raw.events.retain(|event| !matches!(
+        event, egui::Event::PointerMoved(_) | egui::Event::PointerGone
+    ));
+    let suppressed = original - raw.events.len();
+    if suppressed > 0 {
+        RAW_HOVER_SUPPRESSED.fetch_add(suppressed as u64, Ordering::Relaxed);
+    }
+}
 
 pub fn record_wheel_events(raw: &egui::RawInput, fallback_injected: bool) {
     let count = raw.events.iter()
@@ -298,6 +341,7 @@ impl Tablet {
                         ("Android gesture-scroll axes", ANDROID_GESTURE_AXES.load(Ordering::Relaxed)),
                         ("Generic move / hover", ANDROID_GENERIC_MOVE.load(Ordering::Relaxed)),
                         ("Trackpad hover suppressed", ANDROID_HOVER_SUPPRESSED.load(Ordering::Relaxed)),
+                        ("Native menu hover suppressed", RAW_HOVER_SUPPRESSED.load(Ordering::Relaxed)),
                         ("Touch move events", ANDROID_TOUCH_MOVE.load(Ordering::Relaxed)),
                         ("Android trackpad moves", ANDROID_TOUCHPAD_MOVE.load(Ordering::Relaxed)),
                         ("Winit mouse-wheel events", NATIVE_WHEEL.load(Ordering::Relaxed)),

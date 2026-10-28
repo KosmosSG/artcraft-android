@@ -100,9 +100,10 @@ pub fn ui_label(id: &str) -> Option<(&''')
             // ui.rect_contains_pointer() can return false for a popup layered
             // above the canvas or beside another diagnostics window.
             let menu_id = ui.id().with("designcraft-menu-trackpad-offset");
-            let previous = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect, Option<egui::Pos2>)>(menu_id));
-            let (mut offset, previous_limit, previous_rect, last_pointer) = previous.unwrap_or((
-                0.0, 0.0, egui::Rect::NOTHING, None,
+            let previous = ui.data(|d| d.get_temp::<(f32, f32, egui::Rect, Option<egui::Pos2>, Option<egui::Pos2>, Option<egui::Pos2>)>(menu_id));
+            let (mut offset, previous_limit, previous_rect, last_pointer,
+                 mut touch_last, mut mouse_last) = previous.unwrap_or((
+                0.0, 0.0, egui::Rect::NOTHING, None, None, None,
             ));
             // MagicOS can issue HOVER_EXIT when a two-finger gesture starts,
             // clearing hover_pos while the gesture wheel event still arrives.
@@ -127,6 +128,60 @@ pub fn ui_label(id: &str) -> Option<(&''')
                     } else { None }
                 }).sum::<f32>()
             });
+            // On MagicPad, direct screen drags arrive as Touch and/or
+            // emulated PointerMoved/PointerButton events, not MouseWheel.
+            // Process the raw deltas before menu rows can capture a drag.
+            // A finger must START inside this popup's clipped viewport, so
+            // moving on the document canvas cannot scroll a menu.
+            let touch_events = ui.input(|input| input.raw.events.clone());
+            let has_touch = touch_events.iter().any(|event|
+                matches!(event, egui::Event::Touch { .. }));
+            let mut finger_delta_y = 0.0_f32;
+            for event in &touch_events {
+                match event {
+                    egui::Event::Touch { phase: egui::TouchPhase::Start, pos, .. } => {
+                        if touch_last.is_none() && previous_rect.contains(*pos) {
+                            touch_last = Some(*pos);
+                        }
+                    }
+                    egui::Event::Touch { phase: egui::TouchPhase::Move, pos, .. } => {
+                        if let Some(last) = touch_last {
+                            let dy = pos.y - last.y;
+                            if dy.is_finite() {
+                                finger_delta_y += dy.clamp(-110.0, 110.0);
+                            }
+                            touch_last = Some(*pos);
+                        }
+                    }
+                    egui::Event::Touch {
+                        phase: egui::TouchPhase::End | egui::TouchPhase::Cancel, ..
+                    } => touch_last = None,
+                    // Some Android environments send pointer emulation only.
+                    // Do not double-count it when the real Touch stream exists.
+                    egui::Event::PointerButton { pressed: true, pos, .. } if !has_touch => {
+                        if previous_rect.contains(*pos) { mouse_last = Some(*pos); }
+                    }
+                    egui::Event::PointerMoved(pos) if !has_touch => {
+                        if let Some(last) = mouse_last {
+                            let dy = pos.y - last.y;
+                            if dy.is_finite() {
+                                finger_delta_y += dy.clamp(-110.0, 110.0);
+                            }
+                            mouse_last = Some(*pos);
+                        }
+                    }
+                    egui::Event::PointerButton { pressed: false, .. } if !has_touch => {
+                        mouse_last = None;
+                    }
+                    _ => {}
+                }
+            }
+            if finger_delta_y.abs() > 0.01 {
+                // Natural movement: dragging UP reveals lower menu commands.
+                offset = (offset - finger_delta_y).clamp(0.0, previous_limit.max(0.0));
+                ARTCRAFT_MENU_TOUCH_SCROLL_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                ui.ctx().request_repaint();
+            }
             if wheel.is_finite() && wheel.abs() > 0.01 {
                 // Positive wheel moves content down and scroll offset up;
                 // do not reapply stale wheel deltas on frames without input.
@@ -138,7 +193,7 @@ pub fn ui_label(id: &str) -> Option<(&''')
             scroll = scroll
                 .scroll_source(egui::containers::scroll_area::ScrollSource {
                     scroll_bar: true,
-                    drag: egui::containers::scroll_area::DragScroll::OnTouch,
+                    drag: egui::containers::scroll_area::DragScroll::Never,
                     mouse_wheel: false,
                 })
                 .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
@@ -146,7 +201,9 @@ pub fn ui_label(id: &str) -> Option<(&''')
             let rendered = scroll.show(ui, add_contents);
             let limit = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);
             let new_offset = offset.clamp(0.0, limit);
-            ui.data_mut(|d| d.insert_temp(menu_id, (new_offset, limit, rendered.inner_rect, pointer)));
+            ui.data_mut(|d| d.insert_temp(menu_id, (
+                new_offset, limit, rendered.inner_rect, pointer, touch_last, mouse_last,
+            )));
             ARTCRAFT_MENU_SCROLL_OFFSET_BITS.store(
                 new_offset.to_bits(), std::sync::atomic::Ordering::Relaxed,
             );
@@ -167,6 +224,9 @@ pub fn artcraft_take_android_actions() -> u32 {""",
 static ARTCRAFT_MENU_SCROLL_EVENTS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 #[cfg(target_os = "android")]
+static ARTCRAFT_MENU_TOUCH_SCROLL_EVENTS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+#[cfg(target_os = "android")]
 static ARTCRAFT_MENU_SCROLL_OFFSET_BITS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 #[cfg(target_os = "android")]
@@ -174,9 +234,10 @@ static ARTCRAFT_MENU_SCROLL_LIMIT_BITS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 
 #[cfg(target_os = "android")]
-pub fn artcraft_menu_scroll_diagnostics() -> (u64, f32, f32) {
+pub fn artcraft_menu_scroll_diagnostics() -> (u64, u64, f32, f32) {
     use std::sync::atomic::Ordering;
     (ARTCRAFT_MENU_SCROLL_EVENTS.load(Ordering::Relaxed),
+     ARTCRAFT_MENU_TOUCH_SCROLL_EVENTS.load(Ordering::Relaxed),
      f32::from_bits(ARTCRAFT_MENU_SCROLL_OFFSET_BITS.load(Ordering::Relaxed)),
      f32::from_bits(ARTCRAFT_MENU_SCROLL_LIMIT_BITS.load(Ordering::Relaxed)))
 }

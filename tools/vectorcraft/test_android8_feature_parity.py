@@ -54,19 +54,20 @@ class VectorCraftParity(unittest.TestCase):
             self.assertEqual(hashlib.sha256((approved.parent/p).read_bytes()).hexdigest(),h)
         restore = read("tools/vectorcraft/restore_vectorcraft_08_branding.py")
         self.assertIn('"install"', restore)
-        self.assertIn('VERSION = "0.14.0-android.10"', restore)
+        self.assertIn('VERSION = "0.14.0-android.11"', restore)
         self.assertIn("installed[", restore)
 
     def test_keyboard_shortcuts_still_recover_after_escape(self):
         shell = read("adapters/vectorcraft/src/lib.rs")
         mods = read("adapters/vectorcraft/src/android_modifiers.rs")
-        for key in ("CanvasHardwareCommand::ExitType", "CanvasHardwareCommand::DismissContextBar",
+        for key in ("CanvasHardwareCommand::ExitType", "CanvasHardwareCommand::PreserveContextBar",
                     "CanvasHardwareCommand::Selection", "CanvasHardwareCommand::Type",
                     "CanvasHardwareCommand::Pen", "self.bridge.end_type_editing()",
-                    "self.inner.ui.task_bar = false;"):
+                    "memory.surrender_focus(id)"):
             self.assertIn(key, shell)
+        self.assertNotIn("self.inner.ui.task_bar = false;", shell)
         for test in ("type_shortcut_returns_after_escape_exits_editor",
-                     "second_escape_dismisses_context_bar_but_preserves_tools",
+                     "escape_preserves_context_bar_and_tool_shortcuts",
                      "direct_tool_dispatch_consumes_only_matching_letter_events"):
             self.assertIn(test, mods)
 

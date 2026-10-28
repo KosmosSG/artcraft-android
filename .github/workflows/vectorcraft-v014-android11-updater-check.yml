@@ -1,0 +1,123 @@
+name: VectorCraft android.11 LightCraft-style updater verification (read-only)
+
+on:
+  push:
+    branches:
+      - release-prep/vectorcraft-v014-android11-feedback-20261026
+    paths:
+      - 'adapters/vectorcraft/**'
+      - 'tools/vectorcraft/**'
+      - '.github/workflows/vectorcraft-v014-android11-updater-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v014-android11-updater-source
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release-prep/vectorcraft-v014-android11-feedback-20261026'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Regressions and preserved release identity
+        run: |
+          set -euo pipefail
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          grep -Fq 'package = "com.artcraft.vectorcraft"' adapters/vectorcraft/Cargo.toml
+          grep -Fq 'VERSION = "0.14.0-android.11"' tools/vectorcraft/restore_vectorcraft_08_branding.py
+          grep -Fq 'VERSION_CODE = 16780811' tools/vectorcraft/restore_vectorcraft_08_branding.py
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile Android Java bridge and font fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35'
+          mkdir -p "$RUNNER_TEMP/vectorcraft-java"
+          javac -source 17 -target 17 \
+            -cp "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d "$RUNNER_TEMP/vectorcraft-java" \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java \
+            adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java \
+            tools/vectorcraft/FontContentTest.java
+          java -cp "$ANDROID_HOME/platforms/android-35/android.jar:$RUNNER_TEMP/vectorcraft-java" FontContentTest
+
+  native-android-arm64:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release-prep/vectorcraft-v014-android11-feedback-20261026'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Check source provenance and apply both Android-only menu and About patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = ad0566943ab9741e6356bbc9b53c3cc09895068d
+          python3 tools/vectorcraft/verify_upstream_tool_hotkeys.py builder/source/vectorcraft
+          mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
+          cp -a adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
+          cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
+          cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+          python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 tools/vectorcraft/patch_android_about_updates.py builder
+          grep -Fq 'VectorCraft Updates' builder/source/vectorcraft/crates/ui-egui/src/dialogs/about.rs
+          grep -Fq 'Stable + Preview Releases' builder/source/vectorcraft/crates/ui-egui/src/dialogs/about.rs
+          test -s assets/branding/vectorcraft/vc-glass-approved.png
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install pinned Android ARM64 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Compile patched native VectorCraft and About Updates tab
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android28-clang"
+          cargo check \
+            --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml \
+            --target aarch64-linux-android
+          echo "PASS: pinned v0.14 Android ARM64 Rust and native About Updates compiled"

@@ -60,6 +60,18 @@ final class VectorCraftExtras {
     private final ConcurrentLinkedQueue<String> updates = new ConcurrentLinkedQueue<>();
     private long pendingImport = -1;
     private long pendingFolder = -1;
+    private static final String UPDATE_PREFS = "vectorcraft.android.updates";
+
+    boolean includePreviewUpdates() {
+        return activity.getSharedPreferences(UPDATE_PREFS, Activity.MODE_PRIVATE)
+            .getBoolean("include_preview_releases", true);
+    }
+
+    void setIncludePreviewUpdates(boolean enabled) {
+        activity.getSharedPreferences(UPDATE_PREFS, Activity.MODE_PRIVATE).edit()
+            .putBoolean("include_preview_releases", enabled).apply();
+    }
+
 
     VectorCraftExtras(VectorCraftActivity activity) {
         this.activity = activity;
@@ -388,10 +400,13 @@ final class VectorCraftExtras {
                         .getPackageInfo(activity.getPackageName(), 0).versionName;
                 if (installed == null) installed = "0.0.0";
                 String latest = null, releaseUrl = null;
+                final boolean includePreview = includePreviewUpdates();
+                if (releases.length() >= 100)
+                    throw new java.io.IOException("Release list incomplete; check GitHub manually");
                 for (int i = 0; i < releases.length(); i++) {
                     JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft")
-                            || release.optBoolean("prerelease")) continue;
+                            || (!includePreview && release.optBoolean("prerelease"))) continue;
                     String tag = release.optString("tag_name", "");
                     if (!tag.startsWith(TAG_PREFIX)) continue;
                     String version = tag.substring(TAG_PREFIX.length());
@@ -401,9 +416,12 @@ final class VectorCraftExtras {
                     if (assets != null) for (int j = 0; j < assets.length(); j++) {
                         JSONObject asset = assets.optJSONObject(j);
                         if (asset == null) continue;
-                        String filename = asset.optString("name", "").toLowerCase(Locale.ROOT);
-                        if (filename.startsWith("vectorcraft-")
-                                && filename.endsWith(".apk")) apkFound = true;
+                        // Check exact same-app ARM64 asset, not an unrelated
+                        // test APK or an incomplete upload.
+                        String filename = asset.optString("name", "");
+                        if (("VectorCraft-v" + version + "-arm64-v8a.apk").equals(filename)
+                                && "uploaded".equals(asset.optString("state", ""))
+                                && asset.optLong("size", 0L) > 0) apkFound = true;
                     }
                     if (!apkFound) continue;
                     String url = release.optString("html_url", "");
@@ -416,6 +434,7 @@ final class VectorCraftExtras {
                 JSONObject result = new JSONObject();
                 result.put("status", "ok");
                 result.put("installed_version", installed);
+                result.put("channel", includePreview ? "stable_and_preview" : "stable");
                 if (latest == null) {
                     result.put("state", "no_release");
                     result.put("message", "No published VectorCraft Android APK available yet");

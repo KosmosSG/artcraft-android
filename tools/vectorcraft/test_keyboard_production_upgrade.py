@@ -29,15 +29,16 @@ class KeyboardProductionUpgradeTests(unittest.TestCase):
         self.assertIn('vectorcraft-tools = { path = "../../crates/tools" }', self.manifest)
 
     def test_keyboard_escape_tool_and_context_bar_guards(self):
-        for marker in ("CanvasHardwareCommand::ExitType", "CanvasHardwareCommand::DismissContextBar",
+        for marker in ("CanvasHardwareCommand::ExitType", "CanvasHardwareCommand::PreserveContextBar",
                        "ctx.text_edit_focused()", "tool_wants_text()", "tool_composing()",
-                       "self.inner.ui.dialog.is_some()", "self.inner.ui.task_bar = false;",
+                       "self.inner.ui.dialog.is_some()", "memory.surrender_focus(id)",
                        "self.inner.session.tool_busy()", "self.inner.select_tool(tool)",
                        "UiRequest::SwitchTool", "consume_canvas_hardware_command(raw, command)",
                        "restore_tool_key_text(raw, allow_letters)"):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.shell)
-        for marker in ("second_escape_dismisses_context_bar_but_preserves_tools",
+        self.assertNotIn("self.inner.ui.task_bar = false;", self.shell)
+        for marker in ("escape_preserves_context_bar_and_tool_shortcuts",
                        "type_shortcut_returns_after_escape_exits_editor",
                        "direct_tool_dispatch_consumes_only_matching_letter_events",
                        "fn escape_is_routed_during_type_editing_without_stealing_ime",

@@ -38,7 +38,7 @@ mod system_fonts;
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
 
-// Device-tested MagicPad physical keyboard recovery and guarded Contextual Task Bar Escape.
+// Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
 use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
 
@@ -233,6 +233,41 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    // LightCraft-style persistent update channel, stored in Android's private
+    // SharedPreferences. JNI failures are surfaced to the About → Updates UI.
+    /// Actual installed Android versionName (e.g. 0.14.0-android.11),
+    /// not official upstream Cargo workspace version (0.14.0).
+    fn installed_version_name(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("vcInstalledVersionName"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok("unknown".into()); }
+            let value = JString::cast_local(env, value)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+
+    fn get_include_preview_updates(&self) -> Result<bool, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcGetIncludePreviewUpdates"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|e| e.to_string())
+    }
+
+    fn set_include_preview_updates(&self, enabled: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcSetIncludePreviewUpdates"),
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn poll_update_result(&self) -> Result<Option<String>, String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -397,10 +432,10 @@ impl FontUiState {
 
 #[derive(Default)]
 struct UpdateDialogState {
-    open: bool,
     checking: bool,
     message: String,
     release_url: Option<String>,
+    include_preview: bool,
 }
 
 /// A MIME type for an open dialog, from its first file-type filter (every file when it has none).
@@ -700,9 +735,11 @@ struct VectorCraftAndroidApp {
     bridge: AndroidFileBridge,
     picks: Arc<PickState>,
     fonts: FontUiState,
+    font_feedback_open: bool,
     android_tools_open: bool,
     touch_dock: bool,
     startup_updates: bool,
+    installed_version: String,
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
@@ -894,9 +931,8 @@ impl eframe::App for VectorCraftAndroidApp {
                         }
                         Err(error) => self.updates.message = format!("Invalid update result: {error}"),
                     }
-                    if self.updates.release_url.is_some() && self.updates.message.starts_with("Update available:") {
-                        self.updates.open = true;
-                    }
+                    // Results remain visible in native About → Updates.
+                    // Background startup checks never steal canvas focus.
                     ctx.request_repaint();
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
@@ -946,18 +982,22 @@ impl eframe::App for VectorCraftAndroidApp {
                         Err(error) => log::warn!("Type editor Escape failed: {error}"),
                     }
                     if handled {
+                        // The Type tool has exited. Release stale egui text-field focus
+                        // as well as Android's hidden IME host so V/T/P can work while
+                        // the selected text object's contextual task bar stays visible.
+                        ctx.memory_mut(|memory| {
+                            if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                        });
                         if let Err(error) = self.bridge.end_type_editing() {
                             log::warn!("Android keyboard focus handoff failed: {error}");
                         }
                     }
                 }
-                CanvasHardwareCommand::DismissContextBar => {
-                    // Second Escape uses the existing Hide Bar state; it does
-                    // not change the user's keyboard shortcut assignments.
-                    self.inner.ui.task_bar = false;
-                    ctx.memory_mut(|memory| {
-                        if let Some(id) = memory.focused() { memory.surrender_focus(id); }
-                    });
+                CanvasHardwareCommand::PreserveContextBar => {
+                    // An idle Escape must not dismiss the contextual task bar
+                    // or deselect the active object. The first Escape already
+                    // released the Type editor/IME focus; subsequent V/T/P remain
+                    // available without hiding the bar. Manual Hide Bar still works.
                     handled = true;
                 }
                 CanvasHardwareCommand::Selection
@@ -969,7 +1009,7 @@ impl eframe::App for VectorCraftAndroidApp {
                             CanvasHardwareCommand::Type => "type",
                             CanvasHardwareCommand::Pen => "pen",
                             CanvasHardwareCommand::ExitType
-                            | CanvasHardwareCommand::DismissContextBar => unreachable!(),
+                            | CanvasHardwareCommand::PreserveContextBar => unreachable!(),
                         };
                         self.inner.select_tool(tool);
                         handled = true;
@@ -1031,7 +1071,25 @@ impl eframe::App for VectorCraftAndroidApp {
                         });
                 });
         }
-        // The editor now uses the space left after the bottom pad.
+        // LightCraft's About → Updates tab reads these native states directly.
+        // Publish BEFORE the upstream ui() call, which draws About VectorCraft.
+        let status = if self.updates.message.is_empty() {
+            "Select Check for Updates to query GitHub Releases.".to_owned()
+        } else {
+            self.updates.message.clone()
+        };
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_status"), status);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.installed_version"),
+                self.installed_version.clone());
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.update_checking"), self.updates.checking);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.include_preview"), self.updates.include_preview);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.startup_enabled"), self.startup_updates);
+            d.insert_temp(egui::Id::new("artcraft.vectorcraft.release_page"),
+                self.updates.release_url.clone().unwrap_or_default());
+        });
+        // The editor uses space left after the bottom shortcut dock; About is
+        // the genuine upstream dialog, not a separate floating update overlay.
         self.inner.ui(ui);
 
         // Small Android-only entry point: no upstream desktop preferences are changed.
@@ -1040,6 +1098,24 @@ impl eframe::App for VectorCraftAndroidApp {
         let mut select_shared = false;
         let mut refresh_shared = false;
         let mut check_updates = false;
+        let (tab_check, tab_startup_changed, tab_startup_desired,
+             tab_preview_changed, tab_preview_desired, tab_open_release) =
+             ctx.data_mut(|d| {
+                // Avoid a stale repeated request on every repaint.
+                let check = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.check_updates_requested")).unwrap_or(false);
+                let startup_changed = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.startup_changed")).unwrap_or(false);
+                let startup = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.startup_desired")).unwrap_or(false);
+                let preview_changed = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.preview_changed")).unwrap_or(false);
+                let preview = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.preview_desired")).unwrap_or(false);
+                let open = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.open_release_requested")).unwrap_or(false);
+                for key in ["artcraft.vectorcraft.check_updates_requested",
+                            "artcraft.vectorcraft.startup_changed",
+                            "artcraft.vectorcraft.preview_changed",
+                            "artcraft.vectorcraft.open_release_requested"] {
+                    d.insert_temp(egui::Id::new(key), false);
+                }
+                (check, startup_changed, startup, preview_changed, preview, open)
+             });
         let mut customize_shortcuts = false;
         let mut dock_undo = false;
         let mut dock_redo = false;
@@ -1048,6 +1124,27 @@ impl eframe::App for VectorCraftAndroidApp {
         // Genuine upstream Type, Help, and Window menu clicks are passed back to the
         // Android host; no desktop menu commands or user shortcut assignments change.
         let menu = vectorcraft_ui_egui::menus::take_android_menu_bits();
+        if tab_check { check_updates = true; }
+        if tab_startup_changed { self.startup_updates = tab_startup_desired; }
+        if tab_preview_changed && tab_preview_desired != self.updates.include_preview {
+            match self.bridge.set_include_preview_updates(tab_preview_desired) {
+                Ok(()) => {
+                    self.updates.include_preview = tab_preview_desired;
+                    self.updates.message =
+                        "Update channel saved. Select Check for Updates to refresh.".into();
+                    self.updates.release_url = None;
+                }
+                Err(error) => self.updates.message =
+                    format!("Could not save update channel: {error}"),
+            }
+        }
+        if tab_open_release {
+            if let Some(url) = self.updates.release_url.as_deref() {
+                if let Err(error) = self.bridge.open_update_page(url) {
+                    self.updates.message = format!("Could not open GitHub release: {error}");
+                }
+            }
+        }
         if menu & 1 != 0 { import = true; }
         if menu & 2 != 0 { select_shared = true; }
         if menu & 4 != 0 { refresh_shared = true; }
@@ -1110,38 +1207,75 @@ impl eframe::App for VectorCraftAndroidApp {
                 ctx.request_repaint();
             }
         }
-        if import { self.fonts.import(&self.picks, &self.bridge); }
-        if select_shared { self.fonts.shared(&self.picks, &self.bridge, false); }
-        if refresh_shared { self.fonts.shared(&self.picks, &self.bridge, true); }
+        // An actual feedback window remains visible after SAF returns, including
+        // Cancel, duplicate font and I/O failure. Previously these statuses
+        // existed but were hidden inside Graphics Diagnostics.
+        if import {
+            self.font_feedback_open = true;
+            self.fonts.import(&self.picks, &self.bridge);
+        }
+        if select_shared {
+            self.font_feedback_open = true;
+            self.fonts.shared(&self.picks, &self.bridge, false);
+        }
+        if refresh_shared {
+            self.font_feedback_open = true;
+            self.fonts.shared(&self.picks, &self.bridge, true);
+        }
+        if self.font_feedback_open {
+            let mut open = self.font_feedback_open;
+            let mut close_button = false;
+            egui::Window::new("VectorCraft Fonts")
+                .id(egui::Id::new("vectorcraft.android.font_feedback"))
+                .collapsible(false)
+                .resizable(false)
+                .default_width(425.0)
+                .order(egui::Order::Foreground)
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.heading("Font Import");
+                    ui.separator();
+                    if self.fonts.pending_import.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Waiting for font selection / import…");
+                        });
+                    }
+                    if !self.fonts.import_status.is_empty() {
+                        ui.label(&self.fonts.import_status);
+                    }
+                    if self.fonts.pending_shared.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Loading shared font folder…");
+                        });
+                    }
+                    if !self.fonts.shared_status.is_empty() {
+                        ui.label(&self.fonts.shared_status);
+                    }
+                    ui.add_space(6.0);
+                    ui.small("TTF / OTF fonts stay inside VectorCraft's private Fonts folder.");
+                    ui.separator();
+                    if ui.button("Close").clicked() { close_button = true; }
+                });
+            self.font_feedback_open = open && !close_button;
+        }
         if check_updates {
-            self.updates.open = true;
-            self.updates.release_url = None;
-            self.updates.message = "Checking GitHub releases…".into();
+            // The native About dialog owns the Updates tab, just like
+            // LightCraft. In particular, no bottom panel is drawn after the
+            // central editor (which made the old status nearly invisible).
+            self.inner.ui.about = true;
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("about_tab"), 3u8));
             if !self.updates.checking {
+                self.updates.release_url = None;
+                self.updates.message = "Checking official VectorCraft GitHub Releases…".into();
                 match self.bridge.check_for_updates() {
                     Ok(()) => self.updates.checking = true,
-                    Err(error) => self.updates.message = format!("Could not check releases: {error}"),
+                    Err(error) => self.updates.message =
+                        format!("Could not check releases: {error}"),
                 }
             }
-        }
-        if self.updates.open {
-            let mut open = self.updates.open;
-            egui::Panel::bottom("vectorcraft.android.update_status")
-                .resizable(false)
-                .show(ui, |ui| {
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Cannot open VectorCraft release: {error}");
-                            }
-                        }
-                    }
-                    if ui.small_button("Dismiss").clicked() { open = false; }
-                });
-            self.updates.open = open;
+            ctx.request_repaint();
         }
     }
 
@@ -1210,12 +1344,22 @@ fn android_main(android_app: AndroidApp) {
                 bridge: app_bridge.clone_for_services(),
                 picks: app_picks.clone(),
                 fonts: std::mem::take(&mut initial_fonts),
+                font_feedback_open: false,
                 android_tools_open: false,
                 touch_dock,
                 startup_updates,
+                installed_version: app_bridge.installed_version_name().unwrap_or_else(|error| {
+                    log::warn!("Could not retrieve installed Android version: {error}");
+                    "unknown".into()
+                }),
                 updates: {
                     let mut state = UpdateDialogState::default();
-                    // Nonblocking, read-only startup check as in PhotoCraft.
+                    // Like LightCraft, preview channel is a persistent Android
+                    // preference; do not silently change it during an update.
+                    state.include_preview =
+                        app_bridge.get_include_preview_updates().unwrap_or(true);
+                    state.message = "Select Check for Updates to query GitHub Releases.".into();
+                    // Nonblocking startup check remains opt-in.
                     if startup_updates && app_bridge.check_for_updates().is_ok() {
                         state.checking = true;
                         state.message = "Checking for VectorCraft updates…".into();

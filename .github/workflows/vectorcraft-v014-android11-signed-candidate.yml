@@ -1,0 +1,249 @@
+name: VectorCraft v0.14.0-android.11 signed feedback candidate (NO PUBLISH)
+
+on:
+  push:
+    branches:
+      - release-prep/vectorcraft-v014-android11-feedback-20261026
+    paths:
+      - 'adapters/vectorcraft/**'
+      - 'tools/vectorcraft/**'
+      - 'docs/ARTCRAFT_ANDROID_KEYBOARD_COMPATIBILITY.md'
+      - '.github/workflows/vectorcraft-v014-android11-signed-candidate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v014-android11-private-candidate-only
+  cancel-in-progress: false
+
+jobs:
+  verify-build-sign-preview:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release-prep/vectorcraft-v014-android11-feedback-20261026'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION_NAME: '0.14.0-android.11'
+      VERSION_CODE: '16780811'
+      PREVIOUS_VERSION_CODE: '16780810'
+      PREVIOUS_SHA256: 'b19a40552ac86804452c75994ca1cc202bc74f0ec0becfbce142bc5fd294373c'
+      EXPECTED_CERT: '7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # full history is needed for fail-closed ancestry verification
+      - name: Verify exact released .10 ancestry, approved source and previous identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'KosmosSG/artcraft-android'
+          test "$GITHUB_REF" = 'refs/heads/release-prep/vectorcraft-v014-android11-feedback-20261026'
+          git merge-base --is-ancestor 34d56348cb0c7490804f5c0ae0fa8c194cb705c1 HEAD
+          test "$VERSION_CODE" -gt "$PREVIOUS_VERSION_CODE"
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          test -s adapters/vectorcraft/src/android_modifiers.rs
+          test -s docs/ARTCRAFT_ANDROID_KEYBOARD_COMPATIBILITY.md
+          grep -Fq 'package = "com.artcraft.vectorcraft"' adapters/vectorcraft/Cargo.toml
+          if gh release view "vectorcraft-v$VERSION_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Version already has a GitHub Release; refusing to overwrite"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/vectorcraft-v$VERSION_NAME" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists"
+            exit 1
+          fi
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - name: Download original permanently signed .10 APK for signer and upgrade comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p previous
+          gh release download vectorcraft-v0.14.0-android.10 --repo "$GITHUB_REPOSITORY" \
+            --pattern 'VectorCraft-v0.14.0-android.10-arm64-v8a.apk' --dir previous
+          echo "$PREVIOUS_SHA256  previous/VectorCraft-v0.14.0-android.10-arm64-v8a.apk" | sha256sum -c -
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: KosmosSG/artcraft-android
+          ref: 4392e91fbdf6c65e8d1502ef508a6fd8ef79c98e
+          path: approved08
+          persist-credentials: false
+      - name: Verify immutable upstream and builder commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = 'ac54d62d9d2d6f663295a4afd8972a7a3e79f9af'
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = 'ad0566943ab9741e6356bbc9b53c3cc09895068d'
+          python3 tools/vectorcraft/verify_upstream_tool_hotkeys.py builder/source/vectorcraft
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android 35 and pinned NDK for ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage production adapter, LightCraft-style update UI and original .8-approved branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf builder/adapters/vectorcraft
+          cp -a adapters/vectorcraft builder/adapters/vectorcraft
+          # NEVER call keyboard_candidate.py: it switches package/signing to TEST!
+          python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 tools/vectorcraft/patch_android_about_updates.py builder
+          python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          x=tomllib.loads(Path("builder/adapters/vectorcraft/Cargo.toml").read_text())
+          meta=x["package"]["metadata"]["android"]
+          assert meta["package"]=="com.artcraft.vectorcraft", meta
+          assert meta["build_targets"]==["aarch64-linux-android"]
+          assert meta["application"]["label"]=="VectorCraft"
+          assert meta["application"]["activity"][0]["name"]==".VectorCraftActivity"
+          for p in ("VectorCraftActivity.java","VectorCraftExtras.java"):
+              path=Path("builder/adapters/vectorcraft/java/com/artcraft/vectorcraft")/p
+              assert path.read_text().startswith("package com.artcraft.vectorcraft;")
+          print("PASS: production identity and owner features retained")
+          PY
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vc-release.png"
+          python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vc-release.png"
+          # Late build hook restores exact approved .8 launcher/adaptive and top-left branding.
+          python3 tools/vectorcraft/restore_vectorcraft_08_branding.py builder approved08
+      - name: Compile actual ARM64 production-package APK (temporary builder key)
+        shell: bash
+        timeout-minutes: 125
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/vc-release.png"
+          test "$(find builder/output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
+      - name: Typecheck keyboard Rust regression tests against Android target
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --tests --target aarch64-linux-android
+      - name: Compare raw build and established production installation identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEW="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$AAPT" dump badging "$NEW" > candidate-badging.txt
+          "$AAPT" dump badging previous/VectorCraft-v0.14.0-android.10-arm64-v8a.apk > prior-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs previous/VectorCraft-v0.14.0-android.10-arm64-v8a.apk > prior-signer.txt
+          python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          def identity(file):
+              m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",Path(file).read_text(),re.M)
+              assert m, file
+              return m.groups()
+          prev=identity("prior-badging.txt"); new=identity("candidate-badging.txt")
+          assert prev==("com.artcraft.vectorcraft",os.environ["PREVIOUS_VERSION_CODE"],"0.14.0-android.10"),prev
+          assert new==("com.artcraft.vectorcraft",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),new
+          found=re.findall("certificate SHA-256 digest: ([a-fA-F0-9]{64})",Path("prior-signer.txt").read_text())
+          assert len(found)==1 and found[0].lower()==os.environ["EXPECTED_CERT"]
+          path=next(Path("builder/output").glob("*.apk"))
+          with zipfile.ZipFile(path) as z:
+              assert z.testzip() is None
+              native=[x for x in z.namelist() if x.startswith("lib/") and x.endswith(".so")]
+              assert native and all(x.startswith("lib/arm64-v8a/") for x in native),native
+              assert "lib/arm64-v8a/libvectorcraft_android.so" in native
+              assert any(x.endswith(".dex") for x in z.namelist())
+          print("PASS: .8 installation identity, version upgrade and ARM64 verified")
+          PY
+      - name: Permanently sign with ORIGINAL VectorCraft key, never generate a new one
+        shell: bash
+        env:
+          KEY_DATA: ${{ secrets.VECTORCRAFT_KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.VECTORCRAFT_KEYSTORE_PASSWORD }}
+          CONFIGURED_CERT: ${{ vars.VECTORCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEY_DATA" && test -n "$KEY_PASSWORD" || {
+            echo "::error::Original VectorCraft signing secrets unavailable; no release"
+            exit 1
+          }
+          if test -n "$CONFIGURED_CERT"; then
+            test "$(echo "$CONFIGURED_CERT" | tr '[:upper:]' '[:lower:]' | tr -d ':')" = "$EXPECTED_CERT" || {
+              echo "::error::Repository configured VectorCraft cert differs from published .8"
+              exit 1
+            }
+          fi
+          printf '%s' "$KEY_DATA" | base64 --decode > "$RUNNER_TEMP/vectorcraft-original.jks"
+          test -s "$RUNNER_TEMP/vectorcraft-original.jks"
+          SOURCE="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          python3 - "$SOURCE" "$RUNNER_TEMP/unsigned.apk" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as old, zipfile.ZipFile(sys.argv[2],"w") as new:
+              for info in old.infolist():
+                  if info.filename.upper().startswith("META-INF/"): continue
+                  new.writestr(info,old.read(info.filename))
+          PY
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$ZIPALIGN" -P 16 -f 4 "$RUNNER_TEMP/unsigned.apk" "$RUNNER_TEMP/zipaligned.apk"
+          mkdir -p signed
+          FINAL="signed/VectorCraft-v$VERSION_NAME-arm64-v8a.apk"
+          "$APKSIGNER" sign \
+            --ks "$RUNNER_TEMP/vectorcraft-original.jks" --ks-key-alias artcraftbuilder \
+            --ks-pass env:KEY_PASSWORD --key-pass env:KEY_PASSWORD \
+            --v4-signing-enabled false \
+            --out "$FINAL" "$RUNNER_TEMP/zipaligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$FINAL"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          python3 tools/vectorcraft/verify_apk.py "$FINAL" "$AAPT" "$APKSIGNER" "$VERSION_NAME" "$VERSION_CODE" "$EXPECTED_CERT" > signed/verification.json
+          (cd signed && sha256sum "VectorCraft-v$VERSION_NAME-arm64-v8a.apk" > SHA256SUMS.txt)
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          verification=json.loads(Path("signed/verification.json").read_text())
+          assert verification["certificate_sha256"]==os.environ["EXPECTED_CERT"]
+          assert verification["package"]=="com.artcraft.vectorcraft"
+          assert verification["version_code"]==int(os.environ["VERSION_CODE"])
+          assert verification["apk_sha256"] in Path("signed/SHA256SUMS.txt").read_text()
+          print("PASS: production keystore matches previously published .8 certificate")
+          PY
+      - name: Upload production-signed PRIVATE candidate (no public release)
+        uses: actions/upload-artifact@v5
+        with:
+          name: VectorCraft-v0.14.0-android.11-PERMANENT-SIGNED-DEVICE-CANDIDATE
+          path: signed/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Destroy transient signing materials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/vectorcraft-original.jks" "$RUNNER_TEMP/unsigned.apk" "$RUNNER_TEMP/zipaligned.apk"
+          rm -rf builder/keys

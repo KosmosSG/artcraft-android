@@ -80,6 +80,7 @@ pub fn normalize_type_editor_escape(raw: &mut egui::RawInput, type_editing: bool
 /// Android-only fallback for physical canvas keys. The upstream shortcut UI can
 /// decline Escape while text focus/IME states change within a frame; this path
 /// dispatches the tool action itself instead of merely remapping the egui key.
+/// An idle Escape with a selected object preserves the contextual bar rather than hiding it.
 /// Never handle a key owned by an egui input field, dialog, or live IME composition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CanvasHardwareCommand {
@@ -87,7 +88,7 @@ pub enum CanvasHardwareCommand {
     Selection,
     Type,
     Pen,
-    DismissContextBar,
+    PreserveContextBar,
 }
 
 pub fn canvas_hardware_command(
@@ -110,7 +111,7 @@ pub fn canvas_hardware_command(
             } else {
                 if context_bar_has_selection && (*key == egui::Key::Escape ||
                     (*key == egui::Key::BrowserBack && physical_key.is_none())) {
-                    return Some(CanvasHardwareCommand::DismissContextBar);
+                    return Some(CanvasHardwareCommand::PreserveContextBar);
                 }
                 let physical = physical_key.unwrap_or(*key);
                 match physical {
@@ -134,18 +135,18 @@ pub fn consume_canvas_hardware_command(raw: &mut egui::RawInput, cmd: CanvasHard
         CanvasHardwareCommand::Selection => egui::Key::V,
         CanvasHardwareCommand::Type => egui::Key::T,
         CanvasHardwareCommand::Pen => egui::Key::P,
-        CanvasHardwareCommand::DismissContextBar => egui::Key::Escape,
+        CanvasHardwareCommand::PreserveContextBar => egui::Key::Escape,
     };
     raw.events.retain(|event| match event {
         egui::Event::Key { key: logical, physical_key, pressed: true, .. } => {
-            if matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::DismissContextBar) {
+            if matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::PreserveContextBar) {
                 !(*logical == egui::Key::Escape ||
                   (*logical == egui::Key::BrowserBack && physical_key.is_none()))
             } else {
                 physical_key.unwrap_or(*logical) != key
             }
         }
-        egui::Event::Text(text) if !matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::DismissContextBar) => {
+        egui::Event::Text(text) if !matches!(cmd, CanvasHardwareCommand::ExitType | CanvasHardwareCommand::PreserveContextBar) => {
             !(text.len() == 1 && text.eq_ignore_ascii_case(key.name()))
         }
         _ => true,
@@ -255,10 +256,10 @@ mod tests {
         raw.events
     }
     #[test]
-    fn second_escape_dismisses_context_bar_but_preserves_tools() {
+    fn escape_preserves_context_bar_and_tool_shortcuts() {
         let esc = RawInput { events: vec![key(Key::Escape, true)], ..Default::default() };
         assert_eq!(canvas_hardware_command(&esc, false, false, false, false, true),
-            Some(CanvasHardwareCommand::DismissContextBar));
+            Some(CanvasHardwareCommand::PreserveContextBar));
         assert_eq!(canvas_hardware_command(&esc, true, false, false, false, true),
             Some(CanvasHardwareCommand::ExitType));
         assert_eq!(canvas_hardware_command(&esc, false, false, false, false, false), None);
@@ -269,13 +270,22 @@ mod tests {
             repeat: false, modifiers: Modifiers::NONE,
         }], ..Default::default() };
         assert_eq!(canvas_hardware_command(&browser_back, false, false, false, false, true),
-            Some(CanvasHardwareCommand::DismissContextBar));
+            Some(CanvasHardwareCommand::PreserveContextBar));
         let mut raw = esc;
-        consume_canvas_hardware_command(&mut raw, CanvasHardwareCommand::DismissContextBar);
+        consume_canvas_hardware_command(&mut raw, CanvasHardwareCommand::PreserveContextBar);
         assert!(raw.events.is_empty());
         let t = RawInput { events: vec![key(Key::T, true)], ..Default::default() };
         assert_eq!(canvas_hardware_command(&t, false, false, false, false, false),
             Some(CanvasHardwareCommand::Type));
+        // The selected-object toolbar remains enabled: no Escape dispatch toggles it off,
+        // and the same physical V/T/P shortcuts must work without dismissing the bar.
+        for (tool, command) in [(Key::V, CanvasHardwareCommand::Selection),
+                                (Key::T, CanvasHardwareCommand::Type),
+                                (Key::P, CanvasHardwareCommand::Pen)] {
+            let raw = RawInput { events: vec![key(tool, true)], ..Default::default() };
+            assert_eq!(canvas_hardware_command(&raw, false, false, false, false, true),
+                       Some(command));
+        }
     }
 
     #[test]

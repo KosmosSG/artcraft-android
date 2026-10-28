@@ -46,6 +46,13 @@ pub fn install_font(name: &str, bytes: &[u8]) -> Result<(), String> {
 pub struct Tablet {
     dock: bool,
     diagnostics: bool,
+    toolbar_visible: bool,
+    feedback: Option<(String, bool, f64)>,
+}
+
+fn toolbar_setting() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|p|
+        std::path::PathBuf::from(p).join(".local/share/designcraft/android-toolbar-visible"))
 }
 
 fn shortcut_setting() -> Option<std::path::PathBuf> {
@@ -57,11 +64,50 @@ impl Default for Tablet {
     fn default() -> Self {
         let dock = shortcut_setting().and_then(|p| std::fs::read(p).ok())
             .is_some_and(|value| value == b"enabled\n");
-        Self { dock, diagnostics: false }
+        let toolbar_visible = toolbar_setting().and_then(|p| std::fs::read(p).ok())
+            .is_none_or(|value| value == b"shown\n");
+        Self { dock, diagnostics: false, toolbar_visible, feedback: None }
     }
 }
 
 impl Tablet {
+    fn set_toolbar_visible(&mut self, shown: bool) -> Result<(), String> {
+        let path = toolbar_setting().ok_or("Toolbar preferences folder unavailable")?;
+        let dir = path.parent().ok_or("Invalid toolbar preferences path")?;
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let pending = path.with_extension("tmp");
+        std::fs::write(&pending, if shown { b"shown\n".as_slice() } else { b"hidden\n".as_slice() })
+            .map_err(|e| e.to_string())?;
+        std::fs::rename(pending, path).map_err(|e| e.to_string())?;
+        self.toolbar_visible = shown;
+        Ok(())
+    }
+
+    fn notify(&mut self, ui: &egui::Ui, message: String, error: bool) {
+        self.feedback = Some((message, error, ui.input(|i| i.time) + 6.0));
+        ui.ctx().request_repaint();
+    }
+
+    fn show_notification(&mut self, ui: &egui::Ui) {
+        let Some((message, error, expires)) = &self.feedback else { return; };
+        if ui.input(|i| i.time) >= *expires {
+            self.feedback = None;
+            return;
+        }
+        egui::Area::new(egui::Id::new("designcraft-font-import-notification"))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-18.0, 52.0))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(if *error { "⚠" } else { "✓" });
+                        ui.label(message);
+                    });
+                });
+            });
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+    }
+
     fn save_shortcuts(&mut self, enabled: bool) -> Result<(), String> {
         let path = shortcut_setting().ok_or("App-private settings path is unavailable")?;
         let dir = path.parent().ok_or("Invalid app-private settings path")?;
@@ -85,13 +131,23 @@ impl Tablet {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut designcraft_ui_egui::DesignApp, bridge: &saf::Bridge, state: &SafState) {
-        if let Some(result) = FONT_RESULT.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let font_event = FONT_RESULT.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(result) = font_event {
             match result {
                 Ok(message) => match app.run("font.reload", serde_json::json!({})) {
-                    Ok(_) => app.status(&format!("{message}; font catalog reloaded")),
-                    Err(error) => app.status_error("Reload fonts", error),
+                    Ok(_) => {
+                        app.status(&format!("{message}; font catalog reloaded"));
+                        self.notify(ui, format!("{message} — font list updated"), false);
+                    }
+                    Err(error) => {
+                        app.status_error("Reload fonts", error.clone());
+                        self.notify(ui, format!("Font import saved; reload failed: {error}"), true);
+                    }
                 },
-                Err(error) => app.status_error("Import font", error),
+                Err(error) => {
+                    app.status_error("Import font", error.clone());
+                    self.notify(ui, format!("Font import failed: {error}"), true);
+                }
             }
         }
         // Queued by the reviewed Android-only Type, Window and Help commands.
@@ -110,6 +166,12 @@ impl Tablet {
                 app.status_error("Touch shortcuts", error);
             }
         }
+        if actions & 64 != 0 {
+            if let Err(error) = self.set_toolbar_visible(!self.toolbar_visible) {
+                app.status_error("Android toolbar", error);
+            }
+        }
+        if self.toolbar_visible {
         egui::Panel::bottom("designcraft-android-controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.menu_button("Android", |ui| {
@@ -155,6 +217,8 @@ impl Tablet {
                 }
             });
         });
+        }
+        self.show_notification(ui);
         if self.diagnostics {
             egui::Window::new("Android graphics diagnostics").open(&mut self.diagnostics).show(ui.ctx(), |ui| {
                 ui.label(GPU.get().map(String::as_str).unwrap_or("Adapter details unavailable"));

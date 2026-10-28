@@ -160,7 +160,7 @@ pub fn ui_label(id: &str) -> Option<(&''')
                     drag: egui::containers::scroll_area::DragScroll::Never,
                     mouse_wheel: true,
                 })
-                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::Always)
+                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .vertical_scroll_offset(target);
             let rendered = scroll.show(ui, add_contents);
             let max_offset = (rendered.content_size.y - rendered.inner_rect.height()).max(0.0);

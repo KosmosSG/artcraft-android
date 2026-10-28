@@ -30,7 +30,7 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('egui::Event::MouseWheel { unit, delta, modifiers, .. }', after)
             self.assertIn('previous_rect.contains(pointer)', after)
             self.assertIn('let pointer = pointer_now.or(last_pointer);', after)
-            self.assertIn('Some<egui::Pos2>', after)
+            self.assertIn('Option<egui::Pos2>', after)
             self.assertIn('rendered.inner_rect, pointer)', after)
             self.assertIn('offset = (offset - wheel).clamp', after)
             self.assertIn('rendered.content_size.y - rendered.inner_rect.height()', after)

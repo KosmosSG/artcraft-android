@@ -62,7 +62,7 @@ def prepare(root: Path, version: str, code: int):
     if source.count(branding_hook) != 1:
         raise ValueError("Pinned Android branding insertion point changed")
     source = source.replace(branding_hook,
-        'python3 "$ROOT/designcraft-support/apply_approved_branding.py" "$ROOT" "$ANDROID_DIR" "$VERSION_NAME"\\n\\n' + branding_hook)
+        'python3 "$ROOT/designcraft-support/apply_approved_branding.py" "$ROOT" "$ANDROID_DIR" "$VERSION_NAME"\n\n' + branding_hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
     shutil.copytree(Path(__file__).parents[1] / "approved-branding", root / "designcraft-approved", dirs_exist_ok=True)
     install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
@@ -73,17 +73,10 @@ def prepare(root: Path, version: str, code: int):
     # override DesignCraft-only; no other Craft apps' font paths are changed.
     fonts = root / "templates/android/system_fonts.rs"
     fonts.write_text(patch_android_font_paths(fonts.read_text()))
-    # Generate both legacy and adaptive layers from the approved glossy source.
-    icon_module = root / "lib/app_icons.py"
-    icon_source = icon_module.read_text()
-    icon_anchor = "    Image, _ = _pillow()\n    source = pick_source(src, app, explicit)"
-    if icon_source.count(icon_anchor) != 1:
-        raise ValueError("Pinned icon generator changed")
-    icon_module.write_text(icon_source.replace(icon_anchor,
-        "    if app == 'designcraft' and explicit is not None:\n"
-        "        import designcraft_launcher\n"
-        "        return designcraft_launcher.generate(explicit, res_dir)\n" + icon_anchor, 1))
-    shutil.copyfile(Path(__file__).with_name("launcher_icon.py"), root / "lib/designcraft_launcher.py")
+    # The legacy Dc launcher generator only accepts SHA pins for the old icon.
+    # Let the pinned generic builder create its temporary placeholder, then
+    # overwrite compiled launcher sources with verified approved-branding assets
+    # in apply_approved_branding.py before signing.
     script.write_text(source)
     project.write_text(generated)
 

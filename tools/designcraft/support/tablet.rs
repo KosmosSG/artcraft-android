@@ -307,9 +307,10 @@ impl Tablet {
                     let action = ((motion >> 16) & 0xffff) as u16;
                     let pointers = (motion & 0xffff) as u16;
                     ui.label(format!("Last Android motion: action={action} source=0x{source:x} pointers={pointers}"));
-                    let (menu_events, menu_offset, menu_limit) =
+                    let (menu_events, menu_touch_events, menu_offset, menu_limit) =
                         designcraft_ui_egui::menus::artcraft_menu_scroll_diagnostics();
                     ui.label(format!("Menu wheel events: {menu_events}"));
+                    ui.label(format!("Menu touch-scroll events: {menu_touch_events}"));
                     ui.label(format!("Menu scroll: {:.0} / {:.0} pt", menu_offset, menu_limit));
                     ui.label("After a two-finger gesture, check that Menu wheel events and Menu scroll increase.");
                     ui.label("Hover inside the Type list; the viewport is scrollable without extra buttons.");

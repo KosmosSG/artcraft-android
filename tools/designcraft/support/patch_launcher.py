@@ -69,18 +69,18 @@ def patch(root):
     source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n')
     source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);',
         '        self.handle_clipboard_shortcuts(raw);' +
-        '\\n        // DesignCraft Android fallback: collect trackpad scroll from the Activity.' +
-        '\\n        // Avoid double injection when winit already emitted MouseWheel.' +
-        '\\n        let (dx, dy) = tablet::poll_trackpad_scroll(&self.app);' +
-        '\\n        if (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) {' +
-        '\\n            raw.events.push(egui::Event::MouseWheel {' +
-        '\\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
-        '\\n                phase: egui::TouchPhase::Move, modifiers: raw.modifiers,' +
-        '\\n            });' +
-        '\\n        }' +
-        '\\n        if egui::Popup::is_any_open(ctx) {' +
-        '\\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +
-        '\\n        }')
+        '\n        // DesignCraft Android fallback: collect trackpad scroll from the Activity.' +
+        '\n        // Avoid double injection when winit already emitted MouseWheel.' +
+        '\n        let (dx, dy) = tablet::poll_trackpad_scroll(&self.app);' +
+        '\n        if (dx != 0.0 || dy != 0.0) && !raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) {' +
+        '\n            raw.events.push(egui::Event::MouseWheel {' +
+        '\n                unit: egui::MouseWheelUnit::Line, delta: egui::vec2(dx, dy),' +
+        '\n                phase: egui::TouchPhase::Move, modifiers: raw.modifiers,' +
+        '\n            });' +
+        '\n        }' +
+        '\n        if egui::Popup::is_any_open(ctx) {' +
+        '\n            ctx.request_repaint_after(std::time::Duration::from_millis(33));' +
+        '\n        }')
     source = replace_once(source, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && !ui.ctx().text_edit_focused()\n            && self.inner.session.active().is_some_and(|doc| doc.selection.text.is_some()) {\n            // End the engine\'s type session, not just Android\'s invisible EditText.\n            self.inner.select_tool("selection");\n            if let Err(error) = self.inner.run("text.exitToFrame", serde_json::json!({})) {\n                log::warn!("Android text exit: {error}");\n            }\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());')
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
     source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")

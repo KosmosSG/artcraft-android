@@ -30,9 +30,25 @@ def prepare(root: Path, version: str, code: int):
     source = source.replace(hook, 'python3 "$ROOT/designcraft-support/patch_launcher.py" "$ANDROID_DIR"\n\n' + hook)
     shutil.copytree(Path(__file__).parent / "support", root / "designcraft-support", dirs_exist_ok=True)
     install_android_menus(root / "source/designcraft/crates/ui-egui/src/menus.rs")
-    # Keep the Contextual Task Bar visible when canvas text editing ends.
+    # DesignCraft's TTF/OTF importer writes under $HOME/.local/share/fonts/imported,
+    # and its SAF shared-folder cache uses the same internal app-data root.
+    # The pinned builder otherwise points XDG_DATA_HOME to `base`, so DesignCraft's
+    # font database scans `base/fonts` instead of the imported fonts. Keep the
+    # override DesignCraft-only; no other Craft apps' font paths are changed.
     fonts = root / "templates/android/system_fonts.rs"
-    text = fonts.read_text().replace('std::os::unix::fs::symlink("/system/fonts", &link)', 'std::fs::create_dir_all(&link).and_then(|_| std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))')
+    text = fonts.read_text()
+    symlink = 'std::os::unix::fs::symlink("/system/fonts", &link)'
+    if text.count(symlink) != 1:
+        raise ValueError("Pinned Android font directory bootstrap changed; review required")
+    text = text.replace(symlink,
+        'std::fs::create_dir_all(&link).and_then(|_| '
+        'std::os::unix::fs::symlink("/system/fonts", link.join("android-system")))'
+    )
+    xdg = 'std::env::set_var("XDG_DATA_HOME", &base);'
+    if text.count(xdg) != 1:
+        raise ValueError("Pinned Android XDG font search path changed; review required")
+    text = text.replace(xdg,
+        'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));')
     fonts.write_text(text)
     # Generate both legacy and adaptive layers from the approved glossy source.
     icon_module = root / "lib/app_icons.py"

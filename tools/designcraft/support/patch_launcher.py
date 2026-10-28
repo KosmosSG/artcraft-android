@@ -126,8 +126,19 @@ def patch(root):
         methods += Path(__file__).with_name(filename).read_text() + '\n'
     index = text.rfind('}')
     java.write_text(text[:index] + methods + text[index:])
-    (java.parent / "DesignCraftUpdatePolicy.java").write_text(
-        Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text())
+    activity_package = next(
+        (line for line in text.splitlines() if line.startswith("package ")), None)
+    if activity_package not in (
+        "package com.artcraft.designcraft;",
+        "package com.artcraft.designcraft.candidate;",
+    ):
+        raise ValueError("Unexpected generated DesignCraft Java package")
+    # The disposable-key candidate uses a separate application ID. Its Java
+    # helper must have the same package declaration as the generated Activity,
+    # but the policy's production identity/security validation must NOT change.
+    policy = Path(__file__).with_name("DesignCraftUpdatePolicy.java").read_text()
+    policy = replace_once(policy, "package com.artcraft.designcraft;", activity_package)
+    (java.parent / "DesignCraftUpdatePolicy.java").write_text(policy)
     manifest = root / 'Cargo.toml'
     manifest.write_text(manifest.read_text() + '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n')
 

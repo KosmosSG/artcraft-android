@@ -23,6 +23,15 @@ class DesignCraftAndroidParity(unittest.TestCase):
             self.assertIn('"Window" => &["window.artcraftShortcutPad"', after)
             self.assertIn('entries.extend(ids.iter().map(|id| cmd_item(id, Value::Null)))', after)
             self.assertIn('entries.push(Item::Sep)', after)
+            # Existing upstream ScrollArea needs explicit Android drag support:
+            # touch/stylus GameActivity hosts need not set has_touch_screen.
+            self.assertIn('drag: egui::containers::scroll_area::DragScroll::Always', after)
+            self.assertIn('scroll_bar: true', after)
+            self.assertIn('mouse_wheel: true', after)
+            self.assertIn('ScrollBarVisibility::VisibleWhenNeeded', after)
+            self.assertIn('(ui.ctx().content_rect().height() * 0.72).max(180.0)', after)
+            self.assertIn('#[cfg(target_os = "android")]\\n    let max_height', after)
+
             self.assertNotIn('entries.splice(0..0, android)', after)
             with self.assertRaises(ValueError):
                 apply(edited)

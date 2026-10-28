@@ -185,7 +185,15 @@ pub fn ui_label(id: &str) -> Option<(&''')
             if wheel.is_finite() && wheel.abs() > 0.01 {
                 // Positive wheel moves content down and scroll offset up;
                 // do not reapply stale wheel deltas on frames without input.
-                offset = (offset - wheel).clamp(0.0, previous_limit.max(0.0));
+                let requested_scroll = -wheel;
+                ARTCRAFT_MENU_LAST_REQUEST_BITS.store(
+                    requested_scroll.to_bits(), std::sync::atomic::Ordering::Relaxed,
+                );
+                let before_wheel = offset;
+                offset = (offset + requested_scroll).clamp(0.0, previous_limit.max(0.0));
+                if (offset - before_wheel).abs() < 0.01 {
+                    ARTCRAFT_MENU_EDGE_BLOCKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
                 ARTCRAFT_MENU_SCROLL_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 ui.ctx().request_repaint();
             }
@@ -227,6 +235,12 @@ static ARTCRAFT_MENU_SCROLL_EVENTS: std::sync::atomic::AtomicU64 =
 static ARTCRAFT_MENU_TOUCH_SCROLL_EVENTS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 #[cfg(target_os = "android")]
+static ARTCRAFT_MENU_EDGE_BLOCKED: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+#[cfg(target_os = "android")]
+static ARTCRAFT_MENU_LAST_REQUEST_BITS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+#[cfg(target_os = "android")]
 static ARTCRAFT_MENU_SCROLL_OFFSET_BITS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 #[cfg(target_os = "android")]
@@ -234,12 +248,14 @@ static ARTCRAFT_MENU_SCROLL_LIMIT_BITS: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 
 #[cfg(target_os = "android")]
-pub fn artcraft_menu_scroll_diagnostics() -> (u64, u64, f32, f32) {
+pub fn artcraft_menu_scroll_diagnostics() -> (u64, u64, f32, f32, f32, u64) {
     use std::sync::atomic::Ordering;
     (ARTCRAFT_MENU_SCROLL_EVENTS.load(Ordering::Relaxed),
      ARTCRAFT_MENU_TOUCH_SCROLL_EVENTS.load(Ordering::Relaxed),
      f32::from_bits(ARTCRAFT_MENU_SCROLL_OFFSET_BITS.load(Ordering::Relaxed)),
-     f32::from_bits(ARTCRAFT_MENU_SCROLL_LIMIT_BITS.load(Ordering::Relaxed)))
+     f32::from_bits(ARTCRAFT_MENU_SCROLL_LIMIT_BITS.load(Ordering::Relaxed)),
+     f32::from_bits(ARTCRAFT_MENU_LAST_REQUEST_BITS.load(Ordering::Relaxed)),
+     ARTCRAFT_MENU_EDGE_BLOCKED.load(Ordering::Relaxed))
 }
 
 #[cfg(target_os = "android")]

@@ -1,6 +1,6 @@
 //! DesignCraft-specific Android controls using reviewed public command and font APIs.
 use std::sync::{Mutex, OnceLock};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use super::{saf, SafState, saf_next_id, ImportRequest};
 
 static GPU: OnceLock<String> = OnceLock::new();
@@ -16,6 +16,8 @@ static ANDROID_LAST_MOTION: AtomicU64 = AtomicU64::new(0);
 static NATIVE_WHEEL: AtomicU64 = AtomicU64::new(0);
 static FALLBACK_WHEEL: AtomicU64 = AtomicU64::new(0);
 static RAW_HOVER_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
+static TRACKPAD_REVERSE: AtomicBool = AtomicBool::new(false);
+static LAST_TRACKPAD_RAW_Y_BITS: AtomicU32 = AtomicU32::new(0);
 static LAST_TRACKPAD_MENU_GESTURE: Mutex<Option<std::time::Instant>> =
     Mutex::new(None);
 
@@ -117,7 +119,25 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
     let x = f32::from_bits(bits as u32);
     let y = f32::from_bits((bits >> 32) as u32);
     if !x.is_finite() || !y.is_finite() { return (0.0, 0.0); }
-    (x, y)
+    LAST_TRACKPAD_RAW_Y_BITS.store(y.to_bits(), Ordering::Relaxed);
+    (x, if TRACKPAD_REVERSE.load(Ordering::Relaxed) { -y } else { y })
+}
+
+fn trackpad_direction_setting() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|home|
+        std::path::PathBuf::from(home).join(".local/share/designcraft/android-trackpad-reversed"))
+}
+
+fn persist_trackpad_direction(reverse: bool) -> Result<(), String> {
+    let path = trackpad_direction_setting().ok_or("Trackpad preference directory unavailable")?;
+    std::fs::create_dir_all(path.parent().ok_or("Invalid trackpad preference path")?)
+        .map_err(|error| error.to_string())?;
+    let pending = path.with_extension("tmp");
+    std::fs::write(&pending, if reverse { b"reversed\n".as_slice() } else { b"normal\n".as_slice() })
+        .map_err(|error| error.to_string())?;
+    std::fs::rename(pending, path).map_err(|error| error.to_string())?;
+    TRACKPAD_REVERSE.store(reverse, Ordering::Relaxed);
+    Ok(())
 }
 
 pub fn record_gpu(cc: &eframe::CreationContext<'_>) {
@@ -182,6 +202,9 @@ impl Default for Tablet {
             .is_some_and(|value| value == b"enabled\n");
         let toolbar_visible = toolbar_setting().and_then(|p| std::fs::read(p).ok())
             .is_none_or(|value| value == b"shown\n");
+        let reversed = trackpad_direction_setting().and_then(|p| std::fs::read(p).ok())
+            .is_some_and(|bytes| bytes == b"reversed\n");
+        TRACKPAD_REVERSE.store(reversed, Ordering::Relaxed);
         Self { dock, diagnostics: false, input_diagnostics: false, toolbar_visible, feedback: None }
     }
 }
@@ -368,7 +391,17 @@ impl Tablet {
                     ui.label(format!("Menu wheel events: {menu_events}"));
                     ui.label(format!("Menu touch-scroll events: {menu_touch_events}"));
                     ui.label(format!("Menu scroll: {:.0} / {:.0} pt", menu_offset, menu_limit));
-                    ui.label("After a two-finger gesture, check that Menu wheel events and Menu scroll increase.");
+                    let raw_y = f32::from_bits(LAST_TRACKPAD_RAW_Y_BITS.load(Ordering::Relaxed));
+                    ui.label(format!("Last incoming trackpad Y: {raw_y:+.3} lines"));
+                    let mut reverse = TRACKPAD_REVERSE.load(Ordering::Relaxed);
+                    if ui.checkbox(&mut reverse, "Reverse trackpad scroll direction").changed() {
+                        if let Err(error) = persist_trackpad_direction(reverse) {
+                            ui.label(format!("Cannot save trackpad preference: {error}"));
+                        }
+                        ui.ctx().request_repaint();
+                    }
+                    ui.label("Try the same two-finger gesture with reverse off and on.");
+                    ui.label("Touchscreen finger swipe uses its own unchanged input path.");
                     ui.label("Hover inside the Type list; the viewport is scrollable without extra buttons.");
                     ui.label("No scroll event at either input stage suggests a device input dispatch issue.");
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(120));

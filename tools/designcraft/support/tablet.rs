@@ -119,7 +119,11 @@ pub fn poll_trackpad_scroll(app: &android_activity::AndroidApp) -> (f32, f32) {
     let x = f32::from_bits(bits as u32);
     let y = f32::from_bits((bits >> 32) as u32);
     if !x.is_finite() || !y.is_finite() { return (0.0, 0.0); }
-    LAST_TRACKPAD_RAW_Y_BITS.store(y.to_bits(), Ordering::Relaxed);
+    // Preserve the last meaningful signed sample; JNI polling is zero on
+    // almost every idle frame, which otherwise hides the orientation clue.
+    if y.abs() > 0.0001 {
+        LAST_TRACKPAD_RAW_Y_BITS.store(y.to_bits(), Ordering::Relaxed);
+    }
     (x, if TRACKPAD_REVERSE.load(Ordering::Relaxed) { -y } else { y })
 }
 

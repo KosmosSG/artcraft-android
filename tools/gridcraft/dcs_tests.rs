@@ -21,6 +21,16 @@ mod android_dcs_regression {
         }
     }
     #[test]
+    fn pending_editor_draft_survives_successful_earlier_save() {
+        let (mut app,reply)=app();let ctx=egui::Context::default();
+        app.android_save_and_close(false);
+        app.begin_edit(Some("Not saved yet".into()),false);
+        reply.borrow_mut().take().unwrap().send(true).unwrap();
+        app.android_poll_save_close(&ctx);
+        assert!(app.session.active().is_some());
+        assert_eq!(app.editor.as_ref().unwrap().text,"Not saved yet");
+    }
+    #[test]
     fn stale_saf_success_does_not_discard_new_cell_edits() {
         let (mut app,reply)=app();let ctx=egui::Context::default();
         app.android_save_and_close(false);

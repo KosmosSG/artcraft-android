@@ -255,7 +255,7 @@ fn parse_stats_response(reply: &[u8], eof: bool) -> Result<Option<()>, String> {
 }
 
 /// Minimal RFC 9112 chunked decoder for the ComfyUI diagnostic response.
-fn decode_chunked_body(raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
+pub(crate) fn decode_chunked_body(raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let mut offset = 0usize;
     let mut decoded = Vec::new();
     loop {

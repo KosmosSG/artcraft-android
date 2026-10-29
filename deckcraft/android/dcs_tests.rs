@@ -5,7 +5,7 @@ mod android_dcs_regression {
     fn app() -> SlideApp {
         let mut app=SlideApp::new(deckcraft_engine::Session::new(),crate::Services::default());
         app.run("file.new",json!({})).unwrap();
-        app.run("slide.add",json!({})).unwrap();
+        app.run("slide.new",json!({})).unwrap();
         assert!(app.session.active().unwrap().is_dirty());
         app
     }
@@ -22,7 +22,7 @@ mod android_dcs_regression {
         assert!(app.session.active().unwrap().is_dirty());
         app.android_save_and_close(false);
         let id=*request.borrow();
-        app.run("slide.add",json!({})).unwrap();
+        app.run("slide.new",json!({})).unwrap();
         app.android_save_finished(id,true);
         assert!(app.session.active().unwrap().is_dirty());
     }

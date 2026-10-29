@@ -3,6 +3,7 @@
 //! No upstream PhotoCraft crates, Android manifest, or signing files are changed.
 
 use crate::ai_tools::{AiAction, ComfyEndpoint};
+use crate::ai_models::{self, ModelInventory};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
@@ -17,6 +18,8 @@ pub(crate) struct AndroidAiMenu {
     connection_status: String,
     connection_ok: bool,
     connection_result: Option<Receiver<Result<(), String>>>,
+    model_result: Option<Receiver<Result<ModelInventory, String>>>,
+    model_status: String,
     last_visible: bool,
     preference_path: PathBuf,
 }
@@ -37,6 +40,8 @@ impl AndroidAiMenu {
             connection_status: "No connection tested.".into(),
             connection_ok: false,
             connection_result: None,
+            model_result: None,
+            model_status: "Model inventory has not been checked.".into(),
             last_visible: visible,
             preference_path,
         }
@@ -63,6 +68,7 @@ impl AndroidAiMenu {
             Some(Ok(Ok(()))) => {
                 self.connection_ok = true;
                 self.connection_status = "Connected to ComfyUI. No image data was sent.".into();
+                self.model_status = "Connected. Select Check Installed Models to inspect the catalog (read-only).".into();
                 self.connection_result = None;
             }
             Some(Ok(Err(error))) => {
@@ -74,6 +80,29 @@ impl AndroidAiMenu {
                 self.connection_ok = false;
                 self.connection_status = "Connection test ended unexpectedly.".into();
                 self.connection_result = None;
+            }
+            Some(Err(TryRecvError::Empty)) => {
+                ui.ctx().request_repaint_after(Duration::from_millis(200));
+            }
+            None => {}
+        }
+        // The model check is separately requested by the user; never query
+        // model folders automatically just because ComfyUI was reachable.
+        let model_received = self.model_result.as_ref().map(|rx| rx.try_recv());
+        match model_received {
+            Some(Ok(Ok(inventory))) => {
+                if self.connection_ok {
+                    self.model_status = inventory.human_summary();
+                }
+                self.model_result = None;
+            }
+            Some(Ok(Err(error))) => {
+                self.model_status = format!("Model inventory failed: {error}");
+                self.model_result = None;
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.model_status = "Model inventory check stopped unexpectedly.".into();
+                self.model_result = None;
             }
             Some(Err(TryRecvError::Empty)) => {
                 ui.ctx().request_repaint_after(Duration::from_millis(200));
@@ -134,10 +163,12 @@ impl AndroidAiMenu {
                         .hint_text("http://192.168.1.20:8188")).changed() {
                         self.connection_ok = false;
                         self.connection_status = "Endpoint changed. Test again.".into();
+                        self.model_status = "Model inventory cleared: endpoint changed.".into();
                     }
                     if ui.checkbox(&mut self.allow_private_lan,
                         "Allow a connection to a trusted private-LAN host (unencrypted HTTP)").changed() {
                         self.connection_ok = false;
+                        self.model_status = "Model inventory cleared: connection consent changed.".into();
                     }
                     ui.label("No image, document, selection, prompt, model or password is transmitted.");
                     ui.label("Do not expose ComfyUI directly to the internet.");
@@ -161,6 +192,28 @@ impl AndroidAiMenu {
                     }
                     ui.separator();
                     ui.label(&self.connection_status);
+                    let model_pending = self.model_result.is_some();
+                    if ui.add_enabled(self.connection_ok && !pending && !model_pending,
+                        egui::Button::new("Check Installed Models (read-only)")).clicked() {
+                        match ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan) {
+                            Ok(endpoint) => {
+                                let (tx, rx) = mpsc::channel();
+                                self.model_result = Some(rx);
+                                self.model_status = "Checking ComfyUI checkpoints and upscale_models folders…".into();
+                                std::thread::spawn(move || {
+                                    let _ = tx.send(ai_models::inspect_models(&endpoint));
+                                });
+                                ctx.request_repaint_after(Duration::from_millis(200));
+                            }
+                            Err(error) => {
+                                self.model_status = format!("Invalid model inventory endpoint: {error}");
+                            }
+                        }
+                    }
+                    ui.label(&self.model_status);
+                    ui.label("No model download or installation occurs. Model counts do not establish CPU compatibility.");
+                    ui.label("Keep Linux Lab visible in a floating window during these tests.");
+                    ui.separator();
                     ui.label("Background Removal and Generative Fill remain disabled until non-destructive layer integration is verified.");
                 });
             self.show_connection = open;

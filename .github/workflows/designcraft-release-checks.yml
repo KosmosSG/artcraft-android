@@ -1,10 +1,10 @@
-name: DesignCraft v0.13 upstream compatibility (review only)
+name: DesignCraft v0.14 upstream compatibility (review only)
 on:
   push:
     branches: [development/designcraft-v012-20261023]
     paths: ['tools/designcraft/**', '.github/workflows/designcraft-release-checks.yml']
   pull_request:
-    branches: [development/designcraft-v012-20261023]
+    branches: [development/designcraft-v012-20261023, automation/designcraft-v013-compat-test-20261027]
     paths: ['tools/designcraft/**', '.github/workflows/designcraft-release-checks.yml']
   workflow_dispatch:
 permissions:
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: storytold/designcraft
-          ref: dcce40fb8731213c1f8e31cdd23444995afc62ce
+          ref: 7da69c16ce221f46e8f27cb41e0c88167c8be416
           path: builder/source/designcraft
           persist-credentials: false
       - uses: actions/setup-java@v4
@@ -37,10 +37,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install 'Pillow==11.3.0'
-          git -C builder/source/designcraft fetch --depth=1 origin refs/tags/v0.13.0:refs/tags/v0.13.0
-          test "$(git -C builder/source/designcraft rev-parse 'v0.13.0^{commit}')" = dcce40fb8731213c1f8e31cdd23444995afc62ce
+          git -C builder/source/designcraft fetch --depth=1 origin refs/tags/v0.14.0:refs/tags/v0.14.0
+          test "$(git -C builder/source/designcraft rev-parse 'v0.14.0^{commit}')" = 7da69c16ce221f46e8f27cb41e0c88167c8be416
           python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
-          python3 tools/designcraft/prepare_builder.py builder 0.13.0-android.90 16800090
+          python3 tools/designcraft/prepare_builder.py builder 0.14.0-android.90 16800346
           python3 tools/designcraft/make_icon.py builder/dc-icon.png
           python3 tools/designcraft/stage_launcher.py builder
           mkdir -p "$RUNNER_TEMP/designcraft-java"

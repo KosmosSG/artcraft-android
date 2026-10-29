@@ -43,7 +43,7 @@ def main():
     # older shortcut implementation on PR #93.
     data = SRC.read_text()
     data = once(data, "mod android_modifiers;\nmod shortcut_pad;",
-                "mod ai_tools;\nmod ai_menu;\nmod android_modifiers;\nmod shortcut_pad;")
+                "mod ai_tools;\nmod ai_models;\nmod ai_menu;\nmod android_modifiers;\nmod shortcut_pad;")
     data = once(data, "    shortcut_pad: shortcut_pad::ShortcutPad,",
                 "    shortcut_pad: shortcut_pad::ShortcutPad,\n    ai_menu: ai_menu::AndroidAiMenu,")
     data = once(data, "        system_fonts::install_system_fonts(ui.ctx());",
@@ -51,7 +51,7 @@ def main():
     old = '                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),'
     data = once(data, old, old + "\n                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join(\"PhotoCraft\").join(\"ai-tools-visible\")),")
     SRC.write_text(data)
-    for file in ("ai_menu.rs", "ai_tools.rs"):
+    for file in ("ai_menu.rs", "ai_tools.rs", "ai_models.rs"):
         source = saved / file
         if not source.is_file():
             raise SystemExit("Missing verified AI Tools menu source: " + str(source))

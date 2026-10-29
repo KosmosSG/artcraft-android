@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "3a9e0fbaf2c4e73fed0b5d72e11bb45fb0c441cb6ca51d9560aac3fc5f1cbe97"
   },
   "display_name": "DesignCraft",
-  "version_name": "0.12.0-android.4",
-  "version_code": 16800005,
-  "previous_version_code": 16800004,
+  "version_name": "0.12.0-android.6",
+  "version_code": 16800007,
+  "previous_version_code": 16800006,
   "package": "com.artcraft.designcraft"
 }

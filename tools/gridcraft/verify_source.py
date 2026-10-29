@@ -17,7 +17,7 @@ def validate(data):
     assert data["app"] == "gridcraft"
     assert data["product_name"] == "GridCraft"
     assert data["upstream_repository"] == UPSTREAM
-    assert data["official_version"] == "0.12.1"
+    assert data["official_version"] == "0.13.0"
     assert data["official_release_tag"] == "v" + data["official_version"]
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1

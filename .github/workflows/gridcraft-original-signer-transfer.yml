@@ -1,0 +1,47 @@
+name: GridCraft original signer transfer to private repository
+on:
+  push:
+    branches: [verify/gridcraft-original-signer-20261030]
+    paths: [.github/workflows/gridcraft-original-signer-transfer.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify original certificate and transfer directly into private Actions secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GRIDCRAFT_SIGNER_MIGRATION_TOKEN }}
+          GH_PROMPT_DISABLED: '1'
+          GRIDCRAFT_KEYSTORE_BASE64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+          GRIDCRAFT_KEYSTORE_PASSWORD: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+          GRIDCRAFT_KEY_ALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+          GRIDCRAFT_KEY_PASSWORD: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          unset GH_DEBUG
+          umask 077
+          test -n "$GH_TOKEN" || { echo "::error::Owner setup required: GRIDCRAFT_SIGNER_MIGRATION_TOKEN with Secrets write access only to KosmosSG/gridcraft-signing-private"; exit 1; }
+          test "$(gh api repos/KosmosSG/gridcraft-signing-private --jq .private)" = true || { echo "::error::Destination must be private"; exit 1; }
+          for name in GRIDCRAFT_KEYSTORE_BASE64 GRIDCRAFT_KEYSTORE_PASSWORD GRIDCRAFT_KEY_ALIAS GRIDCRAFT_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
+          done
+          test "$GRIDCRAFT_KEY_ALIAS" = gridcraft || { echo "::error::Alias mismatch"; exit 1; }
+          test "$GRIDCRAFT_KEYSTORE_PASSWORD" = "$GRIDCRAFT_KEY_PASSWORD" || { echo "::error::PKCS12 password mismatch"; exit 1; }
+          signer_tmp="$(mktemp -d)"
+          trap 'rm -rf "$signer_tmp"' EXIT
+          printf '%s' "$GRIDCRAFT_KEYSTORE_BASE64" | base64 --decode > "$signer_tmp/key.jks"
+          keytool -exportcert -keystore "$signer_tmp/key.jks" -storetype PKCS12 -storepass:env GRIDCRAFT_KEYSTORE_PASSWORD -alias gridcraft -file "$signer_tmp/cert.der" >/dev/null 2>&1 || { echo "::error::Cannot open original signing certificate"; exit 1; }
+          actual="$(sha256sum "$signer_tmp/cert.der" | cut -d ' ' -f 1)"
+          test "$actual" = 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d || { echo "::error::Certificate does not match released GridCraft android.2"; exit 1; }
+          echo "PASS: existing GridCraft credentials match the original android.2 signing certificate."
+          for name in GRIDCRAFT_KEYSTORE_BASE64 GRIDCRAFT_KEYSTORE_PASSWORD GRIDCRAFT_KEY_ALIAS GRIDCRAFT_KEY_PASSWORD; do
+            printf '%s' "${!name}" | gh secret set "ORIGINAL_$name" --repo KosmosSG/gridcraft-signing-private >/dev/null 2>&1 || { echo "::error::Could not store $name in private repository; safe to retry"; exit 1; }
+          done
+          echo "PASS: all four original credentials stored as ORIGINAL_GRIDCRAFT_* private Actions secrets."
+          echo "Source secrets preserved. No key file, backup, APK, artifact or release uploaded."
+          echo "Owner: revoke the temporary migration token after private signer verification."

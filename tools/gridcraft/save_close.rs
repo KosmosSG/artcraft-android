@@ -2,6 +2,7 @@
 impl SheetApp {
     pub fn android_save_and_close(&mut self, quit: bool) {
         if self.android_pending_close.is_some() || !self.commit_edit(0, 0, false, false) { return; }
+        if let Err(error) = self.commit_text_box_edit() { self.alert(error); return; }
         let result = match self.run("file.saveBytes", json!({"format":"xlsx"})) {
             Ok(result) => result,
             Err(error) => { self.alert(error); return; }
@@ -26,7 +27,7 @@ impl SheetApp {
         let Some((uid,revision,_,quit)) = self.android_pending_close.take() else { return; };
         if !success {self.alert("Save cancelled or failed; the workbook remains open.".into());return;}
         // A fresh editor draft may not have advanced the document revision yet.
-        if self.editor.is_some() { return; }
+        if self.editor.is_some() || self.text_box_editor.is_some() { return; }
         if !self.session.active().is_some_and(|d|d.uid==uid && d.revision==revision) {
             self.alert("Saved the earlier version; current work remains open.".into());return;
         }

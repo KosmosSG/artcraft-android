@@ -106,7 +106,7 @@ def prepare(root: Path, version: str, code: int):
     # Patch the actual DesignCraft document-engine font catalog, not only
     # launcher fallback fonts. The scan remains lazy and uses upstream TTC
     # metadata parsing, with font.reload refreshing its contents.
-    font_catalog = root / "source/designcraft/crates/fonts/src/fontdb/system.rs"
+    font_catalog = root / "source/designcraft/crates/fonts/src/fontdb.rs"
     if not font_catalog.is_file():
         raise ValueError("Pinned DesignCraft font catalog missing")
     font_catalog.write_text(patch_designcraft_font_catalog(font_catalog.read_text()))

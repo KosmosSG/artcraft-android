@@ -20,9 +20,19 @@ def patch_android_font_paths(text: str) -> str:
             let _ = std::fs::remove_file(&link);
         }
         if std::fs::create_dir_all(&link).is_ok() {
-            let system_link = link.join("android-system");
-            if std::fs::symlink_metadata(&system_link).is_err() {
-                let _ = std::os::unix::fs::symlink("/system/fonts", &system_link);
+            // Keep user-imported font directories writable. Expose both Android
+            // partitions as read-only inputs to scanners that descend into
+            // these locations. A scanner must still follow symlinks to see them.
+            for (name, target) in [
+                ("android-system", "/system/fonts"),
+                ("android-product", "/product/fonts"),
+            ] {
+                let system_link = link.join(name);
+                if std::fs::symlink_metadata(&system_link).is_err()
+                    && std::path::Path::new(target).is_dir()
+                {
+                    let _ = std::os::unix::fs::symlink(target, &system_link);
+                }
             }
         }
 '''

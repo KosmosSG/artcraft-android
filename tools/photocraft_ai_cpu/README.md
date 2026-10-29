@@ -60,10 +60,12 @@ After confirming dependencies and reviewing U2NetP weight rights, authorize the 
     python "$HOME/photocraft-ai-tests/benchmark_u2netp.py" \
       --run --allow-model-download
 
-The model is placed at ~/.local/share/photocraft-ai-cpu/models/u2netp/u2netp.onnx, completely separate from ComfyUI. The script sets U2NET_HOME only in its own process.
+With the pinned rembg 2.0.78, the model is saved at ~/.local/share/photocraft-ai-cpu/u2netp.onnx (flat U2NET_HOME directory), completely separate from ComfyUI. The script sets U2NET_HOME only in its own process. An earlier script mistakenly checked models/u2netp/u2netp.onnx; the path was corrected after the owner's 4.57 MB download succeeded. The revised script verifies the already downloaded model rather than downloading it again.
 U2NetP's upstream MD5 reference is checked before and after model load.
 The script emits model-load time, inference time, max process RSS, output alpha
 range, and a new PNG under ~/Pictures/PhotoCraft-AI-Tests/.
+
+After the model has been downloaded, use the corrected script with --run **without** --allow-model-download. It verifies the cached model file's MD5 integrity before using it, and refuses missing or unverified weights.
 
 Later local tests can use --run without the download flag. For an explicitly
 chosen <=4 MP non-sensitive image stored in Linux Lab:

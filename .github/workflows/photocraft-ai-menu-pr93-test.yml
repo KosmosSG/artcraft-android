@@ -122,6 +122,30 @@ jobs:
           print('Pinned official PhotoCraft v0.16.0, egui/eframe 0.36')
           PY
 
+      - name: Adapt preview-only import callback to PhotoCraft 0.16
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PhotoCraft 0.16 passes ImportOptions by reference, whereas the
+          # Android adapter on this PR tracks newer upstream's usize API.
+          # Only modify this disposable CI checkout, never the branch source.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('adapters/photocraft/src/lib.rs')
+          data = path.read_text()
+          before = (
+              '|name: &str, bytes: &[u8], max_svg_group_depth: usize| {\n'
+              '                photocraft_io::import_with_svg_group_depth(name, bytes, max_svg_group_depth)'
+          )
+          after = (
+              '|name: &str, bytes: &[u8], opts: &photocraft_io::ImportOptions| {\n'
+              '                photocraft_io::import_with_options(name, bytes, opts)'
+          )
+          assert data.count(before) == 1, 'Stop: unexpected PhotoCraft import adapter API'
+          path.write_text(data.replace(before, after, 1))
+          print('CI-only v0.16.0 ImportOptions compatibility enabled')
+          PY
+
       - name: Build debug-only PhotoCraft AI menu APK
         shell: bash
         run: |

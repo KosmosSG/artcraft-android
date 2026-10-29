@@ -11,6 +11,14 @@ mod android_dcs_regression {
           (app, ctx) }
     }
     fn press(app: &mut WordApp, ctx: &egui::Context, key: egui::Key, mods: egui::Modifiers, repeat: bool) {
+        if repeat {
+            // egui derives repeats from held-key state; establish the earlier key-down.
+            let mut held = ctx.run_ui(egui::RawInput {
+                events: vec![egui::Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers: mods }],
+                ..Default::default()
+            }, |_| {});
+            held.textures_delta.clear();
+        }
         let raw = egui::RawInput { events: vec![egui::Event::Key { key, physical_key: Some(key), pressed:true, repeat, modifiers:mods }], ..Default::default() };
         let mut out = ctx.run_ui(raw, |ui| {
             app.android_capture_unsaved_dcs(ui.ctx());
@@ -39,7 +47,7 @@ mod android_dcs_regression {
         for (mods, repeat) in [(egui::Modifiers::CTRL,false),(egui::Modifiers::SHIFT,false),(egui::Modifiers::NONE,true)] {
             let (mut app, ctx) = app();
             press(&mut app, &ctx, egui::Key::D, mods, repeat);
-            assert!(app.has_document() && app.session.dirty && app.android_unsaved_dcs_active());
+            assert!(app.has_document() && app.session.dirty && app.android_unsaved_dcs_active(), "mods={mods:?}, repeat={repeat}");
         }
         let (mut app, ctx) = app();
         app.dialog = None;

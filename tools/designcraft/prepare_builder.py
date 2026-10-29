@@ -46,6 +46,26 @@ def patch_android_font_paths(text: str) -> str:
         'std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));')
 
 
+
+def patch_designcraft_font_catalog(text: str) -> str:
+    """Make Android partitions first-class inputs to DesignCraft's real font DB.
+
+    Unlike symlink-only exposure, direct roots work with scanners that do not
+    traverse directory symlinks. Keep upstream metadata/TTC face parsing,
+    deduplication and font.reload unchanged.
+    """
+    anchor = '        dirs.extend(unix_font_dirs(home.as_deref(), xdg_data_home.as_deref()));'
+    if text.count(anchor) != 1:
+        raise ValueError("Pinned DesignCraft font catalog changed; review required")
+    addition = '''        // Android fonts are stored outside standard Unix/XDG font roots.
+        // The existing database reads family/style metadata and TTC faces,
+        // then merges these roots with writable imported and shared fonts.
+        if cfg!(target_os = "android") {
+            dirs.extend(["/system/fonts", "/product/fonts"].map(Into::into));
+        }
+'''
+    return text.replace(anchor, anchor + '\\n' + addition.rstrip())
+
 def prepare(root: Path, version: str, code: int):
     if not re.fullmatch(r"\d+\.\d+\.\d+-android\.[1-9]\d*", version):
         raise ValueError("Expected MAJOR.MINOR.PATCH-android.REVISION")
@@ -83,6 +103,13 @@ def prepare(root: Path, version: str, code: int):
     # override DesignCraft-only; no other Craft apps' font paths are changed.
     fonts = root / "templates/android/system_fonts.rs"
     fonts.write_text(patch_android_font_paths(fonts.read_text()))
+    # Patch the actual DesignCraft document-engine font catalog, not only
+    # launcher fallback fonts. The scan remains lazy and uses upstream TTC
+    # metadata parsing, with font.reload refreshing its contents.
+    font_catalog = root / "source/designcraft/crates/fonts/src/fontdb/system.rs"
+    if not font_catalog.is_file():
+        raise ValueError("Pinned DesignCraft font catalog missing")
+    font_catalog.write_text(patch_designcraft_font_catalog(font_catalog.read_text()))
     # The legacy Dc launcher generator only accepts SHA pins for the old icon.
     # Let the pinned generic builder create its temporary placeholder, then
     # overwrite compiled launcher sources with verified approved-branding assets

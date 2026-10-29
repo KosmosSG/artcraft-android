@@ -2,7 +2,7 @@
 mod android_dcs_regression {
     use super::*;
     fn app() -> (WordApp, egui::Context) {
-        let mut app = WordApp::new(wordcraft_engine::Session::default(), crate::Services::default());
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
         app.run("text.insert", json!({"text":"Keep this draft"})).unwrap();
         app.run("file.close", json!({})).unwrap();
         assert!(app.android_unsaved_dcs_active());

@@ -46,6 +46,7 @@ pub fn install_font(name: &str, bytes: &[u8]) -> Result<(), String> {
 pub struct Tablet {
     dock: bool,
     diagnostics: bool,
+    font_diagnostics: bool,
     toolbar_visible: bool,
     feedback: Option<(String, bool, f64)>,
 }
@@ -66,7 +67,7 @@ impl Default for Tablet {
             .is_some_and(|value| value == b"enabled\n");
         let toolbar_visible = toolbar_setting().and_then(|p| std::fs::read(p).ok())
             .is_none_or(|value| value == b"shown\n");
-        Self { dock, diagnostics: false, toolbar_visible, feedback: None }
+        Self { dock, diagnostics: false, font_diagnostics: false, toolbar_visible, feedback: None }
     }
 }
 
@@ -195,6 +196,7 @@ impl Tablet {
                         }
                     }
                     ui.checkbox(&mut self.diagnostics, "GPU diagnostics");
+                    ui.checkbox(&mut self.font_diagnostics, "Font scan diagnostics");
                     ui.label("Customize keys: Edit → Keyboard Shortcuts");
                 });
                 if self.dock {
@@ -219,6 +221,30 @@ impl Tablet {
         });
         }
         self.show_notification(ui);
+        if self.font_diagnostics {
+            egui::Window::new("Android font scan diagnostics").open(&mut self.font_diagnostics).show(ui.ctx(), |ui| {
+                ui.label("Visible font files (not necessarily selectable font families):");
+                for (label, path) in [
+                    ("Android system", "/system/fonts"),
+                    ("Android product", "/product/fonts"),
+                ] {
+                    let count = std::fs::read_dir(path).ok().map(|entries| entries.filter_map(Result::ok).filter(|entry| {
+                        entry.path().extension().and_then(|ext| ext.to_str()).is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "ttf" | "otf" | "ttc"))
+                    }).count());
+                    ui.label(format!("{label}: {}", count.map_or("unavailable".to_owned(), |n| format!("{n} font files"))));
+                }
+                if let Some(home) = std::env::var_os("HOME") {
+                    for (label, folder) in [("Imported", "imported"), ("Shared SAF cache", "shared")] {
+                        let path = std::path::PathBuf::from(&home).join(".local/share/fonts").join(folder);
+                        let count = std::fs::read_dir(path).ok().map(|entries| entries.filter_map(Result::ok).filter(|entry| {
+                            entry.path().extension().and_then(|ext| ext.to_str()).is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "ttf" | "otf" | "ttc"))
+                        }).count()).unwrap_or(0);
+                        ui.label(format!("{label}: {count} cached files"));
+                    }
+                }
+                ui.label("This diagnostic counts accessible font files only. Document font families depend on DesignCraft catalog parsing and successful font.reload.");
+            });
+        }
         if self.diagnostics {
             egui::Window::new("Android graphics diagnostics").open(&mut self.diagnostics).show(ui.ctx(), |ui| {
                 ui.label(GPU.get().map(String::as_str).unwrap_or("Adapter details unavailable"));

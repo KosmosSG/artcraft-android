@@ -1,0 +1,36 @@
+name: GridCraft original signing identity check (no APK or publication)
+on:
+  push:
+    branches: [verify/gridcraft-original-signer-20261030]
+    paths: [.github/workflows/gridcraft-original-key-check.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify existing production credentials without exporting them
+        shell: bash
+        env:
+          GRIDCRAFT_KEYSTORE_BASE64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+          GRIDCRAFT_KEYSTORE_PASSWORD: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+          GRIDCRAFT_KEY_ALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+          GRIDCRAFT_KEY_PASSWORD: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in GRIDCRAFT_KEYSTORE_BASE64 GRIDCRAFT_KEYSTORE_PASSWORD GRIDCRAFT_KEY_ALIAS GRIDCRAFT_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
+          done
+          test "$GRIDCRAFT_KEY_ALIAS" = gridcraft || { echo "::error::Alias mismatch"; exit 1; }
+          test "$GRIDCRAFT_KEYSTORE_PASSWORD" = "$GRIDCRAFT_KEY_PASSWORD" || { echo "::error::PKCS12 password mismatch"; exit 1; }
+          signer_tmp="$(mktemp -d)"
+          trap 'rm -rf "$signer_tmp"' EXIT
+          printf '%s' "$GRIDCRAFT_KEYSTORE_BASE64" | base64 --decode > "$signer_tmp/key.jks"
+          keytool -exportcert -keystore "$signer_tmp/key.jks" -storetype PKCS12 -storepass:env GRIDCRAFT_KEYSTORE_PASSWORD -alias gridcraft -file "$signer_tmp/cert.der" >/dev/null 2>&1 || { echo "::error::Cannot open original signing certificate"; exit 1; }
+          actual="$(sha256sum "$signer_tmp/cert.der" | cut -d ' ' -f 1)"
+          test "$actual" = 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d || { echo "::error::Certificate does not match released GridCraft android.2"; exit 1; }
+          echo "PASS: existing GridCraft credentials match the original android.2 signing certificate."
+          echo "No APK, key backup, artifact or release was created."

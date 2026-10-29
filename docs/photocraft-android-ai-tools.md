@@ -1,6 +1,6 @@
 # PhotoCraft Android — AI Tools integration (experimental)
 
-Status: **Phase 1 native menu and Window → Show AI Tools validated by the owner on HONOR MagicPad 4; Phase 2 opt-in ComfyUI connectivity implementation committed but not yet device-verified.** PR #93 remains draft. Background Removal, Generative Fill, and image uploads remain disabled.
+Status: **Phase 1 native AI Tools menu, Window → Show AI Tools, approved icons and physical shortcuts have been owner-tested. Phase 2 ComfyUI connection and read-only 0/0 model inventory were confirmed on HONOR MagicPad 4 while Linux Lab remained visible in a floating window.** Background Removal, Generative Fill, image uploads, non-destructive layer/Undo integration and reliable background execution remain unimplemented or unverified. PR #93 stays draft.
 
 ## Sources reviewed
 - beckettharriman/openfill (Apache-2.0): desktop PhotoCraft + Python/ComfyUI, no Android build.
@@ -44,7 +44,33 @@ User flow in the ARM64 preview: **AI Tools → ComfyUI Connection…** → type 
 6. Add tests for cancellation, invalid outputs, large documents, untrusted networks, rotation/lifecycle and existing font/keyboard/updater regressions.
 7. Build a **debug-only candidate** and test on-device before any permanent-signing or public-release action.
 
+## Phase 2 CPU background-removal research prototype (NOT inside PhotoCraft)
+
+The separate script at tools/photocraft_ai_cpu/benchmark_u2netp.py and its
+README implement a **guarded standalone U2NetP / rembg CPU benchmark** for
+Ubuntu 24.04 ARM64. It uses a SEPARATE Python virtualenv and dedicated model
+cache, never replaces ComfyUI's Python/PyTorch, never opens a network port, and
+never overwrites input images. Initial model download requires the explicit
+--allow-model-download argument; --check and --self-test do not download or
+infer. The test creates only a new alpha PNG and measures inference seconds
+and peak process RSS. No model weights, user images, samples, or third-party
+inference code are added to this PR. Source and model rights are separate.
+
+Its GitHub Actions job is standalone pure-Python validation with no APK,
+model download, signing or publishing. **Success means the benchmark's safety
+guards passed in CI, NOT that the model or background-removal processing was
+tested on HONOR ARM64.** The owner must first check compatible binary wheels
+in Linux Lab and obtain an explicit synthetic CPU benchmark result. Until
+model/memory/output quality are validated and a secure user-approved image
+transfer plus undoable layer implementation exists, the PhotoCraft Remove
+Background menu item stays disabled.
+
+Honored device constraint: Linux Lab ComfyUI responds when foregrounded in a
+floating window, but can stop responding when completely backgrounded. No
+systemd changes, privileged daemons, root or public ComfyUI port are added.
+
 ## Testing
+
 The standalone address and mocked ComfyUI probe tests run with `rustc --test adapters/photocraft/src/ai_tools.rs -o /tmp/photocraft-ai-tests && /tmp/photocraft-ai-tests`. Full menu validation requires compiling the Android adapter against the exact pinned PhotoCraft 0.14.0 workspace and egui 0.36, then testing on-device.
 
-Phase 1 (AI Tools menu, approved Pc artwork, Esc/V/T keyboard refinements and Window visibility toggle) has been owner-tested on HONOR MagicPad 4. **Phase 2 connectivity code is not verified until its new ARM64 workflow succeeds and the owner tests it on-device.** No public release, permanent signing, AI processing capability, background removal or Generative Fill is claimed.
+Phase 1, local ComfyUI connectivity with Linux Lab floating, and read-only model-list queries (zero detected checkpoints/upscalers) have been owner-tested on HONOR MagicPad 4. **The U2NetP CPU benchmark is committed but has not yet been run on the tablet.** No public release, production signing, AI image processing in PhotoCraft, background removal or Generative Fill is claimed.

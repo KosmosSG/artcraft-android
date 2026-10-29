@@ -52,7 +52,10 @@ jobs:
           assert 'ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan)' in menu
           assert 'std::thread::spawn(move ||' in menu
           assert 'endpoint.probe_system_stats()' in menu
-          assert 'GET /system_stats HTTP/1.0' in tools
+          assert 'GET /system_stats HTTP/1.1' in tools
+          assert 'parse_stats_response(&reply, false)' in tools
+          assert 'Content-Length' in tools
+          assert 'decode_chunked_body' in tools
           assert 'Only private LAN IP addresses are allowed' in tools
           assert 'ui.add_enabled(false, egui::Button::new(action.label()))' in menu
           for forbidden in ("POST /prompt", "POST /upload", "upload_image", "load_checkpoint"):
@@ -183,7 +186,7 @@ jobs:
           grep -F "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'" <<<"$BADGING"
           unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
           mkdir -p candidate
-          cp "$APK" candidate/PhotoCraft-AI-ComfyUI-Connection-ARM64-PR93.apk
+          cp "$APK" candidate/PhotoCraft-AI-ComfyUI-EAGAIN-Fix-ARM64-PR93.apk
           cp icon-verification/verification.json candidate/icon-verification.json
           sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
           cat > candidate/TEST-INSTRUCTIONS.txt <<'EOF'
@@ -212,9 +215,15 @@ jobs:
              If ComfyUI is running and reachable, expect Connected.
              If not, expect visible error feedback without UI hanging.
              Image data MUST NOT be uploaded and AI actions MUST stay disabled.
-          9. AI Tools > About AI Tools opens/closes.
-          10. Verify Esc, V/T, C/Y/N, fonts, open/save, updater and icons.
-          11. No model execution, non-destructive image editing, or release yet.
+          9. On the same tablet, with Linux Lab ComfyUI running at
+             http://127.0.0.1:8188, PhotoCraft Test Connection should show
+             Connected to ComfyUI. No image data was sent.
+             Regression: previously timed out EAGAIN/os error 11 even
+             though Android Chrome /system_stats returned valid JSON.
+             Test the connection with the server alive, then stopped.
+          10. AI Tools > About AI Tools opens/closes.
+          11. Verify Esc, V/T, C/Y/N, fonts, open/save, updater and icons.
+          12. No model execution, non-destructive image editing, or release yet.
 
           This is a preview only. No functional AI inference, ComfyUI call or
           public release. Send screenshots and any shortcut key results.
@@ -223,7 +232,7 @@ jobs:
       - name: Upload corrected PhotoCraft AI Preview ARM64 APK
         uses: actions/upload-artifact@v5
         with:
-          name: PhotoCraft-AI-ComfyUI-Connection-ARM64-PR93
+          name: PhotoCraft-AI-ComfyUI-EAGAIN-Fix-ARM64-PR93
           path: candidate/
           if-no-files-found: error
           retention-days: 14

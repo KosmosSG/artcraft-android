@@ -95,6 +95,9 @@ private boolean pdfHandlePicker(int requestCode, int resultCode, Intent data) {
     return true;
 }
 private File pdfCopyFont(Uri uri, String name) throws Exception {
+    return pdfCopyFont(uri, name, new long[]{0});
+}
+private File pdfCopyFont(Uri uri, String name, long[] scanBytes) throws Exception {
     String lower = name.toLowerCase(java.util.Locale.ROOT);
     if (!(lower.endsWith(".ttf") || lower.endsWith(".otf")))
         throw new java.io.IOException("Only TTF/OTF files are supported");
@@ -115,6 +118,11 @@ private File pdfCopyFont(Uri uri, String name) throws Exception {
             total += length;
             if (total > 16L * 1024 * 1024)
                 throw new java.io.IOException("Font exceeds 16 MB size limit");
+            if (scanBytes[0] > 4L * 1024 * 1024 * 1024 - length) {
+                scanBytes[0] = 4L * 1024 * 1024 * 1024;
+                throw new java.io.IOException("Font scan reached the 4 GB limit");
+                }
+            scanBytes[0] += length;
             out.write(bytes, 0, length);
             digest.update(bytes, 0, length);
         }
@@ -156,9 +164,10 @@ private void pdfScanFontFolder(Uri tree) {
             java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
             java.util.HashSet<String> visited = new java.util.HashSet<>();
             pending.add(DocumentsContract.getTreeDocumentId(tree));
+            long[] scanBytes = {0};
             int copied = 0;
             int skipped = 0;
-            while (!pending.isEmpty() && copied < 200 && visited.size() < 1000) {
+            while (!pending.isEmpty() && copied < 200 && visited.size() < 1000 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                 String parent = pending.removeFirst();
                 if (!visited.add(parent)) continue;
                 Uri list = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent);
@@ -168,7 +177,7 @@ private void pdfScanFontFolder(Uri tree) {
                                 DocumentsContract.Document.COLUMN_MIME_TYPE,
                                 DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
                     if (cursor == null) continue;
-                    while (cursor.moveToNext() && copied < 200) {
+                    while (cursor.moveToNext() && copied < 200 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                         String id = cursor.getString(0);
                         String name = cursor.getString(1);
                         String mime = cursor.getString(2);
@@ -185,7 +194,7 @@ private void pdfScanFontFolder(Uri tree) {
                         }
                         try {
                             Uri font = DocumentsContract.buildDocumentUriUsingTree(tree, id);
-                            pdfCopyFont(font, name);
+                            pdfCopyFont(font, name, scanBytes);
                             copied++;
                         } catch (Exception error) {
                             skipped++;

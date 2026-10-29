@@ -1,6 +1,6 @@
 # PhotoCraft Android — AI Tools integration (experimental)
 
-Status: **native AI Tools menu source committed, not built or device-verified**. This branch must not be merged or released until an ARM64 device test passes.
+Status: **AI Tools menu, owner-tested keyboard shortcuts and approved Pc launcher validated on HONOR MagicPad 4 (October 29, 2026); the new Window visibility toggle requires a fresh ARM64 test.** PR #93 remains draft, and AI backends remain disabled.
 
 ## Sources reviewed
 - beckettharriman/openfill (Apache-2.0): desktop PhotoCraft + Python/ComfyUI, no Android build.
@@ -10,7 +10,7 @@ No third-party code, models, or plugin artifacts are vendored by this initial ch
 
 ## Scope and safety
 - PhotoCraft only. Preserve package name, production key, launcher/top-left icon, fonts, keyboard shortcuts, update checks and SAF handling.
-- Add a native **AI Tools** menu above PhotoCraft's existing top menu. All five processing items and backend/plugin settings are **disabled** until implemented; **About AI Tools…** opens a status dialog. This deliberately does not modify upstream Filter menu, which has no supported adapter extension hook. A true **Filter → AI Tools** submenu requires a separately reviewed upstream-compatible integration later.
+- Keep the native **AI Tools** top strip (not a floating palette). Add a checked **Window → Show AI Tools** item to show/hide that strip. It defaults to visible, saves the preference in app-private storage, and the File/Edit/... menu remains accessible while hidden. The dedicated preview workflow inserts the Window command only in its pinned official PhotoCraft v0.14.0 build checkout, after the owner-tested menu port; it does **not** change upstream repositories, other ArtCraft apps, or the production PhotoCraft APK. All five AI processing items and plugin/backend settings remain disabled; **About AI Tools…** remains informational.
 - Processing must be asynchronous, cancellable and create a **new masked layer** with one undo step; never overwrite the input layer.
 - ComfyUI integration is initially an *explicitly configured remote backend*; an Android loopback address refers to the tablet, not the user's Mac.
 - No hardcoded cloud endpoint, background upload, telemetry or auto-downloaded model. Show where image pixels will go and require explicit confirmation for LAN processing.
@@ -21,13 +21,13 @@ No third-party code, models, or plugin artifacts are vendored by this initial ch
 
 ## Code artifacts
 - `adapters/photocraft/src/ai_tools.rs` defines tool names and a conservative ComfyUI endpoint parser with unit tests.
-- `adapters/photocraft/src/ai_menu.rs` contains the native egui menu and informative preview dialog. Processing actions cannot execute.
-- `adapters/photocraft/src/lib.rs` calls this menu before upstream PhotoCraft's UI. The adapter's `prepare.sh` copies these Rust files automatically into staged Android sources. No upstream crates, build workflows, signing identities, manifest, or other apps are modified.
+- `adapters/photocraft/src/ai_menu.rs` contains the native egui menu, status dialog and app-private visibility persistence. Processing actions cannot execute.
+- `tools/photocraft_ai_window_patch.py` adds the Window checkmark and toggle to the existing Android-only menu port inside disposable CI; it checks exact source anchors and refuses drift. `tools/photocraft_ai_preview_stage.py` grafts the current PR93 menu onto the owner-tested keyboard/branding source; `adapters/photocraft/src/lib.rs` documents the standalone menu hook. Production signing and source remain unchanged.
 
-**Behavior:** Running an APK built from this branch will show a new top row containing an **AI Tools** menu above the main PhotoCraft bar. Clicking **About AI Tools…** opens an informational dialog. No network connection or image editing happens. This is an interface milestone only, not a functioning AI implementation.
+**Expected behavior in the next tested preview APK:** `Window → Show AI Tools` has a checkmark by default. Unchecking removes the separate AI Tools row without affecting the main PhotoCraft menu or physical keyboard shortcuts. Checking restores it; relaunch retains the choice. `AI Tools → About AI Tools…` remains informational. No AI processing, model download, network connection or image upload happens.
 
 ## Remaining implementation checkpoints
-1. Compile the Android adapter and confirm the top AI Tools row and About dialog on HONOR MagicPad 4. Confirm no overlap with the existing File/Filter menus or keyboard shortcuts.
+1. Compile a separate preview ARM64 APK and test **Window → Show AI Tools**: checked initially, hide/reveal correctly, no blank top strip when hidden, relaunch preserves choice, About dialog works. Verify physical Esc, V/T, Ctrl+W C/Y/N, approved Pc launcher/native logo, fonts, SAF and updater remain intact.
 2. Add a permission-aware Android backend connection test with a clear success/failure message. Consider a supported native **Filter → AI Tools** extension rather than patching upstream blindly.
 3. Export a temporary selection and mask (not whole documents unless explicitly requested), enqueue generation and poll progress off the UI thread.
 4. Decode and validate output dimensions and formats; insert as a new layer; verify Undo/Redo.
@@ -38,4 +38,4 @@ No third-party code, models, or plugin artifacts are vendored by this initial ch
 ## Testing
 The standalone address-validation tests can be executed with `rustc --test adapters/photocraft/src/ai_tools.rs -o /tmp/photocraft-ai-tests && /tmp/photocraft-ai-tests`. Full menu validation requires compiling the Android adapter against the exact PhotoCraft 0.14.x workspace and egui 0.36, then testing on-device.
 
-GitHub code commits alone do **not** establish that the APK builds, the menu renders, or AI tools function. No APK, release or device test is claimed here.
+An earlier preview APK was successfully built and owner-tested for the AI menu, keyboard and approved icons. **The new Window visibility toggle is not verified until its new ARM64 workflow succeeds and the owner tests it on-device.** No public release, permanent signing, or functional AI backend is claimed.

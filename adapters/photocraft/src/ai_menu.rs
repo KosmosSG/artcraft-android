@@ -11,11 +11,12 @@ pub(crate) struct AndroidAiMenu {
 
 impl AndroidAiMenu {
     pub(crate) fn show(&mut self, ui: &mut egui::Ui) {
-        // egui 0.36 exposes the root Ui as the application menu surface.
-        // TopBottomPanel is not present in this API; use the same MenuBar
-        // primitive as upstream PhotoCraft and never modify its Filter menu.
+        // egui 0.36 uses Panel::top instead of TopBottomPanel. Mount the
+        // Android-only native menu in its own top strip, without editing the
+        // upstream Filter menu or painting a floating palette.
         let ctx = ui.ctx().clone();
-        egui::MenuBar::new().ui(ui, |ui| {
+        egui::Panel::top("artcraft_photocraft_android_ai_menu").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                     ui.menu_button("AI Tools", |ui| {
                         ui.label(egui::RichText::new("Android preview · Not connected").weak());
                         ui.separator();
@@ -34,7 +35,8 @@ impl AndroidAiMenu {
                             ui.close();
                         }
                     });
-                });
+            });
+        });
 
         if self.show_about {
             egui::Window::new("PhotoCraft Android · AI Tools")
@@ -42,7 +44,7 @@ impl AndroidAiMenu {
                 .open(&mut self.show_about)
                 .resizable(false)
                 .collapsible(false)
-                .show(ctx, |ui| {
+                .show(&ctx, |ui| {
                     ui.heading("AI Tools — Preview");
                     ui.label("The native AI Tools menu has been added to the Android shell.");
                     ui.separator();

@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "cefcf809b3bb869fd3b96c6d8e37ca54fcb53a11db2ff7f8209667131c3ac7fe"
   },
   "display_name": "GridCraft",
-  "version_name": "0.11.1-android.3",
-  "version_code": 16780035,
+  "version_name": "0.11.1-android.4",
+  "version_code": 16780036,
   "previous_version_code": 16780034,
   "package": "com.artcraft.gridcraft"
 }

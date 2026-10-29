@@ -12,6 +12,8 @@ if len(sys.argv) != 2:
 root = Path(sys.argv[1]).resolve()
 from patch_unsaved_dcs import apply as apply_unsaved_dcs
 apply_unsaved_dcs(root / "source/effectcraft")
+from patch_font_catalog import apply as apply_font_catalog
+apply_font_catalog(root / "source/effectcraft")
 from font_paths import patch_android_font_paths
 font_template = root / "templates/android/system_fonts.rs"
 font_template.write_text(patch_android_font_paths(font_template.read_text()))
@@ -49,7 +51,7 @@ injected = anchor + """
                             ui.separator();
                             ui.menu_button("Fonts", |ui| {
                                 for (title, key) in [
-                                    ("Import Font (TTF/OTF)…", "artcraft.effectcraft.import_font"),
+                                    ("Import Font (TTF/OTF/TTC)…", "artcraft.effectcraft.import_font"),
                                     ("Select Shared Font Folder…", "artcraft.effectcraft.select_fonts"),
                                     ("Refresh Shared Fonts", "artcraft.effectcraft.refresh_fonts"),
                                 ] {

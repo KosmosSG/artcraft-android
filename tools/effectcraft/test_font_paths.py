@@ -18,7 +18,7 @@ class FontPaths(unittest.TestCase):
         java = (root / 'tools/effectcraft/FontsBridge.java.inc').read_text()
         rust = (root / 'tools/effectcraft/android_updater.rs').read_text()
         self.assertIn('new File(getFilesDir(), "custom-fonts")', java)
-        self.assertIn('effectcraft_text::fonts::add_font_data(bytes)', rust)
+        self.assertIn('effectcraft_text::fonts::android_add_font_file(&file)', rust)
         self.assertIn('Font ready:', rust)
 
     def test_drift_fails_closed(self):

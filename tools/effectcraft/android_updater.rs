@@ -51,31 +51,41 @@ impl Updater {
             // Compare resolved paths, and reject symlinks escaping custom-fonts.
             let mut loaded = std::collections::HashMap::<std::path::PathBuf, String>::new();
             for (path, manual) in receiver {
+                if let Some(summary) = path.strip_prefix("summary|") {
+                    let families: std::collections::BTreeSet<_> = effectcraft_text::fonts::all_faces()
+                        .iter().map(|f| f.info.family.clone()).collect();
+                    let _ = report_tx.send(format!("{summary}. Catalog: {} registered families. Select in Character or Properties.", families.len()));
+                    continue;
+                }
+                let system = path.starts_with("system|");
+                let path = path.strip_prefix("system|").unwrap_or(&path);
                 let result = (|| -> Result<String, String> {
                     let root = root.as_ref().ok_or("Private font storage unavailable")?;
                     let root = std::fs::canonicalize(root)
                         .map_err(|e| format!("Font storage unavailable: {e}"))?;
                     let file = std::fs::canonicalize(&path)
                         .map_err(|e| format!("Cannot open imported font: {e}"))?;
-                    if file.parent() != Some(root.as_path()) {
+                    let system_allowed = ["/system/fonts", "/product/fonts", "/system/product/fonts"].iter()
+                        .filter_map(|p| std::fs::canonicalize(p).ok()).any(|p| file.starts_with(p));
+                    if !(if system { system_allowed } else { file.parent() == Some(root.as_path()) }) {
                         return Err("Imported font is outside private font storage".into());
                     }
                     if !file.extension().and_then(|x| x.to_str())
-                        .is_some_and(|x| x.eq_ignore_ascii_case("ttf") || x.eq_ignore_ascii_case("otf")) {
-                        return Err("Imported file must be TTF or OTF".into());
+                        .is_some_and(|x| x.eq_ignore_ascii_case("ttf") || x.eq_ignore_ascii_case("otf") || x.eq_ignore_ascii_case("ttc")) {
+                        return Err("Imported file must be TTF, OTF or TTC".into());
                     }
                     if let Some(family) = loaded.get(&file) {
                         return Ok(format!("Font already available: {family}"));
                     }
                     let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
-                    if !meta.is_file() || meta.len() < 12 || meta.len() > 32 * 1024 * 1024 {
+                    if !meta.is_file() || meta.len() < 12 || meta.len() > 64 * 1024 * 1024 {
                         return Err("Invalid font file size".into());
                     }
-                    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
-                    let faces = effectcraft_text::fonts::add_font_data(bytes);
+                    // Name tables are parsed on this worker; full font bytes load lazily for rendering.
+                    let faces = effectcraft_text::fonts::android_add_font_file(&file);
                     if faces.is_empty() {
                         // Only delete a verified file directly inside custom-fonts.
-                        let _ = std::fs::remove_file(&file);
+                        if !system { let _ = std::fs::remove_file(&file); }
                         return Err("Font engine could not read any faces in this file".into());
                     }
                     let family = effectcraft_text::fonts::face(faces[0]).info.family.clone();
@@ -144,7 +154,7 @@ impl Updater {
                 },
             }
         }
-        while let Ok(report) = self.reports.try_recv() { self.message(&report); }
+        while let Ok(report) = self.reports.try_recv() { self.message(&report); ctx.request_repaint(); }
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
 

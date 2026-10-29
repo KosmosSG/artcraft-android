@@ -46,7 +46,7 @@ final class VectorCraftExtras {
     private static final long MAX_FONT = 64L * 1024 * 1024;
     private static final int MAX_FONTS = 5000;
     private static final int MAX_FOLDERS = 5000;
-    private static final long MAX_SCAN_BYTES = 2L * 1024 * 1024 * 1024;
+    private static final long MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024;
     private static final String RELEASES_API =
             "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
     private static final String RELEASE_PREFIX =

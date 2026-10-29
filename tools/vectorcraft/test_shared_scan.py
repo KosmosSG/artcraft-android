@@ -13,7 +13,7 @@ class SharedScan(unittest.TestCase):
         s=JAVA.read_text()
         self.assertNotIn('Incomplete shared font scan; previous fonts preserved',s)
         for token in ('MAX_FONTS = 5000','MAX_FOLDERS = 5000','MAX_FONT = 64L',
-                      'MAX_SCAN_BYTES = 2L * 1024 * 1024 * 1024','fontDigest(file)',
+                      'MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024','fontDigest(file)',
                       'Previous fonts kept; refreshing font catalog', '"ttcf".equals(s)'):
             self.assertIn(token,s)
 

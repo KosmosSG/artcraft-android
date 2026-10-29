@@ -1,0 +1,98 @@
+name: DesignCraft Android.8 ARM64 compile candidate
+on:
+  push:
+    branches:
+      - feature/designcraft-android8-recursive-fonts-20261029
+    paths:
+      - 'tools/designcraft/**'
+      - '.github/workflows/designcraft-android8-arm64.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-android8-font-scan-candidate
+  cancel-in-progress: false
+jobs:
+  arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION: 0.12.0-android.8
+      VERSION_NAME: 0.12.0-android.8
+      CODE: '16800009'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/designcraft
+          ref: 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          path: builder/source/designcraft
+          persist-credentials: false
+      - name: Check source pins and apply DesignCraft Android.8 overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/designcraft rev-parse HEAD)" = 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/designcraft/prepare_builder.py builder "$VERSION" "$CODE"
+          grep -F 'dirs.extend(["/system/fonts", "/product/fonts"].map(Into::into));' builder/source/designcraft/crates/fonts/src/fontdb.rs
+          grep -F 'Android font scan diagnostics' builder/designcraft-support/tablet.rs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build ARM64 production-package payload with disposable test signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -designcraft -appname=DesignCraft -packagename=com.artcraft.designcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DesignCraft.png"
+      - name: Collect and identify candidate (NOT installable over production)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          mapfile -t apks < <(find builder/output -maxdepth 1 -type f -name '*.apk')
+          test "${#apks[@]}" -eq 1
+          cp "${apks[0]}" candidate/DesignCraft-v0.12.0-android.8-TEMP-SIGNATURE-NOT-FOR-INSTALL.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "${apks[0]}"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "${apks[0]}" | grep "^package: name='com.artcraft.designcraft' versionCode='16800009' versionName='0.12.0-android.8'"
+          unzip -l "${apks[0]}" | grep 'lib/arm64-v8a/.*\.so'
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          echo 'ARM64 candidate only; temporary signing certificate cannot update existing Android.6. Permanent signing requires the private DesignCraft workflow.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DesignCraft-android8-ARM64-UNSIGNED-FOR-PRODUCTION
+          path: candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: DesignCraft-android8-build-logs
+          path: |
+            builder/logs/
+            builder/source/designcraft/apps/designcraft-android/src/
+          retention-days: 7
+      - name: Destroy temporary signer
+        if: always()
+        run: rm -rf builder/keys

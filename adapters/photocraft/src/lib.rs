@@ -783,7 +783,7 @@ fn android_main(android_app: AndroidApp) {
                 picker: app_picker.clone(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
-                ai_menu: ai_menu::AndroidAiMenu::default(),
+                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

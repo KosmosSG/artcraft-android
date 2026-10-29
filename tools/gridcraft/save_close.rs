@@ -24,9 +24,11 @@ impl SheetApp {
             Err(_) => false,
         };
         let Some((uid,revision,_,quit)) = self.android_pending_close.take() else { return; };
-        if !success {self.alert("Save cancelled or failed; the workbook remains open.");return;}
+        if !success {self.alert("Save cancelled or failed; the workbook remains open.".into());return;}
+        // A fresh editor draft may not have advanced the document revision yet.
+        if self.editor.is_some() { return; }
         if !self.session.active().is_some_and(|d|d.uid==uid && d.revision==revision) {
-            self.alert("Saved the earlier version; current work remains open.");return;
+            self.alert("Saved the earlier version; current work remains open.".into());return;
         }
         self.run_or_alert("file.close",json!({"force":true}));
         if quit {self.continue_quit(ctx);}

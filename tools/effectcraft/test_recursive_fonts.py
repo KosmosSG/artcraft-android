@@ -11,7 +11,7 @@ class RecursiveFonts(unittest.TestCase):
     def test_scan_bounds_and_runtime_registration(self):
         java = (ROOT / 'FontsBridge.java.inc').read_text()
         rust = (ROOT / 'android_updater.rs').read_text()
-        for token in ('64L * 1024 * 1024', '2L * 1024 * 1024 * 1024',
+        for token in ('64L * 1024 * 1024', '4L * 1024 * 1024 * 1024',
                       'EC_SCAN_FILES = 5000, EC_SCAN_FOLDERS = 5000',
                       'pending.addLast(id)', 'seen.add(parent)',
                       'getPersistedUriPermissions()', 'summary|',
@@ -40,9 +40,14 @@ public class FontCopyTest {
   static void check(boolean ok) { if (!ok) throw new AssertionError(); }
   public static void main(String[] args) throws Exception {
     FontCopyTest t = new FontCopyTest(new File(args[0]));
+    check(EC_SCAN_MAX == 4294967296L); // long arithmetic: exceeds signed 32-bit range
     byte[] font = new byte[32]; font[0]='t'; font[1]='t'; font[2]='c'; font[3]='f';
     t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{0}, true);
     t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{0}, true);
+    long[] aboveOldLimit = {2L * 1024 * 1024 * 1024};
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", aboveOldLimit, true);
+    check(aboveOldLimit[0] > 2147483648L);
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{EC_SCAN_MAX - font.length}, true);
     check(t.dir.list().length == 1);
     check(t.dir.list()[0].endsWith(".ttc"));
     check(t.ecFontPaths.poll().startsWith("manual|"));

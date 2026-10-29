@@ -1,5 +1,5 @@
     private static final long EC_FONT_MAX = 64L * 1024 * 1024;
-    private static final long EC_SCAN_MAX = 2L * 1024 * 1024 * 1024;
+    private static final long EC_SCAN_MAX = 4L * 1024 * 1024 * 1024;
     private static final int EC_SCAN_FILES = 5000, EC_SCAN_FOLDERS = 5000;
     private static boolean ecFontName(String name) {
         String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
@@ -92,7 +92,7 @@
                 while ((n = input.read(buffer)) != -1) {
                     size += n; budget[0] += n;
                     if (size > EC_FONT_MAX) throw new java.io.IOException("Font exceeds 64 MiB");
-                    if (budget[0] > EC_SCAN_MAX) throw new java.io.IOException("Refresh exceeds 2 GiB");
+                    if (budget[0] > EC_SCAN_MAX) throw new java.io.IOException("Refresh exceeds 4 GiB");
                     out.write(buffer, 0, n); digest.update(buffer, 0, n);
                 }
                 if (size < 12) throw new java.io.IOException("Truncated font");

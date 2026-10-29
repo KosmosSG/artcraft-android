@@ -65,7 +65,7 @@
                 java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
                 java.util.HashSet<String> seen = new java.util.HashSet<>();
                 pending.add(DocumentsContract.getTreeDocumentId(treeUri));
-                while (!pending.isEmpty() && count < 200 && visitedFolders < 1000) {
+                while (!pending.isEmpty() && count < 1000 && visitedFolders < 1000) {
                     String parentId = pending.removeFirst();
                     if (!seen.add(parentId)) continue;
                     visitedFolders++;
@@ -79,7 +79,7 @@
                             Log.w(TAG, "Cannot list font subfolder: " + parentId);
                             continue;
                         }
-                        while (cursor.moveToNext() && count < 200) {
+                        while (cursor.moveToNext() && count < 1000) {
                             String documentId = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
@@ -89,13 +89,13 @@
                                 continue;
                             }
                             String lower = name.toLowerCase(java.util.Locale.ROOT);
-                            if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")) continue;
+                            if (!lower.endsWith(".ttf") && !lower.endsWith(".otf") && !lower.endsWith(".ttc")) continue;
                             if (!cursor.isNull(3)) {
                                 long size = cursor.getLong(3);
                                 if (size <= 0 || size > 32L * 1024 * 1024) continue;
                             }
                             Uri fontUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
-                            String extension = lower.endsWith(".ttf") ? ".ttf" : ".otf";
+                            String extension = lower.endsWith(".ttf") ? ".ttf" : (lower.endsWith(".ttc") ? ".ttc" : ".otf");
                             // Use the full document ID for cache naming, including subfolder path.
                             String hash = java.util.UUID.nameUUIDFromBytes(
                                     documentId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
@@ -111,14 +111,16 @@
                                 boolean validHeader =
                                         (first == 0 && second == 1 && third == 0 && fourth == 0)
                                         || (first == 'O' && second == 'T'
-                                            && third == 'T' && fourth == 'O');
+                                            && third == 'T' && fourth == 'O')
+                                        || (first == 't' && second == 't'
+                                            && third == 'c' && fourth == 'f');
                                 if (!validHeader) throw new Exception("Invalid OpenType header: " + name);
                                 output.write(new byte[]{(byte) first, (byte) second,
                                         (byte) third, (byte) fourth});
                                 long total = 4L;
                                 totalBytes += 4L;
-                                if (totalBytes > 128L * 1024 * 1024)
-                                    throw new Exception("Shared font refresh reached the 128 MB limit");
+                                if (totalBytes > 512L * 1024 * 1024)
+                                    throw new Exception("Shared font refresh reached the 512 MB limit");
                                 byte[] buffer = new byte[64 * 1024];
                                 int n;
                                 while ((n = input.read(buffer)) != -1) {
@@ -126,8 +128,8 @@
                                     if (total > 32L * 1024 * 1024)
                                         throw new Exception("Font too large: " + name);
                                     totalBytes += n;
-                                    if (totalBytes > 128L * 1024 * 1024)
-                                        throw new Exception("Shared font refresh reached the 128 MB limit");
+                                    if (totalBytes > 512L * 1024 * 1024)
+                                        throw new Exception("Shared font refresh reached the 512 MB limit");
                                     output.write(buffer, 0, n);
                                 }
                                 output.flush();

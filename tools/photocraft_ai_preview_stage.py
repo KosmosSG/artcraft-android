@@ -49,7 +49,7 @@ def main():
     data = once(data, "        system_fonts::install_system_fonts(ui.ctx());",
                 "        system_fonts::install_system_fonts(ui.ctx());\n        self.ai_menu.show(ui);")
     old = '                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),'
-    data = once(data, old, old + "\n                ai_menu: ai_menu::AndroidAiMenu::default(),")
+    data = once(data, old, old + "\n                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join(\"PhotoCraft\").join(\"ai-tools-visible\")),")
     SRC.write_text(data)
     for file in ("ai_menu.rs", "ai_tools.rs"):
         source = saved / file
@@ -96,6 +96,7 @@ def main():
     assert "artcraft_finish_type_escape" in data
     assert "artcraft_discard_prompt_owns_keyboard" in data
     assert "self.ai_menu.show(ui);" in data
+    assert "ai_menu::AndroidAiMenu::new(files_dir.join" in data
     print("PASS: owner-tested ESC/T/V/C/Y/N baseline + native AI Tools menu")
     print("PASS: reviewed blue Pc launcher + in-app branding source", digest)
     print("PASS: isolated preview package", PREVIEW_PACKAGE)

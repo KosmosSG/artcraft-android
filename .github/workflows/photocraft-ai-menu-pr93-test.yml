@@ -1,0 +1,165 @@
+name: PhotoCraft AI Tools Menu ARM64 Preview PR93 (no release)
+
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - '.github/workflows/photocraft-ai-menu-pr93-test.yml'
+      - 'adapters/photocraft/**'
+      - 'docs/photocraft-android-ai-tools.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-ai-menu-pr93-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm64-preview:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Rust ARM64 toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Test AI action and endpoint validation foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --test adapters/photocraft/src/ai_tools.rs -o /tmp/photocraft-ai-tool-tests
+          /tmp/photocraft-ai-tool-tests
+
+      - name: Make preview app identity separate from installed PhotoCraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Ephemeral CI workspace ONLY. Do not commit these changes.
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          package = 'com.artcraft.photocraft.ai.preview'
+          manifest = Path('adapters/photocraft/Cargo.toml')
+          text = manifest.read_text()
+          previous = 'package = "com.artcraft.photocraft"'
+          assert text.count(previous) == 1, 'Stop: unexpected PhotoCraft manifest'
+          text = text.replace(previous, f'package = "{package}"', 1)
+          assert 'label = "PhotoCraft"' in text
+          text = text.replace('label = "PhotoCraft"', 'label = "PhotoCraft AI Preview"')
+          parsed = tomllib.loads(text)
+          assert parsed['package']['metadata']['android']['package'] == package
+          manifest.write_text(text)
+
+          old = Path('adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java')
+          src = old.read_text()
+          assert src.startswith('package com.artcraft.photocraft;'), 'Stop: unexpected Java package'
+          new = Path('adapters/photocraft/java/com/artcraft/photocraft/ai/preview/PhotoCraftActivity.java')
+          new.parent.mkdir(parents=True, exist_ok=True)
+          new.write_text(src.replace('package com.artcraft.photocraft;', f'package {package};', 1))
+          old.unlink()
+          print('Ephemeral Android test identity:', package)
+          print('Production manifest in GitHub remains unchanged.')
+          PY
+
+      - name: Set up Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)"
+          if [[ -z "$SDKMANAGER" ]]; then echo "Missing sdkmanager" >&2; exit 1; fi
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build debug-only PhotoCraft AI menu APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build-debug.sh -photocraft
+
+      - name: Reject production package; verify ARM64 preview APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(output/photocraft-*-debug.apk)
+          if (( ${#apks[@]} != 1 )); then
+            echo "Expected exactly one PhotoCraft debug APK, found ${#apks[@]}" >&2
+            exit 1
+          fi
+          APK="${apks[0]}"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt -print | sort -V | tail -n 1)"
+          if [[ -z "$AAPT" ]]; then echo "Missing aapt" >&2; exit 1; fi
+          BADGING="$("$AAPT" dump badging "$APK")"
+          echo "$BADGING" | grep -F "package: name='com.artcraft.photocraft.ai.preview'"
+          echo "$BADGING" | grep -F "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'"
+          if echo "$BADGING" | grep -Fq "package: name='com.artcraft.photocraft' "; then
+            echo "Refusing production-package preview" >&2
+            exit 1
+          fi
+          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
+          sha256sum "$APK" | sed 's#output/##' > output/SHA256SUMS.txt
+          cat > output/AI-MENU-PREVIEW-READ-ME.txt <<'EOF'
+          PhotoCraft AI Tools Menu — PR #93 (ARM64 preview only)
+          Application ID: com.artcraft.photocraft.ai.preview
+          Display name: PhotoCraft AI Preview
+
+          Can be installed alongside your production PhotoCraft.
+          1. Install the debug APK on HONOR MagicPad 4.
+          2. Launch PhotoCraft AI Preview.
+          3. Look for the native AI Tools row above File/Edit/Filter.
+          4. Open AI Tools > About AI Tools; verify dialog closes.
+          5. Confirm all five AI functions and Plugin Manager/ComfyUI settings are disabled.
+          6. Verify ordinary canvas, file open/save, fonts, shortcuts and update UI still work.
+          7. Report screenshot or any crash/overlap to PR #93.
+
+          This APK does not perform AI inference or contact ComfyUI.
+          It uses a disposable GitHub Actions signing key, NOT the permanent release key.
+          It must NOT be used as a production upgrade. No release is published.
+          EOF
+
+      - name: Upload disposable preview APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-AI-Menu-ARM64-Preview-PR93
+          path: |
+            output/photocraft-*-debug.apk
+            output/SHA256SUMS.txt
+            output/AI-MENU-PREVIEW-READ-ME.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload error logs if build fails
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-AI-Menu-PR93-Build-Logs
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7

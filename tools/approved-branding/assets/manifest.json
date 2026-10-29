@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "dfb38cea22da1cca6754cffa9ac23f6bc938535d39bf45cc88ab0b6c28155ef9"
   },
   "display_name": "WordCraft",
-  "version_name": "0.9.0-android.4",
-  "version_code": 100000004,
-  "previous_version_code": 100000003,
+  "version_name": "0.9.0-android.5",
+  "version_code": 100000005,
+  "previous_version_code": 100000004,
   "package": "com.artcraft.wordcraft"
 }

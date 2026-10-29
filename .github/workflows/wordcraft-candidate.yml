@@ -22,8 +22,8 @@ jobs:
     env:
       WORDCRAFT_UPSTREAM_COMMIT: 2e6db0bd88795e80375176c01665cff7dbe2b057
       WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
-      WORDCRAFT_VERSION_NAME: 0.9.0-android.3
-      WORDCRAFT_CANDIDATE_VERSION_CODE: "100000003"
+      WORDCRAFT_VERSION_NAME: 0.9.0-android.5
+      WORDCRAFT_CANDIDATE_VERSION_CODE: "100000005"
       WORDCRAFT_PACKAGE: com.artcraft.wordcraft
 
     steps:
@@ -111,6 +111,8 @@ jobs:
           cp builder/lib/build-common.sh wordcraft/android/reference/build-common.sh
           cp builder/lib/app_icons.py wordcraft/android/reference/app_icons.py
           cp builder/templates/android/SafActivity.java wordcraft/android/reference/SafActivity.java
+          cp builder/templates/android/system_fonts.rs wordcraft/android/reference/system_fonts.rs
+          cp builder/source/wordcraft/crates/ui-egui/src/dialogs.rs wordcraft/android/reference/dialogs.rs
           cp builder/source/wordcraft/crates/ui-egui/src/ribbon.rs wordcraft/android/reference/ribbon.rs
           python3 -m unittest discover -s wordcraft/android -p 'test_revision.py' -v
 
@@ -125,13 +127,13 @@ jobs:
           s = source.read_text()
           old = 'version = "0.9.0"'
           assert s.count(old) == 1, 'Review new upstream manifest before changing version'
-          source.write_text(s.replace(old, 'version = "0.9.0-android.3"', 1))
+          source.write_text(s.replace(old, 'version = "0.9.0-android.5"', 1))
           project = Path('builder/lib/android_project.py')
           p = project.read_text()
           formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert p.count(formula) == 1, 'Version-code override location changed: stop'
-          project.write_text(p.replace(formula, 'return 100000003', 1))
-          print('Candidate metadata set: 0.9.0-android.3 / 100000003')
+          project.write_text(p.replace(formula, 'return 100000005', 1))
+          print('Candidate metadata set: 0.9.0-android.5 / 100000005')
           PY
           git -C builder/source/wordcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
@@ -158,13 +160,13 @@ jobs:
           python3 wordcraft/android/adaptive_safe.py builder wordcraft
           cd builder
           bash build.sh -wordcraft -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
-          test -s output/wordcraft-0.9.0-android.3.apk
+          test -s output/wordcraft-0.9.0-android.5.apk
 
       - name: Check compiled APK package, ARM64, version, icon, signature and hash
         shell: bash
         run: |
           set -euo pipefail
-          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.9.0-android.3.apk"
+          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.9.0-android.5.apk"
           test -s "$apk"
           python3 - "$apk" <<'PY'
           import sys, zipfile
@@ -191,8 +193,8 @@ jobs:
           grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
           badging="$("$aapt2" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft'"
-          printf '%s\n' "$badging" | grep -F "versionCode='100000003'"
-          printf '%s\n' "$badging" | grep -F "versionName='0.9.0-android.3'"
+          printf '%s\n' "$badging" | grep -F "versionCode='100000005'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.9.0-android.5'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."

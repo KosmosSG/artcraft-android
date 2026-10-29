@@ -64,7 +64,7 @@ def patch_designcraft_font_catalog(text: str) -> str:
             dirs.extend(["/system/fonts", "/product/fonts"].map(Into::into));
         }
 '''
-    return text.replace(anchor, anchor + '\\n' + addition.rstrip())
+    return text.replace(anchor, anchor + '\n' + addition.rstrip())
 
 def prepare(root: Path, version: str, code: int):
     if not re.fullmatch(r"\d+\.\d+\.\d+-android\.[1-9]\d*", version):

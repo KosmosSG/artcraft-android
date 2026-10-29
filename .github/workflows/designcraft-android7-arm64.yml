@@ -44,7 +44,7 @@ jobs:
           python3 -m pip install 'Pillow==11.3.0'
           python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
           python3 tools/designcraft/prepare_builder.py builder "$VERSION" "$CODE"
-          grep -F 'dirs.extend(["/system/fonts", "/product/fonts"].map(Into::into));' builder/source/designcraft/crates/fonts/src/fontdb/system.rs
+          grep -F 'dirs.extend(["/system/fonts", "/product/fonts"].map(Into::into));' builder/source/designcraft/crates/fonts/src/fontdb.rs
           grep -F 'Android font scan diagnostics' builder/designcraft-support/tablet.rs
       - uses: actions/setup-java@v4
         with:

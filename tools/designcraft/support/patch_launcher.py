@@ -25,11 +25,19 @@ def update_policy_for_activity(activity_source, policy_source):
 def patch(root):
     path = root / "src/lib.rs"
     source = path.read_text()
+    source = replace_once(source, 'mod system_fonts;', 'mod dcs_bridge;\nmod system_fonts;')
+    source = replace_once(source, 'struct AndroidShell {', 'struct AndroidShell {\n    dc: dcs_bridge::ModalBridge,')
+    source = replace_once(source, 'let ime = ime_bridge::ime::ImeBridge::new(&app);', 'let dc = dcs_bridge::ModalBridge::new(&app);\n        let ime = ime_bridge::ime::ImeBridge::new(&app);')
+    source = replace_once(source, 'Self { inner, app, ime,', 'Self { inner, app, ime, dc,')
+    source = replace_once(source, '        self.inner.logic(ctx);', '        self.inner.android_capture_unsaved_dcs(ctx);\n        self.dc.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\n        self.inner.logic(ctx);')
+    source = replace_once(source, '        self.inner.ui(ui);', '        self.inner.ui(ui);\n        self.dc.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());')
+    (root / 'src/dcs_bridge.rs').write_text(Path(__file__).with_name('dcs_bridge.rs').read_text())
+
     source = replace_once(source, '        self.inner.ui(ui);', '        self.inner.ui(ui);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n')
     source = replace_once(source, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n')
     source = replace_once(source, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.ui.dialog.is_none() && self.inner.ui.palette.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && !ui.ctx().text_edit_focused()\n            && self.inner.session.active().is_some_and(|doc| doc.selection.text.is_some()) {\n            // End the engine\'s type session, not just Android\'s invisible EditText.\n            self.inner.select_tool("selection");\n            if let Err(error) = self.inner.run("text.exitToFrame", serde_json::json!({})) {\n                log::warn!("Android text exit: {error}");\n            }\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());')
     source = replace_once(source, "struct AndroidShell {", "mod tablet;\nstruct AndroidShell {\n    tablet: tablet::Tablet,")
-    source = replace_once(source, "Self { inner, app, ime,", "Self { tablet: tablet::Tablet::default(), inner, app, ime,")
+    source = replace_once(source, "Self { inner, app, ime, dc,", "Self { tablet: tablet::Tablet::default(), inner, app, ime, dc,")
     source = replace_once(source, "        system_fonts::install_system_fonts(ui.ctx());", "        self.tablet.ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);\n        system_fonts::install_system_fonts(ui.ctx());")
     source = replace_once(source, "Box::new(move |_cc| Ok(Box::new(shell)))", "Box::new(move |cc| { tablet::record_gpu(cc); Ok(Box::new(shell)) })")
     old = 'inbox.lock().unwrap_or_else(|error| error.into_inner()).push(ImportedFile { request: request.clone(), name, bytes });'
@@ -93,6 +101,9 @@ def patch(root):
         }
         return super.dispatchKeyEvent(event);
     }''')
+    modal = Path(__file__).with_name('dcs_java.inc').read_text()
+    modal = modal.rsplit('        return super.dispatchKeyEvent(event);',1)[0]
+    text = replace_once(text, '    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\n', modal)
     text = replace_once(text, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();')
     text = text[:text.rfind('}')] + """
     private android.view.View artcraftNativeSurface(android.view.View node) {

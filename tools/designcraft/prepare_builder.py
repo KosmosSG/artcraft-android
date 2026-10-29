@@ -79,6 +79,8 @@ def prepare(root: Path, version: str, code: int):
     # in apply_approved_branding.py before signing.
     script.write_text(source)
     project.write_text(generated)
+    from patch_dcs_host import patch
+    patch(root)
 
 
 if __name__ == "__main__":

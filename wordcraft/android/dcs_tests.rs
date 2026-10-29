@@ -6,7 +6,9 @@ mod android_dcs_regression {
         app.run("text.insert", json!({"text":"Keep this draft"})).unwrap();
         app.run("file.close", json!({})).unwrap();
         assert!(app.android_unsaved_dcs_active());
-        (app, egui::Context::default())
+        { let ctx = egui::Context::default();
+          ctx.set_fonts(crate::theme::font_definitions(false, false));
+          (app, ctx) }
     }
     fn press(app: &mut WordApp, ctx: &egui::Context, key: egui::Key, mods: egui::Modifiers, repeat: bool) {
         let raw = egui::RawInput { events: vec![egui::Event::Key { key, physical_key: Some(key), pressed:true, repeat, modifiers:mods }], ..Default::default() };

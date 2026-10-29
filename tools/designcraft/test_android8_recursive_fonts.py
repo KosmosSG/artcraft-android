@@ -8,15 +8,16 @@ class Android8RecursiveFonts(unittest.TestCase):
         src = Path("tools/designcraft/support/font_methods.java").read_text()
         for required in (
             'pending.addLast(documentId)', 'seen.add(parentId)',
-            'visitedFolders < 1000', 'count < 1000',
+            'visitedFolders < 5000', 'count < 5000',
             'lower.endsWith(".ttc")',
             'first == \'t\' && second == \'t\'',
-            '512L * 1024 * 1024',
+            '2L * 1024 * 1024 * 1024',
             'StandardCopyOption.ATOMIC_MOVE',
             'getPersistedUriPermissions()',
         ):
             self.assertIn(required, src)
         self.assertNotIn('count < 200', src)
+        self.assertIn('64L * 1024 * 1024', src)
 
 
 if __name__ == "__main__":

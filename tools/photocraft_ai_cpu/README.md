@@ -60,7 +60,7 @@ After confirming dependencies and reviewing U2NetP weight rights, authorize the 
     python "$HOME/photocraft-ai-tests/benchmark_u2netp.py" \
       --run --allow-model-download
 
-The model is placed in rembg's separate ~/.u2net local cache, not in ComfyUI.
+The model is placed at ~/.local/share/photocraft-ai-cpu/models/u2netp/u2netp.onnx, completely separate from ComfyUI. The script sets U2NET_HOME only in its own process.
 U2NetP's upstream MD5 reference is checked before and after model load.
 The script emits model-load time, inference time, max process RSS, output alpha
 range, and a new PNG under ~/Pictures/PhotoCraft-AI-Tests/.

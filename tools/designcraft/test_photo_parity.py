@@ -44,7 +44,9 @@ class DesignCraftAndroidParity(unittest.TestCase):
         self.assertIn('std::fs::read_link(&link)', staged)
         self.assertIn('std::fs::remove_file(&link)', staged)
         self.assertIn('std::fs::create_dir_all(&link)', staged)
-        self.assertIn('link.join("android-system")', staged)
+        self.assertIn('("android-system", "/system/fonts")', staged)
+        self.assertIn('("android-product", "/product/fonts")', staged)
+        self.assertIn('std::path::Path::new(target).is_dir()', staged)
         self.assertIn('std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));', staged)
         self.assertNotIn('std::env::set_var("XDG_DATA_HOME", &base);', staged)
         with self.assertRaises(ValueError):

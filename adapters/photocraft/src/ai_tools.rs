@@ -1,7 +1,7 @@
 //! Foundation for optional AI tools in the PhotoCraft Android adapter.
 //! Deliberately has no model execution, no networking and no dependency changes.
 //! Wire into the adapter UI only after native menu and layer APIs are verified.
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AiAction {

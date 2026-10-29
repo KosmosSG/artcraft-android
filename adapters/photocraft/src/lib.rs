@@ -671,7 +671,7 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         // Native menu; unimplemented actions remain disabled until backend verification.
-        self.ai_menu.show(ui.ctx());
+        self.ai_menu.show(ui);
         self.inner.ui(ui, _frame);
     }
 

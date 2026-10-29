@@ -392,7 +392,7 @@ impl FontUiState {
         match bridge.request_font_import(id) {
             Ok(()) => {
                 self.pending_import = Some(id);
-                self.import_status = "Choose a .ttf or .otf file".into();
+                self.import_status = "Choose a .ttf, .otf or .ttc file".into();
             }
             Err(error) => self.import_status = format!("Font picker unavailable: {error}"),
         }
@@ -1254,7 +1254,7 @@ impl eframe::App for VectorCraftAndroidApp {
                         ui.label(&self.fonts.shared_status);
                     }
                     ui.add_space(6.0);
-                    ui.small("TTF / OTF fonts stay inside VectorCraft's private Fonts folder.");
+                    ui.small("TTF / OTF / TTC fonts stay inside VectorCraft's private Fonts folder.");
                     ui.separator();
                     if ui.button("Close").clicked() { close_button = true; }
                 });

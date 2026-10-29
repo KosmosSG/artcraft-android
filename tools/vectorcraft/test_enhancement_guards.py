@@ -86,8 +86,8 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
                 self.assertIn(marker, java)
         for marker in ("Intent.ACTION_OPEN_DOCUMENT_TREE", "takePersistableUriPermission",
                        "getPersistedUriPermissions", "Fonts", "Imported", "Shared",
-                       "MAX_FONT = 32L * 1024 * 1024", "MAX_FONTS = 200",
-                       "MAX_FOLDERS = 1000", "vectorcraft-v", "HttpURLConnection",
+                       "MAX_FONT = 64L * 1024 * 1024", "MAX_FONTS = 5000",
+                       "MAX_FOLDERS = 5000", "vectorcraft-v", "HttpURLConnection",
                        "update_available", "up_to_date", "No published VectorCraft Android",
                        "VERSION.matcher", "RELEASE_PREFIX"):
             with self.subTest(marker=marker):

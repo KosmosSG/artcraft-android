@@ -99,7 +99,7 @@ impl ComfyEndpoint {
         let addr = self.socket_addr().ok_or("Invalid endpoint address")?;
         let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(4))
             .map_err(|e| format!("Unable to reach ComfyUI: {e}"))?;
-        stream.set_read_timeout(Some(Duration::from_secs(4)))
+        stream.set_read_timeout(Some(Duration::from_secs(10)))
             .map_err(|e| format!("Read timeout setup failed: {e}"))?;
         stream.set_write_timeout(Some(Duration::from_secs(4)))
             .map_err(|e| format!("Write timeout setup failed: {e}"))?;
@@ -143,11 +143,31 @@ impl ComfyEndpoint {
                     e.kind(),
                     std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                 ) => {
-                    return Err("Timed out waiting for the complete ComfyUI /system_stats response; verify the server is still running".into());
+                    // A completed TCP connection does not prove that a
+                    // backgrounded Linux Lab container got CPU time to
+                    // answer. Do not log server JSON or user content.
+                    let stage = response_stage(&reply);
+                    return Err(format!(
+                        "ComfyUI TCP connected but timed out after 10s ({stage}; {} bytes).                          If Android Chrome works while Linux Lab is visible,                          retry with Linux Lab kept active or split-screen.",
+                        reply.len()
+                    ));
                 }
                 Err(e) => return Err(format!("ComfyUI response read failed: {e}")),
             }
         }
+    }
+}
+
+/// A narrow diagnostic that never exposes response contents, only the
+/// protocol stage. Zero bytes indicates a server/runtime scheduling problem,
+/// not an HTTP body parser failure.
+fn response_stage(reply: &[u8]) -> &'static str {
+    if reply.is_empty() {
+        "no response bytes"
+    } else if !reply.windows(4).any(|w| w == b"\r\n\r\n") {
+        "partial HTTP headers"
+    } else {
+        "HTTP headers received, incomplete body"
     }
 }
 
@@ -343,6 +363,17 @@ mod tests {
         endpoint.probe_system_stats().unwrap();
         server.join().unwrap();
     }
+    #[test]
+    fn timeout_diagnostics_distinguish_unresponsive_server_from_partial_http() {
+        assert_eq!(response_stage(b""), "no response bytes");
+        assert_eq!(response_stage(b"HTTP/1.1 200 OK\r\nContent-Ty"),
+                   "partial HTTP headers");
+        assert_eq!(
+            response_stage(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"),
+            "HTTP headers received, incomplete body"
+        );
+    }
+
     #[test]
     fn complete_content_length_response_does_not_wait_for_socket_eof() {
         // Emulates an Android/ComfyUI connection that remains open after the

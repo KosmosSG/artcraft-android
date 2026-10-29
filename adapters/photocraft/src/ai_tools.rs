@@ -335,7 +335,7 @@ mod tests {
             let mut request = [0u8; 1024];
             let n = socket.read(&mut request).unwrap();
             let text = std::str::from_utf8(&request[..n]).unwrap();
-            assert!(text.starts_with("GET /system_stats HTTP/1.0\r\n"));
+            assert!(text.starts_with("GET /system_stats HTTP/1.1\r\n"));
             assert!(!text.contains("/prompt"));
             socket.write_all(b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"system\":{},\"devices\":[]}").unwrap();
         });
@@ -343,6 +343,79 @@ mod tests {
         endpoint.probe_system_stats().unwrap();
         server.join().unwrap();
     }
+    #[test]
+    fn complete_content_length_response_does_not_wait_for_socket_eof() {
+        // Emulates an Android/ComfyUI connection that remains open after the
+        // complete JSON is delivered. Old read-to-EOF logic timed out EAGAIN.
+        let body = br#"{"system":{"os":"linux"},"devices":[{"name":"cpu"}]}"#;
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n",
+            body.len()
+        );
+        let mut reply = header.into_bytes();
+        reply.extend_from_slice(body);
+        assert_eq!(parse_stats_response(&reply, false).unwrap(), Some(()));
+        assert_eq!(parse_stats_response(&reply[..reply.len()-3], false).unwrap(), None);
+        assert!(parse_stats_response(&reply[..reply.len()-3], true).is_err());
+    }
+
+    #[test]
+    fn chunked_stats_response_can_finish_without_eof() {
+        let body = br#"{"system":{},"devices":[]}"#;
+        let mut reply = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+        reply.extend_from_slice(format!("{:X}\r\n", body.len()).as_bytes());
+        reply.extend_from_slice(body);
+        reply.extend_from_slice(b"\r\n0\r\n\r\n");
+        assert_eq!(parse_stats_response(&reply, false).unwrap(), Some(()));
+        assert_eq!(parse_stats_response(&reply[..reply.len()-1], false).unwrap(), None);
+        assert!(parse_stats_response(&reply[..reply.len()-1], true).is_err());
+    }
+
+    #[test]
+    fn reject_redirect_html_mismatched_json_or_oversized_payload() {
+        let html = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 26\r\n\r\n<html>not-comfyui</html>";
+        assert!(parse_stats_response(html, true).is_err());
+        let redirect = b"HTTP/1.1 302 Found\r\nLocation: http://example.com/\r\nContent-Length: 0\r\n\r\n";
+        assert!(parse_stats_response(redirect, true).is_err());
+        let forged = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+        assert!(parse_stats_response(forged, false).is_err());
+        let large = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 999999\r\n\r\n";
+        assert!(parse_stats_response(large, false).is_err());
+        let ambiguous = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nContent-Length: 20\r\n\r\n";
+        assert!(parse_stats_response(ambiguous, false).is_err());
+    }
+
+    #[test]
+    fn complete_keepalive_socket_probe_returns_before_peer_disconnects() {
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+        use std::thread;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let n = socket.read(&mut request).unwrap();
+            let request = std::str::from_utf8(&request[..n]).unwrap();
+            assert!(request.starts_with("GET /system_stats HTTP/1.1\r\n"));
+            let body = br#"{"system":{"os":"linux"},"devices":[{"name":"cpu"}]}"#;
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n",
+                body.len()
+            );
+            socket.write_all(header.as_bytes()).unwrap();
+            socket.write_all(body).unwrap();
+            // Keep the server socket open until the client reports success.
+            rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        });
+        let endpoint = ComfyEndpoint::parse(&format!("http://127.0.0.1:{port}"), false).unwrap();
+        let result = endpoint.probe_system_stats();
+        tx.send(()).unwrap();
+        server.join().unwrap();
+        result.unwrap();
+    }
+
     #[test]
     fn non_comfy_response_is_not_success() {
         use std::net::TcpListener;

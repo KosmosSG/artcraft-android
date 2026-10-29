@@ -85,7 +85,8 @@ pub fn artcraft_set_ai_tools_visible(visible: bool) {
 def test_fixture() -> None:
     # The core invariants can be asserted without a device. The actual v0.14
     # owner-tested menu source is patched and guarded in the ARM64 CI build.
-    example = """const SHORTCUT_PAD_ID: &str = "window.artcraftTouchShortcutPad";
+    example = """// artcraft.check_updates_requested exists in the owner-tested menu port
+const SHORTCUT_PAD_ID: &str = "window.artcraftTouchShortcutPad";
         if id == SHORTCUT_PAD_ID {
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.shortcut_pad_toggle"), true));
 pub fn is_live(id: &str) -> bool {

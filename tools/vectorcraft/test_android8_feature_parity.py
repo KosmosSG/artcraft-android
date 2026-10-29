@@ -54,7 +54,7 @@ class VectorCraftParity(unittest.TestCase):
             self.assertEqual(hashlib.sha256((approved.parent/p).read_bytes()).hexdigest(),h)
         restore = read("tools/vectorcraft/restore_vectorcraft_08_branding.py")
         self.assertIn('"install"', restore)
-        self.assertIn('VERSION = "0.14.0-android.11"', restore)
+        self.assertIn('VERSION = "0.14.0-android.12"', restore)
         self.assertIn("installed[", restore)
 
     def test_keyboard_shortcuts_still_recover_after_escape(self):

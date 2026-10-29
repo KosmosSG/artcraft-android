@@ -43,9 +43,10 @@ final class VectorCraftExtras {
     private static final String TAG = "VectorCraftExtras";
     private static final String PREFS = "vectorcraft_font_library";
     private static final String TREE_URI_KEY = "shared_font_tree_uri";
-    private static final long MAX_FONT = 32L * 1024 * 1024;
-    private static final int MAX_FONTS = 200;
-    private static final int MAX_FOLDERS = 1000;
+    private static final long MAX_FONT = 64L * 1024 * 1024;
+    private static final int MAX_FONTS = 5000;
+    private static final int MAX_FOLDERS = 5000;
+    private static final long MAX_SCAN_BYTES = 2L * 1024 * 1024 * 1024;
     private static final String RELEASES_API =
             "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
     private static final String RELEASE_PREFIX =
@@ -189,10 +190,15 @@ final class VectorCraftExtras {
         String lower = name.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".ttf")) return ".ttf";
         if (lower.endsWith(".otf")) return ".otf";
+        if (lower.endsWith(".ttc")) return ".ttc";
         return null;
     }
 
     private static void copyValidated(InputStream input, File target) throws Exception {
+        copyValidated(input, target, new long[]{0});
+    }
+
+    private static void copyValidated(InputStream input, File target, long[] budget) throws Exception {
         if (input == null) throw new java.io.IOException("Font provider returned no data");
         long total = 0;
         try (InputStream from = input; OutputStream to = new FileOutputStream(target)) {
@@ -200,7 +206,9 @@ final class VectorCraftExtras {
             int n;
             while ((n = from.read(block)) != -1) {
                 total += n;
-                if (total > MAX_FONT) throw new java.io.IOException("Font exceeds 32 MB limit");
+                budget[0] += n;
+                if (budget[0] > MAX_SCAN_BYTES) throw new java.io.IOException("Scan reached 2 GiB limit");
+                if (total > MAX_FONT) throw new java.io.IOException("Font exceeds 64 MiB limit");
                 to.write(block, 0, n);
             }
         } catch (Exception error) {
@@ -217,8 +225,8 @@ final class VectorCraftExtras {
             String s = new String(signature, StandardCharsets.US_ASCII);
             boolean sfnt = (signature[0] == 0 && signature[1] == 1
                     && signature[2] == 0 && signature[3] == 0)
-                    || "OTTO".equals(s) || "true".equals(s) || "typ1".equals(s);
-            if (!sfnt) throw new java.io.IOException("File is not a valid TTF/OTF font");
+                    || "OTTO".equals(s) || "true".equals(s) || "typ1".equals(s) || "ttcf".equals(s);
+            if (!sfnt) throw new java.io.IOException("File is not a valid TTF/OTF/TTC font");
         } catch (Exception error) {
             target.delete();
             throw error;
@@ -255,7 +263,7 @@ final class VectorCraftExtras {
         File target = null;
         try {
             String ext = extension(displayName(uri));
-            if (ext == null) throw new java.io.IOException("Choose a .ttf or .otf font");
+            if (ext == null) throw new java.io.IOException("Choose a .ttf, .otf or .ttc font");
             File dest = new File(fonts(), "Imported");
             if (!dest.isDirectory() && !dest.mkdirs())
                 throw new java.io.IOException("Cannot create imported font folder");
@@ -289,11 +297,13 @@ final class VectorCraftExtras {
                 }
                 if (!granted) throw new SecurityException("Shared folder access expired; select again");
                 if (!staging.mkdirs()) throw new java.io.IOException("Cannot create font staging folder");
-                int count = 0, skipped = 0, folders = 0;
+                int count = 0, skipped = 0, folders = 0, attempted = 0;
+                long[] budget = {0};
+                boolean limited = false;
                 ArrayDeque<String> pending = new ArrayDeque<>();
                 HashSet<String> seen = new HashSet<>();
                 pending.add(DocumentsContract.getTreeDocumentId(treeUri));
-                while (!pending.isEmpty() && count < MAX_FONTS && folders < MAX_FOLDERS) {
+                while (!pending.isEmpty() && attempted < MAX_FONTS && folders < MAX_FOLDERS && budget[0] < MAX_SCAN_BYTES) {
                     String parent = pending.removeFirst();
                     if (!seen.add(parent)) continue;
                     folders++;
@@ -304,7 +314,7 @@ final class VectorCraftExtras {
                                     DocumentsContract.Document.COLUMN_MIME_TYPE,
                                     DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
                         if (cursor == null) { skipped++; continue; }
-                        while (cursor.moveToNext() && count < MAX_FONTS) {
+                        while (cursor.moveToNext() && attempted < MAX_FONTS && budget[0] < MAX_SCAN_BYTES) {
                             String documentId = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
@@ -312,10 +322,12 @@ final class VectorCraftExtras {
                             if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
                                 if (seen.size() + pending.size() < MAX_FOLDERS)
                                     pending.addLast(documentId);
+                                else limited = true;
                                 continue;
                             }
                             String ext = extension(name);
                             if (ext == null) continue;
+                            attempted++;
                             if (!cursor.isNull(3)) {
                                 long bytes = cursor.getLong(3);
                                 if (bytes <= 0 || bytes > MAX_FONT) { skipped++; continue; }
@@ -325,7 +337,7 @@ final class VectorCraftExtras {
                                     documentId.getBytes(StandardCharsets.UTF_8)).toString();
                             File target = new File(staging, "font-" + nameHash + ext);
                             try {
-                                copyValidated(activity.getContentResolver().openInputStream(document), target);
+                                copyValidated(activity.getContentResolver().openInputStream(document), target, budget);
                                 count++;
                             } catch (Exception badFont) {
                                 skipped++;
@@ -339,23 +351,31 @@ final class VectorCraftExtras {
                         Log.w(TAG, "Could not scan shared font subfolder", unreadableFolder);
                     }
                 }
-                // A partial scan must never evict previously usable fonts.
-                if (skipped > 0 || !pending.isEmpty() || count >= MAX_FONTS)
-                    throw new java.io.IOException("Incomplete shared font scan; previous fonts preserved");
-                File allFonts = fonts();
-                if (!allFonts.isDirectory() && !allFonts.mkdirs())
-                    throw new java.io.IOException("Cannot create Fonts folder");
-                File shared = new File(allFonts, "Shared");
-                File backup = new File(files(), "previous-shared-fonts-" + UUID.randomUUID());
-                if (shared.exists() && !shared.renameTo(backup))
-                    throw new java.io.IOException("Cannot preserve previous shared font cache");
-                if (!staging.renameTo(shared)) {
-                    if (backup.exists()) backup.renameTo(shared);
-                    throw new java.io.IOException("Cannot activate new shared font cache");
+                limited |= !pending.isEmpty() || attempted >= MAX_FONTS || budget[0] >= MAX_SCAN_BYTES;
+                // Merge valid discoveries without evicting existing fonts when a provider,
+                // bad font or scan limit makes this refresh partial.
+                File shared = new File(fonts(), "Shared");
+                if (!shared.isDirectory() && !shared.mkdirs())
+                    throw new java.io.IOException("Cannot create Shared font cache");
+                int added = 0, existing = 0;
+                File[] ready = staging.listFiles();
+                if (ready != null) for (File file : ready) {
+                    String ext = extension(file.getName());
+                    File target = new File(shared, "font-" + fontDigest(file) + ext);
+                    if (target.exists()) { existing++; continue; }
+                    try {
+                        try { java.nio.file.Files.move(file.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE); }
+                        catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                            java.nio.file.Files.move(file.toPath(), target.toPath());
+                        }
+                        added++;
+                    } catch (Exception error) { skipped++; Log.w(TAG, "Cannot cache shared font", error); }
                 }
-                deleteTree(backup);
                 report(id, "font_folder", "ok",
-                        "Shared fonts loaded: " + count + "; skipped: " + skipped, count);
+                        "Scan: " + attempted + " font files, " + folders + " folders; cached " + added
+                        + "; existing " + existing + "; skipped " + skipped
+                        + (limited ? "; scan limit reached" : "")
+                        + ". Previous fonts kept; refreshing font catalog…", added);
             } catch (Exception error) {
                 report(id, "font_folder", "error", error.toString(), 0);
             } finally {

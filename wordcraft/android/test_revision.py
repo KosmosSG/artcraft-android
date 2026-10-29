@@ -57,6 +57,8 @@ class RevisionTests(unittest.TestCase):
             shutil.copyfile(ROOT / 'reference/build-common.sh', root / 'lib/build-common.sh')
             shutil.copyfile(ROOT / 'reference/app_icons.py', root / 'lib/app_icons.py')
             shutil.copyfile(ROOT / 'reference/SafActivity.java', root / 'templates/android/SafActivity.java')
+            shutil.copyfile(ROOT / 'reference/system_fonts.rs', root / 'templates/android/system_fonts.rs')
+            shutil.copyfile(ROOT / 'reference/dialogs.rs', root / 'source/wordcraft/crates/ui-egui/src/dialogs.rs')
             java = root / 'templates/android/SafActivity.java'
             java.write_text(java.read_text().rstrip() + '\n')
             shutil.copyfile(ROOT / 'reference/ribbon.rs', root / 'source/wordcraft/crates/ui-egui/src/ribbon.rs')

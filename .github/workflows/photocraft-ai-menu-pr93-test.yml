@@ -42,12 +42,29 @@ jobs:
           set -euo pipefail
           rustc --edition 2021 --test adapters/photocraft/src/ai_tools.rs -o "$RUNNER_TEMP/photocraft-ai-tools-tests"
           "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          # Compile the read-only model inventory together with the exact
+          # existing HTTP client, using Rust-only mock ComfyUI endpoints.
+          cat > "$RUNNER_TEMP/photocraft-ai-model-tests.rs" <<EOF
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_tools.rs"]
+          mod ai_tools;
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_models.rs"]
+          mod ai_models;
+          EOF
+          rustc --edition 2021 --test "$RUNNER_TEMP/photocraft-ai-model-tests.rs" -o "$RUNNER_TEMP/photocraft-ai-model-tests"
+          "$RUNNER_TEMP/photocraft-ai-model-tests"
           # Network-sensitive acceptance: only GET /system_stats; no model,
           # prompt, upload, WebSocket or image endpoint permitted in this stage.
           python3 - <<'PY'
           from pathlib import Path
           menu=Path("adapters/photocraft/src/ai_menu.rs").read_text()
           tools=Path("adapters/photocraft/src/ai_tools.rs").read_text()
+          models=Path("adapters/photocraft/src/ai_models.rs").read_text()
+          assert 'Check Installed Models (read-only)' in menu
+          assert 'ai_models::inspect_models(&endpoint)' in menu
+          assert 'pub(crate) fn inspect_models' in models
+          assert '"/models/checkpoints"' in models
+          assert '"/models/upscale_models"' in models
+          assert 'mod ai_models;' in Path("adapters/photocraft/src/lib.rs").read_text()
           assert 'ui.button("ComfyUI Connection…")' in menu
           assert 'ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan)' in menu
           assert 'std::thread::spawn(move ||' in menu
@@ -61,12 +78,13 @@ jobs:
           assert 'Only private LAN IP addresses are allowed' in tools
           assert 'ui.add_enabled(false, egui::Button::new(action.label()))' in menu
           for forbidden in ("POST /prompt", "POST /upload", "upload_image", "load_checkpoint"):
-              assert forbidden not in tools + menu, forbidden
+              assert forbidden not in tools + menu + models, forbidden
           print("PASS: opt-in, non-blocking, no-image-upload ComfyUI diagnostics scaffold")
           PY
           mkdir -p "$RUNNER_TEMP/pr93-ai"
           cp adapters/photocraft/src/ai_menu.rs "$RUNNER_TEMP/pr93-ai/ai_menu.rs"
           cp adapters/photocraft/src/ai_tools.rs "$RUNNER_TEMP/pr93-ai/ai_tools.rs"
+          cp adapters/photocraft/src/ai_models.rs "$RUNNER_TEMP/pr93-ai/ai_models.rs"
           cp tools/photocraft_ai_preview_stage.py "$RUNNER_TEMP/pr93-ai/stage.py"
           cp tools/photocraft_ai_window_patch.py "$RUNNER_TEMP/pr93-ai/window_patch.py"
           python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" --self-test
@@ -142,7 +160,7 @@ jobs:
           a=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())
           assert a['package']['metadata']['android']['package']=='com.artcraft.photocraft.ai.preview'
           lib=Path("adapters/photocraft/src/lib.rs").read_text()
-          for word in ('mod ai_menu;', 'mod ai_tools;', 'artcraft_finish_type_escape',
+          for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'artcraft_finish_type_escape',
                        'self.ai_menu.show(ui);', 'mod android_modifiers;',
                        'shortcut_pad::ShortcutPad', 'artcraft_discard_prompt_owns_keyboard'):
               assert word in lib, word
@@ -188,7 +206,7 @@ jobs:
           grep -F "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'" <<<"$BADGING"
           unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
           mkdir -p candidate
-          cp "$APK" candidate/PhotoCraft-AI-ComfyUI-Timeout-Diagnostics-ARM64-PR93.apk
+          cp "$APK" candidate/PhotoCraft-AI-Model-Inventory-ARM64-PR93.apk
           cp icon-verification/verification.json candidate/icon-verification.json
           sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
           cat > candidate/TEST-INSTRUCTIONS.txt <<'EOF'
@@ -231,7 +249,12 @@ jobs:
               Compare whether Linux Lab stays running in the background.
           11. AI Tools > About AI Tools opens/closes.
           12. Verify Esc, V/T, C/Y/N, fonts, open/save, updater and icons.
-          13. No model execution, non-destructive image editing, or release yet.
+          13. After connection succeeds, press Check Installed Models (read-only).
+              With Linux Lab kept visible, expect checkpoint and upscale-model
+              file counts (possibly both zero). Check that no images or prompts
+              are sent, no models are downloaded, and editor stays responsive.
+              If Linux Lab is hidden, a timeout may occur from OS throttling.
+          14. No model execution, non-destructive image editing, or release yet.
 
           This is a preview only. No functional AI inference, ComfyUI call or
           public release. Send screenshots and any shortcut key results.
@@ -240,7 +263,7 @@ jobs:
       - name: Upload corrected PhotoCraft AI Preview ARM64 APK
         uses: actions/upload-artifact@v5
         with:
-          name: PhotoCraft-AI-ComfyUI-Timeout-Diagnostics-ARM64-PR93
+          name: PhotoCraft-AI-Model-Inventory-ARM64-PR93
           path: candidate/
           if-no-files-found: error
           retention-days: 14

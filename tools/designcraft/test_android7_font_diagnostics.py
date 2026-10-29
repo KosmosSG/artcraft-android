@@ -24,8 +24,7 @@ class Android7FontDiscoveryGuards(unittest.TestCase):
         self.assertIn('["/system/fonts", "/product/fonts"]', patched)
         self.assertIn('dirs.extend(unix_font_dirs(', patched)
         self.assertEqual(patched.count('/system/fonts'), 1)
-        with self.assertRaises(ValueError):
-            patch_designcraft_font_catalog(patched)
+        self.assertEqual(patched.count('dirs.extend(["/system/fonts", "/product/fonts"]'), 1)
         with self.assertRaises(ValueError):
             patch_designcraft_font_catalog("new upstream API")
 

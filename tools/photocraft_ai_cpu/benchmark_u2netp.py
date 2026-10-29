@@ -27,12 +27,14 @@ MAX_INPUT_BYTES = 24 * 1024 * 1024
 CPU_THREADS = 2
 
 
+def model_root() -> Path:
+    # Keep experiment model weights in this app's own folder. rembg 2.0.78
+    # resolves U2NET_HOME/models/u2netp/u2netp.onnx, not the old flat path.
+    return Path.home() / ".local" / "share" / "photocraft-ai-cpu"
+
+
 def model_directory() -> Path:
-    value = os.environ.get("U2NET_HOME")
-    if value:
-        return Path(value).expanduser()
-    # rembg model cache default as of rembg 2.0.78
-    return Path(os.environ.get("XDG_DATA_HOME", "~")).expanduser() / ".u2net"
+    return model_root() / "models" / "u2netp"
 
 
 def model_integrity(path: Path) -> tuple[bool, str]:
@@ -101,6 +103,9 @@ def benchmark(input_file: Path | None, output_file: Path | None,
     os.environ["OMP_NUM_THREADS"] = str(CPU_THREADS)
     os.environ["OPENBLAS_NUM_THREADS"] = str(CPU_THREADS)
     os.environ["MKL_NUM_THREADS"] = str(CPU_THREADS)
+    # rembg reads U2NET_HOME to choose the cache root. This process-only
+    # override is never exported to the user's working ComfyUI environment.
+    os.environ["U2NET_HOME"] = str(model_root())
     if platform.machine().lower() not in ("aarch64", "arm64", "x86_64"):
         print("WARNING: untested architecture; proceeding in CPU-only mode")
     model_file = model_directory() / MODEL_FILENAME
@@ -192,11 +197,9 @@ def benchmark(input_file: Path | None, output_file: Path | None,
 
 def self_test() -> int:
     import tempfile
-    old_home = os.environ.get("U2NET_HOME")
     try:
         with tempfile.TemporaryDirectory() as root:
-            os.environ["U2NET_HOME"] = root
-            assert model_directory() == Path(root)
+            assert model_directory() == model_root() / "models" / "u2netp"
             assert model_integrity(Path(root) / MODEL_FILENAME) == (False, "not installed")
             for pair in [(0, 20), (5000, 1000), (20, 0)]:
                 try:
@@ -219,11 +222,8 @@ def self_test() -> int:
                 pass
             out = output_location(original, Path(root) / "new.png")
             assert out.name == "new.png" and not out.exists()
-    finally:
-        if old_home is None:
-            os.environ.pop("U2NET_HOME", None)
-        else:
-            os.environ["U2NET_HOME"] = old_home
+    except Exception:
+        raise
     print("PASS: no-dependency safety tests (paths, limits, no overwrite, no auto-download)")
     return 0
 

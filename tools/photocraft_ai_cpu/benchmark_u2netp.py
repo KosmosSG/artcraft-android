@@ -28,13 +28,16 @@ CPU_THREADS = 2
 
 
 def model_root() -> Path:
-    # Keep experiment model weights in this app's own folder. rembg 2.0.78
-    # resolves U2NET_HOME/models/u2netp/u2netp.onnx, not the old flat path.
+    # Keep experiment model weights in this app's own folder. The PINNED
+    # rembg v2.0.78 BaseSession.u2net_home() uses U2NET_HOME directly;
+    # it saves u2netp.onnx in this flat directory, not models/u2netp/.
+    # Verified against v2.0.78 source and owner tablet's download log.
     return Path.home() / ".local" / "share" / "photocraft-ai-cpu"
 
 
 def model_directory() -> Path:
-    return model_root() / "models" / "u2netp"
+    # Compatible with rembg==2.0.78's flat U2NET_HOME model layout.
+    return model_root()
 
 
 def model_integrity(path: Path) -> tuple[bool, str]:
@@ -103,8 +106,8 @@ def benchmark(input_file: Path | None, output_file: Path | None,
     os.environ["OMP_NUM_THREADS"] = str(CPU_THREADS)
     os.environ["OPENBLAS_NUM_THREADS"] = str(CPU_THREADS)
     os.environ["MKL_NUM_THREADS"] = str(CPU_THREADS)
-    # rembg reads U2NET_HOME to choose the cache root. This process-only
-    # override is never exported to the user's working ComfyUI environment.
+    # rembg==2.0.78 uses U2NET_HOME as the flat cache directory. This
+    # process-only override never changes the user's ComfyUI environment.
     os.environ["U2NET_HOME"] = str(model_root())
     if platform.machine().lower() not in ("aarch64", "arm64", "x86_64"):
         print("WARNING: untested architecture; proceeding in CPU-only mode")
@@ -199,7 +202,8 @@ def self_test() -> int:
     import tempfile
     try:
         with tempfile.TemporaryDirectory() as root:
-            assert model_directory() == model_root() / "models" / "u2netp"
+            assert model_directory() == model_root()
+            assert model_directory() / MODEL_FILENAME == model_root() / "u2netp.onnx"
             assert model_integrity(Path(root) / MODEL_FILENAME) == (False, "not installed")
             for pair in [(0, 20), (5000, 1000), (20, 0)]:
                 try:

@@ -42,6 +42,23 @@ jobs:
           set -euo pipefail
           rustc --edition 2021 --test adapters/photocraft/src/ai_tools.rs -o "$RUNNER_TEMP/photocraft-ai-tools-tests"
           "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          # Network-sensitive acceptance: only GET /system_stats; no model,
+          # prompt, upload, WebSocket or image endpoint permitted in this stage.
+          python3 - <<'PY'
+          from pathlib import Path
+          menu=Path("adapters/photocraft/src/ai_menu.rs").read_text()
+          tools=Path("adapters/photocraft/src/ai_tools.rs").read_text()
+          assert 'ui.button("ComfyUI Connection…")' in menu
+          assert 'ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan)' in menu
+          assert 'std::thread::spawn(move ||' in menu
+          assert 'endpoint.probe_system_stats()' in menu
+          assert 'GET /system_stats HTTP/1.0' in tools
+          assert 'Only private LAN IP addresses are allowed' in tools
+          assert 'ui.add_enabled(false, egui::Button::new(action.label()))' in menu
+          for forbidden in ("POST /prompt", "POST /upload", "upload_image", "load_checkpoint"):
+              assert forbidden not in tools + menu, forbidden
+          print("PASS: opt-in, non-blocking, no-image-upload ComfyUI diagnostics scaffold")
+          PY
           mkdir -p "$RUNNER_TEMP/pr93-ai"
           cp adapters/photocraft/src/ai_menu.rs "$RUNNER_TEMP/pr93-ai/ai_menu.rs"
           cp adapters/photocraft/src/ai_tools.rs "$RUNNER_TEMP/pr93-ai/ai_tools.rs"
@@ -166,7 +183,7 @@ jobs:
           grep -F "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'" <<<"$BADGING"
           unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
           mkdir -p candidate
-          cp "$APK" candidate/PhotoCraft-AI-Window-Toggle-ARM64-PR93.apk
+          cp "$APK" candidate/PhotoCraft-AI-ComfyUI-Connection-ARM64-PR93.apk
           cp icon-verification/verification.json candidate/icon-verification.json
           sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
           cat > candidate/TEST-INSTRUCTIONS.txt <<'EOF'
@@ -187,8 +204,17 @@ jobs:
           6. Window > Show AI Tools is checked by default; uncheck to remove
              the extra AI Tools top row; check again to restore it.
           7. Restart PhotoCraft AI Preview: hidden/shown state is remembered.
-          8. AI Tools > About AI Tools opens/closes; five AI operations remain disabled.
-          9. Verify fonts, open/save, updater and menus have no regressions.
+          8. AI Tools > ComfyUI Connection: initially no test is running.
+             An invalid/public IP is rejected and no request is made.
+             Enter the private IP of a trusted ComfyUI computer: e.g.
+             http://192.168.1.20:8188 (replace with actual LAN IP).
+             Tick private LAN consent and press Test Connection.
+             If ComfyUI is running and reachable, expect Connected.
+             If not, expect visible error feedback without UI hanging.
+             Image data MUST NOT be uploaded and AI actions MUST stay disabled.
+          9. AI Tools > About AI Tools opens/closes.
+          10. Verify Esc, V/T, C/Y/N, fonts, open/save, updater and icons.
+          11. No model execution, non-destructive image editing, or release yet.
 
           This is a preview only. No functional AI inference, ComfyUI call or
           public release. Send screenshots and any shortcut key results.
@@ -197,7 +223,7 @@ jobs:
       - name: Upload corrected PhotoCraft AI Preview ARM64 APK
         uses: actions/upload-artifact@v5
         with:
-          name: PhotoCraft-AI-Window-Toggle-ARM64-PR93
+          name: PhotoCraft-AI-ComfyUI-Connection-ARM64-PR93
           path: candidate/
           if-no-files-found: error
           retention-days: 14

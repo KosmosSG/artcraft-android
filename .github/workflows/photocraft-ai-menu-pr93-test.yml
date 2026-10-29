@@ -97,6 +97,31 @@ jobs:
           sdkmanager --install "ndk;27.2.12479018"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Pin official PhotoCraft v0.16.0 source for Android UI compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Do NOT fetch upstream main (currently 0.17.0 / egui-winit 0.37).
+          # The Android builder's vendored egui-winit and winit expect the 0.36
+          # generation. Clone an explicit upstream tag into this disposable
+          # runner only; build-common.sh reuses this exact checkout.
+          git clone --depth 1 --branch v0.16.0 https://github.com/storytold/photocraft.git source/photocraft
+          ACTUAL="$(git -C source/photocraft rev-parse HEAD)"
+          EXPECTED="b1794c6e0608ccfc887213dcf58398977c5cb75e"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "Upstream PhotoCraft v0.16.0 tag changed; refuse to build" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          root = tomllib.loads(Path('source/photocraft/Cargo.toml').read_text())
+          assert root['workspace']['package']['version'] == '0.16.0'
+          assert root['workspace']['dependencies']['egui']['version'] == '0.36'
+          assert root['workspace']['dependencies']['eframe']['version'] == '0.36'
+          print('Pinned official PhotoCraft v0.16.0, egui/eframe 0.36')
+          PY
+
       - name: Build debug-only PhotoCraft AI menu APK
         shell: bash
         run: |

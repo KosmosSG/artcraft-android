@@ -344,3 +344,29 @@
             catch (Exception error) { gcSend("update", "error", "Cannot open release page: " + error.getMessage()); }
         });
     }
+    private final java.util.concurrent.atomic.AtomicInteger gcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean gcDialogActive;
+    private final java.util.HashSet<Integer> gcDialogKeys = new java.util.HashSet<>();
+    public int gcUnsavedDialog(boolean active) {
+        gcDialogActive = active;
+        int action = gcDialogAction.getAndSet(0);
+        return active ? action : 0;
+    }
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
+            int code = event.getKeyCode();
+            if (gcDialogKeys.contains(code)) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_UP) gcDialogKeys.remove(code);
+                return true;
+            }
+            int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
+            if (gcDialogActive && action != 0 && event.hasNoModifiers()
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                gcDialogKeys.add(code);
+                if (event.getRepeatCount() == 0) gcDialogAction.compareAndSet(0, action);
+                return true;
+            }
+        }
+
+        return super.dispatchKeyEvent(event);
+    }

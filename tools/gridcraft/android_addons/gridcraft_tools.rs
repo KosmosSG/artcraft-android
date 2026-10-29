@@ -23,6 +23,21 @@ pub struct GridCraftTools {
     feedback_until: Option<std::time::Instant>,
 }
 impl GridCraftTools {
+    pub fn unsaved_dialog(&self, active: bool, ctx: &eframe::egui::Context) {
+        if !active { ctx.data_mut(|d| d.remove::<u8>(eframe::egui::Id::new("gridcraft.unsaved.dcs"))); }
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("gcUnsavedDialog"), jni_sig!("(Z)I"), &[JValue::Bool(active.into())]);
+            if result.is_err() { env.exception_clear(); }
+            result?.i()
+        });
+        if let Ok(action @ 1..=3) = result {
+            if active { ctx.data_mut(|d| d.insert_temp(eframe::egui::Id::new("gridcraft.unsaved.dcs"), action as u8)); }
+        }
+        if active { ctx.request_repaint_after(std::time::Duration::from_millis(16)); }
+    }
     pub fn new(app: &AndroidApp) -> Self {
         // SAFETY: AndroidApp owns this live JavaVM for the lifetime of the native activity.
         let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };

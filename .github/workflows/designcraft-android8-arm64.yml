@@ -2,7 +2,7 @@ name: DesignCraft Android.8 ARM64 compile candidate
 on:
   push:
     branches:
-      - feature/designcraft-android8-font-discovery-20261029
+      - feature/designcraft-android8-recursive-fonts-20261029
     paths:
       - 'tools/designcraft/**'
       - '.github/workflows/designcraft-android8-arm64.yml'

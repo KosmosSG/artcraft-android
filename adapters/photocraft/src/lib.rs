@@ -32,6 +32,7 @@ mod ime_bridge;
 
 // Preview UI and tool declarations live only in the Android adapter.
 mod ai_tools;
+mod ai_models;
 mod ai_menu;
 
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —

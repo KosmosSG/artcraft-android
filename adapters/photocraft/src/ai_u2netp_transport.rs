@@ -79,7 +79,19 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     if body.len() != expected || !body.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("Truncated or invalid PNG response".into());
     }
-    // Caller MUST fully decode PNG and check dimensions/alpha before layer insertion.
+    // Header preflight rejects non-alpha output before returning it to the caller.
+    // Caller MUST additionally fully decode PNG and check expected dimensions,
+    // pixels, and the active document revision before any layer insertion.
+    if body.len() < 33 || &body[12..16] != b"IHDR" ||
+        u32::from_be_bytes(body[8..12].try_into().unwrap()) != 13 ||
+        body[24] != 8 || !matches!(body[25], 4 | 6) {
+        return Err("U2NetP output must be 8-bit PNG with alpha".into());
+    }
+    let width = u32::from_be_bytes(body[16..20].try_into().unwrap());
+    let height = u32::from_be_bytes(body[20..24].try_into().unwrap());
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 4_000_000 {
+        return Err("U2NetP output dimensions exceed preview safety limit".into());
+    }
     Ok(body.to_vec())
 }
 
@@ -87,13 +99,20 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     fn sample() -> Vec<u8> {
-        let png = b"\x89PNG\r\n\x1a\nexample";
-        let mut result = format!("HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",png.len()).into_bytes();
-        result.extend_from_slice(png);
+        let mut png = vec![0u8; 33];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[8..12].copy_from_slice(&13u32.to_be_bytes());
+        png[12..16].copy_from_slice(b"IHDR");
+        png[16..20].copy_from_slice(&16u32.to_be_bytes());
+        png[20..24].copy_from_slice(&16u32.to_be_bytes());
+        png[24] = 8;
+        png[25] = 6;
+        let mut result = format!("HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len()).into_bytes();
+        result.extend_from_slice(&png);
         result
     }
     #[test] fn accepts_bounded_png_framing() {
-        assert_eq!(parse_response(&sample()).unwrap(), b"\x89PNG\r\n\x1a\nexample");
+        assert_eq!(parse_response(&sample()).unwrap().len(), 33);
     }
     #[test] fn rejects_truncation() {
         let mut v=sample();v.pop();assert!(parse_response(&v).is_err());
@@ -103,10 +122,10 @@ mod tests {
         assert!(parse_response(s.as_bytes()).is_err());
     }
     #[test] fn rejects_missing_length() {
-        let v=sample();let s=String::from_utf8_lossy(&v).replace("Content-Length: 15\r\n","");
+        let v=sample();let s=String::from_utf8_lossy(&v).replace("Content-Length: 33\r\n","");
         assert!(parse_response(s.as_bytes()).is_err());
     }
-    #[test] fn consent_and_loopback_required() {
+    #[test] fn rejects_non_alpha_output() {\n        let mut v = sample();\n        let start = v.windows(4).position(|w| w == b"\\r\\n\\r\\n").unwrap() + 4;\n        v[start + 25] = 2;\n        assert!(parse_response(&v).is_err());\n    }\n    #[test] fn consent_and_loopback_required() {
         let png=b"\x89PNG\r\n\x1a\n";
         let token="abcdefghijklmnopqrstuvwxyz0123456789";
         assert!(remove_background("127.0.0.1:18793".parse().unwrap(),token,png,false).is_err());

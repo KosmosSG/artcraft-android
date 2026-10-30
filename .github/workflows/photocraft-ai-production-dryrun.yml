@@ -171,7 +171,9 @@ jobs:
           a=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())
           assert a['package']['metadata']['android']['package']=='com.artcraft.photocraft'
           assert a['package']['metadata']['android']['application']['label']=='PhotoCraft'
-          assert a['package']['version']=='0.14.0-android.2'
+          assert a['package']['version']['workspace'] is True
+          # The generated Android manifest version is overridden to
+          # android.2 by prepare.sh only when the disposable build runs.
           lib=Path("adapters/photocraft/src/lib.rs").read_text()
           for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'mod ai_u2netp_transport;', 'mod ai_background_job;', 'mod ai_output_validation;', 'mod ai_background_editor;', 'artcraft_finish_type_escape',
                        'self.ai_menu.show(ui, &mut self.inner.session)', 'mod android_modifiers;',

@@ -210,3 +210,53 @@ release, Play Store deployment or stable APK publication is authorized.**
 - Two regression assertions verify that the HTTP transport and file bridge both invoke their mocked inference children with `stdout=DEVNULL`, `stderr=DEVNULL` and without `capture_output`. These are **source/CPU sidecar-only** changes; no model is downloaded, weights bundled, APK compiled, key accessed, device modified or public release created. The owner-tested PhotoCraft Android UI, keyboard, fonts, SAF and updater are unchanged.
 - The relevant GitHub Actions checks were automatically queued on that exact commit: [loopback transport #41104333397](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333397), [sidecar integration #41104333475](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333475), [standalone CPU safety #41104333340](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333340), and [production source review #41104333313](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333313). **Results pending at commit time; do not call them passing until checked.** No additional heavy ARM64 build was queued.
 - Production-signed candidate remains blocked on original-key signing (private hosted-runner execution unverified; owner-local original-key signing remains an option), followed by the signed APK compatibility gate, HONOR MagicPad 4 in-place/data-preservation test, and separate final publication approval. Keep PR93 **DRAFT** and the clean unsigned artifact private to the owner's local signing workflow.
+
+
+## 31 October 2026 — historical public failure-artifact leak (manual deletion required)
+
+**Safety finding, not a production-signing breach.** Retrospective inspection of
+[failed ARM proof run #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+found that the approved-branding verifier copied a disposable-key-signed APK
+bearing the **regular PhotoCraft package name** into the icon-verification
+directory. The old failure-only artifact step uploaded that directory
+along with build logs. GitHub reports an unexpired public artifact
+[PhotoCraft-AI-PR93-Keyboard-Icon-Failure, ID 12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625),
+31,308,102 bytes, created 30 October 2026 09:27 UTC and scheduled to expire
+6 November 2026 09:27 UTC. Its ~31 MB size, the explicit APK copy in
+the verifier, and the upload log are strong evidence that the diagnostic
+ZIP contains the throwaway-signed APK. **The ZIP entries have not been
+independently extracted/verified**, so do not assert its precise filename
+or version. This APK cannot update the original production app because
+its signer differs, but it must **not** be presented as a valid test/release
+APK. No evidence that the original permanent signing key was exposed.
+
+**Owner action required:** manually delete artifact **12966638625** from the
+linked Actions run's artifact controls as soon as possible; the available
+GitHub connector has no artifact-deletion action. Do not download, install,
+share or re-sign this failed-run diagnostic ZIP. A successful metadata-only
+[proof #41033840254](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+and the separately verified **unsigned** Linux Lab input remain distinct.
+
+**Prevention committed to PR93 only:** metadata-only workflow commit
+[285ba2c](https://github.com/KosmosSG/artcraft-android/commit/285ba2c878405865f2378bab1b17dbedb581018d)
+and unsigned workflow commit
+[ee0310a](https://github.com/KosmosSG/artcraft-android/commit/ee0310ab9b3a3d6858b7f7c022f612edc7549b13)
+remove failure-diagnostics artifact uploads altogether and always delete the
+icon-verification copy and disposable key/output APK. Both were committed
+with [skip ci] to avoid two unnecessary expensive ARM64 rebuilds. New
+static artifact allowlist regression
+[test_public_artifact_safety.py](https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/tools/photocraft_ai_cpu/test_public_artifact_safety.py)
+runs in [CI #41110533672](https://github.com/KosmosSG/artcraft-android/actions/runs/41110533672),
+**passed 2/2 tests**, with **no APK build, signing or artifact upload**.
+The tests assert that the regular-package proof uploads JSON only, the
+Linux Lab workflow uploads only its explicitly named unsigned APK/metadata,
+and neither uploads diagnostics or leaves the disposable APK copy.
+
+The earlier run #41032183666 failed on **Unexpected versionName**, not on
+an ARM compiler error; later proof #41033840254 fixed the versionName and
+succeeded. The separate private signer remains blocked by no-runner
+[run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and [probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865).
+Do not rerun private signing until a runner is demonstrably available.
+PR93 remains DRAFT, with no production-signed AI candidate, no publication
+approval and no owner in-place device acceptance.

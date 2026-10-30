@@ -83,6 +83,11 @@ def check() -> None:
     need("connection.settimeout(REQUEST_READ_TIMEOUT)" in server
          and "self.connection.settimeout(REQUEST_READ_TIMEOUT)" in server,
          "Server must bound both unauthenticated headers and PNG upload reads")
+    need("deadline = time.monotonic() + REQUEST_READ_TIMEOUT" in server
+         and "self.rfile.read1(" in server
+         and "self.connection.settimeout(seconds_left)" in server
+         and "if time.monotonic() > deadline:" in server,
+         "Server must enforce an absolute total PNG upload deadline, even for slow-trickle clients")
     # No model weights or other private binaries should be accidentally
     # committed with the AI integration. We only scan this small PR subtree.
     disallowed = sorted(str(p.relative_to(ROOT)) for p in

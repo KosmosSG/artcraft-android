@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in, loopback-only U2NetP HTTP transport for PhotoCraft AI experiments.
 
-Run inside the dedicated Linux Lab CPU venv. This is NOT wired to the editor.
+Run inside the dedicated Linux Lab CPU venv for the consent-gated PhotoCraft AI Preview.
 The caller must supply a random bearer token and explicit per-image consent.
 No model downloads, public bind, filesystem paths or persistent image storage.
 """
@@ -17,11 +17,13 @@ import subprocess
 import sys
 import tempfile
 import threading
-from PIL import Image, ImageOps
+from PIL import Image
 
 MAX_BYTES = 24 * 1024 * 1024
 MAX_PIXELS = 4_000_000
 MAX_RESULT = 32 * 1024 * 1024
+# A client that does not finish uploading must never monopolize inference.
+REQUEST_READ_TIMEOUT = 15
 BRIDGE = Path(__file__).resolve().with_name("local_background_bridge.py")
 
 
@@ -42,7 +44,9 @@ def make_handler(token: str):
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "PhotoCraftLocalCPU/0.1"
+        server_version = "PhotoCraftLocalCPU/0.2"
+        # Python normally sends HTTP/1.0; Android supports 1.0 and 1.1.
+        protocol_version = "HTTP/1.0"
 
         def log_message(self, fmt, *args):
             # Never log credentials, user paths or image contents.
@@ -63,22 +67,37 @@ def make_handler(token: str):
         def do_POST(self):
             if self.path != "/v1/remove-background":
                 return self.reply(404, b"Not found")
-            if not hmac.compare_digest(
-                self.headers.get("Authorization", ""),
-                "Bearer " + token,
+            # Reject duplicate credentials rather than allowing the HTTP
+            # parser to silently choose one of several Authorization values.
+            auth_values = self.headers.get_all("Authorization", [])
+            if len(auth_values) != 1 or not hmac.compare_digest(
+                auth_values[0], "Bearer " + token,
             ):
                 return self.reply(401, b"Unauthorized")
             if self.headers.get("X-PhotoCraft-Image-Consent") != "yes":
                 return self.reply(403, b"Per-image consent required")
             if self.headers.get("Content-Type", "").split(";")[0].strip() != "image/png":
                 return self.reply(415, b"PNG required")
-            raw_size = self.headers.get("Content-Length", "")
+            # Explicit length and no transfer-coding ambiguity. Never accept
+            # multiple Content-Length headers or HTTP chunked request bodies.
+            sizes = self.headers.get_all("Content-Length", [])
+            if len(sizes) != 1 or self.headers.get("Transfer-Encoding") is not None:
+                return self.reply(400, b"Ambiguous input framing")
+            raw_size = sizes[0]
             if not raw_size.isdecimal() or not (1 <= int(raw_size) <= MAX_BYTES):
                 return self.reply(413, b"Invalid input size")
             if not lock.acquire(blocking=False):
                 return self.reply(429, b"Another inference is running")
             try:
-                payload = self.rfile.read(int(raw_size))
+                self.connection.settimeout(REQUEST_READ_TIMEOUT)
+                try:
+                    payload = self.rfile.read(int(raw_size))
+                except (TimeoutError, ConnectionError):
+                    # A stalled or disconnected client must release the lock.
+                    try:
+                        return self.reply(408, b"Image upload timed out")
+                    except OSError:
+                        return
                 if len(payload) != int(raw_size):
                     return self.reply(400, b"Truncated image")
                 try:

@@ -87,8 +87,10 @@ def check() -> None:
          and "REQUEST_READ_TIMEOUT, self._abort_incomplete_headers" in server
          and "def parse_request(self):" in server
          and "self._header_timer.cancel()" in server
-         and "self.connection.shutdown(socket.SHUT_RDWR)" in server,
-         "Server must enforce an absolute pre-auth header deadline even for trickle clients")
+         and "self.connection.shutdown(socket.SHUT_RDWR)" in server
+         and "except (BrokenPipeError, ConnectionResetError):" in server
+         and "self._header_deadline_expired.is_set()" in server,
+         "Server must enforce a quiet absolute pre-auth header deadline even for trickle clients")
     need("deadline = time.monotonic() + REQUEST_READ_TIMEOUT" in server
          and "self.rfile.read1(" in server
          and "self.connection.settimeout(seconds_left)" in server

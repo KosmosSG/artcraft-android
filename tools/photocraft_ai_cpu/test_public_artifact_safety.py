@@ -73,11 +73,11 @@ class PublicArtifactSafetyTests(unittest.TestCase):
         for filename in EXPECTED:
             with self.subTest(workflow=filename):
                 source = (ROOT / filename).read_text()
-                self.assertNotRegex(
-                    source,
-                    r"(?s)uses: actions/upload-artifact@v\d+.*?"
-                    r"(?:icon-verification/|logs/|output/)",
-                )
+                for paths in upload_paths(source):
+                    for path in paths:
+                        self.assertNotIn("icon-verification", path)
+                        self.assertNotIn("logs/", path)
+                        self.assertNotIn("output/", path)
 
 
 if __name__ == "__main__":

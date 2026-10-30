@@ -63,7 +63,7 @@ class SidecarTests(unittest.TestCase):
             length = int.from_bytes(data[chunk:chunk + 4], "big")
             start, end = chunk + 8, chunk + 8 + length
             self.assertGreaterEqual(length, 3)
-            invalid_zlib = b"\\x78\\x9c" + b"\\xff" * (length - 2)
+            invalid_zlib = b"\x78\x9c" + b"\xff" * (length - 2)
             checksum = zlib.crc32(b"IDAT" + invalid_zlib).to_bytes(4, "big")
             source.write_bytes(data[:start] + invalid_zlib + checksum + data[end + 4:])
             with Image.open(io.BytesIO(source.read_bytes())) as image:

@@ -74,10 +74,15 @@ def check() -> None:
          "Missing per-image transport consent")
     server = (ROOT / "tools" / "photocraft_ai_cpu" /
               "loopback_u2netp_server.py").read_text()
-    need('ThreadingHTTPServer(("127.0.0.1", args.port)' in server,
-         "Linux Lab server must bind only to loopback")
-    need("REQUEST_READ_TIMEOUT" in server,
-         "Server must enforce bounded upload waiting time")
+    # The bounded-header subclass must still bind exclusively to 127.0.0.1.
+    # Checking only the old ThreadingHTTPServer constructor would incorrectly
+    # reject the safer subclass and miss a regression in pre-auth timeouts.
+    need('LoopbackHTTPServer(("127.0.0.1", args.port)' in server
+         and "class LoopbackHTTPServer(ThreadingHTTPServer)" in server,
+         "Linux Lab server must use the loopback-only bounded HTTP server")
+    need("connection.settimeout(REQUEST_READ_TIMEOUT)" in server
+         and "self.connection.settimeout(REQUEST_READ_TIMEOUT)" in server,
+         "Server must bound both unauthenticated headers and PNG upload reads")
     # No model weights or other private binaries should be accidentally
     # committed with the AI integration. We only scan this small PR subtree.
     disallowed = sorted(str(p.relative_to(ROOT)) for p in

@@ -1,5 +1,31 @@
 # PhotoCraft Android — AI Tools integration (experimental)
 
+> **Current verified status — 30 October 2026 (PR #93 remains DRAFT).**
+> The separate PhotoCraft AI Preview ARM64 APK build #49 succeeded and the owner
+> tested local U2NetP background removal on HONOR MagicPad 4: the subject was
+> extracted into a separate layer and Undo/Redo worked. A Linux Lab shortcut
+> was installed for manually starting the local CPU service. Five generic
+> AI commands still remain disabled; the dedicated opt-in U2NetP experiment
+> is a separately gated action. ComfyUI diagnostics remain read-only.
+>
+> **Stability updates:** Local server now enforces upload read timeouts and
+> rejects duplicate credentials/framing (commit `c40e2ec`).
+> [Seven live localhost regression tests passed](https://github.com/KosmosSG/artcraft-android/actions/runs/41020074067)
+> using synthetic PNGs and simulated inference.
+> [Production-name source integration review passed](https://github.com/KosmosSG/artcraft-android/actions/runs/41020427891)
+> at commit `3713e67`, preserving `com.artcraft.photocraft`, the `PhotoCraft`
+> label and existing manual release gates **without building or signing**.
+>
+> **Do not merge/publish yet:** regular PhotoCraft's current public
+> release is `photocraft-v0.14.0-android.1` (27 October 2026).
+> A future higher-versionCode update must use **the same production signing
+> certificate**, verify in-place installation/data preservation, pass
+> regression/lifecycle tests, and undergo model-rights review. Preview
+> APKs use disposable signing and a different package and cannot update
+> the production installation. The remaining sections chronicle earlier
+> development states and may use historical terms such as "not implemented."
+
+
 Status: **Phase 1 native AI Tools menu, Window → Show AI Tools, approved icons and physical shortcuts have been owner-tested. Phase 2 ComfyUI connection and read-only 0/0 model inventory were confirmed on HONOR MagicPad 4 while Linux Lab remained visible in a floating window.** Background Removal, Generative Fill, image uploads, non-destructive layer/Undo integration and reliable background execution remain unimplemented or unverified. PR #93 stays draft.
 
 ## Sources reviewed

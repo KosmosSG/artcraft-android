@@ -400,3 +400,57 @@ No original-signed AI candidate, in-place tablet acceptance or model-rights
 clearance exists yet. No heavy build, signing retry, private key access,
 model distribution, merge, device change or publication occurred. PR93 stays
 **DRAFT** pending separate owner approval.
+
+
+## 31 October 2026, 07:13 MYT — full PNG decode before CPU inference (PR93 only)
+
+**Reproducible failure:** Pillow's `Image.verify()` validates PNG chunk
+structure and CRC, but **does not inflate the IDAT pixel stream**. A
+synthetic PNG with a deliberately invalid zlib stream and recomputed valid
+IDAT CRC passed the old input check. It could therefore reach the expensive
+CPU model subprocess even though the PNG could not be decoded. This is an
+availability/input-validation bug; no real user images or model weights were
+needed to reproduce it.
+
+**Fixes:** [server `eb1683e5`](https://github.com/KosmosSG/artcraft-android/commit/eb1683e5af895befc850345e1ca1b8e386d90208)
+and [bridge `0cb422cc`](https://github.com/KosmosSG/artcraft-android/commit/0cb422cc0001ca751b2f15e31124c5b509d72ba2)
+now reopen and fully decode each already-bounded, consented PNG before
+launching inference. The existing 24 MiB / 4 MP input limits, localhost
+token consent, temporary files, inference timeout, validated alpha PNG
+output and non-destructive Android editor behavior remain unchanged.
+[Loopback regression `94b5aae5`](https://github.com/KosmosSG/artcraft-android/commit/94b5aae5cc1232a3e8db55cc175119514f4d7725)
+and [bridge regression `7b480832`](https://github.com/KosmosSG/artcraft-android/commit/7b4808324998c32b652558b5ce7b83f4ffd7ebb7)
+both construct CRC-correct but undecodable PNGs and assert **no model
+subprocess starts**. The first bridge fixture had a double-escaped byte
+literal and [CI #41143090342](https://github.com/KosmosSG/artcraft-android/actions/runs/41143090342)
+failed in test setup; [`f1801a96`](https://github.com/KosmosSG/artcraft-android/commit/f1801a965c5662a9aea396fb66e3975a23b0383c)
+corrected the fixture, without changing production code.
+
+**Verified final CI:** [loopback #41143064792](https://github.com/KosmosSG/artcraft-android/actions/runs/41143064792)
+**PASS 14/14**, including the CRC-valid broken-IDAT regression and valid
+request afterward; [sidecar #41143137007](https://github.com/KosmosSG/artcraft-android/actions/runs/41143137007)
+**PASS 5/5**, including the corrected bridge regression;
+[CPU safety #41143137025](https://github.com/KosmosSG/artcraft-android/actions/runs/41143137025)
+**PASS**; [production source review #41143136978](https://github.com/KosmosSG/artcraft-android/actions/runs/41143136978)
+**PASS**. These checks ran without downloading models, compiling an ARM
+APK, using signing keys or changing the owner's tablet.
+
+**Artifact/source provenance warning:** The previously available
+[clean unsigned ARM64 artifact #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+predates these PNG hardening commits. It remains a **non-installable,
+outdated signing input**, not evidence that the current PR93 source is
+present in an APK. The existing private signing workflow is pinned to
+the older `adb9b2d545f870a022f5d6be81c498668d240501` source and must
+be separately reviewed and re-pinned to an approved, verified candidate
+source **before** any future production signing. Do not rerun it merely
+because private runners become available. The latest private runs still
+failed without a runner; no original-signed candidate exists.
+
+**Unchanged release gates:** The historical
+[disposable-key diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+remains unexpired and previously requested for owner deletion. A fresh
+production-compatible ARM64 candidate from reviewed source, verified
+original-signing continuity, HONOR MagicPad 4 in-place data/feature tests,
+U2NetP weight-rights clearance where distribution is proposed, and explicit
+owner approval are still required. No PR merge, main change, publication,
+key access, or device change was performed. PR93 remains **DRAFT**.

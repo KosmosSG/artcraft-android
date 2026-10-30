@@ -303,3 +303,46 @@ Historical failed-build diagnostic artifact
 still exists as of this check and needs owner deletion from GitHub UI; it may
 contain a disposable-key APK. Owner device acceptance, licensing review and
 explicit final publication approval remain required. PR93 stays **DRAFT**.
+
+## 31 October 2026 — absolute upload deadline against slow-trickle clients (PR93 only)
+
+**Reproducible availability risk:** after the pre-auth header timeout fix,
+the sidecar still used a single `rfile.read(Content-Length)` with a
+15-second **socket inactivity timeout** while holding the one-inference lock.
+A localhost client could send one body byte every few seconds, indefinitely
+resetting that timeout without completing its PNG. This was an availability
+issue within the opt-in `127.0.0.1` endpoint, not a remote bind or a model
+data leak.
+
+**Fix and tests:** [`5c78d4d`](https://github.com/KosmosSG/artcraft-android/commit/5c78d4d78ffdd11ba509feec5d1cc59bb7611eaa)
+enforces an **absolute monotonic 15-second total body-upload deadline**
+with bounded `read1` chunks, independently of how frequently bytes arrive.
+The existing token, per-image consent, 24 MiB input/4 MP pixel caps,
+single-inference lock, bounded output, private errors and local-only bind
+remain unchanged. [`77eb23a`](https://github.com/KosmosSG/artcraft-android/commit/77eb23a846d81f1feb597253fb7cd4fcd310fed8)
+adds a live synthetic localhost test that deliberately trickles body bytes
+every 40 ms and verifies HTTP 408, **no inference**, lock release and a
+subsequent authorized request; [`13097f6`](https://github.com/KosmosSG/artcraft-android/commit/13097f62f3d6e2759781bb1155bb6d678b46da3c)
+simplifies the test's wire framing. [`044dfeb`](https://github.com/KosmosSG/artcraft-android/commit/044dfebbbf31e52d7b913266e16171a48013e8cc)
+adds an explicit absolute-deadline requirement to the production source
+review so this protection cannot be silently removed.
+
+**Verified GitHub Actions:** [loopback transport #41133031167](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031167)
+**PASS 10/10**, including the slow-trickle regression;
+[production source review #41133031070](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031070)
+**PASS**; [standalone CPU safety #41133031057](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031057)
+**PASS**. These are source/localhost mocked-inference checks only, **not**
+a new ARM APK build or HONOR MagicPad 4 acceptance.
+
+**Release boundaries rechecked:** [historical failed proof #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+remains completed/failed; [diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+still exists and requires owner deletion (suspected disposable-key APK).
+The [clean unsigned Linux Lab artifact #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+remains a **non-installable signing input**, not a production-signed APK.
+Private signer [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secrets probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+still show failed/no-runner execution, with **no newer private runs** as
+of this check. No signing attempt, secret access, model distribution,
+heavy build, merge, device update or public release occurred. PR93 remains
+**DRAFT**; original-signed candidate verification, owner in-place tests,
+licensing review and separate final publication approval are still required.

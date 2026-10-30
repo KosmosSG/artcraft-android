@@ -71,6 +71,7 @@ def make_handler(token: str):
             # occupy a handler indefinitely. Start the absolute deadline
             # before BaseHTTPRequestHandler reads even the request line.
             self._headers_finished = threading.Event()
+            self._header_deadline_expired = threading.Event()
             self._header_timer = threading.Timer(
                 REQUEST_READ_TIMEOUT, self._abort_incomplete_headers
             )
@@ -79,12 +80,25 @@ def make_handler(token: str):
 
         def _abort_incomplete_headers(self):
             if not self._headers_finished.is_set():
+                self._header_deadline_expired.set()
                 try:
                     # Wake a blocked rfile.readline without waiting for
                     # another client byte. Never expose token or request data.
                     self.connection.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
+
+        def handle_one_request(self):
+            try:
+                return super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError):
+                # Closing a timed-out pre-auth socket intentionally prevents
+                # any HTTP error response. Do not emit noisy tracebacks or
+                # potentially private request metadata for that expected case.
+                # Unrelated socket failures must retain normal diagnostics.
+                if not self._header_deadline_expired.is_set():
+                    raise
+                self.close_connection = True
 
         def parse_request(self):
             try:

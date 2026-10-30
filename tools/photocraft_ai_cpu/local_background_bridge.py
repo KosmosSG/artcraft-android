@@ -38,6 +38,12 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         if width < 1 or height < 1 or width * height > MAX_PIXELS:
             raise ValueError("Input dimensions outside safety limit")
         image.verify()
+    # verify() checks PNG chunk CRCs but does not inflate image pixels.
+    # Reject CRC-valid, corrupt IDAT streams before starting CPU inference.
+    with Image.open(source) as decoded:
+        decoded.load()
+        if decoded.size != (width, height):
+            raise ValueError("Decoded PNG dimensions changed")
     # Use the already-verified U2NetP model only; never pass download consent.
     # Do not capture the image or raw result in logs.
     completed = subprocess.run(

@@ -13,6 +13,7 @@ import io
 import os
 from pathlib import Path
 import secrets
+import socket
 import subprocess
 import sys
 import tempfile
@@ -62,6 +63,44 @@ def make_handler(token: str):
         server_version = "PhotoCraftLocalCPU/0.2"
         # Python normally sends HTTP/1.0; Android supports 1.0 and 1.1.
         protocol_version = "HTTP/1.0"
+
+        def setup(self):
+            super().setup()
+            # Socket timeouts alone only limit *inactivity*. A pre-auth
+            # client could otherwise drip a header byte every second and
+            # occupy a handler indefinitely. Start the absolute deadline
+            # before BaseHTTPRequestHandler reads even the request line.
+            self._headers_finished = threading.Event()
+            self._header_timer = threading.Timer(
+                REQUEST_READ_TIMEOUT, self._abort_incomplete_headers
+            )
+            self._header_timer.daemon = True
+            self._header_timer.start()
+
+        def _abort_incomplete_headers(self):
+            if not self._headers_finished.is_set():
+                try:
+                    # Wake a blocked rfile.readline without waiting for
+                    # another client byte. Never expose token or request data.
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+        def parse_request(self):
+            try:
+                return super().parse_request()
+            finally:
+                # The timer must NOT interrupt legitimate CPU inference after
+                # a complete header, even when processing exceeds 15 seconds.
+                self._headers_finished.set()
+                self._header_timer.cancel()
+
+        def finish(self):
+            try:
+                self._headers_finished.set()
+                self._header_timer.cancel()
+            finally:
+                super().finish()
 
         def log_message(self, fmt, *args):
             # Never log credentials, user paths or image contents.

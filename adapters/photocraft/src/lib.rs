@@ -34,6 +34,10 @@ mod ime_bridge;
 mod ai_tools;
 mod ai_models;
 mod ai_menu;
+mod ai_u2netp_transport;
+mod ai_background_job;
+mod ai_output_validation;
+mod ai_background_editor;
 
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.
@@ -672,7 +676,9 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         // Native menu; unimplemented actions remain disabled until backend verification.
-        self.ai_menu.show(ui);
+        if self.ai_menu.show(ui, &mut self.inner.session) {
+            self.inner.sync_views();
+        }
         self.inner.ui(ui, _frame);
     }
 

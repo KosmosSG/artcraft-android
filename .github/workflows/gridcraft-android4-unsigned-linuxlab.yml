@@ -83,11 +83,11 @@ jobs:
           anchor='    code = version_code(version)\n'
           assert s.count(anchor)==1, 'Pinned Android version generator changed'
           replacement='''    if app == "gridcraft":
-              assert version == "0.11.1", "Unexpected GridCraft upstream version"
-              version = "0.11.1-android.4"
-              code = 16780036
+                  assert version == "0.11.1", "Unexpected GridCraft upstream version"
+                  version = "0.11.1-android.4"
+                  code = 16780036
           else:
-              code = version_code(version)
+                  code = version_code(version)
           '''
           s=s.replace(anchor,replacement,1)
           p.write_text(s)

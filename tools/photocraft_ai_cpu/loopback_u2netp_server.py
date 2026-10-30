@@ -29,7 +29,9 @@ def verify_input(payload: bytes) -> tuple[int, int]:
     if not payload or len(payload) > MAX_BYTES:
         raise ValueError("Input size outside allowed range")
     with Image.open(io.BytesIO(payload)) as image:
-        width, height = ImageOps.exif_transpose(image).size
+        if image.format != "PNG":
+            raise ValueError("Only PNG input is accepted")
+        width, height = image.size
         if width < 1 or height < 1 or width * height > MAX_PIXELS:
             raise ValueError("Image dimensions outside allowed range")
         image.verify()

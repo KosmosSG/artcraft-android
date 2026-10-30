@@ -44,8 +44,12 @@ def stage(root: Path) -> None:
         raise ValueError("Only a checked PR93 isolated preview may be converted for this CI proof")
     data = exactly(data, f'package = "{PREVIEW}"', f'package = "{PRODUCTION}"')
     data = exactly(data, 'label = "PhotoCraft AI Preview"', 'label = "PhotoCraft"', 2)
-    data = exactly(data, f'version = "{OLD_VERSION}"', f'version = "{PROPOSED_VERSION}"')
+    # The template adapter inherits its Cargo workspace version. Its
+    # generated Android crate gets the .2 version only when build.sh runs
+    # prepare.sh with the explicit candidate-review environment override.
     parsed = tomllib.loads(data)
+    if parsed["package"].get("version", {}).get("workspace") is not True:
+        raise ValueError("Expected inherited adapter version (generated crate owns versionName)")
     if parsed["package"]["metadata"]["android"]["package"] != PRODUCTION:
         raise ValueError("Production package identity verification failed")
     java_sources = ["PhotoCraftActivity.java", "PhotoCraftUpdatePolicy.java"]

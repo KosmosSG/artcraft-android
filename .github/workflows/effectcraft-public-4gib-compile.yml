@@ -1,0 +1,193 @@
+name: effectcraft 4 GiB ARM64 compile only (NO production keys)
+'on':
+  push:
+    branches:
+    - feature/effectcraft-unsaved-dcs-20261028
+    paths:
+    - .github/workflows/effectcraft-public-4gib-compile.yml
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: effectcraft-public-4gib-compile
+  cancel-in-progress: false
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BUILDER_SHA: 29c698944b9bb9b67608acbf64ed3f1782c4719e
+      UPSTREAM_SHA: 9581b53c3f8945683252af0eb5fac79e0e43aed4
+      ARTCRAFT_TARGET_SDK: '35'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+    - name: Checkout pinned EffectCraft Android builder
+      uses: actions/checkout@v4
+      with:
+        repository: KosmosSG/artcraft-android
+        ref: 29c698944b9bb9b67608acbf64ed3f1782c4719e
+        path: builder
+        persist-credentials: false
+    - name: Validate pinned public source and run regressions
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+
+        python3 -m unittest discover -s builder/tools/effectcraft -p ''test_*.py'' -v
+
+        '
+    - name: Configure Java 21 and Rust 1.95 ARM64 target
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Install Rust cross compilation target
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Install Android 35 SDK and NDK 27
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK="$ANDROID_HOME"
+
+        test -d "$SDK/cmdline-tools"
+
+        echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        "$SDKMANAGER" --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Checkout exact official v0.16.0 source
+      shell: bash
+      run: 'set -euo pipefail
+
+        mkdir -p builder/source
+
+        git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git builder/source/effectcraft
+
+        test "$(git -C builder/source/effectcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+        grep -Fq ''pub fn session() -> Session'' builder/source/effectcraft/crates/host/src/lib.rs
+
+        python3 builder/tools/effectcraft/test_patch_unsaved_dcs.py builder/source/effectcraft
+
+        '
+    - name: Compile ARM64 with disposable builder signature
+      shell: bash
+      run: 'set -euo pipefail
+
+        cd builder
+
+        python3 tools/effectcraft/prepare_candidate.py .
+
+        python3 tools/effectcraft/install_packager.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 tools/effectcraft/integrate_updater.py .
+
+        echo ''548b40f2997037c5861c602fecfad71ef8bf3c78ad9e6189c8409d0a78629b0b  tools/effectcraft/icon/ec-approved-512.png''
+        | sha256sum -c -
+
+        cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
+
+        python3 tools/approved-branding/approved_branding.py install . effectcraft
+
+        bash build.sh -effectcraft -packagename=com.artcraft.effectcraft -appicon=source/effectcraft/ec-approved-512.png
+
+        test -s output/effectcraft-0.16.0.apk
+
+        mv output/effectcraft-0.16.0.apk output/EffectCraft-v0.16.0-android.8-arm64-v8a.apk
+
+        '
+    - name: Verify ARM64 package, version and approved artwork
+      shell: bash
+      run: "set -euo pipefail\nAPK=builder/output/EffectCraft-v0.16.0-android.8-arm64-v8a.apk\nSDK=\"$ANDROID_HOME/build-tools/35.0.0\"\
+        \n\"$SDK/apksigner\" verify --verbose --print-certs \"$APK\" > \"$RUNNER_TEMP/cert.txt\"\n\"$SDK/aapt\" dump badging\
+        \ \"$APK\" > \"$RUNNER_TEMP/badging.txt\"\npython3 - \"$APK\" \"$RUNNER_TEMP/cert.txt\" \"$RUNNER_TEMP/badging.txt\"\
+        \ <<'PY'\nimport os,re,sys,zipfile\nfrom pathlib import Path\napk,cert,badging=sys.argv[1:]\nx=Path(cert).read_text()\n\
+        signer=re.search(r'Signer #1 certificate SHA-256 digest:\\s*([a-fA-F0-9]+)',x)\nassert signer, 'Missing temporary\
+        \ builder signature'\ntext=Path(badging).read_text()\nm=re.search(r\"^package: name='([^']+)' versionCode='(\\d+)'\
+        \ versionName='([^']+)'\",text,re.M)\nassert m and m.group(1)=='com.artcraft.effectcraft' and m.group(3)=='0.16.0-android.8'\
+        \ and int(m.group(2))==16781320\nassert 'launchable-activity:' in text\nwith zipfile.ZipFile(apk) as z:\n    files=z.namelist()\n\
+        \    libs=[n for n in files if n.startswith('lib/') and n.endswith('.so')]\n    assert libs and all(n.startswith('lib/arm64-v8a/')\
+        \ for n in libs)\n    assert any(n.endswith('.dex') for n in files)\nprint('PASS: temporary signature, package, version,\
+        \ launcher and ARM64 native libraries.')\nPY\n\"$SDK/zipalign\" -c -P 16 -v 4 \"$APK\"\npython3 builder/tools/approved-branding/verify_apk.py\
+        \ builder verified-artwork\nmkdir -p candidate\ncp \"$APK\" candidate/\ncp \"$RUNNER_TEMP/cert.txt\" \"$RUNNER_TEMP/badging.txt\"\
+        \ candidate/\npython3 - <<'PY'\nimport json,hashlib,os,pathlib\np=pathlib.Path('candidate')\na=next(p.glob('*.apk'))\n\
+        digest=hashlib.sha256(a.read_bytes()).hexdigest()\n(p/'SHA256SUMS.txt').write_text(digest+'  '+a.name+'\\n')\n(p/'verification.json').write_text(json.dumps(dict(package='com.artcraft.effectcraft',versionName='0.16.0-android.8',versionCode=16781320,abi='arm64-v8a',certificate_sha256=None,source_commit=os.environ['BUILDER_SHA'],apk_sha256=digest,production_signing_verified=False,device_tested=False,eligible_for_release=False),indent=2))\n\
+        PY\nsha256sum \"$APK\" >> \"$GITHUB_STEP_SUMMARY\"\necho 'TEMPORARY SIGNATURE: not for installation. MagicOS 10 device\
+        \ validation remains required for persistent fonts, shared-folder refresh, native update dialogs and launcher icon.'\
+        \ >> \"$GITHUB_STEP_SUMMARY\"\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: effectcraft-4gib-UNSIGNED-NOT-FOR-INSTALL
+        path: candidate/
+        retention-days: 3
+        if-no-files-found: error
+    - name: Remove disposable key
+      if: always()
+      run: rm -rf builder/keys
+  dialog-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: KosmosSG/artcraft-android
+        ref: 29c698944b9bb9b67608acbf64ed3f1782c4719e
+        persist-credentials: false
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+    - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev
+    - name: Compile and execute real upstream unsaved-dialog regressions
+      run: 'set -euo pipefail
+
+        git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git upstream
+
+        test "$(git -C upstream rev-parse HEAD)" = ''9581b53c3f8945683252af0eb5fac79e0e43aed4''
+
+        python3 tools/effectcraft/patch_unsaved_dcs.py upstream
+
+        python3 tools/effectcraft/patch_font_catalog.py upstream
+
+        python3 -m pip install fonttools==4.60.1
+
+        python3 - <<''PY''
+
+        from fontTools.ttLib import TTFont, TTCollection
+
+        from pathlib import Path
+
+        c=TTCollection()
+
+        c.fonts=[TTFont(''upstream/assets/fonts/Inter-Regular.ttf''), TTFont(''upstream/assets/fonts/NotoSerif-Regular.ttf'')]
+
+        c.save(''upstream/android-test.ttc'')
+
+        PY
+
+        export EFFECTCRAFT_TEST_TTC="$PWD/upstream/android-test.ttc"
+
+        cd upstream
+
+        cargo test -p effectcraft-text --lib android_catalog_tests -- --test-threads=1
+
+        cargo test -p effectcraft-ui-egui --lib panels::unsaved:: -- --test-threads=1
+
+        '

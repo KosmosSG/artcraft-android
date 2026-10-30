@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Read-only reference identity for a previously PUBLIC PhotoCraft release APK.
+
+Never reads a private keystore, never signs an APK, and never alters a release.
+A matching certificate proves APK update compatibility, not who owns a key.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+
+PACKAGE = "com.artcraft.photocraft"
+TAG_PATTERN = re.compile(r"^photocraft-v[0-9]+\.[0-9]+\.[0-9]+-android\.[0-9]+$")
+PACKAGE_PATTERN = re.compile(
+    r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", re.M
+)
+SIGNER_PATTERN = re.compile(r"^Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]{64})$", re.M)
+
+
+def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
+    if not TAG_PATTERN.fullmatch(tag):
+        raise ValueError("Unexpected PhotoCraft reference release tag")
+    package = PACKAGE_PATTERN.search(badging)
+    certificate = SIGNER_PATTERN.search(signing)
+    if package is None or certificate is None:
+        raise ValueError("Missing Android package or signing certificate metadata")
+    name, code, version = package.groups()
+    if name != PACKAGE:
+        raise ValueError("Reference APK has the wrong package ID")
+    if version != tag.removeprefix("photocraft-v"):
+        raise ValueError("Reference APK version does not match its release tag")
+    if int(code) < 1:
+        raise ValueError("Invalid production versionCode")
+    return {
+        "tag": tag,
+        "package": name,
+        "version_name": version,
+        "version_code": int(code),
+        "signer_certificate_sha256": certificate.group(1).lower(),
+    }
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def inspect(apk: Path, aapt: Path, apksigner: Path, tag: str) -> dict[str, object]:
+    if not apk.is_file() or apk.suffix.lower() != ".apk":
+        raise ValueError("Reference APK is missing")
+    for tool in (aapt, apksigner):
+        if not tool.is_file():
+            raise ValueError("Android build-tools executable is missing")
+    subprocess.run([str(apksigner), "verify", "--verbose", str(apk)],
+                   check=True, capture_output=True, text=True)
+    badging = subprocess.check_output([str(aapt), "dump", "badging", str(apk)], text=True)
+    signing = subprocess.check_output(
+        [str(apksigner), "verify", "--print-certs", str(apk)], text=True
+    )
+    reference = parse_identity(badging, signing, tag)
+    reference["apk_sha256"] = sha256_file(apk)
+    reference["note"] = (
+        "Read-only identity from public production release. NOT a signed AI "
+        "candidate and NOT verification that a private signing key is available."
+    )
+    return reference
+
+
+def self_test() -> None:
+    tag = "photocraft-v0.14.0-android.1"
+    badge = ("package: name='com.artcraft.photocraft' versionCode='16790004' "
+             "versionName='0.14.0-android.1' platformBuildVersionName='15'\n")
+    signer = "Signer #1 certificate SHA-256 digest: " + "Ab" * 32 + "\n"
+    parsed = parse_identity(badge, signer, tag)
+    assert parsed["version_code"] == 16790004
+    assert parsed["signer_certificate_sha256"] == "ab" * 32
+    for wrong in (
+        (badge.replace(PACKAGE, "com.artcraft.photocraft.ai.preview"), signer, tag),
+        (badge.replace("0.14.0-android.1", "0.14.0-android.2"), signer, tag),
+        (badge, signer, "v0.14.0"),
+        (badge, "", tag),
+    ):
+        try:
+            parse_identity(*wrong)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Unsafe public release identity was accepted")
+    with tempfile.TemporaryDirectory() as root:
+        p = Path(root) / "data.apk"
+        p.write_bytes(b"identity-test")
+        assert sha256_file(p) == hashlib.sha256(b"identity-test").hexdigest()
+    print("PASS: package/version/tag/signing fingerprint parser and SHA256 contract")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--apk", type=Path)
+    parser.add_argument("--aapt", type=Path)
+    parser.add_argument("--apksigner", type=Path)
+    parser.add_argument("--tag")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if not all((args.apk, args.aapt, args.apksigner, args.tag, args.output)):
+        parser.error("Reference APK, aapt, apksigner, tag and output must all be provided")
+    report = inspect(args.apk, args.aapt, args.apksigner, args.tag)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print("PASS: verified existing public PhotoCraft APK identity (read-only)")
+    print("Reference package:", report["package"])
+    print("Reference version:", report["version_name"], "code", report["version_code"])
+    print("Reference certificate SHA256:", report["signer_certificate_sha256"])
+    print("A future candidate must keep the package and certificate, and increase versionCode.")
+    print("No candidate signed, private key read or release published.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        print(f"STOP: production reference identity verification failed: {exc}", file=sys.stderr)
+        sys.exit(1)

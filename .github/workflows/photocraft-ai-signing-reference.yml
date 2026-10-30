@@ -1,0 +1,64 @@
+name: PhotoCraft AI production signing reference (read-only)
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - 'tools/photocraft_ai_reference_signing.py'
+      - '.github/workflows/photocraft-ai-signing-reference.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-release-identity:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Offline tests (no private signing key)
+        run: |
+          python3 -m py_compile tools/photocraft_ai_reference_signing.py
+          python3 tools/photocraft_ai_reference_signing.py --self-test
+      - name: Download only existing public PhotoCraft release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reference
+          gh release download photocraft-v0.14.0-android.1 \
+            --repo KosmosSG/artcraft-android \
+            --pattern 'PhotoCraft-v0.14.0-android.1-arm64-v8a.apk' \
+            --dir reference
+          test -s reference/PhotoCraft-v0.14.0-android.1-arm64-v8a.apk
+      - name: Verify package version and signer certificate from released APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$(find "$SDK_ROOT/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -n "$AAPT" && test -n "$APKSIGNER"
+          python3 tools/photocraft_ai_reference_signing.py \
+            --apk reference/PhotoCraft-v0.14.0-android.1-arm64-v8a.apk \
+            --aapt "$AAPT" --apksigner "$APKSIGNER" \
+            --tag photocraft-v0.14.0-android.1 \
+            --output reference/production-identity.json
+          {
+            echo '## Existing public PhotoCraft production identity'
+            echo 'Parsed from already published APK with Android apksigner and aapt.'
+            echo 'No production keystore, signing secret, candidate build or release was used.'
+            echo ''
+            echo 'A future AI candidate must have the same package and certificate,'
+            echo 'a higher versionCode, and a passing in-place device update test.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload metadata only — no APK or private material
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-PR93-Public-Release-Signing-Reference
+          path: reference/production-identity.json
+          if-no-files-found: error
+          retention-days: 14

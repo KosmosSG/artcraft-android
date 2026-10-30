@@ -11,7 +11,7 @@ class Android8RecursiveFonts(unittest.TestCase):
             'visitedFolders < 5000', 'count < 5000',
             'lower.endsWith(".ttc")',
             'first == \'t\' && second == \'t\'',
-            '2L * 1024 * 1024 * 1024',
+            '4L * 1024 * 1024 * 1024',
             'StandardCopyOption.ATOMIC_MOVE',
             'getPersistedUriPermissions()',
         ):

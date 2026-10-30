@@ -150,6 +150,13 @@ is not proof that training-data and redistributed-weight rights are clear.
 - Model weights remain outside Android artifacts. Owner installation/data
   preservation and final publication approval remain outstanding.
 
+## Candidate identity hardening — 30 October 2026, 21:35 MYT
+
+- PR #93 source commit [`980200d`](https://github.com/KosmosSG/artcraft-android/commit/980200d5705d526ab909c54d60587da10150c3f4) strengthens the **read-only** `tools/photocraft_ai_candidate_compatibility.py` gate. Previously, malformed duplicate `package:`, `application-label:` or `launchable-activity:` lines could be ignored if one well-formed record also existed. The gate now counts **all raw identity records**, rejects malformed/ambiguous duplicates, and adds five regression scenarios (22 total). It does not touch the owner-tested Android app, fonts, SAF, AI model, build identity or signing material.
+- [CI run #41064512404](https://github.com/KosmosSG/artcraft-android/actions/runs/41064512404) **passed** on that exact source commit. Its job logs show the parser tests passed, **22/22 incompatible-candidate rejection scenarios** passed, and the real public PhotoCraft release identity was verified again. The only uploaded artifact was the 477-byte `PhotoCraft-PR93-Public-Release-Signing-Reference` JSON metadata; **no APK was built, signed, installed or distributed**.
+- Historical regular-package ARM64 proof [#5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254) remains the latest completed heavy build; it verified the intended regular PhotoCraft package but deleted the disposable-key APK. The private original-signing run [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and no-secret runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) still have **zero runner assignments and zero steps**, and there are no newer runs on the private candidate branch as of this check. No original-signed AI APK exists; the GitHub private-runner/account blocker still requires resolution before signing can be verified.
+- Model weights remain excluded from APK/release assets pending redistribution-rights review. Owner must still validate in-place install/data preservation on HONOR MagicPad 4 and explicitly approve any publication.
+
 ## Known blockers
 
 - The generic `build.sh -photocraft` builder creates

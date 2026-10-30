@@ -46,6 +46,9 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     rust = replace_exact(rust, "system_fonts::install_system_fonts(ui.ctx());",
                          "system_fonts::install_system_fonts(ui.ctx());\n        self.tools.ui(ui, &mut self.inner);")
 
+    rust = replace_exact(rust, "self.inner.logic(ctx);", "self.tools.editor_escape(&mut self.inner,ctx);\n        self.inner.android_capture_unsaved_dcs(ctx);\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\n        self.inner.logic(ctx);")
+    rust = replace_exact(rust, "self.inner.ui(ui);", "self.inner.ui(ui);\n        self.tools.editor_escape(&mut self.inner,ui.ctx());\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());")
+
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",
                          "super.onActivityResult(requestCode, resultCode, data);\n        if (gcHandleActivityResult(requestCode, resultCode, data)) return;")
     java = replace_exact(java, "super.onCreate(savedInstanceState);",

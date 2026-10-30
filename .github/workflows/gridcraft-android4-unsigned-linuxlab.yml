@@ -1,0 +1,171 @@
+name: GridCraft Android.4 ARM64 unsigned for Linux Lab (no production signing)
+on:
+  push:
+    branches: [feature/gridcraft-unsaved-dcs-20261029]
+    paths: ['.github/workflows/gridcraft-android4-unsigned-linuxlab.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gridcraft-android4-unsigned-linuxlab
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/gridcraft-unsaved-dcs-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate isolated GridCraft D/C/S source and artwork
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -v
+          python3 tools/gridcraft/verify_source.py
+          test -s assets/gridcraft/launcher-lettering.png
+          test -s tools/approved-branding/assets/GridCraft.png
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('tools/gridcraft/android_addons/overlay.py').read_text()
+          for marker in ('android_capture_unsaved_dcs', 'editor_escape', 'unsaved_dialog'):
+              assert marker in text, marker
+          for path in ('tools/gridcraft/patch_dcs_host.py','tools/gridcraft/patch_unsaved_dcs.py','tools/gridcraft/editor_escape.rs'):
+              assert Path(path).is_file()
+          print('PASS: exact GridCraft Android.4 overlay and modal/ESC source present')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK and image dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          python3 -m pip install 'Pillow==11.3.0'
+      - name: Apply D/C/S and ESC patches to pinned disposable builder and use exact Gc icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9
+          python3 tools/gridcraft/patch_dcs_host.py builder
+          python3 tools/gridcraft/install_overlay.py builder
+          python3 tools/approved-branding/approved_branding.py install builder gridcraft
+          cp assets/gridcraft/launcher-lettering.png tools/approved-branding/assets/launcher-lettering.png
+          # The pinned builder defaults to upstream 0.11.1. Override only the
+          # generated GridCraft Android APK metadata, never upstream crate SemVer.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('builder/lib/android_project.py')
+          s=p.read_text()
+          anchor='    code = version_code(version)\n'
+          assert s.count(anchor)==1, 'Pinned Android version generator changed'
+          replacement='''    if app == "gridcraft":
+                  assert version == "0.11.1", "Unexpected GridCraft upstream version"
+                  version = "0.11.1-android.4"
+                  code = 16780036
+              else:
+                  code = version_code(version)
+          '''
+          s=s.replace(anchor,replacement,1)
+          p.write_text(s)
+          PY
+          python3 -m py_compile builder/lib/android_project.py
+          bash -n builder/lib/build-common.sh
+      - name: Compile GridCraft Android.4 ARM64 with disposable key (key discarded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/GridCraft.png"
+      - name: Remove disposable signature, align, inspect, and package UNSIGNED APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -name 'gridcraft-*.apk' -print -quit)"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/gridcraft-android4-badging.txt
+          grep -F "name='com.artcraft.gridcraft'" /tmp/gridcraft-android4-badging.txt
+          grep -F "versionName='0.11.1-android.4'" /tmp/gridcraft-android4-badging.txt
+          grep -F "versionCode='16780036'" /tmp/gridcraft-android4-badging.txt
+          mkdir -p unsigned
+          python3 - "$APK" <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1])
+          out=Path('unsigned/unpacked-unsigned.apk')
+          with ZipFile(src) as original, ZipFile(out,'w') as unsigned:
+              for entry in original.infolist():
+                  name=entry.filename.upper()
+                  if name.startswith('META-INF/') and (name.endswith(('.RSA','.DSA','.EC','.SF','.MF')) or name.startswith('META-INF/SIG-')):
+                      continue
+                  unsigned.writestr(entry,original.read(entry.filename))
+          PY
+          "$BUILD_TOOLS/zipalign" -p -f 4 unsigned/unpacked-unsigned.apk unsigned/GridCraft-v0.11.1-android.4-arm64-v8a-UNSIGNED.apk
+          rm unsigned/unpacked-unsigned.apk
+          FINAL=unsigned/GridCraft-v0.11.1-android.4-arm64-v8a-UNSIGNED.apk
+          "$BUILD_TOOLS/zipalign" -c -p 4 "$FINAL"
+          if "$BUILD_TOOLS/apksigner" verify "$FINAL" >/dev/null 2>&1; then
+            echo "::error::APK still has a valid signature; refusing to label it unsigned"
+            exit 1
+          fi
+          "$BUILD_TOOLS/aapt" dump badging "$FINAL" > /tmp/unsigned-badging.txt
+          grep -F "name='com.artcraft.gridcraft'" /tmp/unsigned-badging.txt
+          grep -F "versionName='0.11.1-android.4'" /tmp/unsigned-badging.txt
+          grep -F "versionCode='16780036'" /tmp/unsigned-badging.txt
+          python3 - "$FINAL" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              assert any(p.startswith('lib/arm64-v8a/') and p.endswith('.so') for p in names)
+              assert 'classes.dex' in names
+              assert not any(p.endswith(('.jks','.p12','.keystore')) for p in names)
+              assert not any(p.startswith('META-INF/') and p.endswith(('.RSA','.DSA','.EC','.SF')) for p in names)
+          print('PASS: production package, Android.4 version, ARM64, Java code, no signature or keystore')
+          PY
+          (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
+          cat > unsigned/README.txt <<'TXT'
+          GridCraft 0.11.1-android.4 ARM64 — UNSIGNED, NOT INSTALLABLE YET.
+          Build uses PR #90 D/C/S, physical ESC, safe SAF save and approved Gc artwork.
+          Sign locally ONLY with the original GridCraft production certificate.
+          Verify that the original certificate matches the installed GridCraft app
+          and that versionCode 16780036 is greater than the installed version.
+          Do NOT generate a new key or install the unsigned APK.
+          GitHub workflow contains no production signing secrets or release publishing.
+          TXT
+          echo "### Unsigned GridCraft Android.4 for Linux Lab" >> "$GITHUB_STEP_SUMMARY"
+          echo "No production signing or publishing. Download the artifact and use your original GridCraft key." >> "$GITHUB_STEP_SUMMARY"
+          cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload verified unsigned APK for local Linux Lab signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCraft-v0.11.1-android.4-ARM64-UNSIGNED-LinuxLab
+          path: unsigned/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Discard ephemeral builder signing material
+        if: always()
+        run: rm -rf builder/keys builder/output

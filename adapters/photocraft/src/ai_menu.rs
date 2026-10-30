@@ -13,6 +13,7 @@ use std::time::Duration;
 pub(crate) struct AndroidAiMenu {
     show_about: bool,
     show_connection: bool,
+    show_background_setup: bool,
     endpoint_text: String,
     allow_private_lan: bool,
     connection_status: String,
@@ -35,6 +36,7 @@ impl AndroidAiMenu {
         Self {
             show_about: false,
             show_connection: false,
+            show_background_setup: false,
             endpoint_text: String::new(),
             allow_private_lan: false,
             connection_status: "No connection tested.".into(),
@@ -133,6 +135,10 @@ impl AndroidAiMenu {
                                 .on_hover_text("Coming soon — no AI processing backend is connected.");
                         }
                         ui.separator();
+                        if ui.button("Background Removal Setup…").clicked() {
+                            self.show_background_setup = true;
+                            ui.close();
+                        }
                         ui.add_enabled(false, egui::Button::new("Plugin Manager…"));
                         if ui.button("ComfyUI Connection…").clicked() {
                             self.show_connection = true;
@@ -145,6 +151,25 @@ impl AndroidAiMenu {
                     });
             });
         });
+
+        if self.show_background_setup {
+            egui::Window::new("PhotoCraft · Background Removal Setup")
+                .id(egui::Id::new("photocraft_android_ai_background_setup"))
+                .open(&mut self.show_background_setup)
+                .resizable(true)
+                .collapsible(false)
+                .show(&ctx, |ui| {
+                    ui.heading("U2NetP · Local CPU Processing");
+                    ui.label("The standalone U2NetP CPU test runs in Linux Lab, not inside this Android app.");
+                    ui.label("The local_background_bridge.py helper accepts a separately exported image and produces a new validated transparent PNG.");
+                    ui.separator();
+                    ui.label("Current stage: manual local-file handoff only.");
+                    ui.label("No document pixels are read or sent by this menu.");
+                    ui.label("No automatic import, layer insertion, or Undo/Redo is connected.");
+                    ui.label("The Remove Background command remains disabled until Android-to-Linux Lab transport, user consent, and undoable layer insertion are tested.");
+                    ui.label("Do not expose a local inference service to the public network.");
+                });
+        }
 
         if self.show_connection {
             // open() borrows a local variable rather than self, so inputs in

@@ -1,0 +1,167 @@
+name: vectorcraft 4 GiB ARM64 compile only (NO production keys)
+'on':
+  push:
+    branches:
+    - feature/vectorcraft-4gib-font-scan-20261030
+    paths:
+    - .github/workflows/vectorcraft-public-4gib-compile.yml
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: vectorcraft-public-4gib-compile
+  cancel-in-progress: false
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      ARTCRAFT_TARGET_SDK: '35'
+      VERSION_NAME: 0.14.0-android.13
+      VERSION_CODE: '16780813'
+      EXPECTED_PUBLIC_SHA: 17990043fc15f038a8046b0857abc09281fe67e0
+    steps:
+    - name: Check out reviewed public VectorCraft .11 source at immutable SHA
+      uses: actions/checkout@v5
+      with:
+        repository: KosmosSG/artcraft-android
+        ref: 17990043fc15f038a8046b0857abc09281fe67e0
+        path: public
+        persist-credentials: false
+    - name: Validate complete signed release input is exactly the reviewed .11 commit
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C public rev-parse HEAD)" = "$EXPECTED_PUBLIC_SHA"
+
+        test -s public/adapters/vectorcraft/src/android_modifiers.rs
+
+        test -s public/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+
+        test -s public/assets/branding/vectorcraft/vc-glass-approved.png
+
+        python3 -m unittest discover -s public/tools/vectorcraft -p ''test_*.py'' -v
+
+        '
+    - name: Check out pinned Android build tools
+      uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - name: Check out official VectorCraft v0.14.0 source
+      uses: actions/checkout@v5
+      with:
+        repository: storytold/vectorcraft
+        ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+        path: builder/source/vectorcraft
+        persist-credentials: false
+    - name: Pin and verify upstream and Android builder
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C builder rev-parse HEAD)" = ''ac54d62d9d2d6f663295a4afd8972a7a3e79f9af''
+
+        test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = ''ad0566943ab9741e6356bbc9b53c3cc09895068d''
+
+        python3 public/tools/vectorcraft/verify_upstream_tool_hotkeys.py builder/source/vectorcraft
+
+        '
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+    - name: Install Android SDK 35 and NDK 27.2
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+        test -x "$SDKMANAGER"
+
+        "$SDKMANAGER" --install ''ndk;27.2.12479018'' ''platforms;android-35'' ''build-tools;35.0.0''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Stage production VectorCraft adapter, version, and approved launcher/in-app icons
+      shell: bash
+      run: "set -euo pipefail\nrm -rf builder/adapters/vectorcraft\ncp -a public/adapters/vectorcraft builder/adapters/vectorcraft\n\
+        # NEVER call keyboard_candidate.py: that intentionally changes the package name.\npython3 public/tools/vectorcraft/adaptive_safe.py\
+        \ builder vectorcraft\npython3 public/tools/vectorcraft/patch_android_menus.py builder\npython3 public/tools/vectorcraft/patch_android_about_updates.py\
+        \ builder\npython3 public/tools/vectorcraft/patch_android_unsaved_shortcuts.py builder/source/vectorcraft\npython3\
+        \ public/tools/vectorcraft/prepare_builder.py builder \"$VERSION_NAME\" \"$VERSION_CODE\"\npython3 - <<'PY'\nfrom\
+        \ pathlib import Path\nimport tomllib\nmanifest=tomllib.loads(Path('builder/adapters/vectorcraft/Cargo.toml').read_text())\n\
+        android=manifest['package']['metadata']['android']\nassert android['package']=='com.artcraft.vectorcraft'\nassert\
+        \ android['build_targets']==['aarch64-linux-android']\nassert android['application']['activity'][0]['name']=='.VectorCraftActivity'\n\
+        for name in ('VectorCraftActivity.java','VectorCraftExtras.java'):\n    text=(Path('builder/adapters/vectorcraft/java/com/artcraft/vectorcraft')/name).read_text()\n\
+        \    assert text.startswith('package com.artcraft.vectorcraft;')\nprint('PASS: original app ID, Android launcher,\
+        \ ARM64 and Java namespace preserved')\nPY\npython3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'\n\
+        python3 public/tools/vectorcraft/verify_approved_icon.py public/assets/branding/vectorcraft/vc-glass-approved.png\n\
+        python3 public/tools/vectorcraft/clean_launcher_icon.py \\\n  public/assets/branding/vectorcraft/vc-glass-approved.png\
+        \ \"$RUNNER_TEMP/vc-production-icon.png\"\n# Restore the exact original .8-approved launcher/adaptive and in-app artwork.\n\
+        # The reviewed branding hook supplies .11 version metadata on this source.\npython3 public/tools/vectorcraft/restore_vectorcraft_08_branding.py\
+        \ builder public\ntest -s builder/tools/approved-branding/assets/manifest.json\n"
+    - name: Compile ARM64 APK without passing original signing credentials to the builder
+      timeout-minutes: 125
+      shell: bash
+      run: 'set -euo pipefail
+
+        bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/vc-production-icon.png"
+
+        test "$(find builder/output -maxdepth 1 -name ''*.apk'' -type f | wc -l)" -eq 1
+
+        '
+    - name: Verify real APK contains .8-approved icons plus native About Updates and Fonts feedback
+      shell: bash
+      run: "set -euo pipefail\npython3 builder/tools/approved-branding/verify_apk.py builder brand-verification\ntest -s brand-verification/verification.json\n\
+        python3 - <<'PY'\nimport json,zipfile\nfrom pathlib import Path\nv=json.loads(Path('brand-verification/verification.json').read_text())\n\
+        assert v['compiled_pixels_verified'] and v['native_ui_brand_embedded']\nassert len(v['adaptive_xml'])>=2\nassert v['version']=='0.14.0-android.13'\
+        \ and v['versionCode']==16780813\napk=next(Path('builder/output').glob('*.apk'))\nwith zipfile.ZipFile(apk) as z:\n\
+        \    libraries=[z.read(n) for n in z.namelist() if n.endswith('.so') and 'vectorcraft' in n]\n    dexes=[z.read(n)\
+        \ for n in z.namelist() if n.endswith('.dex')]\n    assert libraries and dexes\n    for marker in ('android.vectorcraft.fontImport',\
+        \ 'android.vectorcraft.fontFolder',\n        'android.vectorcraft.fontRefresh', 'android.vectorcraft.updates',\n \
+        \       'Import Font', 'Check for VectorCraft Updates', 'text.rescanFonts'):\n        assert any(marker.encode() in\
+        \ image for image in libraries),marker\n    for marker in ('VectorCraft Updates', 'Stable + Preview Releases',\n \
+        \       'Check for updates at startup', 'Font Import',\n        'Select Check for Updates'):\n        assert any(marker.encode()\
+        \ in image for image in libraries),marker\n    # Release-mode Rust optimization can remove internal egui Id literals\n\
+        \    # from the APK. Check the pinned reviewed source for that identifier,\n    # while validating user-visible controls\
+        \ from the compiled native binary.\n    rust=Path('public/adapters/vectorcraft/src/lib.rs').read_text()\n    assert\
+        \ 'artcraft.vectorcraft.update_status' in rust\n    assert 'CanvasHardwareCommand::PreserveContextBar' in rust\n \
+        \   assert 'self.inner.ui.task_bar = false;' not in rust\n    for marker in ('vcRequestFontImport','vcRefreshFontFolder',\n\
+        \        'vcCheckForUpdates','vcPollUpdateResult',\n        'vcGetIncludePreviewUpdates','vcSetIncludePreviewUpdates'):\n\
+        \        assert any(marker.encode() in image for image in dexes),marker\nprint('PASS: exact .8 approved icon and UI\
+        \ art, .8 Type/Help menu actions, font/updater bridges')\nPY\n"
+    - name: Compile Android keyboard and feedback regression tests
+      shell: bash
+      run: "set -euo pipefail\ncargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml\
+        \ \\\n  --tests --target aarch64-linux-android\n"
+    - name: Package temporary-signature payload for PRIVATE signing
+      run: 'set -euo pipefail
+
+        mkdir -p candidate
+
+        cp builder/output/*.apk candidate/VectorCraft-v0.14.0-android.13-TEMP-SIGNATURE-NOT-FOR-INSTALL.apk
+
+        cp brand-verification/verification.json candidate/
+
+        (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
+
+        '
+    - uses: actions/upload-artifact@v4
+      with:
+        name: vectorcraft-4gib-UNSIGNED-NOT-FOR-INSTALL
+        path: candidate/
+        retention-days: 3
+        if-no-files-found: error
+    - name: Remove disposable key
+      if: always()
+      run: rm -rf builder/keys

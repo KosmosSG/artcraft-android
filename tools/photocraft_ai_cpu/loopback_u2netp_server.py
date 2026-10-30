@@ -53,6 +53,13 @@ def verify_input(payload: bytes) -> tuple[int, int]:
         if width < 1 or height < 1 or width * height > MAX_PIXELS:
             raise ValueError("Image dimensions outside allowed range")
         image.verify()
+    # PNG verify() checks chunk structure/CRC, not decompression. A PNG with
+    # valid CRCs but a broken IDAT zlib stream must be rejected BEFORE the
+    # expensive CPU inference subprocess is launched.
+    with Image.open(io.BytesIO(payload)) as decoded:
+        decoded.load()
+        if decoded.size != (width, height):
+            raise ValueError("Decoded PNG dimensions changed")
     return width, height
 
 

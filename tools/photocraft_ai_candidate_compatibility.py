@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+import zipfile
 
 from photocraft_ai_reference_signing import inspect as inspect_apk
 
@@ -31,6 +34,43 @@ CANDIDATE_TAG_PATTERN = re.compile(
 def ensure(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
+
+
+def check_arm64_archive(apk: Path) -> dict[str, object]:
+    """Read-only fail-closed ZIP/ABI check on the ACTUAL signed candidate APK.
+
+    APK package/signature identity is verified separately by inspect_apk().
+    This catches a validly signed but non-ARM64, corrupt or unexpectedly
+    model/key-containing archive before any tablet installation.
+    """
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            entries = archive.infolist()
+            names = [entry.filename for entry in entries]
+            ensure(len(names) == len(set(names)), "Candidate APK has duplicate ZIP entries")
+            ensure("AndroidManifest.xml" in names, "Candidate APK is missing AndroidManifest.xml")
+            for entry in entries:
+                name = entry.filename
+                parts = PurePosixPath(name).parts
+                ensure(bool(name) and not name.startswith("/") and "\\" not in name
+                       and ".." not in parts and "." not in parts,
+                       "Candidate APK contains an unsafe ZIP path")
+                ensure(not entry.flag_bits & 1, "Candidate APK has an encrypted ZIP entry")
+                ensure(stat.S_IFMT(entry.external_attr >> 16) != stat.S_IFLNK,
+                       "Candidate APK contains a symbolic link")
+                ensure(not name.lower().endswith(
+                    (".jks", ".p12", ".keystore", ".onnx", ".pth", ".pt", ".safetensors")),
+                    "Candidate APK unexpectedly bundles a key or AI model weight")
+            native_libs = [name for name in names if name.startswith("lib/")
+                           and name.lower().endswith(".so")]
+            ensure(bool(native_libs), "Candidate APK is missing ARM64 native libraries")
+            ensure(all(name.startswith("lib/arm64-v8a/") for name in native_libs),
+                   "Candidate APK includes a non-ARM64 native library")
+            ensure(archive.testzip() is None, "Candidate APK has a corrupt ZIP member")
+    except (zipfile.BadZipFile, EOFError, RuntimeError) as exc:
+        raise ValueError("Candidate APK ZIP cannot be verified") from exc
+    return {"arm64_only": True, "native_library_count": len(native_libs),
+            "zip_crc_verified": True, "model_weights_embedded": False}
 
 
 def release_key(tag: str) -> tuple[int, int, int, int]:
@@ -184,6 +224,47 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("An incompatible PhotoCraft APK candidate was accepted")
+    # A signer/package match alone is insufficient: reject non-ARM64, corrupt,
+    # ambiguous, path-traversal and accidentally bundled model/key APKs.
+    def make_zip(path: Path, members: list[str]) -> None:
+        with zipfile.ZipFile(path, "w") as archive:
+            for name in members:
+                archive.writestr(name, b"test-content")
+
+    with tempfile.TemporaryDirectory() as directory:
+        candidate_path = Path(directory) / "candidate.apk"
+        good = ["AndroidManifest.xml", "classes.dex",
+                "lib/arm64-v8a/libphotocraft.so"]
+        make_zip(candidate_path, good)
+        assert check_arm64_archive(candidate_path)["native_library_count"] == 1
+        unsafe_cases = [
+            ["classes.dex", "lib/arm64-v8a/libphotocraft.so"],
+            ["AndroidManifest.xml", "classes.dex"],
+            good + ["lib/armeabi-v7a/libother.so"],
+            good + ["lib/x86_64/libother.so"],
+            good + ["assets/u2netp.onnx"],
+            good + ["assets/photocraft-release.p12"],
+            good + ["../outside"],
+            good + ["/absolute"],
+            good + ["assets\\bad.txt"],
+            good + ["lib/arm64-v8a/libphotocraft.so"],
+        ]
+        for members in unsafe_cases:
+            make_zip(candidate_path, members)
+            try:
+                check_arm64_archive(candidate_path)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Unsafe candidate APK ZIP was accepted: " + str(members))
+        candidate_path.write_bytes(b"not-a-zip")
+        try:
+            check_arm64_archive(candidate_path)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Corrupt candidate APK ZIP was accepted")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (11 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 
@@ -212,6 +293,7 @@ def main() -> None:
         [str(args.aapt), "dump", "badging", str(args.candidate_apk)], text=True
     )
     report = check_candidate(reference, candidate, candidate_badging)
+    report["archive_checks"] = check_arm64_archive(args.candidate_apk)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print("PASS: candidate matches published PhotoCraft signing/package identity")

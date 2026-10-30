@@ -70,9 +70,20 @@ def stage(root: Path) -> None:
     record = json.loads(raw)
     if record.get("package") != PREVIEW or record.get("display_name") != "PhotoCraft AI Preview":
         raise ValueError("Unexpected approved-branding preview state")
+    # The checksum-pinned approved-branding packaging hook writes both Cargo
+    # versionName AND Android versionCode *after* the adapter has been staged.
+    # Keep its exact original image/resource hashes, but advance the metadata
+    # in the disposable runner only. Without this, the hook silently resets
+    # android.2 back to android.1 and the production-upgrade test fails.
+    if (record.get("version_name"), record.get("version_code")) != (OLD_VERSION, 16790004):
+        raise ValueError("Unexpected public PhotoCraft branding version baseline")
     record["package"] = PRODUCTION
     record["display_name"] = "PhotoCraft"
-    # No icon pixels or image references are changed.
+    record["version_name"] = PROPOSED_VERSION
+    record["version_code"] = 16790005
+    record["previous_version_code"] = 16790004
+    # Approved pixels, source/master SHA and all resource SHA hashes are
+    # retained exactly, not regenerated or swapped.
     manifest.write_text(data)
     branding.write_text(json.dumps(record, indent=2) + "\n")
 
@@ -112,7 +123,10 @@ def self_test() -> None:
             raise AssertionError("Unsafe staging anchor was accepted")
     assert PRODUCTION != PREVIEW and OLD_VERSION != PROPOSED_VERSION
     assert "android.2" in PROPOSED_VERSION
-    print("PASS: isolated production identity conversion anchor tests")
+    assert OLD_VERSION == "0.14.0-android.1"
+    assert PROPOSED_VERSION == "0.14.0-android.2"
+    assert 16790005 > 16790004
+    print("PASS: isolated production identity conversion anchor and version floor tests")
 
 
 if __name__ == "__main__":

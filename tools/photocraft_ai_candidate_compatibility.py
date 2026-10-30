@@ -70,13 +70,27 @@ def check_candidate(
            "Candidate versionName must be newer than the current public release")
     ensure(candidate.get("version_name") == candidate_tag.removeprefix("photocraft-v"),
            "Candidate APK versionName must match the proposed PhotoCraft release tag")
-    label = re.search(r"^application-label:'([^']*)'\s*$", candidate_badging, re.M)
-    ensure(label is not None and label.group(1) == "PhotoCraft",
-           "Candidate app label must remain PhotoCraft (not PhotoCraft AI Preview)")
-    launcher = re.search(r"^launchable-activity:\s+name='([^']+)'", candidate_badging, re.M)
-    ensure(launcher is not None
-           and launcher.group(1) == "com.artcraft.photocraft.PhotoCraftActivity",
-           "Candidate launcher must retain the production PhotoCraft Activity namespace")
+    # Check the independent aapt output against the already signature-verified
+    # inspect_apk() result. Previously a stale/contradictory badging string
+    # could pass source-level tests despite mismatched version/package fields.
+    # The CLI uses one actual APK for both reads, but this extra fail-closed
+    # invariant catches tool output corruption and future integration mistakes.
+    badges = re.findall(
+        r"^package:\s+name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']+)'",
+        candidate_badging, re.M,
+    )
+    ensure(len(badges) == 1, "Candidate aapt must report exactly one package/version line")
+    badge_package, badge_code, badge_version = badges[0]
+    ensure(badge_package == candidate["package"]
+           and int(badge_code) == candidate["version_code"]
+           and badge_version == candidate["version_name"],
+           "Candidate aapt package/version disagrees with verified APK identity")
+    labels = re.findall(r"^application-label:'([^']*)'\s*$", candidate_badging, re.M)
+    ensure(labels == ["PhotoCraft"],
+           "Candidate must have exactly one PhotoCraft app label")
+    launchers = re.findall(r"^launchable-activity:\s+name='([^']+)'", candidate_badging, re.M)
+    ensure(launchers == ["com.artcraft.photocraft.PhotoCraftActivity"],
+           "Candidate must retain exactly one production PhotoCraft launcher")
     return {
         "status": "compatible_public_apk_identity",
         "reference_tag": PUBLIC_TAG,
@@ -118,7 +132,8 @@ def self_test() -> None:
     )
     assert check_candidate(baseline, new, normal)["candidate_version_code"] == PUBLIC_VERSION_CODE + 1
     upgraded = {**new, "tag": "photocraft-v0.14.1-android.1", "version_name": "0.14.1-android.1"}
-    assert check_candidate(baseline, upgraded, normal)["status"] == "compatible_public_apk_identity"
+    upgraded_badging = normal.replace("0.14.0-android.2", "0.14.1-android.1")
+    assert check_candidate(baseline, upgraded, upgraded_badging)["status"] == "compatible_public_apk_identity"
     rejected = [
         (baseline, {**new, "package": "com.artcraft.photocraft.ai.preview"}, normal),
         (baseline, {**new, "signer_certificate_sha256": "0" * 64}, normal),
@@ -133,6 +148,13 @@ def self_test() -> None:
             "com.artcraft.photocraft.PhotoCraftActivity",
             "com.artcraft.photocraft.ai.preview.PhotoCraftActivity")),
         (baseline, {**new, "tag": "v0.14.0-android.2"}, normal),
+        # Even with the right signer, refuse contradictory/ambiguous aapt data.
+        (baseline, new, normal.replace("versionCode='16790005'", "versionCode='16790004'")),
+        (baseline, new, normal.replace("versionName='0.14.0-android.2'", "versionName='0.14.0-android.3'")),
+        (baseline, new, normal.replace("name='com.artcraft.photocraft'", "name='com.artcraft.photocraft.ai.preview'")),
+        (baseline, new, normal + "application-label:'PhotoCraft'\n"),
+        (baseline, new, normal + "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'\n"),
+        (baseline, new, normal + "package: name='com.artcraft.photocraft' versionCode='16790005' versionName='0.14.0-android.2'\n"),
     ]
     for previous, future, badge in rejected:
         try:

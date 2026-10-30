@@ -3,6 +3,7 @@
 from __future__ import annotations
 import importlib.util
 import io
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -35,6 +36,10 @@ class SidecarTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "MOCK_REACHED"):
                     bridge.run(source, output, True)
             runner.assert_called_once()
+            kwargs = runner.call_args.kwargs
+            self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+            self.assertNotIn("capture_output", kwargs)
             self.assertFalse(output.exists())
 
     def test_rejects_non_png_before_subprocess(self):

@@ -43,7 +43,10 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
     completed = subprocess.run(
         [sys.executable, str(BENCHMARK), "--run",
          "--input", str(source), "--output", str(destination)],
-        check=False, timeout=180, capture_output=True, text=True,
+        # No output is consumed; capturing a verbose or failing inference
+        # process into RAM could exhaust the Linux Lab CPU sidecar.
+        check=False, timeout=180,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     if completed.returncode != 0:
         # The benchmark may have produced an incomplete output; never import it.

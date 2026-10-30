@@ -117,7 +117,12 @@ def make_handler(token: str):
                         completed = subprocess.run(
                             [sys.executable, str(BRIDGE), "--input", str(source),
                              "--output", str(output), "--consent-local-processing"],
-                            capture_output=True, timeout=180, check=False,
+                            # The bridge may emit arbitrary diagnostics; capturing
+                            # unbounded stdout/stderr would let a failing child
+                            # exhaust the local server's memory. Nothing from
+                            # the subprocess is needed for the PNG response.
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            timeout=180, check=False,
                         )
                     except subprocess.TimeoutExpired:
                         return self.reply(504, b"CPU inference timed out")

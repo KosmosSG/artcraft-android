@@ -99,6 +99,11 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertEqual(image.getchannel("A").getextrema(), (0, 255))
             image.load()
         self.assertEqual(run.call_count, 1)
+        # No child stdout/stderr should accumulate unbounded bytes in RAM.
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+        self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+        self.assertNotIn("capture_output", kwargs)
 
     def test_invalid_token_blocks_inference(self):
         with patch.object(server.subprocess, "run") as run:

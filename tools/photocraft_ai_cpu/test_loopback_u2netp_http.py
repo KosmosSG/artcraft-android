@@ -14,7 +14,6 @@ from pathlib import Path
 import socket
 import subprocess
 import threading
-from http.server import ThreadingHTTPServer
 import unittest
 from unittest.mock import patch
 
@@ -47,7 +46,7 @@ def mock_inference(argv, **_kwargs):
 
 class LoopbackHTTPTests(unittest.TestCase):
     def setUp(self):
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(TOKEN))
+        self.httpd = server.LoopbackHTTPServer(("127.0.0.1", 0), server.make_handler(TOKEN))
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.address = self.httpd.server_address
@@ -172,6 +171,26 @@ class LoopbackHTTPTests(unittest.TestCase):
         self.assertEqual(code, 502)
         self.assertEqual(headers["Content-Type"], "text/plain")
         self.assertNotIn(b"private", body)
+
+    def test_incomplete_headers_timeout_before_authentication(self):
+        # Previously, BaseHTTPRequestHandler waited indefinitely for a
+        # client to finish headers; the body-only timeout did not apply.
+        # The server must close a stalled pre-auth connection promptly.
+        with patch.object(server, "REQUEST_READ_TIMEOUT", 0.15):
+            with socket.create_connection(self.address, timeout=3) as sock:
+                sock.settimeout(2)
+                sock.sendall(
+                    b"POST /v1/remove-background HTTP/1.1\r\n"
+                    b"Host: 127.0.0.1\r\nAuthorization: Bearer "
+                )
+                try:
+                    response = sock.recv(4096)
+                except ConnectionResetError:
+                    response = b""
+                self.assertEqual(response, b"")
+        # A stalled header must not prevent the next authorized image.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
 
     def test_timeout_releases_server_lock(self):
         head = (

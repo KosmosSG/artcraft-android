@@ -5,6 +5,8 @@ on:
       - feature/photocraft-android-ai-tools-20261029
     paths:
       - 'tools/photocraft_ai_cpu/loopback_u2netp_server.py'
+      - 'tools/photocraft_ai_cpu/test_loopback_u2netp_http.py'
+      - 'tools/photocraft_ai_cpu/validate_output_png.py'
       - '.github/workflows/photocraft-ai-loopback-transport-tests.yml'
   workflow_dispatch:
 permissions:
@@ -22,4 +24,6 @@ jobs:
       - name: Run offline PNG validation self-test
         run: python tools/photocraft_ai_cpu/loopback_u2netp_server.py --self-test
       - name: Syntax check
-        run: python -m py_compile tools/photocraft_ai_cpu/loopback_u2netp_server.py
+        run: python -m py_compile tools/photocraft_ai_cpu/loopback_u2netp_server.py tools/photocraft_ai_cpu/test_loopback_u2netp_http.py
+      - name: Live localhost HTTP tests (synthetic images, fake inference)
+        run: python tools/photocraft_ai_cpu/test_loopback_u2netp_http.py -v

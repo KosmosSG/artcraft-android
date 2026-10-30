@@ -19,7 +19,8 @@ import tempfile
 PACKAGE = "com.artcraft.photocraft"
 TAG_PATTERN = re.compile(r"^photocraft-v[0-9]+\.[0-9]+\.[0-9]+-android\.[0-9]+$")
 PACKAGE_PATTERN = re.compile(
-    r"\bpackage:\s*name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']+)'"
+    r"^package:\s+name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']+)'",
+    re.M,
 )
 # Android build-tools releases vary in whitespace and sometimes add trailing
 # fields after the signer digest. Match the full SHA256 hex value while
@@ -36,16 +37,20 @@ SIGNER_PATTERN = re.compile(
 def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
     if not TAG_PATTERN.fullmatch(tag):
         raise ValueError("Unexpected PhotoCraft reference release tag")
-    package = PACKAGE_PATTERN.search(badging)
+    # aapt must describe exactly one package. Do not trust the first matching
+    # substring if the output has duplicate, malformed, or conflicting lines.
+    # This guards future tooling changes and accidental mixed APK metadata.
+    package_lines = re.findall(r"^package:", badging, re.M)
+    packages = PACKAGE_PATTERN.findall(badging)
+    if len(package_lines) != 1 or len(packages) != 1:
+        raise ValueError("aapt must report exactly one valid package/version line")
     certificates = {match.lower() for match in SIGNER_PATTERN.findall(signing)}
-    if package is None:
-        raise ValueError("Cannot parse aapt package/version badging line")
     if not certificates:
         raise ValueError("Cannot parse apksigner's SHA-256 certificate digest")
     if len(certificates) != 1:
         raise ValueError("APK reports multiple different signing certificates")
     certificate = certificates.pop()
-    name, code, version = package.groups()
+    name, code, version = packages[0]
     if name != PACKAGE:
         raise ValueError("Reference APK has the wrong package ID")
     if version != tag.removeprefix("photocraft-v"):
@@ -112,6 +117,10 @@ def self_test() -> None:
         (badge.replace("0.14.0-android.1", "0.14.0-android.2"), signer, tag),
         (badge, signer, "v0.14.0"),
         (badge, "", tag),
+        (badge + badge, signer, tag),
+        (badge + "package: name='com.artcraft.photocraft'\n", signer, tag),
+        (badge + badge.replace("16790004", "16790005"), signer, tag),
+        ("note: " + badge, signer, tag),
     ):
         try:
             parse_identity(*wrong)

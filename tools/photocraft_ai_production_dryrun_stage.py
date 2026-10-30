@@ -35,6 +35,7 @@ def stage(root: Path) -> None:
     java_dir = adapter / "java/com/artcraft/photocraft"
     branding = root / "tools/approved-branding/assets/manifest.json"
     prep = adapter / "prepare.sh"
+    builder = root / "lib/build-common.sh"
     launcher = root / "assets/photocraft/launcher-pc.png"
     if not launcher.is_file() or hashlib.sha256(launcher.read_bytes()).hexdigest() != ICON_SHA:
         raise ValueError("Approved PhotoCraft launcher/icon reference changed")
@@ -83,6 +84,18 @@ def stage(root: Path) -> None:
     setup = exactly(setup, selector,
         selector + ' || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.2"')
     prep.write_text(setup)
+
+    # The generic builder recognizes only android.1 as the reviewed v0.14
+    # menu port, otherwise it attempts to reapply the incompatible v0.12
+    # patch. Extend this temporary runner's guard for android.2; still run
+    # photocraft_v014_menu_guard.py on the same immutable upstream commit.
+    # Nothing here is committed into the repository's shared builder.
+    build_text = builder.read_text()
+    guard = 'if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" ]]; then'
+    replacement = 'if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.2" ]]; then'
+    build_text = exactly(build_text, guard, replacement)
+    builder.write_text(build_text)
+    print("PASS: temporary v0.14 menus guard covers candidate-review android.2 without legacy patch")
     print("PASS: staging ONLY — regular PhotoCraft name, package, Activity and icon preserved")
     print("PASS: proposed review version", PROPOSED_VERSION)
     print("IMPORTANT: output is signed with a disposable key; NEVER install/publish its APK")

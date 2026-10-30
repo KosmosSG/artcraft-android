@@ -125,7 +125,14 @@ mod tests {
         let v=sample();let s=String::from_utf8_lossy(&v).replace("Content-Length: 33\r\n","");
         assert!(parse_response(s.as_bytes()).is_err());
     }
-    #[test] fn rejects_non_alpha_output() {\n        let mut v = sample();\n        let start = v.windows(4).position(|w| w == b"\\r\\n\\r\\n").unwrap() + 4;\n        v[start + 25] = 2;\n        assert!(parse_response(&v).is_err());\n    }\n    #[test] fn consent_and_loopback_required() {
+    #[test]
+    fn rejects_non_alpha_output() {
+        let mut v = sample();
+        let start = v.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+        v[start + 25] = 2;
+        assert!(parse_response(&v).is_err());
+    }
+    #[test] fn consent_and_loopback_required() {
         let png=b"\x89PNG\r\n\x1a\n";
         let token="abcdefghijklmnopqrstuvwxyz0123456789";
         assert!(remove_background("127.0.0.1:18793".parse().unwrap(),token,png,false).is_err());

@@ -104,6 +104,28 @@ per-image consent. For first tests, use a non-sensitive RGB 8-bit image
 under 4 million pixels. If Linux Lab is suspended while PhotoCraft is
 foregrounded, keep it visible in a floating window.
 
+### Refresh the already-installed U2NetP server after security fixes
+
+The shortcut **does not update its Python scripts automatically**. After the
+October 30 upload-timeout and HTTP-framing fixes, stop the server in its
+terminal (**Ctrl+C**) and manually refresh the server script:
+
+\`\`\`bash
+cd "$HOME/photocraft-ai-tests" &&
+curl -fLsS "https://raw.githubusercontent.com/KosmosSG/artcraft-android/feature/photocraft-android-ai-tools-20261029/tools/photocraft_ai_cpu/loopback_u2netp_server.py" -o loopback_u2netp_server.py.new &&
+"$HOME/photocraft-ai-cpu-venv/bin/python" -m py_compile loopback_u2netp_server.py.new &&
+mv loopback_u2netp_server.py.new loopback_u2netp_server.py
+\`\`\`
+
+Review updates before executing them. Restart using **Start PhotoCraft
+U2NetP**; its temporary token changes on restart. No other Python packages,
+model weights, desktop settings or ComfyUI files are modified. Existing
+PhotoCraft AI Preview APK #49 does not require rebuilding for these
+server-side checks. The live HTTP CI test suite covers permission/consent,
+malformed payloads, upload read timeout, parallel jobs and worker failure
+with synthetic PNGs and mocked inference. That does not constitute a full
+Android lifecycle/cancellation stress test.
+
 **Release boundary:** this is still a disposable-signature preview,
 not an approved public release. Before merging or distributing production
 APKs, review model weight/data licensing, worker cancellation and

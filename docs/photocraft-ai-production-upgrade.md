@@ -260,3 +260,46 @@ and [probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/
 Do not rerun private signing until a runner is demonstrably available.
 PR93 remains DRAFT, with no production-signed AI candidate, no publication
 approval and no owner in-place device acceptance.
+
+## 31 October 2026 — bounded localhost HTTP headers before authentication (PR93 only)
+
+**Reproducible source-level risk:** `ThreadingHTTPServer` originally applied the
+15-second `REQUEST_READ_TIMEOUT` only **after** the HTTP request headers had
+been fully parsed and after bearer-token/consent checks. A local process that
+opened a TCP connection and stalled mid-header could leave an idle handler
+thread waiting indefinitely, without ever entering the protected PNG upload
+path. This is a localhost availability issue, not evidence of remote access.
+
+**Fix:** commit [`00eab900`](https://github.com/KosmosSG/artcraft-android/commit/00eab9007787643c2f04cab73bbabc192f9fa7d1)
+introduces `LoopbackHTTPServer(ThreadingHTTPServer)` and applies the existing
+15-second socket timeout immediately upon accepting the connection, **before**
+request headers are parsed. It still binds only to `127.0.0.1` and retains
+the per-image consent, bearer-token checks, 4 MP PNG cap, single-inference
+lock, 180-second child timeout, no image persistence and bounded response.
+Commit [`184213db`](https://github.com/KosmosSG/artcraft-android/commit/184213db7de414f8dd39a8d42a07785f0daafe65)
+adds a live localhost regression: a client sends incomplete authorization
+headers, the socket is closed after the short test timeout, and a subsequent
+properly authorized PNG request still succeeds.
+
+**CI evidence:** [loopback transport #41118109005](https://github.com/KosmosSG/artcraft-android/actions/runs/41118109005)
+**PASS**, and [CPU standalone safety #41118108781](https://github.com/KosmosSG/artcraft-android/actions/runs/41118108781)
+**PASS**. The source review initially **failed** on
+[#41118108800](https://github.com/KosmosSG/artcraft-android/actions/runs/41118108800)
+because its static guard expected the old `ThreadingHTTPServer` constructor
+literal; no production identity or transport regression was observed. Commit
+[`c47b4e38`](https://github.com/KosmosSG/artcraft-android/commit/c47b4e38112051a628d07809be802701e9639269)
+updates the guard to require the **new loopback-only subclass and both
+pre-auth header and body timeouts**. [Source review #41118146659](https://github.com/KosmosSG/artcraft-android/actions/runs/41118146659)
+**PASS**. No model or image was downloaded; no ARM APK built, key used,
+private signing workflow retried, merge, device installation or release.
+
+**Unchanged release blockers:** private hosted signing jobs
+[#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secret runner probe
+[#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+still failed without an assigned runner; no original-signed AI candidate exists.
+Historical failed-build diagnostic artifact
+[#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+still exists as of this check and needs owner deletion from GitHub UI; it may
+contain a disposable-key APK. Owner device acceptance, licensing review and
+explicit final publication approval remain required. PR93 stays **DRAFT**.

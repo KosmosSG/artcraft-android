@@ -95,7 +95,8 @@ def main():
     assert "artcraft_type_escape_requested" in data
     assert "artcraft_finish_type_escape" in data
     assert "artcraft_discard_prompt_owns_keyboard" in data
-    assert "mod ai_u2netp_transport;" in data\n    assert "self.ai_menu.show(ui);" in data
+    assert "mod ai_u2netp_transport;" in data
+    assert "self.ai_menu.show(ui);" in data
     assert "ai_menu::AndroidAiMenu::new(files_dir.join" in data
     print("PASS: owner-tested ESC/T/V/C/Y/N baseline + native AI Tools menu")\n    print("PASS: Phase 3 transport compiled in isolated preview (not invoked; no image uploads)")
     print("PASS: reviewed blue Pc launcher + in-app branding source", digest)

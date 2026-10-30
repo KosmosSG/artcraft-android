@@ -192,6 +192,25 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_expected_header_timeout_does_not_report_unhandled_socket_error(self):
+        # Closing an expired pre-auth connection may make Python's HTTP
+        # parser attempt a 400/401 response on a dead socket. That is an
+        # expected disconnect, not a traceback-worthy server exception.
+        with patch.object(server, "REQUEST_READ_TIMEOUT", 0.15):
+            with patch.object(self.httpd, "handle_error") as unexpected:
+                with socket.create_connection(self.address, timeout=3) as sock:
+                    sock.settimeout(2)
+                    sock.sendall(
+                        b"POST /v1/remove-background HTTP/1.1\\r\\n"
+                        b"Host: 127.0.0.1\\r\\nAuthorization: Bearer "
+                    )
+                    try:
+                        sock.recv(4096)
+                    except ConnectionResetError:
+                        pass
+                threading.Event().wait(0.05)
+                unexpected.assert_not_called()
+
     def test_slow_trickle_pre_auth_headers_hit_absolute_deadline(self):
         # Socket inactivity timeouts are insufficient: a local client can
         # send one byte repeatedly without completing its Authorization line.

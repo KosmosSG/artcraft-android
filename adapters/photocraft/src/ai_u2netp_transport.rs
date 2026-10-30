@@ -52,7 +52,9 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     if split > 16 * 1024 { return Err("HTTP headers too large".into()); }
     let header = std::str::from_utf8(&response[..split]).map_err(|_| "Invalid HTTP headers")?;
     let mut lines = header.split("\r\n");
-    if lines.next() != Some("HTTP/1.1 200 OK") {
+    // Python BaseHTTPRequestHandler uses HTTP/1.0 by default; accept either
+    // version with an exact 200 response, rejecting redirects and error pages.
+    if !matches!(lines.next(), Some("HTTP/1.0 200 OK" | "HTTP/1.1 200 OK")) {
         return Err("Local U2NetP server did not return success".into());
     }
     let mut length = None;
@@ -113,6 +115,12 @@ mod tests {
     }
     #[test] fn accepts_bounded_png_framing() {
         assert_eq!(parse_response(&sample()).unwrap().len(), 33);
+    }
+    #[test] fn accepts_python_http10_response() {
+        let mut v = sample();
+        // Change status line to HTTP/1.0 without corrupting binary PNG bytes.
+        v[7] = b'0';
+        assert_eq!(parse_response(&v).unwrap().len(), 33);
     }
     #[test] fn rejects_truncation() {
         let mut v=sample();v.pop();assert!(parse_response(&v).is_err());

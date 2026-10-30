@@ -15,6 +15,7 @@ import socket
 import subprocess
 import threading
 import unittest
+import zlib
 from unittest.mock import patch
 
 from PIL import Image
@@ -31,6 +32,19 @@ def sample_png() -> bytes:
     buf = io.BytesIO()
     Image.new("RGBA", (16, 16), (20, 80, 160, 255)).save(buf, format="PNG")
     return buf.getvalue()
+
+
+def crc_valid_but_undecodable_png() -> bytes:
+    """Corrupt IDAT zlib data but recompute CRC: Pillow verify() still passes."""
+    data = sample_png()
+    chunk = data.index(b"IDAT") - 4
+    length = int.from_bytes(data[chunk:chunk + 4], "big")
+    start = chunk + 8
+    end = start + length
+    assert length >= 3
+    invalid_zlib = b"\x78\x9c" + b"\xff" * (length - 2)
+    checksum = zlib.crc32(b"IDAT" + invalid_zlib).to_bytes(4, "big")
+    return data[:start] + invalid_zlib + checksum + data[end + 4:]
 
 
 def mock_inference(argv, **_kwargs):
@@ -117,6 +131,18 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertEqual(self.request(payload=b"")[0], 413)
             self.assertEqual(self.request(payload=b"broken image")[0], 400)
             run.assert_not_called()
+
+    def test_crc_valid_broken_idat_is_rejected_before_inference(self):
+        # PNG chunk/CRC verification alone is insufficient; the full zlib
+        # stream must decode before starting CPU model work.
+        corrupt = crc_valid_but_undecodable_png()
+        with Image.open(io.BytesIO(corrupt)) as image:
+            image.verify()  # Demonstrates that the old guard accepted it.
+        with patch.object(server.subprocess, "run") as inference:
+            self.assertEqual(self.request(payload=corrupt)[0], 400)
+            inference.assert_not_called()
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
 
     def test_reject_ambiguous_duplicate_content_length_and_authorization(self):
         image = sample_png()

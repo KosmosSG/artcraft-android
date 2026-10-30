@@ -43,7 +43,7 @@ def main():
     # older shortcut implementation on PR #93.
     data = SRC.read_text()
     data = once(data, "mod android_modifiers;\nmod shortcut_pad;",
-                "mod ai_tools;\nmod ai_models;\nmod ai_menu;\nmod android_modifiers;\nmod shortcut_pad;")
+                "mod ai_tools;\nmod ai_models;\nmod ai_menu;\nmod ai_u2netp_transport;\nmod android_modifiers;\nmod shortcut_pad;")
     data = once(data, "    shortcut_pad: shortcut_pad::ShortcutPad,",
                 "    shortcut_pad: shortcut_pad::ShortcutPad,\n    ai_menu: ai_menu::AndroidAiMenu,")
     data = once(data, "        system_fonts::install_system_fonts(ui.ctx());",
@@ -51,7 +51,7 @@ def main():
     old = '                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft").join("shortcut-pad-enabled")),'
     data = once(data, old, old + "\n                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join(\"PhotoCraft\").join(\"ai-tools-visible\")),")
     SRC.write_text(data)
-    for file in ("ai_menu.rs", "ai_tools.rs", "ai_models.rs"):
+    for file in ("ai_menu.rs", "ai_tools.rs", "ai_models.rs", "ai_u2netp_transport.rs"):
         source = saved / file
         if not source.is_file():
             raise SystemExit("Missing verified AI Tools menu source: " + str(source))
@@ -95,9 +95,9 @@ def main():
     assert "artcraft_type_escape_requested" in data
     assert "artcraft_finish_type_escape" in data
     assert "artcraft_discard_prompt_owns_keyboard" in data
-    assert "self.ai_menu.show(ui);" in data
+    assert "mod ai_u2netp_transport;" in data\n    assert "self.ai_menu.show(ui);" in data
     assert "ai_menu::AndroidAiMenu::new(files_dir.join" in data
-    print("PASS: owner-tested ESC/T/V/C/Y/N baseline + native AI Tools menu")
+    print("PASS: owner-tested ESC/T/V/C/Y/N baseline + native AI Tools menu")\n    print("PASS: Phase 3 transport compiled in isolated preview (not invoked; no image uploads)")
     print("PASS: reviewed blue Pc launcher + in-app branding source", digest)
     print("PASS: isolated preview package", PREVIEW_PACKAGE)
     print("Baseline commit:", EXPECTED_KEYBOARD_SHA)

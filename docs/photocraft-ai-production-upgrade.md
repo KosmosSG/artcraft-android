@@ -346,3 +346,57 @@ of this check. No signing attempt, secret access, model distribution,
 heavy build, merge, device update or public release occurred. PR93 remains
 **DRAFT**; original-signed candidate verification, owner in-place tests,
 licensing review and separate final publication approval are still required.
+
+## 31 October 2026 — absolute pre-auth header deadline and quiet disconnects (PR93 only)
+
+**New reproducible gap:** The earlier pre-auth socket timeout was an
+*inactivity* limit. A localhost client could send one incomplete HTTP header
+byte every few seconds, indefinitely resetting that limit and retaining a
+handler thread without presenting a bearer token. This is a local
+availability concern; the server still binds exclusively to `127.0.0.1`.
+
+**Fix:** [`a9dfa966`](https://github.com/KosmosSG/artcraft-android/commit/a9dfa96696769d4487f8a425ae18ff7f7bc6f13c)
+starts a 15-second **absolute header timer** before the HTTP request line is
+read, shuts down the socket if headers are still incomplete, and cancels the
+timer immediately after header parsing. It does **not** cut off legitimate
+CPU inference after valid headers. [`5e99af1d`](https://github.com/KosmosSG/artcraft-android/commit/5e99af1d17dffe88e2fd03d8e44340fc883a9ddb)
+adds live mocked-inference tests for slow-trickle authorization headers and
+for valid requests whose inference exceeds the shortened test header deadline.
+[`26581bc6`](https://github.com/KosmosSG/artcraft-android/commit/26581bc6b94ae9a4f755d40f82e6f3fb993a3fd4)
+requires the absolute timer in the production source guard.
+
+**Log-safety follow-up:** Initial passing loopback tests
+[#41134782717](https://github.com/KosmosSG/artcraft-android/actions/runs/41134782717)
+showed expected `BrokenPipeError` tracebacks when the HTTP parser attempted
+to answer a socket intentionally closed by the timer. No bearer token or
+image bytes were printed, but these noisy exception traces are undesirable.
+[`7e60cb64`](https://github.com/KosmosSG/artcraft-android/commit/7e60cb645dd14634d37fec1beae0e145cb435be6)
+now handles **only** expected broken-pipe/connection-reset errors caused by
+the expired header timer; unrelated errors still surface normally.
+[`7a308375`](https://github.com/KosmosSG/artcraft-android/commit/7a3083752156a8ef4d50c9e1b1d5cc9634c905de)
+adds a regression requiring no unhandled server exception on that expected
+disconnect. [`d73d4be9`](https://github.com/KosmosSG/artcraft-android/commit/d73d4be9de81a38383504c6865bcb96cf05ceaea)
+extends the source guard.
+
+**Verified GitHub Actions:** [loopback transport #41134899566](https://github.com/KosmosSG/artcraft-android/actions/runs/41134899566)
+**PASS 13/13** live localhost synthetic-PNG tests, with no
+`Traceback`/`BrokenPipeError` in the final job log;
+[production review #41134912532](https://github.com/KosmosSG/artcraft-android/actions/runs/41134912532)
+**PASS** at the latest code-guard commit;
+[CPU standalone safety #41134899627](https://github.com/KosmosSG/artcraft-android/actions/runs/41134899627)
+**PASS**. These are source/CPU-sidecar tests only, **not** a new ARM64
+APK build, original signing or owner device acceptance.
+
+**Release gates remain:** Historical failed proof
+[#41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+is completed/failed, and its [diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+was still present at this check; owner deletion remains necessary because
+it may contain a disposable-signed APK. The
+[clean unsigned Linux Lab input #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+remains **non-installable**. No new private signing runs followed
+[failed no-runner signer #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+or [no-secret probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865).
+No original-signed AI candidate, in-place tablet acceptance or model-rights
+clearance exists yet. No heavy build, signing retry, private key access,
+model distribution, merge, device change or publication occurred. PR93 stays
+**DRAFT** pending separate owner approval.

@@ -304,6 +304,7 @@ impl AndroidAiMenu {
                     ui.label("The existing Filter menu, fonts, shortcuts, and document workflow are unchanged.");
                 });
         }
+        layer_changed
     }
 
     fn start_cpu_job(&mut self, session: &Session, ctx: &egui::Context) {

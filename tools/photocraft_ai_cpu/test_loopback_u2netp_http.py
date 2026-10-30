@@ -197,11 +197,11 @@ class LoopbackHTTPTests(unittest.TestCase):
         # resetting the socket read timeout, holding the inference lock
         # indefinitely without ever delivering its declared PNG body.
         head = (
-            f"POST /v1/remove-background HTTP/1.1\\r\\n"
-            f"Host: 127.0.0.1\\r\\nAuthorization: Bearer {TOKEN}\\r\\n"
-            f"X-PhotoCraft-Image-Consent: yes\\r\\nContent-Type: image/png\\r\\n"
-            f"Content-Length: 8192\\r\\n\\r\\n"
-        ).encode().replace(b"\\r", b"\r").replace(b"\\n", b"\n")
+            f"POST /v1/remove-background HTTP/1.1\r\n"
+            f"Host: 127.0.0.1\r\nAuthorization: Bearer {TOKEN}\r\n"
+            f"X-PhotoCraft-Image-Consent: yes\r\nContent-Type: image/png\r\n"
+            f"Content-Length: 8192\r\n\r\n"
+        ).encode()
         with patch.object(server, "REQUEST_READ_TIMEOUT", 0.35):
             with patch.object(server.subprocess, "run") as inference:
                 with socket.create_connection(self.address, timeout=3) as sock:

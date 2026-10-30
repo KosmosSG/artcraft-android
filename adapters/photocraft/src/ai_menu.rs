@@ -3,6 +3,12 @@
 //! No upstream PhotoCraft crates, Android manifest, or signing files are changed.
 
 use crate::ai_tools::{AiAction, ComfyEndpoint};
+use crate::ai_background_editor;
+use crate::ai_background_job::{DocumentRevision, Job, JobId};
+use crate::ai_u2netp_transport;
+use photocraft_doc::Layer;
+use photocraft_engine::Session;
+use std::net::SocketAddr;
 use crate::ai_models::{self, ModelInventory};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -14,6 +20,12 @@ pub(crate) struct AndroidAiMenu {
     show_about: bool,
     show_connection: bool,
     show_background_setup: bool,
+    cpu_token: String,
+    cpu_consent: bool,
+    cpu_status: String,
+    cpu_result: Option<Receiver<Result<Layer, String>>>,
+    cpu_job: Option<Job>,
+    cpu_next_job: u64,
     endpoint_text: String,
     allow_private_lan: bool,
     connection_status: String,
@@ -37,6 +49,12 @@ impl AndroidAiMenu {
             show_about: false,
             show_connection: false,
             show_background_setup: false,
+            cpu_token: String::new(),
+            cpu_consent: false,
+            cpu_status: "No image has been processed.".into(),
+            cpu_result: None,
+            cpu_job: None,
+            cpu_next_job: 0,
             endpoint_text: String::new(),
             allow_private_lan: false,
             connection_status: "No connection tested.".into(),
@@ -64,7 +82,10 @@ impl AndroidAiMenu {
         }
     }
 
-    pub(crate) fn show(&mut self, ui: &mut egui::Ui) {
+    /// Returns true after a new undoable layer is inserted so the host can
+    /// synchronize PhotoCraft canvas caches before rendering the editor.
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+        let layer_changed = self.poll_cpu_result(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
         match received {
             Some(Ok(Ok(()))) => {
@@ -113,7 +134,7 @@ impl AndroidAiMenu {
         }
         let visible = photocraft_ui_egui::menus::artcraft_ai_tools_visible();
         self.persist_visibility(visible);
-        if !visible { return; }
+        if !visible { return layer_changed; }
         // egui 0.36 uses Panel::top instead of TopBottomPanel. Mount the
         // Android-only native menu in its own top strip, without editing the
         // upstream Filter menu or painting a floating palette.
@@ -128,14 +149,14 @@ impl AndroidAiMenu {
                         }).weak());
                         ui.separator();
 
-                        // Disabled deliberately: enabling an item here would
-                        // imply the model can process a document, which it can't.
+                        // General AI features remain disabled. Background Removal
+                        // Preview is a separately gated, explicit local CPU action.
                         for action in AiAction::ALL {
                             ui.add_enabled(false, egui::Button::new(action.label()))
                                 .on_hover_text("Coming soon — no AI processing backend is connected.");
                         }
                         ui.separator();
-                        if ui.button("Background Removal Setup…").clicked() {
+                        if ui.button("Remove Background · Local CPU Preview…").clicked() {
                             self.show_background_setup = true;
                             ui.close();
                         }
@@ -153,22 +174,40 @@ impl AndroidAiMenu {
         });
 
         if self.show_background_setup {
-            egui::Window::new("PhotoCraft · Background Removal Setup")
+            let mut open = self.show_background_setup;
+            egui::Window::new("PhotoCraft · U2NetP Background Removal Preview")
                 .id(egui::Id::new("photocraft_android_ai_background_setup"))
-                .open(&mut self.show_background_setup)
+                .open(&mut open)
                 .resizable(true)
                 .collapsible(false)
                 .show(&ctx, |ui| {
-                    ui.heading("U2NetP · Local CPU Processing");
-                    ui.label("The standalone U2NetP CPU test runs in Linux Lab, not inside this Android app.");
-                    ui.label("The local_background_bridge.py helper accepts a separately exported image and produces a new validated transparent PNG.");
+                    ui.heading("Remove Background · U2NetP CPU");
+                    ui.label("Experimental: only a local Linux Lab server at 127.0.0.1:18793 is accepted.");
+                    ui.label("The active RGB 8-bit image is sent to that server only after consent.");
+                    ui.label("Maximum 4 million pixels / 24 MiB input. Result is a new undoable pixel layer.");
+                    ui.label("Do not send private documents without reviewing this processing route.");
                     ui.separator();
-                    ui.label("Current stage: manual local-file handoff only.");
-                    ui.label("No document pixels are read or sent by this menu.");
-                    ui.label("No automatic import, layer insertion, or Undo/Redo is connected.");
-                    ui.label("The Remove Background command remains disabled until Android-to-Linux Lab transport, user consent, and undoable layer insertion are tested.");
-                    ui.label("Do not expose a local inference service to the public network.");
+                    ui.label("Paste the temporary bearer token displayed by the Linux Lab server.");
+                    ui.add(egui::TextEdit::singleline(&mut self.cpu_token)
+                        .password(true).hint_text("Temporary session token"));
+                    ui.checkbox(&mut self.cpu_consent,
+                        "I consent to locally process the currently active image (once)");
+                    let pending = self.cpu_result.is_some();
+                    if ui.add_enabled(!pending && self.cpu_consent &&
+                        !self.cpu_token.is_empty() && session.active().is_some(),
+                        egui::Button::new("Remove Background — Create New Layer")).clicked() {
+                        self.start_cpu_job(session, &ctx);
+                    }
+                    if pending && ui.button("Cancel and discard pending result").clicked() {
+                        if let Some(mut job) = self.cpu_job.take() { job.cancel(); }
+                        self.cpu_result = None;
+                        self.cpu_status = "Cancelled. The server may still finish processing, but the result will be ignored.".into();
+                    }
+                    ui.separator();
+                    ui.label(&self.cpu_status);
+                    ui.label("Do not expose the CPU service to the LAN or public internet.");
                 });
+            self.show_background_setup = open;
         }
 
         if self.show_connection {
@@ -259,12 +298,93 @@ impl AndroidAiMenu {
                         ui.label(format!("• {}", action.label()));
                     }
                     ui.separator();
-                    ui.label("Status: ComfyUI connection testing is available (opt-in).");
-                    ui.label("Model inference, image uploads and non-destructive layer insertion are not implemented.");
-                    ui.label("Nothing is uploaded, generated, or changed in your document by this menu.");
+                    ui.label("Status: opt-in ComfyUI diagnostics and experimental loopback U2NetP background removal.");
+                    ui.label("A separate explicit consent is required for every image sent to local Linux Lab.");
+                    ui.label("Background removal creates an undoable layer only after full PNG decoding and stale-document checks.");
                     ui.label("The existing Filter menu, fonts, shortcuts, and document workflow are unchanged.");
                 });
         }
+    }
+
+    fn start_cpu_job(&mut self, session: &Session, ctx: &egui::Context) {
+        // Consume the one-image checkbox before ANY export or network action.
+        let consent = std::mem::take(&mut self.cpu_consent);
+        if !consent || self.cpu_result.is_some() {
+            self.cpu_status = "Explicit consent required before processing.".into();
+            return;
+        }
+        let (document, origin) = match ai_background_editor::active_snapshot(session) {
+            Ok(snapshot) => snapshot,
+            Err(error) => { self.cpu_status = error; return; }
+        };
+        let token = self.cpu_token.clone();
+        self.cpu_next_job = self.cpu_next_job.wrapping_add(1);
+        let job_id = JobId(self.cpu_next_job);
+        let mut job = Job::new(job_id, origin);
+        if let Err(error) = job.consent() {
+            self.cpu_status = error.into();
+            return;
+        }
+        let endpoint = SocketAddr::from(([127, 0, 0, 1], 18793));
+        let (tx, rx) = mpsc::channel();
+        self.cpu_job = Some(job);
+        self.cpu_result = Some(rx);
+        self.cpu_status = "Exporting image and processing in local Linux Lab…".into();
+        std::thread::spawn(move || {
+            let result = (|| {
+                let image_png = ai_background_editor::capture_png(&document)?;
+                let output_png = ai_u2netp_transport::remove_background(
+                    endpoint, &token, &image_png, true)?;
+                ai_background_editor::decode_layer(&output_png, &document)
+            })();
+            let _ = tx.send(result);
+        });
+        ctx.request_repaint_after(Duration::from_millis(200));
+    }
+
+    fn poll_cpu_result(&mut self, session: &mut Session, ctx: &egui::Context) -> bool {
+        let received = self.cpu_result.as_ref().map(|rx| rx.try_recv());
+        match received {
+            Some(Ok(result)) => {
+                self.cpu_result = None;
+                let Some(mut job) = self.cpu_job.take() else {
+                    self.cpu_status = "Discarded unexpected AI result.".into();
+                    return false;
+                };
+                match result {
+                    Ok(layer) => {
+                        if job.finish(job.id).is_err() ||
+                            !ai_background_editor::current_revision(session)
+                                .is_some_and(|current| job.may_insert(current)) {
+                            self.cpu_status =
+                                "Document changed or job cancelled; AI result discarded.".into();
+                            return false;
+                        }
+                        match ai_background_editor::insert_undoable(session, job.origin, layer) {
+                            Ok(()) => {
+                                self.cpu_status = "Background removed. New AI layer inserted; Undo/Redo is available.".into();
+                                return true;
+                            }
+                            Err(error) => { self.cpu_status = error; }
+                        }
+                    }
+                    Err(error) => {
+                        job.fail();
+                        self.cpu_status = format!("Background removal failed: {error}");
+                    }
+                }
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.cpu_result = None;
+                self.cpu_job = None;
+                self.cpu_status = "Background removal worker stopped unexpectedly.".into();
+            }
+            Some(Err(TryRecvError::Empty)) => {
+                ctx.request_repaint_after(Duration::from_millis(200));
+            }
+            None => {}
+        }
+        false
     }
 }
 

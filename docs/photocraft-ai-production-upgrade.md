@@ -120,6 +120,36 @@ and NOTICE requirements, DUTS dataset permissions, and whether an additional
 rights-holder confirmation is needed. A source-code Apache-2.0 badge alone
 is not proof that training-data and redistributed-weight rights are clear.
 
+## Latest read-only verification — 30 October 2026, 20:17 MYT
+
+- PR #93 remained **DRAFT** at source commit `644f22d34ac64a906c5f353d3fe7656ab543ffcd`.
+  Hardened `tools/photocraft_ai_reference_signing.py` to require **exactly
+  one anchored, valid aapt package/version record** instead of trusting the
+  first matching substring. Added fail-closed tests for duplicate, conflicting,
+  malformed and misleading package lines. This change affects **read-only
+  reference parsing**, not the owner-tested app, model, APK build or signing.
+- [Read-only CI run #41054169508](https://github.com/KosmosSG/artcraft-android/actions/runs/41054169508)
+  **passed** all steps: offline parser tests, 17 candidate-compatibility
+  rejection scenarios, download and inspection of the actual public PhotoCraft
+  baseline, and a **metadata-only** signing reference artifact. No APK was
+  uploaded, installed, re-signed or released.
+- The historical [ARM64 disposable proof run #4 (41032183666)](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+  is **completed/failed**, not running. Its concrete failure was
+  `AssertionError: Unexpected versionName`; the subsequent
+  [run #5 (41033840254)](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+  **passed** with the `0.14.0-android.2` production-package identity and
+  uploaded **only a JSON report**, after deleting its throwaway-signed APK.
+  Do not mistake run #4 for the latest proof.
+- Private signer [run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+  and separate no-secret private runner
+  [probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+  still show **zero steps / no runner assignment**, with no newer runs
+  found on the private candidate branch at this check. No production key
+  access or original-signed AI candidate occurred. The exact GitHub
+  private-runner/account cause is unverified; avoid repeated heavy retries.
+- Model weights remain outside Android artifacts. Owner installation/data
+  preservation and final publication approval remain outstanding.
+
 ## Known blockers
 
 - The generic `build.sh -photocraft` builder creates

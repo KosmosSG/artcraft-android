@@ -192,6 +192,53 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_slow_trickle_pre_auth_headers_hit_absolute_deadline(self):
+        # Socket inactivity timeouts are insufficient: a local client can
+        # send one byte repeatedly without completing its Authorization line.
+        # No inference should start, and the next real request must succeed.
+        with patch.object(server, "REQUEST_READ_TIMEOUT", 0.35):
+            with patch.object(server.subprocess, "run") as inference:
+                with socket.create_connection(self.address, timeout=3) as sock:
+                    sock.settimeout(1.5)
+                    sock.sendall(
+                        b"POST /v1/remove-background HTTP/1.1\\r\\n"
+                        b"Host: 127.0.0.1\\r\\nAuthorization: Bearer "
+                    )
+                    stop = threading.Event()
+
+                    def trickle():
+                        while not stop.wait(0.04):
+                            try:
+                                sock.sendall(b"x")
+                            except OSError:
+                                return
+
+                    writer = threading.Thread(target=trickle, daemon=True)
+                    writer.start()
+                    try:
+                        try:
+                            reply = sock.recv(4096)
+                        except ConnectionResetError:
+                            reply = b""
+                        self.assertNotIn(b" 200 ", reply.split(b"\\r\\n", 1)[0])
+                    finally:
+                        stop.set()
+                        writer.join(timeout=2)
+                inference.assert_not_called()
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
+    def test_completed_headers_do_not_timeout_during_cpu_inference(self):
+        # Absolute header timer must be cancelled after parsing, not after
+        # inference. A valid request can legitimately take longer than 15s.
+        def delayed_inference(*args, **kwargs):
+            threading.Event().wait(0.65)
+            return mock_inference(*args, **kwargs)
+
+        with patch.object(server, "REQUEST_READ_TIMEOUT", 0.35):
+            with patch.object(server.subprocess, "run", side_effect=delayed_inference):
+                self.assertEqual(self.request()[0], 200)
+
     def test_slow_trickle_upload_hits_absolute_deadline_and_releases_lock(self):
         # Regression: a client sending a byte every 40 ms previously kept
         # resetting the socket read timeout, holding the inference lock

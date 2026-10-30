@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from PIL import Image, ImageOps
+from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 BENCHMARK = HERE / "benchmark_u2netp.py"
@@ -32,7 +32,9 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
     if not destination.parent.is_dir():
         raise ValueError("Output parent directory must already exist")
     with Image.open(source) as image:
-        width, height = ImageOps.exif_transpose(image).size
+        if image.format != "PNG":
+            raise ValueError("Only PNG input is accepted")
+        width, height = image.size
         if width < 1 or height < 1 or width * height > MAX_PIXELS:
             raise ValueError("Input dimensions outside safety limit")
         image.verify()

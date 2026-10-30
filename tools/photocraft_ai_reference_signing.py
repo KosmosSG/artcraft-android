@@ -25,7 +25,10 @@ PACKAGE_PATTERN = re.compile(
 # fields after the signer digest. Match the full SHA256 hex value while
 # retaining strict validation of its length.
 SIGNER_PATTERN = re.compile(
-    r"Signer\s+#1\s+certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})(?![a-fA-F0-9])",
+    # Android build-tools uses either "Signer #1 certificate ..." or
+    # "V3.0 Signer: certificate ...". The published PhotoCraft 0.14 APK uses
+    # the latter. Reject ambiguity if several signer fingerprints disagree.
+    r"(?:Signer\s+#1|V[1-4]\.0\s+Signer):?\s+certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})(?![a-fA-F0-9])",
     re.I,
 )
 
@@ -34,11 +37,14 @@ def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
     if not TAG_PATTERN.fullmatch(tag):
         raise ValueError("Unexpected PhotoCraft reference release tag")
     package = PACKAGE_PATTERN.search(badging)
-    certificate = SIGNER_PATTERN.search(signing)
+    certificates = {match.lower() for match in SIGNER_PATTERN.findall(signing)}
     if package is None:
         raise ValueError("Cannot parse aapt package/version badging line")
-    if certificate is None:
+    if not certificates:
         raise ValueError("Cannot parse apksigner's SHA-256 certificate digest")
+    if len(certificates) != 1:
+        raise ValueError("APK reports multiple different signing certificates")
+    certificate = certificates.pop()
     name, code, version = package.groups()
     if name != PACKAGE:
         raise ValueError("Reference APK has the wrong package ID")
@@ -51,7 +57,7 @@ def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
         "package": name,
         "version_name": version,
         "version_code": int(code),
-        "signer_certificate_sha256": certificate.group(1).lower(),
+        "signer_certificate_sha256": certificate,
     }
 
 
@@ -90,6 +96,14 @@ def self_test() -> None:
              "versionName='0.14.0-android.1' platformBuildVersionName='15'\n")
     signer = "Signer #1 certificate SHA-256 digest: " + "Ab" * 32 + "\n"
     assert parse_identity(badge, "  " + signer + "Additional output\n", tag)["version_code"] == 16790004
+    v3_signer = "V3.0 Signer: certificate SHA-256 digest: " + "Ab" * 32 + "\n"
+    assert parse_identity(badge, v3_signer, tag)["signer_certificate_sha256"] == "ab" * 32
+    try:
+        parse_identity(badge, signer + v3_signer.replace("Ab", "Cd"), tag)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Accepted inconsistent signing certificates")
     parsed = parse_identity(badge, signer, tag)
     assert parsed["version_code"] == 16790004
     assert parsed["signer_certificate_sha256"] == "ab" * 32

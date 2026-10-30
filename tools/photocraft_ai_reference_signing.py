@@ -19,9 +19,15 @@ import tempfile
 PACKAGE = "com.artcraft.photocraft"
 TAG_PATTERN = re.compile(r"^photocraft-v[0-9]+\.[0-9]+\.[0-9]+-android\.[0-9]+$")
 PACKAGE_PATTERN = re.compile(
-    r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", re.M
+    r"\bpackage:\s*name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']+)'"
 )
-SIGNER_PATTERN = re.compile(r"^Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]{64})$", re.M)
+# Android build-tools releases vary in whitespace and sometimes add trailing
+# fields after the signer digest. Match the full SHA256 hex value while
+# retaining strict validation of its length.
+SIGNER_PATTERN = re.compile(
+    r"Signer\s+#1\s+certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})(?![a-fA-F0-9])",
+    re.I,
+)
 
 
 def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
@@ -29,8 +35,10 @@ def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
         raise ValueError("Unexpected PhotoCraft reference release tag")
     package = PACKAGE_PATTERN.search(badging)
     certificate = SIGNER_PATTERN.search(signing)
-    if package is None or certificate is None:
-        raise ValueError("Missing Android package or signing certificate metadata")
+    if package is None:
+        raise ValueError("Cannot parse aapt package/version badging line")
+    if certificate is None:
+        raise ValueError("Cannot parse apksigner's SHA-256 certificate digest")
     name, code, version = package.groups()
     if name != PACKAGE:
         raise ValueError("Reference APK has the wrong package ID")
@@ -81,6 +89,7 @@ def self_test() -> None:
     badge = ("package: name='com.artcraft.photocraft' versionCode='16790004' "
              "versionName='0.14.0-android.1' platformBuildVersionName='15'\n")
     signer = "Signer #1 certificate SHA-256 digest: " + "Ab" * 32 + "\n"
+    assert parse_identity(badge, "  " + signer + "Additional output\n", tag)["version_code"] == 16790004
     parsed = parse_identity(badge, signer, tag)
     assert parsed["version_code"] == 16790004
     assert parsed["signer_certificate_sha256"] == "ab" * 32

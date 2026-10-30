@@ -1,5 +1,6 @@
 """PhotoCraft-parity safety tests for the pinned DesignCraft Android candidate."""
 import tempfile
+import shutil
 from pathlib import Path
 import unittest
 
@@ -8,14 +9,24 @@ from menu_overlay import apply
 
 class DesignCraftAndroidParity(unittest.TestCase):
     def test_menu_overlay_is_pinned_and_fail_closed(self):
-        pinned = Path("builder/source/designcraft/crates/ui-egui/src/menus.rs")
+        menus_root = Path("builder/source/designcraft/crates/ui-egui/src")
+        pinned = menus_root / "menus.rs"
         self.assertTrue(pinned.is_file(), "Exact pinned upstream menus.rs checkout is required")
         with tempfile.TemporaryDirectory() as temp:
-            edited = Path(temp) / "menus.rs"
-            edited.write_bytes(pinned.read_bytes())
-            original = edited.read_text()
+            if (menus_root / "menus/ui_commands.rs").is_file():
+                edited = Path(temp) / "menus"
+                shutil.copytree(menus_root / "menus", edited)
+                shutil.copyfile(pinned, Path(temp) / "menus.rs")
+                def contents():
+                    return "\\n".join(p.read_text() for p in [Path(temp) / "menus.rs", *sorted(edited.glob("*.rs"))])
+            else:
+                edited = Path(temp) / "menus.rs"
+                edited.write_bytes(pinned.read_bytes())
+                def contents():
+                    return edited.read_text()
+            original = contents()
             apply(edited)
-            after = edited.read_text()
+            after = contents()
             self.assertNotEqual(original, after)
             self.assertIn('artcraft_take_android_actions()', after)
             self.assertIn('"Type" => &["app.artcraftImportFont"', after)

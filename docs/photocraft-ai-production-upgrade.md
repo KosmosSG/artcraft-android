@@ -68,6 +68,58 @@ the production package name. Failure at any gate must stop the proof.
 6. Request explicit owner authorization for merge and/or public
    GitHub Release *only after* the above steps are verified.
 
+## Verified private original-signing attempt — 30 October 2026
+
+The owner explicitly authorized preparing an **original-signed private candidate**
+for device testing, **not** a public release. The isolated signing workflow is
+on `KosmosSG/photocraft-signing-private`, branch
+`release/photocraft-ai-pr93-signed-candidate-20261030`:
+[`photocraft-ai-pr93-signed-candidate.yml`](https://github.com/KosmosSG/photocraft-signing-private/blob/release/photocraft-ai-pr93-signed-candidate-20261030/.github/workflows/photocraft-ai-pr93-signed-candidate.yml).
+It pins the **tested application source** at
+`adb9b2d545f870a022f5d6be81c498668d240501`, then separates the
+disposable-key ARM64 compilation from the clean, trusted private signing job.
+The second job is designed to verify the published baseline, decrypt the
+already-existing production signing backup **only on its own runner**, verify
+the original certificate, sign `0.14.0-android.2` (versionCode
+`16790005`), and upload **only a private testing artifact**. It does not
+merge, tag or publish.
+
+**Actual result:** [private signing run #1](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+failed **before a runner or any step was assigned** (build job `runner_id=0`,
+`steps=[]`); signing was skipped. An independent
+[no-secret private runner probe](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+also failed before runner assignment (`runner_id=0`, `steps=[]`).
+This is a **GitHub-hosted private-runner/account availability blocker**, not
+evidence of an APK compile or signing failure. Billing, quota, policy or
+runner availability are possible causes, **none confirmed**. Do not repeatedly
+queue heavy builds until a minimal private runner can actually execute.
+No production key was accessed and **no original-signed AI APK exists yet**.
+The public [ARM64 package proof #5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+passed and uploaded a JSON identity report **only**; its disposable APK was
+deleted, and is not installable over production PhotoCraft.
+
+## U2NetP model rights — upstream evidence and unresolved distribution gate
+
+The U²-Net author's [response in issue #208](https://github.com/xuebinqin/U-2-Net/issues/208)
+(25 May 2021) says the repository's released code and models follow its
+Apache-2.0 license, but expressly warns that the **training dataset's rights
+are not controlled by the author**. The author separately confirms in that
+issue that **u2net.pth and u2netp.pth were trained on DUTS**. The later
+[request for commercial-use/redistribution clarification, issue #409](https://github.com/xuebinqin/U-2-Net/issues/409),
+was still open with no confirmed answer at this review. The
+[rembg project](https://github.com/danielgatis/rembg) also warns that model
+weight rights must be evaluated separately from the rembg software license.
+
+**Decision:** Keep U2NetP weights **outside the APK, repository, release
+assets and installer**. Existing opt-in Linux Lab processing using the
+owner's manually obtained local model remains an experimental personal
+workflow; do not advertise blanket commercial rights or automate model
+distribution. Before any bundled/hosted/commercial distribution, document
+the exact ONNX file provenance and cryptographic hash, license/attribution
+and NOTICE requirements, DUTS dataset permissions, and whether an additional
+rights-holder confirmation is needed. A source-code Apache-2.0 badge alone
+is not proof that training-data and redistributed-weight rights are clear.
+
 ## Known blockers
 
 - The generic `build.sh -photocraft` builder creates

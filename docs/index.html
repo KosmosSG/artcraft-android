@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ArtCraft Android Suite | Downloads</title>
+<meta name="description" content="Official GitHub release download directory for KosmosSG's ArtCraft Android builds.">
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0c1221;color:#f2f5ff}
+*{box-sizing:border-box}body{max-width:1100px;margin:auto;padding:28px 18px 80px}a{color:#99c7ff}
+header{padding:20px 0 26px}h1{font-size:clamp(2rem,5vw,3.6rem);margin:0 0 10px}header p{color:#bbc7e0;max-width:730px;line-height:1.6}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:25px 0 32px}nav a{border-radius:20px;padding:8px 12px;background:#1c2945;text-decoration:none;color:#d5e6ff;font-size:14px}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
+.app{background:#151f33;border:1px solid #32435e;border-radius:18px;padding:19px;scroll-margin-top:14px}
+.app h2{margin:0 0 12px;font-size:22px}.status{color:#aebcce;font-size:14px}
+.release{padding:14px 0;border-top:1px solid #31415a}.release:first-child{border-top:0}
+.release strong{overflow-wrap:anywhere}.date{color:#afbdd4;font-size:12px;margin:6px 0 10px}
+.buttons{display:flex;flex-wrap:wrap;gap:8px}.buttons a{display:inline-block;padding:8px 11px;border:1px solid #54719c;border-radius:9px;text-decoration:none;font-size:13px}
+.buttons a.apk{background:#285caa;color:white;border-color:#3974c9}
+footer{color:#aebbd2;padding-top:30px;line-height:1.6}
+</style></head>
+<body><header><h1>ArtCraft Android Suite</h1><p>Download public Android releases, grouped by application. APK files are served directly from the original <a href="https://github.com/KosmosSG/artcraft-android/releases">GitHub Releases</a>. Release names, APKs, signing and update systems are unchanged.</p></header>
+<nav aria-label="Applications"><a href="#photocraft">PhotoCraft</a>
+<a href="#vectorcraft">VectorCraft</a>
+<a href="#designcraft">DesignCraft</a>
+<a href="#effectcraft">EffectCraft</a>
+<a href="#filmcraft">FilmCraft</a>
+<a href="#lightcraft">LightCraft</a>
+<a href="#pdfcraft">PDFCraft</a>
+<a href="#wordcraft">WordCraft</a>
+<a href="#deckcraft">DeckCraft</a>
+<a href="#gridcraft">GridCraft</a>
+<a href="#soundcraft">SoundCraft</a>
+<a href="#cadcraft">CADCraft</a>
+<a href="#figcraft">FigCraft</a></nav>
+<p id="overview" role="status">Checking published releases…</p>
+<main><section class="app" id="photocraft"><h2>PhotoCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="vectorcraft"><h2>VectorCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="designcraft"><h2>DesignCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="effectcraft"><h2>EffectCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="filmcraft"><h2>FilmCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="lightcraft"><h2>LightCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="pdfcraft"><h2>PDFCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="wordcraft"><h2>WordCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="deckcraft"><h2>DeckCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="gridcraft"><h2>GridCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="soundcraft"><h2>SoundCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="cadcraft"><h2>CADCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section>
+<section class="app" id="figcraft"><h2>FigCraft</h2><p class="status">Loading published releases…</p><div class="releases"></div></section></main>
+<footer>Always verify compatibility before installing. To update an installed app without losing its data, the new APK must use the same package name and signing certificate. <a href="https://github.com/KosmosSG/artcraft-android/releases">See all releases on GitHub</a>.</footer>
+<script>
+const REPO='KosmosSG/artcraft-android';
+const APPS=["PhotoCraft","VectorCraft","DesignCraft","EffectCraft","FilmCraft","LightCraft","PDFCraft","WordCraft","DeckCraft","GridCraft","SoundCraft","CADCraft","FigCraft"];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function group(release){
+  const hay=[release.tag_name||'',release.name||''].join(' ').toLowerCase();
+  // Require an app name in the release tag or title, or at the start of a downloadable APK filename.
+  return APPS.find(n=>{const k=n.toLowerCase();return new RegExp('(^|[^a-z])'+k+'([^a-z]|$)','i').test(hay) ||
+    (release.assets||[]).some(a=>new RegExp('^'+k+'(?:[-_.]|[0-9])','i').test(a.name));});
+}
+function render(releases){
+  const grouped=Object.fromEntries(APPS.map(n=>[n,[]]));
+  for(const r of releases){const app=group(r);if(app)grouped[app].push(r);}
+  const total=releases.length;
+  document.getElementById('overview').textContent=`Showing ${total} published releases from GitHub (excluding drafts and prereleases). Each app shows its newest releases first.`;
+  for(const app of APPS){
+    const el=document.getElementById(app.toLowerCase()), arr=grouped[app];
+    el.querySelector('.status').textContent=arr.length?`${arr.length} published release${arr.length===1?'':'s'}`:'No matching public stable release found.';
+    el.querySelector('.releases').innerHTML=arr.map(r=>{
+      const apks=(r.assets||[]).filter(a=>/\.apk$/i.test(a.name));
+      const date=r.published_at?new Date(r.published_at).toLocaleDateString():'';
+      const links=apks.map(a=>`<a class="apk" href="${esc(a.browser_download_url)}" rel="noopener">${esc(a.name)} · APK</a>`).join('');
+      return `<article class="release"><strong>${esc(r.name||r.tag_name||'Release')}</strong><div class="date">${esc(r.tag_name||'')} · ${esc(date)}</div><div class="buttons">${links}<a href="${esc(r.html_url)}" rel="noopener">Release notes</a></div></article>`;
+    }).join('');
+  }
+}
+async function load(){
+  try{
+    const all=[];
+    // GitHub's public API paginates releases. Cap requests to avoid excessive unauthenticated use.
+    for(let page=1;page<=10;page++){
+      const resp=await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}`,{headers:{Accept:'application/vnd.github+json'}});
+      if(!resp.ok)throw new Error('GitHub API responded '+resp.status);
+      const rows=await resp.json();if(!Array.isArray(rows))throw new Error('Unexpected response');
+      all.push(...rows.filter(r=>!r.draft&&!r.prerelease));
+      if(rows.length<100)break;
+    }
+    all.sort((a,b)=>new Date(b.published_at||0)-new Date(a.published_at||0));
+    render(all);
+  }catch(err){
+    document.getElementById('overview').textContent='Live release list is temporarily unavailable ('+err.message+'). Use the GitHub Releases link below.';
+    for(const n of APPS){const el=document.getElementById(n.toLowerCase());el.querySelector('.status').innerHTML='<a href="https://github.com/KosmosSG/artcraft-android/releases">Browse GitHub releases</a>';}
+  }
+}
+load();
+</script></body></html>

@@ -342,18 +342,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload build failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
-        with:
-          name: PhotoCraft-AI-PR93-Keyboard-Icon-Failure
-          path: |
-            logs/
-            icon-verification/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Remove disposable local signing key and any APK
+      # verify_apk.py leaves a disposable-signed APK in icon-verification/.
+      # Only the explicitly validated UNSIGNED candidate-proof path may be uploaded.
+      - name: Always remove disposable key, output APK and verification APK copy
         if: always()
         shell: bash
-        run: rm -f keys/artcraft-builder.jks keys/.keystore-password output/*.apk
+        run: |
+          rm -f keys/artcraft-builder.jks keys/.keystore-password output/*.apk
+          rm -rf icon-verification/

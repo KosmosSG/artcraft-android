@@ -1,10 +1,10 @@
-//! Android-only AI Tools menu. The only live Phase-2 action is an explicitly
-//! requested ComfyUI reachability test; model and document actions are disabled.
+//! Android-only AI Tools menu: read-only ComfyUI diagnostics plus an explicitly
+//! consented experimental local U2NetP background removal workflow.
 //! No upstream PhotoCraft crates, Android manifest, or signing files are changed.
 
 use crate::ai_tools::{AiAction, ComfyEndpoint};
 use crate::ai_background_editor;
-use crate::ai_background_job::{DocumentRevision, Job, JobId};
+use crate::ai_background_job::{Job, JobId};
 use crate::ai_u2netp_transport;
 use photocraft_doc::Layer;
 use photocraft_engine::Session;
@@ -143,9 +143,9 @@ impl AndroidAiMenu {
             egui::MenuBar::new().ui(ui, |ui| {
                     ui.menu_button("AI Tools", |ui| {
                         ui.label(egui::RichText::new(if self.connection_ok {
-                            "ComfyUI reachable · AI processing disabled"
+                            "ComfyUI reachable · Local U2NetP preview is opt-in"
                         } else {
-                            "AI processing disabled · Optional backend test"
+                            "Local U2NetP CPU preview · Optional ComfyUI test"
                         }).weak());
                         ui.separator();
 
@@ -301,7 +301,7 @@ impl AndroidAiMenu {
                     ui.label("Status: opt-in ComfyUI diagnostics and experimental loopback U2NetP background removal.");
                     ui.label("A separate explicit consent is required for every image sent to local Linux Lab.");
                     ui.label("Background removal creates an undoable layer only after full PNG decoding and stale-document checks.");
-                    ui.label("The existing Filter menu, fonts, shortcuts, and document workflow are unchanged.");
+                    ui.label("Existing filters, fonts and keyboard shortcuts remain available.");
                 });
         }
         layer_changed

@@ -192,6 +192,42 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_slow_trickle_upload_hits_absolute_deadline_and_releases_lock(self):
+        # Regression: a client sending a byte every 40 ms previously kept
+        # resetting the socket read timeout, holding the inference lock
+        # indefinitely without ever delivering its declared PNG body.
+        head = (
+            f"POST /v1/remove-background HTTP/1.1\\r\\n"
+            f"Host: 127.0.0.1\\r\\nAuthorization: Bearer {TOKEN}\\r\\n"
+            f"X-PhotoCraft-Image-Consent: yes\\r\\nContent-Type: image/png\\r\\n"
+            f"Content-Length: 8192\\r\\n\\r\\n"
+        ).encode().replace(b"\\r", b"\r").replace(b"\\n", b"\n")
+        with patch.object(server, "REQUEST_READ_TIMEOUT", 0.35):
+            with patch.object(server.subprocess, "run") as inference:
+                with socket.create_connection(self.address, timeout=3) as sock:
+                    sock.settimeout(1.5)
+                    sock.sendall(head + b"x")
+                    stop = threading.Event()
+
+                    def trickle():
+                        while not stop.wait(0.04):
+                            try:
+                                sock.sendall(b"x")
+                            except OSError:
+                                return
+
+                    writer = threading.Thread(target=trickle, daemon=True)
+                    writer.start()
+                    try:
+                        reply = sock.recv(4096)
+                        self.assertIn(b" 408 ", reply.split(b"\r\n", 1)[0])
+                    finally:
+                        stop.set()
+                        writer.join(timeout=2)
+                inference.assert_not_called()
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
     def test_timeout_releases_server_lock(self):
         head = (
             f"POST /v1/remove-background HTTP/1.1\r\n"

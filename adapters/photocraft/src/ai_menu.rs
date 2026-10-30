@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use crate::ai_models::{self, ModelInventory};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 
 /// Persist only the non-sensitive visibility setting inside this app's
@@ -24,6 +25,7 @@ pub(crate) struct AndroidAiMenu {
     cpu_consent: bool,
     cpu_status: String,
     cpu_result: Option<Receiver<Result<Layer, String>>>,
+    cpu_cancellation: Option<Arc<AtomicBool>>,
     cpu_job: Option<Job>,
     cpu_next_job: u64,
     endpoint_text: String,
@@ -53,6 +55,7 @@ impl AndroidAiMenu {
             cpu_consent: false,
             cpu_status: "No image has been processed.".into(),
             cpu_result: None,
+            cpu_cancellation: None,
             cpu_job: None,
             cpu_next_job: 0,
             endpoint_text: String::new(),
@@ -85,6 +88,12 @@ impl AndroidAiMenu {
     /// Returns true after a new undoable layer is inserted so the host can
     /// synchronize PhotoCraft canvas caches before rendering the editor.
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+        // A hidden AI Tools menu must not apply an invisible in-flight result.
+        // Window → Show AI Tools can be toggled at any time.
+        if !photocraft_ui_egui::menus::artcraft_ai_tools_visible() {
+            self.cancel_cpu_job();
+            self.cpu_consent = false;
+        }
         let layer_changed = self.poll_cpu_result(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
         match received {
@@ -199,14 +208,19 @@ impl AndroidAiMenu {
                         self.start_cpu_job(session, &ctx);
                     }
                     if pending && ui.button("Cancel and discard pending result").clicked() {
-                        if let Some(mut job) = self.cpu_job.take() { job.cancel(); }
-                        self.cpu_result = None;
-                        self.cpu_status = "Cancelled. The server may still finish processing, but the result will be ignored.".into();
+                        self.cancel_cpu_job();
                     }
                     ui.separator();
                     ui.label(&self.cpu_status);
                     ui.label("Do not expose the CPU service to the LAN or public internet.");
                 });
+            if !open {
+                // Closing the window is a cancellation, never permission to
+                // insert a result after the consent dialog disappeared.
+                self.cancel_cpu_job();
+                self.cpu_consent = false;
+                self.cpu_token.clear();
+            }
             self.show_background_setup = open;
         }
 
@@ -307,6 +321,18 @@ impl AndroidAiMenu {
         layer_changed
     }
 
+    fn cancel_cpu_job(&mut self) {
+        if self.cpu_result.is_none() { return; }
+        if let Some(cancel) = self.cpu_cancellation.take() {
+            cancel.store(true, Ordering::Release);
+        }
+        if let Some(mut job) = self.cpu_job.take() {
+            job.cancel();
+        }
+        self.cpu_result = None;
+        self.cpu_status = "Cancelled: AI result discarded. CPU processing already started in Linux Lab may finish before another job can run.".into();
+    }
+
     fn start_cpu_job(&mut self, session: &Session, ctx: &egui::Context) {
         // Consume the one-image checkbox before ANY export or network action.
         let consent = std::mem::take(&mut self.cpu_consent);
@@ -328,14 +354,16 @@ impl AndroidAiMenu {
         }
         let endpoint = SocketAddr::from(([127, 0, 0, 1], 18793));
         let (tx, rx) = mpsc::channel();
+        let cancellation = Arc::new(AtomicBool::new(false));
+        self.cpu_cancellation = Some(Arc::clone(&cancellation));
         self.cpu_job = Some(job);
         self.cpu_result = Some(rx);
         self.cpu_status = "Exporting image and processing in local Linux Lab…".into();
         std::thread::spawn(move || {
             let result = (|| {
                 let image_png = ai_background_editor::capture_png(&document)?;
-                let output_png = ai_u2netp_transport::remove_background(
-                    endpoint, &token, &image_png, true)?;
+                let output_png = ai_u2netp_transport::remove_background_with_cancel(
+                    endpoint, &token, &image_png, true, &cancellation)?;
                 ai_background_editor::decode_layer(&output_png, &document)
             })();
             let _ = tx.send(result);
@@ -348,6 +376,7 @@ impl AndroidAiMenu {
         match received {
             Some(Ok(result)) => {
                 self.cpu_result = None;
+                self.cpu_cancellation = None;
                 let Some(mut job) = self.cpu_job.take() else {
                     self.cpu_status = "Discarded unexpected AI result.".into();
                     return false;
@@ -377,6 +406,7 @@ impl AndroidAiMenu {
             }
             Some(Err(TryRecvError::Disconnected)) => {
                 self.cpu_result = None;
+                self.cpu_cancellation = None;
                 self.cpu_job = None;
                 self.cpu_status = "Background removal worker stopped unexpectedly.".into();
             }

@@ -74,9 +74,14 @@ def make_handler(token: str):
                 auth_values[0], "Bearer " + token,
             ):
                 return self.reply(401, b"Unauthorized")
-            if self.headers.get("X-PhotoCraft-Image-Consent") != "yes":
+            # Consent must be an unambiguous, single affirmative header.
+            # BaseHTTPRequestHandler.headers.get() silently chooses the first
+            # of duplicated fields, which can conceal a conflicting value.
+            consents = self.headers.get_all("X-PhotoCraft-Image-Consent", [])
+            if consents != ["yes"]:
                 return self.reply(403, b"Per-image consent required")
-            if self.headers.get("Content-Type", "").split(";")[0].strip() != "image/png":
+            content_types = self.headers.get_all("Content-Type", [])
+            if len(content_types) != 1 or content_types[0].split(";", 1)[0].strip() != "image/png":
                 return self.reply(415, b"PNG required")
             # Explicit length and no transfer-coding ambiguity. Never accept
             # multiple Content-Length headers or HTTP chunked request bodies.

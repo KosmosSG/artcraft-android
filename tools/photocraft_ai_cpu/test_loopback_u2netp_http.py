@@ -130,6 +130,36 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertIn(b" 401 ", response.split(b"\r\n", 1)[0])
             run.assert_not_called()
 
+    def test_reject_duplicate_or_conflicting_consent_and_content_type(self):
+        # Duplicate yes/yes is still ambiguous: no inference may start until
+        # exactly one affirmative consent and one PNG Content-Type are present.
+        image = sample_png()
+        start = (
+            f"POST /v1/remove-background HTTP/1.1\r\n"
+            f"Host: 127.0.0.1\r\nAuthorization: Bearer {TOKEN}\r\n"
+        ).encode()
+        cases = [
+            (b"X-PhotoCraft-Image-Consent: yes\r\n"
+             b"X-PhotoCraft-Image-Consent: yes\r\n"
+             b"Content-Type: image/png\r\n", 403),
+            (b"X-PhotoCraft-Image-Consent: yes\r\n"
+             b"X-PhotoCraft-Image-Consent: no\r\n"
+             b"Content-Type: image/png\r\n", 403),
+            (b"X-PhotoCraft-Image-Consent: yes\r\n"
+             b"Content-Type: image/png\r\n"
+             b"Content-Type: image/png\r\n", 415),
+            (b"X-PhotoCraft-Image-Consent: yes\r\n"
+             b"Content-Type: image/png\r\n"
+             b"Content-Type: image/jpeg\r\n", 415),
+        ]
+        with patch.object(server.subprocess, "run") as run:
+            for headers, expected in cases:
+                with self.subTest(expected=expected, headers=headers):
+                    raw = start + headers + f"Content-Length: {len(image)}\r\n\r\n".encode() + image
+                    response = self.raw_request(raw)
+                    self.assertIn(f" {expected} ".encode(), response.split(b"\r\n", 1)[0])
+            run.assert_not_called()
+
     def test_worker_failure_does_not_return_partial_png(self):
         result = subprocess.CompletedProcess(["no-model"], 2, stdout=b"", stderr=b"private model path")
         with patch.object(server.subprocess, "run", return_value=result):

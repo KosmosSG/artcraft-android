@@ -75,22 +75,32 @@ def check_candidate(
     # could pass source-level tests despite mismatched version/package fields.
     # The CLI uses one actual APK for both reads, but this extra fail-closed
     # invariant catches tool output corruption and future integration mistakes.
+    # A malformed second package record must fail even when the valid record
+    # still matches. Counting only regex matches silently ignored such lines.
+    raw_package_lines = re.findall(r"^package:", candidate_badging, re.M)
     badges = re.findall(
         r"^package:\s+name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']+)'",
         candidate_badging, re.M,
     )
-    ensure(len(badges) == 1, "Candidate aapt must report exactly one package/version line")
+    ensure(len(raw_package_lines) == len(badges) == 1,
+           "Candidate aapt must report exactly one valid package/version line")
     badge_package, badge_code, badge_version = badges[0]
     ensure(badge_package == candidate["package"]
            and int(badge_code) == candidate["version_code"]
            and badge_version == candidate["version_name"],
            "Candidate aapt package/version disagrees with verified APK identity")
+    # Reject malformed/ambiguous duplicate records as well as valid but wrong
+    # labels or launchers. This is a read-only release identity check, so
+    # unexpected aapt formatting must fail closed rather than be ignored.
+    raw_label_lines = re.findall(r"^application-label:", candidate_badging, re.M)
     labels = re.findall(r"^application-label:'([^']*)'\s*$", candidate_badging, re.M)
-    ensure(labels == ["PhotoCraft"],
-           "Candidate must have exactly one PhotoCraft app label")
+    ensure(len(raw_label_lines) == 1 and labels == ["PhotoCraft"],
+           "Candidate must have exactly one valid PhotoCraft app label")
+    raw_launcher_lines = re.findall(r"^launchable-activity:", candidate_badging, re.M)
     launchers = re.findall(r"^launchable-activity:\s+name='([^']+)'", candidate_badging, re.M)
-    ensure(launchers == ["com.artcraft.photocraft.PhotoCraftActivity"],
-           "Candidate must retain exactly one production PhotoCraft launcher")
+    ensure(len(raw_launcher_lines) == 1
+           and launchers == ["com.artcraft.photocraft.PhotoCraftActivity"],
+           "Candidate must retain exactly one valid production PhotoCraft launcher")
     return {
         "status": "compatible_public_apk_identity",
         "reference_tag": PUBLIC_TAG,
@@ -155,6 +165,17 @@ def self_test() -> None:
         (baseline, new, normal + "application-label:'PhotoCraft'\n"),
         (baseline, new, normal + "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'\n"),
         (baseline, new, normal + "package: name='com.artcraft.photocraft' versionCode='16790005' versionName='0.14.0-android.2'\n"),
+        # Malformed duplicate identity fields were previously ignored because
+        # only valid regex matches were counted. All must now fail closed.
+        (baseline, new, normal + "package: malformed-version-field\n"),
+        (baseline, new, normal + "application-label:malformed\n"),
+        (baseline, new, normal + "launchable-activity: malformed\n"),
+        (baseline, new, normal.replace(
+            "application-label:'PhotoCraft'\n",
+            "application-label:'PhotoCraft'\napplication-label:broken\n")),
+        (baseline, new, normal.replace(
+            "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'",
+            "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'\nlaunchable-activity:broken")),
     ]
     for previous, future, badge in rejected:
         try:

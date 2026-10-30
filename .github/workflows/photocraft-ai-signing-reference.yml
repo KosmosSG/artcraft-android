@@ -5,6 +5,7 @@ on:
       - feature/photocraft-android-ai-tools-20261029
     paths:
       - 'tools/photocraft_ai_reference_signing.py'
+      - 'tools/photocraft_ai_candidate_compatibility.py'
       - '.github/workflows/photocraft-ai-signing-reference.yml'
   workflow_dispatch:
 permissions:
@@ -22,6 +23,8 @@ jobs:
         run: |
           python3 -m py_compile tools/photocraft_ai_reference_signing.py
           python3 tools/photocraft_ai_reference_signing.py --self-test
+          python3 -m py_compile tools/photocraft_ai_candidate_compatibility.py
+          python3 tools/photocraft_ai_candidate_compatibility.py --self-test
       - name: Download only existing public PhotoCraft release APK
         env:
           GH_TOKEN: ${{ github.token }}

@@ -27,6 +27,20 @@ REQUEST_READ_TIMEOUT = 15
 BRIDGE = Path(__file__).resolve().with_name("local_background_bridge.py")
 
 
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """Bound unauthenticated HTTP header reads, not just PNG body uploads.
+
+    The normal ThreadingHTTPServer waits indefinitely for a client to finish
+    sending request headers. A stalled local client could otherwise leave
+    an idle handler thread open before token and consent checks execute.
+    """
+
+    def get_request(self):
+        connection, address = super().get_request()
+        connection.settimeout(REQUEST_READ_TIMEOUT)
+        return connection, address
+
+
 def verify_input(payload: bytes) -> tuple[int, int]:
     if not payload or len(payload) > MAX_BYTES:
         raise ValueError("Input size outside allowed range")
@@ -161,7 +175,7 @@ def main():
     if not 1024 <= args.port <= 65535:
         parser.error("Port must be between 1024 and 65535")
     token = secrets.token_urlsafe(32)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(token))
+    server = LoopbackHTTPServer(("127.0.0.1", args.port), make_handler(token))
     print(f"Local-only U2NetP endpoint: http://127.0.0.1:{args.port}/v1/remove-background")
     print("Temporary session bearer token (keep private):", token, flush=True)
     print("Linux Lab must remain running; Ctrl+C stops server. No public binding.", flush=True)

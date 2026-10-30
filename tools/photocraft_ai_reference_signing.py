@@ -25,11 +25,15 @@ PACKAGE_PATTERN = re.compile(
 # Android build-tools releases vary in whitespace and sometimes add trailing
 # fields after the signer digest. Match the full SHA256 hex value while
 # retaining strict validation of its length.
-SIGNER_PATTERN = re.compile(
-    # Android build-tools uses either "Signer #1 certificate ..." or
-    # "V3.0 Signer: certificate ...". The published PhotoCraft 0.14 APK uses
-    # the latter. Reject ambiguity if several signer fingerprints disagree.
-    r"(?:Signer\s+#1|V[1-4]\.0\s+Signer):?\s+certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})(?![a-fA-F0-9])",
+SIGNER_LINE_PATTERN = re.compile(
+    # apksigner emits "Signer #1 certificate ..." or "V3.0 Signer:
+    # certificate ..." for the actual published APK. Parse complete lines:
+    # an unrecognized signer, malformed digest or trailing text must not be
+    # silently ignored in a future multi-signer APK.
+    r"^\s*(?:Signer\s+#(?P<signer_number>[0-9]+)|"
+    r"V[1-4]\.0\s+Signer(?:\s+#(?P<scheme_signer_number>[0-9]+))?)"
+    r":?\s+certificate\s+SHA-256\s+digest:\s*"
+    r"(?P<digest>[a-fA-F0-9]{64})\s*$",
     re.I,
 )
 
@@ -44,9 +48,21 @@ def parse_identity(badging: str, signing: str, tag: str) -> dict[str, object]:
     packages = PACKAGE_PATTERN.findall(badging)
     if len(package_lines) != 1 or len(packages) != 1:
         raise ValueError("aapt must report exactly one valid package/version line")
-    certificates = {match.lower() for match in SIGNER_PATTERN.findall(signing)}
-    if not certificates:
-        raise ValueError("Cannot parse apksigner's SHA-256 certificate digest")
+    # Count *all* certificate SHA256 records, including malformed or
+    # unrecognized signer records. Previously a valid first signer could
+    # hide an additional "Signer #2" or a truncated fingerprint.
+    raw_signer_lines = [
+        line for line in signing.splitlines()
+        if re.search(r"\bcertificate\s+SHA-256\s+digest\b", line, re.I)
+    ]
+    signer_records = [SIGNER_LINE_PATTERN.fullmatch(line) for line in raw_signer_lines]
+    if not raw_signer_lines or any(record is None for record in signer_records):
+        raise ValueError("Unrecognized or malformed apksigner SHA-256 certificate record")
+    if any(record.group("signer_number") not in (None, "1")
+           or record.group("scheme_signer_number") not in (None, "1")
+           for record in signer_records):
+        raise ValueError("Unexpected additional APK signer")
+    certificates = {record.group("digest").lower() for record in signer_records}
     if len(certificates) != 1:
         raise ValueError("APK reports multiple different signing certificates")
     certificate = certificates.pop()
@@ -103,6 +119,8 @@ def self_test() -> None:
     assert parse_identity(badge, "  " + signer + "Additional output\n", tag)["version_code"] == 16790004
     v3_signer = "V3.0 Signer: certificate SHA-256 digest: " + "Ab" * 32 + "\n"
     assert parse_identity(badge, v3_signer, tag)["signer_certificate_sha256"] == "ab" * 32
+    # Multiple APK signing schemes using the same signer are legitimate.
+    assert parse_identity(badge, signer + v3_signer, tag)["signer_certificate_sha256"] == "ab" * 32
     try:
         parse_identity(badge, signer + v3_signer.replace("Ab", "Cd"), tag)
     except ValueError:
@@ -121,6 +139,12 @@ def self_test() -> None:
         (badge + "package: name='com.artcraft.photocraft'\n", signer, tag),
         (badge + badge.replace("16790004", "16790005"), signer, tag),
         ("note: " + badge, signer, tag),
+        (badge, signer + "Signer #2 certificate SHA-256 digest: " + "Ab" * 32 + "\n", tag),
+        (badge, signer + "V3.0 Signer #2: certificate SHA-256 digest: " + "Ab" * 32 + "\n", tag),
+        (badge, signer + "Signer #1 certificate SHA-256 digest: " + "Ab" * 31 + "\n", tag),
+        (badge, signer + "V3.0 Signer: certificate SHA-256 digest: " + "Ab" * 32 + "garbage\n", tag),
+        (badge, signer + "Signer #1 certificate SHA-256 digest " + "Ab" * 32 + "\n", tag),
+        (badge, signer + "Other Signer: certificate SHA-256 digest: " + "Ab" * 32 + "\n", tag),
     ):
         try:
             parse_identity(*wrong)

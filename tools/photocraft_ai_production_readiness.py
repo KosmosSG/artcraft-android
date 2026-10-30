@@ -83,6 +83,12 @@ def check() -> None:
     need("connection.settimeout(REQUEST_READ_TIMEOUT)" in server
          and "self.connection.settimeout(REQUEST_READ_TIMEOUT)" in server,
          "Server must bound both unauthenticated headers and PNG upload reads")
+    need("self._header_timer = threading.Timer(" in server
+         and "REQUEST_READ_TIMEOUT, self._abort_incomplete_headers" in server
+         and "def parse_request(self):" in server
+         and "self._header_timer.cancel()" in server
+         and "self.connection.shutdown(socket.SHUT_RDWR)" in server,
+         "Server must enforce an absolute pre-auth header deadline even for trickle clients")
     need("deadline = time.monotonic() + REQUEST_READ_TIMEOUT" in server
          and "self.rfile.read1(" in server
          and "self.connection.settimeout(seconds_left)" in server

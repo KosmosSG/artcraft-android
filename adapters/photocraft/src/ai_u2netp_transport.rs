@@ -205,6 +205,38 @@ mod tests {
         ).unwrap_err();
         assert!(err.contains("cancelled"));
     }
+    #[test] fn cancelling_waiting_http_request_stops_client() {
+        use std::net::TcpListener;
+        use std::sync::{mpsc, Arc};
+        use std::thread;
+
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = server.local_addr().unwrap();
+        let (accepted_tx, accepted_rx) = mpsc::channel();
+        let serving = thread::spawn(move || {
+            let (mut peer, _) = server.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut request = [0u8; 1024];
+            let _ = peer.read(&mut request);
+            accepted_tx.send(()).unwrap();
+            // Keep the connection alive with no response; the cancelled
+            // client must not wait for the full 190-second inference limit.
+            thread::sleep(Duration::from_millis(1200));
+        });
+        let cancel = Arc::new(AtomicBool::new(false));
+        let worker_cancel = Arc::clone(&cancel);
+        let worker = thread::spawn(move || {
+            remove_background_with_cancel(
+                endpoint, "abcdefghijklmnopqrstuvwxyz0123456789",
+                b"\x89PNG\r\n\x1a\n", true, &worker_cancel,
+            )
+        });
+        accepted_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        cancel.store(true, Ordering::Release);
+        let result = worker.join().unwrap();
+        assert!(result.unwrap_err().contains("cancelled"));
+        serving.join().unwrap();
+    }
     #[test] fn server_error_gives_specific_help() {
         for (line, reason) in [
             ("HTTP/1.0 401 Unauthorized", "token"),

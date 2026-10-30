@@ -1,15 +1,35 @@
-//! Phase 3 experimental Android-to-Linux-Lab U2NetP transport.
-//! This module is deliberately NOT yet connected to the editor or preview APK.
-//! Never call without explicit per-image user consent; never persist the token.
+//! Consent-gated Android-to-Linux-Lab U2NetP transport for PR #93 AI Preview.
+//! Only tablet-local loopback is permitted. Never persist a session token.
+//! Cancellation closes the client connection; the remote CPU subprocess may
+//! finish work already started unless the Linux Lab server interrupts it.
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 pub const MAX_INPUT: usize = 24 * 1024 * 1024;
 pub const MAX_OUTPUT: usize = 32 * 1024 * 1024;
 
 pub fn remove_background(
     endpoint: SocketAddr, token: &str, png: &[u8], consent: bool,
+) -> Result<Vec<u8>, String> {
+    let cancellation = AtomicBool::new(false);
+    remove_background_with_cancel(endpoint, token, png, consent, &cancellation)
+}
+
+fn ensure_active(cancel: &AtomicBool) -> Result<(), String> {
+    if cancel.load(Ordering::Acquire) {
+        Err("Background removal cancelled".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Preview-only transport. The cancellation flag is shared with the UI so
+/// closing the dialog or tapping Cancel drops the TCP connection promptly.
+pub fn remove_background_with_cancel(
+    endpoint: SocketAddr, token: &str, png: &[u8], consent: bool,
+    cancel: &AtomicBool,
 ) -> Result<Vec<u8>, String> {
     if !consent { return Err("Explicit per-image consent required".into()); }
     if !endpoint.ip().is_loopback() {
@@ -23,26 +43,53 @@ pub fn remove_background(
         !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("Input must be a bounded PNG".into());
     }
+    ensure_active(cancel)?;
     let mut stream = TcpStream::connect_timeout(&endpoint, Duration::from_secs(4))
         .map_err(|_| "Local U2NetP server unavailable")?;
-    stream.set_read_timeout(Some(Duration::from_secs(190))).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(Some(Duration::from_secs(10))).map_err(|e| e.to_string())?;
+    // Subsecond socket waits permit cancellation even when the server is busy.
+    // A separate absolute deadline prevents a slow peer from keeping a
+    // connection alive indefinitely by sending one byte every second.
+    stream.set_read_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(2)))
+        .map_err(|e| e.to_string())?;
     let request = format!(
         "POST /v1/remove-background HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nX-PhotoCraft-Image-Consent: yes\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         endpoint.port(), token, png.len()
     );
-    stream.write_all(request.as_bytes()).map_err(|_| "Failed to send request headers")?;
-    stream.write_all(png).map_err(|_| "Failed to send PNG")?;
+    ensure_active(cancel)?;
+    stream.write_all(request.as_bytes())
+        .map_err(|_| "Failed to send request headers")?;
+    let upload_deadline = Instant::now() + Duration::from_secs(20);
+    for chunk in png.chunks(64 * 1024) {
+        ensure_active(cancel)?;
+        if Instant::now() >= upload_deadline {
+            return Err("Local U2NetP image upload timed out".into());
+        }
+        stream.write_all(chunk).map_err(|_| "Failed to send PNG")?;
+    }
+    let read_deadline = Instant::now() + Duration::from_secs(190);
     let mut response = Vec::new();
     let mut buf = [0u8; 8192];
     loop {
-        let n = stream.read(&mut buf).map_err(|_| "Local U2NetP response timed out")?;
+        ensure_active(cancel)?;
+        if Instant::now() >= read_deadline {
+            return Err("Local U2NetP response timed out".into());
+        }
+        let n = match stream.read(&mut buf) {
+            Ok(n) => n,
+            Err(error) if matches!(error.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                | std::io::ErrorKind::Interrupted) => continue,
+            Err(_) => return Err("Local U2NetP connection closed unexpectedly".into()),
+        };
         if n == 0 { break; }
         if response.len().saturating_add(n) > MAX_OUTPUT + 16 * 1024 {
             return Err("Local U2NetP response exceeded limit".into());
         }
         response.extend_from_slice(&buf[..n]);
     }
+    ensure_active(cancel)?;
     parse_response(&response)
 }
 
@@ -52,10 +99,19 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     if split > 16 * 1024 { return Err("HTTP headers too large".into()); }
     let header = std::str::from_utf8(&response[..split]).map_err(|_| "Invalid HTTP headers")?;
     let mut lines = header.split("\r\n");
-    // Python BaseHTTPRequestHandler uses HTTP/1.0 by default; accept either
-    // version with an exact 200 response, rejecting redirects and error pages.
-    if !matches!(lines.next(), Some("HTTP/1.0 200 OK" | "HTTP/1.1 200 OK")) {
-        return Err("Local U2NetP server did not return success".into());
+    // Python BaseHTTPRequestHandler uses HTTP/1.0 by default. Only an exact
+    // 200 is accepted; expected HTTP errors get useful non-sensitive feedback.
+    match lines.next() {
+        Some("HTTP/1.0 200 OK" | "HTTP/1.1 200 OK") => {}
+        Some("HTTP/1.0 401 Unauthorized" | "HTTP/1.1 401 Unauthorized") =>
+            return Err("U2NetP token rejected. Copy the latest token from Linux Lab.".into()),
+        Some("HTTP/1.0 403 Forbidden" | "HTTP/1.1 403 Forbidden") =>
+            return Err("U2NetP server refused per-image consent.".into()),
+        Some("HTTP/1.0 429 Too Many Requests" | "HTTP/1.1 429 Too Many Requests") =>
+            return Err("U2NetP CPU server is busy. Retry after the previous request ends.".into()),
+        Some("HTTP/1.0 504 Gateway Timeout" | "HTTP/1.1 504 Gateway Timeout") =>
+            return Err("Local U2NetP CPU inference timed out.".into()),
+        _ => return Err("Local U2NetP server did not return success".into()),
     }
     let mut length = None;
     let mut png_type = false;
@@ -139,6 +195,28 @@ mod tests {
         let start = v.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
         v[start + 25] = 2;
         assert!(parse_response(&v).is_err());
+    }
+    #[test] fn rejects_cancelled_before_network() {
+        let cancelled = AtomicBool::new(true);
+        let png = b"\x89PNG\r\n\x1a\n";
+        let token = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let err = remove_background_with_cancel(
+            "127.0.0.1:18793".parse().unwrap(), token, png, true, &cancelled,
+        ).unwrap_err();
+        assert!(err.contains("cancelled"));
+    }
+    #[test] fn server_error_gives_specific_help() {
+        for (line, reason) in [
+            ("HTTP/1.0 401 Unauthorized", "token"),
+            ("HTTP/1.0 403 Forbidden", "consent"),
+            ("HTTP/1.0 429 Too Many Requests", "busy"),
+            ("HTTP/1.0 504 Gateway Timeout", "timed out"),
+        ] {
+            let response = format!("{line}\r\nContent-Length: 0\r\n\r\n");
+            assert!(parse_response(response.as_bytes()).unwrap_err().contains(reason));
+        }
+        let redirect = b"HTTP/1.0 302 Found\r\nLocation: http://example.org/\r\n\r\n";
+        assert!(parse_response(redirect).is_err());
     }
     #[test] fn consent_and_loopback_required() {
         let png=b"\x89PNG\r\n\x1a\n";

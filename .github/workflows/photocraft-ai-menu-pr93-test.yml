@@ -85,6 +85,7 @@ jobs:
           cp adapters/photocraft/src/ai_menu.rs "$RUNNER_TEMP/pr93-ai/ai_menu.rs"
           cp adapters/photocraft/src/ai_tools.rs "$RUNNER_TEMP/pr93-ai/ai_tools.rs"
           cp adapters/photocraft/src/ai_models.rs "$RUNNER_TEMP/pr93-ai/ai_models.rs"
+          cp adapters/photocraft/src/ai_u2netp_transport.rs "$RUNNER_TEMP/pr93-ai/ai_u2netp_transport.rs"
           cp tools/photocraft_ai_preview_stage.py "$RUNNER_TEMP/pr93-ai/stage.py"
           cp tools/photocraft_ai_window_patch.py "$RUNNER_TEMP/pr93-ai/window_patch.py"
           python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" --self-test
@@ -160,7 +161,7 @@ jobs:
           a=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())
           assert a['package']['metadata']['android']['package']=='com.artcraft.photocraft.ai.preview'
           lib=Path("adapters/photocraft/src/lib.rs").read_text()
-          for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'artcraft_finish_type_escape',
+          for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'mod ai_u2netp_transport;', 'artcraft_finish_type_escape',
                        'self.ai_menu.show(ui);', 'mod android_modifiers;',
                        'shortcut_pad::ShortcutPad', 'artcraft_discard_prompt_owns_keyboard'):
               assert word in lib, word

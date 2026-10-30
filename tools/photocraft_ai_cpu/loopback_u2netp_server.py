@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from PIL import Image
 
 MAX_BYTES = 24 * 1024 * 1024
@@ -108,17 +109,37 @@ def make_handler(token: str):
             if not lock.acquire(blocking=False):
                 return self.reply(429, b"Another inference is running")
             try:
+                # A per-recv socket timeout is not an overall deadline: a
+                # slow local client could drip one byte repeatedly and hold
+                # the single inference lock indefinitely. read1() lets us
+                # re-check an absolute deadline after each available chunk.
                 self.connection.settimeout(REQUEST_READ_TIMEOUT)
+                deadline = time.monotonic() + REQUEST_READ_TIMEOUT
+                remaining = int(raw_size)
+                chunks = []
                 try:
-                    payload = self.rfile.read(int(raw_size))
-                except (TimeoutError, ConnectionError):
-                    # A stalled or disconnected client must release the lock.
+                    while remaining:
+                        seconds_left = deadline - time.monotonic()
+                        if seconds_left <= 0:
+                            raise TimeoutError("Total upload deadline exceeded")
+                        self.connection.settimeout(seconds_left)
+                        chunk = self.rfile.read1(min(64 * 1024, remaining))
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        remaining -= len(chunk)
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("Total upload deadline exceeded")
+                except (TimeoutError, ConnectionError, OSError):
+                    # A stalled/disconnected client must release the lock;
+                    # never disclose local paths or tokens in the response.
                     try:
                         return self.reply(408, b"Image upload timed out")
                     except OSError:
                         return
-                if len(payload) != int(raw_size):
+                if remaining:
                     return self.reply(400, b"Truncated image")
+                payload = b"".join(chunks)
                 try:
                     width, height = verify_input(payload)
                 except (ValueError, OSError, SyntaxError):

@@ -1,19 +1,19 @@
 # PhotoCraft AI — isolated U2NetP CPU experiment (HONOR Linux Lab)
 
-**Status: standalone benchmark ONLY.** This is not a PhotoCraft plugin, Android APK or public release. The Remove Background menu remains disabled.
+**Status (30 October 2026):** U2NetP CPU processing is available as an experimental, **opt-in, localhost-only** service for the separate PhotoCraft AI Preview APK. ARM64 preview build #49 passed CI, and the owner reported successful background removal, a separate result layer, and Undo/Redo on HONOR MagicPad 4. This is **not** a production release or a standalone Android inference engine.
 
 The experiment uses rembg 2.0.78 and explicit U2NetP via ONNX Runtime 1.28.0 CPUExecutionProvider on Ubuntu 24.04 ARM64 / Python 3.12. It does not need ComfyUI/PyTorch/GPU changes. The earlier ComfyUI inventory result of zero diffusion checkpoints and zero upscale models is expected and unrelated to these separate background-removal weights.
 
 ## Safety boundaries
 
 - Do not alter the user's working ComfyUI at ~/ComfyUI or ~/comfyui-venv, Ubuntu desktop, PhotoCraft package/production key, icons, fonts, shortcuts or Window menu.
-- No sudo, package manager changes, background service, model server, upload or unattended download.
+- No sudo, package manager changes, autostart or unattended download. The temporary token-authenticated model server binds **only to 127.0.0.1:18793** after the user manually starts it. The separate PhotoCraft AI Preview uploads each explicitly consented image **only to that tablet-local endpoint**; ComfyUI receives no image data.
 - All Python packages are installed to a separate ~/photocraft-ai-cpu-venv.
 - --check and --self-test do NOT download a model or run inference.
 - The first --run needs a verified local U2NetP file, or explicit --allow-model-download to retrieve it from the rembg GitHub release. Review model licenses first.
 - By default benchmark on a synthetic 512x512 image, not user documents.
 - Max 4 megapixels and 24 MiB input; CPU threads capped at 2; output always a NEW PNG created exclusively without overwriting input.
-- This is not an image-processing backend for PhotoCraft yet. No editable layers, Undo, cancellation or performance guarantee.
+- The separate Android AI Preview supports an undoable new raster layer after full PNG validation and stale-document checks. Cancelling a request discards its result on the app side, but the already running CPU inference may continue on Linux Lab. No production reliability or performance guarantee.
 
 ## 1 — Create a separate virtual environment (inside Linux Lab QTerminal)
 
@@ -76,13 +76,45 @@ chosen <=4 MP non-sensitive image stored in Linux Lab:
 This never overwrites the input. CPU inference can be slow; close other
 memory-heavy apps first and keep Linux Lab visible.
 
+
+## One-click Linux Lab desktop shortcut
+
+Run the checked-in **launcher installer** once from QTerminal inside Linux Lab.
+It creates an executable \`Start PhotoCraft U2NetP.desktop\` shortcut in
+\`~/Desktop\` and an application-menu entry. It uses the existing dedicated
+\`~/photocraft-ai-cpu-venv/bin/python\`, verifies helper scripts and model path,
+and never downloads models, installs packages, or changes ComfyUI.
+
+\`\`\`bash
+curl -fLsS \
+  "https://raw.githubusercontent.com/KosmosSG/artcraft-android/feature/photocraft-android-ai-tools-20261029/tools/photocraft_ai_cpu/install_linux_lab_launcher.sh" \
+  -o /tmp/install-photocraft-u2netp.sh
+bash /tmp/install-photocraft-u2netp.sh
+\`\`\`
+
+Review the downloaded script before execution. Double-click **Start PhotoCraft
+U2NetP** to open a terminal and launch the loopback-only server. It prints a
+**temporary bearer token** that is required in PhotoCraft AI Preview's
+\`AI Tools → Remove Background · Local CPU Preview…\` dialog. Do not include the
+token in screenshots or save it in the launcher. The server runs only while
+the terminal is open; press Ctrl+C to stop it.
+
+The separate preview's \`Remove Background\` action requires explicit
+per-image consent. For first tests, use a non-sensitive RGB 8-bit image
+under 4 million pixels. If Linux Lab is suspended while PhotoCraft is
+foregrounded, keep it visible in a floating window.
+
+**Release boundary:** this is still a disposable-signature preview,
+not an approved public release. Before merging or distributing production
+APKs, review model weight/data licensing, worker cancellation and
+Android lifecycle behavior, UI/desktop shortcut regressions, and the
+long-term production signing/update plan.
+
 ## What results unlock further integration?
 
 Show the --check providers and the benchmark JSON. Test whether output alpha
 and memory use are reasonable for this tablet before connecting it to any
-PhotoCraft document. The NEXT stage requires approved per-image exchange,
-bounded input/output, cancellation, masks, undoable NEW layers, and device
-testing. No automatic uploads or generative/inpainting workflow is enabled.
+PhotoCraft document. The first opt-in loopback PNG exchange and an undoable **new raster layer** have now been implemented and owner-tested in the separate Android preview. Remaining work includes robust Android lifecycle/cancellation testing, selection-only processing and masks, deeper regression testing and model-rights review. No automatic uploads, generative fill or inpainting workflow is enabled.
 
 Licensing: rembg source is MIT; U²-Net project uses Apache-2.0. The rights for
 model weights and training data are distinct and require review before

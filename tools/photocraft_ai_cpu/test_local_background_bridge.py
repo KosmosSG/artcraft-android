@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 import tempfile
 import unittest
+import zlib
 from unittest.mock import patch
 from PIL import Image
 
@@ -50,6 +51,28 @@ class SidecarTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Only PNG"):
                     bridge.run(source, output, True)
                 runner.assert_not_called()
+
+    def test_crc_valid_but_undecodable_png_never_starts_inference(self):
+        # The old image.verify() guard accepted CRC-correct PNGs whose
+        # compressed IDAT stream fails only during actual pixel decoding.
+        with tempfile.TemporaryDirectory() as folder:
+            source, output = Path(folder) / "input.png", Path(folder) / "output.png"
+            self.make_png(source)
+            data = source.read_bytes()
+            chunk = data.index(b"IDAT") - 4
+            length = int.from_bytes(data[chunk:chunk + 4], "big")
+            start, end = chunk + 8, chunk + 8 + length
+            self.assertGreaterEqual(length, 3)
+            invalid_zlib = b"\\x78\\x9c" + b"\\xff" * (length - 2)
+            checksum = zlib.crc32(b"IDAT" + invalid_zlib).to_bytes(4, "big")
+            source.write_bytes(data[:start] + invalid_zlib + checksum + data[end + 4:])
+            with Image.open(io.BytesIO(source.read_bytes())) as image:
+                image.verify()  # CRC passes despite invalid deflate stream.
+            with patch.object(bridge.subprocess, "run") as runner:
+                with self.assertRaises((OSError, ValueError)):
+                    bridge.run(source, output, True)
+                runner.assert_not_called()
+            self.assertFalse(output.exists())
 
     def test_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as folder:

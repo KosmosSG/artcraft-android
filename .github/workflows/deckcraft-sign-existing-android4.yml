@@ -1,0 +1,118 @@
+name: DeckCraft android.4 sign existing unsigned APK (manual, no release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_certificate_sha256:
+        description: "Original DeckCraft signing certificate SHA-256 (64 hexadecimal characters)"
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  sign-existing-android4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_ARTIFACT_ID: "13029954659"
+      SOURCE_RUN_ID: "41168908003"
+      EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
+      APK_OUT: DeckCraft-v0.9.0-android.4-arm64-v8a-signed.apk
+    steps:
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root"
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager_bin"
+          "$sdkmanager_bin" --sdk_root="$sdk_root" --install "build-tools;35.0.0"
+          echo "BUILD_TOOLS=$sdk_root/build-tools/35.0.0" >> "$GITHUB_ENV"
+
+      - name: Download the existing DeckCraft android.4 unsigned artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/deckcraft-unsigned" "$GITHUB_WORKSPACE/signed-output"
+          gh api -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" > "$RUNNER_TEMP/deckcraft-artifact.zip"
+          unzip -q "$RUNNER_TEMP/deckcraft-artifact.zip" -d "$RUNNER_TEMP/deckcraft-unsigned"
+          mapfile -d '' apks < <(find "$RUNNER_TEMP/deckcraft-unsigned" -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 1 || { echo "::error::Expected exactly one APK in pinned unsigned artifact"; exit 1; }
+          cp "${apks[0]}" "$RUNNER_TEMP/deckcraft-input.apk"
+          echo "Input APK SHA-256:"
+          sha256sum "$RUNNER_TEMP/deckcraft-input.apk"
+
+      - name: Validate APK identity, version and ARM64 payload before signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$BUILD_TOOLS/aapt" dump badging "$RUNNER_TEMP/deckcraft-input.apk" > "$RUNNER_TEMP/badging.txt"
+          grep -q "package: name='com.artcraft.deckcraft' versionCode='100000004' versionName='0.9.0-android.4'" "$RUNNER_TEMP/badging.txt" || {
+            echo "::error::APK package or version mismatch"; exit 1;
+          }
+          python3 - "$RUNNER_TEMP/deckcraft-input.apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              libraries = [p for p in z.namelist() if p.startswith("lib/") and p.endswith(".so")]
+              assert libraries and all(p.startswith("lib/arm64-v8a/") for p in libraries), libraries
+          print("PASS: app ID, android.4 version code and ARM64-only libraries")
+          PY
+
+      - name: Permanently sign the validated unsigned APK
+        env:
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for var in KEYSTORE_B64 STOREPASS KEYPASS KEYALIAS; do
+            test -n "${!var}" || { echo "::error::Missing signing secret: $var"; exit 1; }
+          done
+          expected="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Expected certificate must be 64 hex characters"; exit 1; }
+          keyfile="$RUNNER_TEMP/deckcraft-release.p12"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keyfile"
+          keytool -exportcert -keystore "$keyfile" -storetype PKCS12 -alias "$KEYALIAS" \
+            -storepass:env STOREPASS -rfc > "$RUNNER_TEMP/deckcraft-cert.pem"
+          actual="$(openssl x509 -in "$RUNNER_TEMP/deckcraft-cert.pem" -outform DER | sha256sum | cut -d' ' -f1)"
+          test "$expected" = "$actual" || { echo "::error::Original permanent signing identity mismatch; aborting"; exit 1; }
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$RUNNER_TEMP/deckcraft-input.apk" "$RUNNER_TEMP/deckcraft-aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$keyfile" --ks-type PKCS12 --ks-key-alias "$KEYALIAS" \
+            --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+            --v4-signing-enabled false \
+            --out "$GITHUB_WORKSPACE/signed-output/$APK_OUT" "$RUNNER_TEMP/deckcraft-aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$GITHUB_WORKSPACE/signed-output/$APK_OUT"
+          signed_cert="$("$BUILD_TOOLS/apksigner" verify --print-certs "$GITHUB_WORKSPACE/signed-output/$APK_OUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test "$signed_cert" = "$expected" || { echo "::error::Signed output certificate mismatch"; exit 1; }
+          "$BUILD_TOOLS/aapt" dump badging "$GITHUB_WORKSPACE/signed-output/$APK_OUT" | grep -q "package: name='com.artcraft.deckcraft' versionCode='100000004' versionName='0.9.0-android.4'"
+          (cd signed-output && sha256sum "$APK_OUT" > SHA256SUMS.txt)
+          printf '%s\n' "$actual" > "$GITHUB_WORKSPACE/signed-output/signing-certificate-sha256.txt"
+          echo "PASS: permanently signed DeckCraft android.4; no release published"
+          rm -f "$keyfile" "$RUNNER_TEMP/deckcraft-cert.pem" "$RUNNER_TEMP/deckcraft-aligned.apk"
+
+      - name: Upload signed APK for owner device testing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: DeckCraft-v0.9.0-android.4-ARM64-PERMANENT-SIGNED-TEST
+          path: signed-output/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Clean signing files and APKs from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/deckcraft-release.p12" "$RUNNER_TEMP/deckcraft-cert.pem"
+          rm -f "$RUNNER_TEMP/deckcraft-aligned.apk" "$RUNNER_TEMP/deckcraft-input.apk" "$RUNNER_TEMP/deckcraft-artifact.zip"
+          rm -rf "$RUNNER_TEMP/deckcraft-unsigned" "$GITHUB_WORKSPACE/signed-output"

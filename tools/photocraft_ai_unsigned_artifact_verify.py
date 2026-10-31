@@ -43,6 +43,19 @@ def digest_stream(stream) -> str:
     return h.hexdigest()
 
 
+def unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    """Reject ambiguous duplicate JSON keys, including nested metadata objects.
+
+    Python's default json.loads uses last-key-wins; another verifier may
+    interpret a conflicting first value (e.g. production_signed=true).
+    """
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "Duplicate JSON metadata key: " + key)
+        result[key] = value
+    return result
+
+
 def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None = None) -> dict:
     require(bool(COMMIT.fullmatch(expected_source_sha)), "Expected source must be a full lowercase Git SHA")
     if expected_zip_sha256 is not None:
@@ -75,8 +88,10 @@ def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None 
             with archive.open(APK_NAME) as apk_stream:
                 apk_sha = digest_stream(apk_stream)
             require(apk_sha == match.group(1), "Unsigned APK bytes do not match SHA256SUMS")
-            verification = json.loads(read_small("UNSIGNED-VERIFICATION.json"))
-            proof = json.loads(read_small("production-identity-build-proof.json"))
+            verification = json.loads(read_small("UNSIGNED-VERIFICATION.json"),
+                                      object_pairs_hook=unique_json_object)
+            proof = json.loads(read_small("production-identity-build-proof.json"),
+                               object_pairs_hook=unique_json_object)
             require(isinstance(verification, dict) and isinstance(proof, dict),
                     "Artifact metadata must be JSON objects")
             expected = {
@@ -170,6 +185,12 @@ def self_test() -> None:
               if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
             [(n, json.dumps({**proof, "version_code": 16790004}).encode()
               if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
+            # Last-key-wins json.loads would accept these conflicting first
+            # values. Both metadata documents must reject duplicate keys.
+            [(n, b'{"production_signed": true, ' + json.dumps(verify)[1:].encode()
+              if n == "UNSIGNED-VERIFICATION.json" else v) for n, v in original.items()],
+            [(n, b'{"proof_signer_matches_public": true, ' + json.dumps(proof)[1:].encode()
+              if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
         ]
         for members in bad_cases:
             write(members)
@@ -186,7 +207,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted incorrect GitHub ZIP digest")
-    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata and 9 rejection cases")
+    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata and 11 rejection cases")
     print("No APK built, signed, extracted, installed, uploaded or published")
 
 

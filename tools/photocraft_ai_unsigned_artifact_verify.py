@@ -75,6 +75,11 @@ def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None 
                         "Directory or encrypted artifact member rejected")
                 require(stat.S_IFMT(entry.external_attr >> 16) != stat.S_IFLNK,
                         "Symlink artifact member rejected")
+                # A filename without a trailing slash can still carry UNIX FIFO,
+                # device or directory type bits. Never hand such a member to an
+                # external extractor, even if zipfile.open() reads its bytes.
+                require(stat.S_IFMT(entry.external_attr >> 16) in (0, stat.S_IFREG),
+                        "Non-regular artifact member rejected")
                 limit = MAX_APK_BYTES if entry.filename == APK_NAME else MAX_METADATA_BYTES
                 require(entry.file_size <= limit, "Artifact member exceeds safe size limit")
                 require(entry.compress_size > 0 or entry.file_size == 0,
@@ -200,6 +205,26 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Accepted malformed unsigned artifact ZIP")
+        # A malicious archive may mark a normal-looking allowlisted filename
+        # as a FIFO or directory using UNIX mode bits without a trailing slash.
+        # zipfile.open() accepts the bytes; a downstream extractor may not.
+        for forbidden_mode in (stat.S_IFIFO, stat.S_IFDIR):
+            with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                for name, content in original.items():
+                    if name == "SHA256SUMS.txt":
+                        info = zipfile.ZipInfo(name)
+                        info.create_system = 3
+                        info.external_attr = (forbidden_mode | 0o644) << 16
+                        info.compress_type = zipfile.ZIP_DEFLATED
+                        z.writestr(info, content)
+                    else:
+                        z.writestr(name, content)
+            try:
+                check(path, sha)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted non-regular artifact ZIP member")
         write(original.items())
         try:
             check(path, sha, "0" * 64)
@@ -207,7 +232,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted incorrect GitHub ZIP digest")
-    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata and 11 rejection cases")
+    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata and 13 rejection cases")
     print("No APK built, signed, extracted, installed, uploaded or published")
 
 

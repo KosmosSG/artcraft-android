@@ -63,8 +63,15 @@ def archive_members(apk: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
     names = [entry.filename for entry in entries]
     require(len(names) == len(set(names)), "APK contains duplicate ZIP members")
     require("AndroidManifest.xml" in names, "APK is missing AndroidManifest.xml")
-    require(any(name.startswith("classes") and name.endswith(".dex") for name in names),
-            "APK is missing dex bytecode")
+    # A secondary classes2.dex is not a substitute for the primary DEX.
+    # Both the unsigned signing input and signed candidate must independently
+    # retain the native ARM64 production payload, not just matching ZIP bytes.
+    require("classes.dex" in names, "APK is missing primary classes.dex")
+    native_libs = [name for name in names
+                   if name.startswith("lib/") and name.lower().endswith(".so")]
+    require(bool(native_libs), "APK is missing ARM64 native libraries")
+    require(all(name.startswith("lib/arm64-v8a/") for name in native_libs),
+            "APK contains a non-ARM64 native library")
     total = 0
     for entry in entries:
         name = entry.filename
@@ -80,6 +87,9 @@ def archive_members(apk: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
                 "APK contains special-file ZIP member")
         require(not entry.is_dir() or entry.file_size == 0,
                 "APK contains nonempty directory ZIP member")
+        if name in ("AndroidManifest.xml", "classes.dex") or name in native_libs:
+            require(not entry.is_dir() and entry.file_size > 0,
+                    "APK contains empty critical application payload: " + name)
         total += entry.file_size
         require(total <= MAX_UNCOMPRESSED_BYTES, "APK exceeds total uncompressed size limit")
     return {entry.filename: entry for entry in entries}
@@ -233,6 +243,32 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Accepted modified or malformed signed APK")
+        # A byte-for-byte identical *broken* unsigned/signed pair used to
+        # pass this comparator. Independent critical-payload checks must
+        # reject both archives even if their member hashes agree.
+        critical_failures = [
+            {**{k: v for k, v in files.items() if k != "classes.dex"},
+             "classes2.dex": b"secondary-dex"},
+            {**files, "AndroidManifest.xml": b""},
+            {**files, "classes.dex": b""},
+            {**files, "lib/arm64-v8a/libphotocraft.so": b""},
+            {k: v for k, v in files.items()
+             if k != "lib/arm64-v8a/libphotocraft.so"},
+            {**files, "lib/armeabi-v7a/libother.so": b"other-abi"},
+        ]
+        signature_only = [(n, b) for n, b in signed_members if n.startswith("META-INF/")]
+        for broken in critical_failures:
+            write(unsigned, list(broken.items()))
+            write(signed, list(broken.items()) + signature_only)
+            with unsigned.open("rb") as stream:
+                broken_pin = sha256_stream(stream)
+            try:
+                check(unsigned, signed, broken_pin)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted matching but broken ARM64 APK payload")
+        write(unsigned, list(files.items()))
         write(signed, signed_members)
         for wrong in ("0" * 64, "0" * 63):
             try:
@@ -247,7 +283,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted same APK for both roles")
-    print("PASS: owner-signed APK payload continuity (16 negative scenarios)")
+    print("PASS: owner-signed APK payload continuity (22 negative scenarios)")
     print("No APK built, signed, installed, uploaded or published")
 
 

@@ -2953,6 +2953,14 @@ else
     rm -rf "$SRC/vendor/winit"
     cp -a "$ROOT/vendor/winit" "$SRC/vendor/winit"
 fi
+# PDFCraft v0.15's pinned egui-winit needs winit's IME-reset API. The generic
+# builder's older mouse-aware vendor copy lacks it. For this disposable candidate
+# only, restore the exact official winit commit and reapply the guarded Android
+# mouse/scroll/hover backend. Do not silently fall back to touch-only input.
+if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.15.0" ]]; then
+    python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
+        "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
+fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib

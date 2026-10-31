@@ -1,0 +1,308 @@
+name: PhotoCraft AI Tools Menu ARM64 Preview PR93 (no release)
+
+# PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
+# with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - '.github/workflows/photocraft-ai-menu-pr93-test.yml'
+      - 'adapters/photocraft/**'
+      - 'tools/photocraft_ai_preview_stage.py'
+      - 'tools/photocraft_ai_window_patch.py'
+      - 'docs/photocraft-android-ai-tools.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-ai-menu-pr93-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arm64-preview:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME: '0.14.0-android.1'
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - name: Checkout PR93 AI Tools development source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Test isolated AI Tools declarations and prepare checked-in preview overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test adapters/photocraft/src/ai_tools.rs -o "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          # Compile the read-only model inventory together with the exact
+          # existing HTTP client, using Rust-only mock ComfyUI endpoints.
+          cat > "$RUNNER_TEMP/photocraft-ai-model-tests.rs" <<EOF
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_tools.rs"]
+          mod ai_tools;
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_models.rs"]
+          mod ai_models;
+          EOF
+          rustc --edition 2021 --test "$RUNNER_TEMP/photocraft-ai-model-tests.rs" -o "$RUNNER_TEMP/photocraft-ai-model-tests"
+          "$RUNNER_TEMP/photocraft-ai-model-tests"
+          # Network-sensitive acceptance: only GET /system_stats; no model,
+          # prompt, upload, WebSocket or image endpoint permitted in this stage.
+          python3 - <<'PY'
+          from pathlib import Path
+          menu=Path("adapters/photocraft/src/ai_menu.rs").read_text()
+          tools=Path("adapters/photocraft/src/ai_tools.rs").read_text()
+          models=Path("adapters/photocraft/src/ai_models.rs").read_text()
+          assert 'Check Installed Models (read-only)' in menu
+          assert 'ai_models::inspect_models(&endpoint)' in menu
+          assert 'pub(crate) fn inspect_models' in models
+          assert '"/models/checkpoints"' in models
+          assert '"/models/upscale_models"' in models
+          assert 'mod ai_models;' in Path("adapters/photocraft/src/lib.rs").read_text()
+          assert 'ui.button("ComfyUI Connection…")' in menu
+          assert 'ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan)' in menu
+          assert 'std::thread::spawn(move ||' in menu
+          assert 'endpoint.probe_system_stats()' in menu
+          assert 'GET /system_stats HTTP/1.1' in tools
+          assert 'parse_stats_response(&reply, false)' in tools
+          assert 'Content-Length' in tools
+          assert 'decode_chunked_body' in tools
+          assert 'response_stage(&reply)' in tools
+          assert 'Duration::from_secs(10)' in tools
+          assert 'Only private LAN IP addresses are allowed' in tools
+          assert 'ui.add_enabled(false, egui::Button::new(action.label()))' in menu
+          for forbidden in ("POST /prompt", "POST /upload", "upload_image", "load_checkpoint"):
+              assert forbidden not in tools + menu + models, forbidden
+          print("PASS: opt-in, non-blocking, no-image-upload ComfyUI diagnostics scaffold")
+          PY
+          mkdir -p "$RUNNER_TEMP/pr93-ai"
+          cp adapters/photocraft/src/ai_menu.rs "$RUNNER_TEMP/pr93-ai/ai_menu.rs"
+          cp adapters/photocraft/src/ai_tools.rs "$RUNNER_TEMP/pr93-ai/ai_tools.rs"
+          cp adapters/photocraft/src/ai_models.rs "$RUNNER_TEMP/pr93-ai/ai_models.rs"
+          cp adapters/photocraft/src/ai_u2netp_transport.rs "$RUNNER_TEMP/pr93-ai/ai_u2netp_transport.rs"
+          cp adapters/photocraft/src/ai_background_job.rs "$RUNNER_TEMP/pr93-ai/ai_background_job.rs"
+          cp adapters/photocraft/src/ai_output_validation.rs "$RUNNER_TEMP/pr93-ai/ai_output_validation.rs"
+          cp adapters/photocraft/src/ai_background_editor.rs "$RUNNER_TEMP/pr93-ai/ai_background_editor.rs"
+          # Parse Rust source before the costly ARM64 release compilation.
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_menu.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_background_editor.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_output_validation.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_u2netp_transport.rs >/dev/null
+          python3 -m py_compile tools/photocraft_ai_preview_stage.py
+          cp tools/photocraft_ai_preview_stage.py "$RUNNER_TEMP/pr93-ai/stage.py"
+          cp tools/photocraft_ai_window_patch.py "$RUNNER_TEMP/pr93-ai/window_patch.py"
+          python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" --self-test
+          test -s "$RUNNER_TEMP/pr93-ai/stage.py"
+
+      - name: Switch runner ONLY to immutable previously owner-tested keyboard and icon source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This detaches the throwaway GitHub Actions workspace, NEVER moves
+          # PR93 or main. PR93 AI module and graft script were saved above.
+          BASE="f708fff8a333c2246b6d342570b19db5b95f4be1"
+          git fetch --no-tags --depth=1 https://github.com/KosmosSG/artcraft-android.git "$BASE"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$BASE"
+          test -f tools/photocraft_v014_compat.py
+          test -f tools/approved-branding/assets/PhotoCraft.png
+          python3 tools/keyboard/escape_focus_check.py photocraft
+          echo "Keyboard baseline: $BASE"
+
+      - name: Set up Rust Android toolchain and JDK 21
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Verify tested physical Escape mapping boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test vendor/android-activity/src/native_activity/keyboard_escape.rs -o "$RUNNER_TEMP/escape-tests"
+          "$RUNNER_TEMP/escape-tests"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK 35 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Prepare official PhotoCraft v0.14.0 using the owner-tested keyboard adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v014_compat.py preflight
+          python3 tools/photocraft_v014_compat.py checkout
+          python3 tools/photocraft_v014_compat.py prepare
+          python3 tools/photocraft_v014_compat.py verify
+          python3 tools/keyboard/escape_focus_check.py photocraft
+
+      - name: Graft PR93 AI Tools menu and isolate preview package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/pr93-ai/stage.py" "$RUNNER_TEMP/pr93-ai"
+          python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" source/photocraft/crates/ui-egui/src/menus.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          a=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())
+          assert a['package']['metadata']['android']['package']=='com.artcraft.photocraft.ai.preview'
+          lib=Path("adapters/photocraft/src/lib.rs").read_text()
+          for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'mod ai_u2netp_transport;', 'mod ai_background_job;', 'mod ai_output_validation;', 'mod ai_background_editor;', 'artcraft_finish_type_escape',
+                       'self.ai_menu.show(ui, &mut self.inner.session)', 'mod android_modifiers;',
+                       'shortcut_pad::ShortcutPad', 'artcraft_discard_prompt_owns_keyboard'):
+              assert word in lib, word
+          menus=Path('source/photocraft/crates/ui-egui/src/menus.rs').read_text()
+          for word in ('ARTCRAFT_PR93_WINDOW_AI_TOOLS_TOGGLE_V1',
+                       '(AI_TOOLS_ID, "Show AI Tools", "Window")',
+                       'checked: if id == AI_TOOLS_ID',
+                       'artcraft_set_ai_tools_visible(!artcraft_ai_tools_visible())'):
+              assert word in menus, word
+          print("PASS: Window > Show AI Tools checkmark, toggle and visibility integration")
+          print("PASS: owner-tested ESC/shortcuts and PR93 AI menu preserved in preview")
+          PY
+
+      - name: Prepare exact approved blue Pc adaptive launcher and in-app UI artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/approved-branding/approved_branding.py check
+          python3 tools/approved-branding/install_packager.py
+          python3 tools/approved-branding/approved_branding.py install . photocraft
+
+      - name: Build isolated permanently UNsigned PhotoCraft AI Preview (disposable local key only)
+        shell: bash
+        timeout-minutes: 130
+        run: |
+          set -euo pipefail
+          # Locally generated disposable key used solely on this ephemeral CI runner.
+          # build.sh's release compilation mode is NOT a public GitHub Release.
+          bash build.sh -photocraft
+          test -f keys/artcraft-builder.jks
+          test -n "$(find output -maxdepth 1 -name '*.apk' -print -quit)"
+
+      - name: Verify compiled APK package, ARM64, launcher, adaptive icons and native UI branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/approved-branding/verify_apk.py . icon-verification
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          grep -F "package: name='com.artcraft.photocraft.ai.preview'" <<<"$BADGING"
+          grep -F "launchable-activity: name='com.artcraft.photocraft.ai.preview.PhotoCraftActivity'" <<<"$BADGING"
+          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
+          mkdir -p candidate
+          cp "$APK" candidate/PhotoCraft-AI-Model-Inventory-ARM64-PR93.apk
+          cp icon-verification/verification.json candidate/icon-verification.json
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          cat > candidate/TEST-INSTRUCTIONS.txt <<'EOF'
+          PhotoCraft AI Preview — PR #93 keyboard and approved icon review APK
+          Package: com.artcraft.photocraft.ai.preview (NOT production)
+          Upstream: official PhotoCraft v0.14.0, exact approved blue Pc branding.
+          Keyboard source: owner-tested f708fff8a333c2246b6d342570b19db5b95f4be1
+          IMPORTANT: This temporary APK has a new disposable signing key.
+          If an earlier PhotoCraft AI Preview is installed, uninstall ONLY
+          'PhotoCraft AI Preview' first. Do not uninstall production PhotoCraft.
+
+          Test with a physical keyboard on HONOR MagicPad 4:
+          1. Launcher icon is blue 'Pc'; PhotoCraft in-app header icon matches.
+          2. Open New Document, press V and T; switch tools without tapping canvas.
+          3. Type text, press physical ESC; confirm type edit exits, then V/T work.
+          4. Ctrl+W unsaved changes: C, Y, N respond as appropriate.
+          5. Ctrl+Z, Ctrl+S, Ctrl+O; test modifiers and focus recovery.
+          6. Window > Show AI Tools is checked by default; uncheck to remove
+             the extra AI Tools top row; check again to restore it.
+          7. Restart PhotoCraft AI Preview: hidden/shown state is remembered.
+          8. AI Tools > ComfyUI Connection: initially no test is running.
+             An invalid/public IP is rejected and no request is made.
+             Enter the private IP of a trusted ComfyUI computer: e.g.
+             http://192.168.1.20:8188 (replace with actual LAN IP).
+             Tick private LAN consent and press Test Connection.
+             If ComfyUI is running and reachable, expect Connected.
+             If not, expect visible error feedback without UI hanging.
+             ComfyUI diagnostics MUST remain read-only. No image is
+             ever sent to ComfyUI by this preview.
+          9. On the same tablet, with Linux Lab ComfyUI running at
+             http://127.0.0.1:8188, PhotoCraft Test Connection should show
+             Connected to ComfyUI. No image data was sent.
+             Regression: previously timed out EAGAIN/os error 11 even
+             though Android Chrome /system_stats returned valid JSON.
+             Test the connection with the server alive, then stopped.
+          10. If Test Connection times out, report whether it says
+              'no response bytes', 'partial HTTP headers', or
+              'HTTP headers received, incomplete body'. With Linux Lab
+              ComfyUI running, also refresh /system_stats in Android
+              Chrome immediately after switching out of PhotoCraft.
+              Compare whether Linux Lab stays running in the background.
+          11. AI Tools > About AI Tools opens/closes.
+          12. Verify Esc, V/T, C/Y/N, fonts, open/save, updater and icons.
+          13. After connection succeeds, press Check Installed Models (read-only).
+              With Linux Lab kept visible, expect checkpoint and upscale-model
+              file counts (possibly both zero). Check that no images or prompts
+              are sent, no models are downloaded, and editor stays responsive.
+              If Linux Lab is hidden, a timeout may occur from OS throttling.
+          14. Experimental U2NetP processing is separate from ComfyUI. With
+              the opt-in loopback service running, open an RGB 8-bit image
+              under 4 million pixels. In AI Tools choose
+              Remove Background · Local CPU Preview. Paste the temporary
+              Linux Lab token, read and tick per-image consent, then start.
+              Expect a NEW "AI · Background Removed" layer leaving the
+              source intact. Ctrl+Z removes it; Ctrl+Y restores it.
+              Switch or edit the document while a job is pending: the
+              stale result MUST be discarded. Cancel MUST discard results.
+          15. With no U2NetP server running, expect an error and NO edits.
+
+          This is an experimental preview, NOT a public release. Background
+          processing requires an explicitly started Linux Lab local server,
+          a valid temporary token, and fresh per-image consent. Do not
+          expose that service to LAN interfaces. Report errors and verify
+          Undo/Redo and shortcut regressions.
+          EOF
+
+      - name: Upload corrected PhotoCraft AI Preview ARM64 APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-AI-Model-Inventory-ARM64-PR93
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-AI-PR93-Keyboard-Icon-Failure
+          path: |
+            logs/
+            icon-verification/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove disposable local signing key
+        if: always()
+        shell: bash
+        run: rm -f keys/artcraft-builder.jks keys/.keystore-password

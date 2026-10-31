@@ -1,0 +1,282 @@
+name: PhotoCraft AI regular-package ARM64 build proof (DISCARD APK / NO RELEASE)
+
+# PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
+# with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - '.github/workflows/photocraft-ai-production-dryrun.yml'
+      - 'tools/photocraft_ai_production_dryrun_stage.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-ai-regular-package-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arm64-preview:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME: '0.14.0-android.1'
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - name: Checkout PR93 AI Tools development source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Test isolated AI Tools declarations and prepare checked-in preview overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test adapters/photocraft/src/ai_tools.rs -o "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          "$RUNNER_TEMP/photocraft-ai-tools-tests"
+          # Compile the read-only model inventory together with the exact
+          # existing HTTP client, using Rust-only mock ComfyUI endpoints.
+          cat > "$RUNNER_TEMP/photocraft-ai-model-tests.rs" <<EOF
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_tools.rs"]
+          mod ai_tools;
+          #[path = "$GITHUB_WORKSPACE/adapters/photocraft/src/ai_models.rs"]
+          mod ai_models;
+          EOF
+          rustc --edition 2021 --test "$RUNNER_TEMP/photocraft-ai-model-tests.rs" -o "$RUNNER_TEMP/photocraft-ai-model-tests"
+          "$RUNNER_TEMP/photocraft-ai-model-tests"
+          # Network-sensitive acceptance: only GET /system_stats; no model,
+          # prompt, upload, WebSocket or image endpoint permitted in this stage.
+          python3 - <<'PY'
+          from pathlib import Path
+          menu=Path("adapters/photocraft/src/ai_menu.rs").read_text()
+          tools=Path("adapters/photocraft/src/ai_tools.rs").read_text()
+          models=Path("adapters/photocraft/src/ai_models.rs").read_text()
+          assert 'Check Installed Models (read-only)' in menu
+          assert 'ai_models::inspect_models(&endpoint)' in menu
+          assert 'pub(crate) fn inspect_models' in models
+          assert '"/models/checkpoints"' in models
+          assert '"/models/upscale_models"' in models
+          assert 'mod ai_models;' in Path("adapters/photocraft/src/lib.rs").read_text()
+          assert 'ui.button("ComfyUI Connection…")' in menu
+          assert 'ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan)' in menu
+          assert 'std::thread::spawn(move ||' in menu
+          assert 'endpoint.probe_system_stats()' in menu
+          assert 'GET /system_stats HTTP/1.1' in tools
+          assert 'parse_stats_response(&reply, false)' in tools
+          assert 'Content-Length' in tools
+          assert 'decode_chunked_body' in tools
+          assert 'response_stage(&reply)' in tools
+          assert 'Duration::from_secs(10)' in tools
+          assert 'Only private LAN IP addresses are allowed' in tools
+          assert 'ui.add_enabled(false, egui::Button::new(action.label()))' in menu
+          for forbidden in ("POST /prompt", "POST /upload", "upload_image", "load_checkpoint"):
+              assert forbidden not in tools + menu + models, forbidden
+          print("PASS: opt-in, non-blocking, no-image-upload ComfyUI diagnostics scaffold")
+          PY
+          mkdir -p "$RUNNER_TEMP/pr93-ai"
+          cp adapters/photocraft/src/ai_menu.rs "$RUNNER_TEMP/pr93-ai/ai_menu.rs"
+          cp adapters/photocraft/src/ai_tools.rs "$RUNNER_TEMP/pr93-ai/ai_tools.rs"
+          cp adapters/photocraft/src/ai_models.rs "$RUNNER_TEMP/pr93-ai/ai_models.rs"
+          cp adapters/photocraft/src/ai_u2netp_transport.rs "$RUNNER_TEMP/pr93-ai/ai_u2netp_transport.rs"
+          cp adapters/photocraft/src/ai_background_job.rs "$RUNNER_TEMP/pr93-ai/ai_background_job.rs"
+          cp adapters/photocraft/src/ai_output_validation.rs "$RUNNER_TEMP/pr93-ai/ai_output_validation.rs"
+          cp adapters/photocraft/src/ai_background_editor.rs "$RUNNER_TEMP/pr93-ai/ai_background_editor.rs"
+          # Parse Rust source before the costly ARM64 release compilation.
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_menu.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_background_editor.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_output_validation.rs >/dev/null
+          rustfmt --edition 2021 --emit stdout adapters/photocraft/src/ai_u2netp_transport.rs >/dev/null
+          python3 -m py_compile tools/photocraft_ai_preview_stage.py
+          cp tools/photocraft_ai_preview_stage.py "$RUNNER_TEMP/pr93-ai/stage.py"
+          cp tools/photocraft_ai_window_patch.py "$RUNNER_TEMP/pr93-ai/window_patch.py"
+          cp tools/photocraft_ai_production_dryrun_stage.py "$RUNNER_TEMP/pr93-ai/production_stage.py"
+          python3 -m py_compile tools/photocraft_ai_production_dryrun_stage.py
+          python3 tools/photocraft_ai_production_dryrun_stage.py --self-test
+          python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" --self-test
+          test -s "$RUNNER_TEMP/pr93-ai/stage.py"
+
+      - name: Switch runner ONLY to immutable previously owner-tested keyboard and icon source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This detaches the throwaway GitHub Actions workspace, NEVER moves
+          # PR93 or main. PR93 AI module and graft script were saved above.
+          BASE="f708fff8a333c2246b6d342570b19db5b95f4be1"
+          git fetch --no-tags --depth=1 https://github.com/KosmosSG/artcraft-android.git "$BASE"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$BASE"
+          test -f tools/photocraft_v014_compat.py
+          test -f tools/approved-branding/assets/PhotoCraft.png
+          python3 tools/keyboard/escape_focus_check.py photocraft
+          echo "Keyboard baseline: $BASE"
+
+      - name: Set up Rust Android toolchain and JDK 21
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Verify tested physical Escape mapping boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test vendor/android-activity/src/native_activity/keyboard_escape.rs -o "$RUNNER_TEMP/escape-tests"
+          "$RUNNER_TEMP/escape-tests"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK 35 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Prepare official PhotoCraft v0.14.0 using the owner-tested keyboard adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_v014_compat.py preflight
+          python3 tools/photocraft_v014_compat.py checkout
+          python3 tools/photocraft_v014_compat.py prepare
+          python3 tools/photocraft_v014_compat.py verify
+          python3 tools/keyboard/escape_focus_check.py photocraft
+
+      - name: Graft tested PR93 AI Tools; convert ONLY runner copy to regular PhotoCraft package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/pr93-ai/stage.py" "$RUNNER_TEMP/pr93-ai"
+          python3 "$RUNNER_TEMP/pr93-ai/production_stage.py" "$GITHUB_WORKSPACE"
+          python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" source/photocraft/crates/ui-egui/src/menus.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          a=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())
+          assert a['package']['metadata']['android']['package']=='com.artcraft.photocraft'
+          assert a['package']['metadata']['android']['application']['label']=='PhotoCraft'
+          assert a['package']['version']['workspace'] is True
+          # The generated Android manifest version is overridden to
+          # android.2 by prepare.sh only when the disposable build runs.
+          lib=Path("adapters/photocraft/src/lib.rs").read_text()
+          for word in ('mod ai_menu;', 'mod ai_tools;', 'mod ai_models;', 'mod ai_u2netp_transport;', 'mod ai_background_job;', 'mod ai_output_validation;', 'mod ai_background_editor;', 'artcraft_finish_type_escape',
+                       'self.ai_menu.show(ui, &mut self.inner.session)', 'mod android_modifiers;',
+                       'shortcut_pad::ShortcutPad', 'artcraft_discard_prompt_owns_keyboard'):
+              assert word in lib, word
+          menus=Path('source/photocraft/crates/ui-egui/src/menus.rs').read_text()
+          for word in ('ARTCRAFT_PR93_WINDOW_AI_TOOLS_TOGGLE_V1',
+                       '(AI_TOOLS_ID, "Show AI Tools", "Window")',
+                       'checked: if id == AI_TOOLS_ID',
+                       'artcraft_set_ai_tools_visible(!artcraft_ai_tools_visible())'):
+              assert word in menus, word
+          print("PASS: Window > Show AI Tools checkmark, toggle and visibility integration")
+          print("PASS: owner-tested ESC/shortcuts and PR93 AI menu preserved in preview")
+          PY
+
+      - name: Prepare exact approved blue Pc adaptive launcher and in-app UI artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/approved-branding/approved_branding.py check
+          python3 tools/approved-branding/install_packager.py
+          python3 tools/approved-branding/approved_branding.py install . photocraft
+
+      - name: Build disposable-signed regular-identity proof (APK NEVER uploaded)
+        shell: bash
+        timeout-minutes: 130
+        run: |
+          set -euo pipefail
+          # Locally generated disposable key used solely on this ephemeral CI runner.
+          # build.sh's release compilation mode is NOT a public GitHub Release.
+          export ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME='0.14.0-android.2'
+          bash build.sh -photocraft
+          test -f keys/artcraft-builder.jks
+          test -n "$(find output -maxdepth 1 -name '*.apk' -print -quit)"
+
+      - name: Verify production identity and PROVE disposable certificate CANNOT update the installed app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/approved-branding/verify_apk.py . icon-verification
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose "$APK" >/dev/null
+          "$AAPT" dump badging "$APK" > "$RUNNER_TEMP/photocraft-production-badging.txt"
+          test -n "$(unzip -Z1 "$APK" | grep '^lib/arm64-v8a/.*\.so$' | head -1)"
+          "$APKSIGNER" verify --print-certs "$APK" > "$RUNNER_TEMP/photocraft-disposable-cert.txt"
+          python3 - "$APK" "$RUNNER_TEMP/photocraft-production-badging.txt" "$RUNNER_TEMP/photocraft-disposable-cert.txt" <<'PY'
+          import hashlib, json, pathlib, re, sys
+          apk, badge, certs = map(pathlib.Path, sys.argv[1:])
+          badging = badge.read_text()
+          match = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
+          assert match, 'Missing Android APK package and version identity'
+          package, code, version = match.groups()
+          assert package == 'com.artcraft.photocraft', 'Unexpected package ID'
+          assert version == '0.14.0-android.2', 'Unexpected versionName'
+          assert int(code) > 16790004, 'STOP: versionCode must exceed published PhotoCraft'
+          assert re.search(r"^application-label:'PhotoCraft'$", badging, re.M), 'Production label missing'
+          assert "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'" in badging, 'Wrong launcher'
+          found = set(re.findall(r'certificate SHA-256 digest: ([a-fA-F0-9]{64})', certs.read_text()))
+          assert len(found) == 1, 'Missing/ambiguous disposable signing certificate'
+          ephemeral = found.pop().lower()
+          production = '45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef'
+          assert ephemeral != production, 'STOP: build unexpectedly accessed production signing identity'
+          print('PASS: ARM64 + regular PhotoCraft package, activity, version, icon and approved AI modules')
+          print('PASS: disposable signer differs from production — proof APK is NOT upgradeable')
+          output = pathlib.Path('candidate-proof')
+          output.mkdir(exist_ok=True)
+          report = {
+              'package': package, 'version_name': version, 'version_code': int(code),
+              'public_reference_certificate_sha256': production,
+              'proof_signer_matches_public': False,
+              'non_installable_disposable_build': True,
+              'source_commit': 'f708fff8a333c2246b6d342570b19db5b95f4be1',
+              'android_arm64': True,
+              'public_release_created': False,
+              'apk_sha256_discarded': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'warning': 'No APK is distributed. An actual production upgrade requires the ORIGINAL key and device verification.'
+          }
+          (output / 'production-identity-build-proof.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+          # Cannot accidentally install/publish or download this disposable-signer
+          # production-package APK: DELETE it before uploading metadata only.
+          rm -f output/*.apk
+          test -z "$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          echo 'PhotoCraft package proof compiled; disposable APK discarded.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No APK was uploaded, installed, merged or released.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload identity REPORT ONLY — never an APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: PhotoCraft-AI-PR93-Regular-Package-Identity-Proof-NO-APK
+          path: candidate-proof/production-identity-build-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # verify_apk.py copies the disposable-signed APK into icon-verification/.
+      # NEVER upload that folder on failure (historical run #41032183666 did).
+      - name: Always remove disposable key, output APK and verification APK copy
+        if: always()
+        shell: bash
+        run: |
+          rm -f keys/artcraft-builder.jks keys/.keystore-password output/*.apk
+          rm -rf icon-verification/

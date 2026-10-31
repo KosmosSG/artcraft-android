@@ -1,0 +1,54 @@
+name: PhotoCraft AI U2NetP CPU standalone safety tests (no APK)
+
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - '.github/workflows/photocraft-ai-cpu-benchmark-tests.yml'
+      - 'tools/photocraft_ai_cpu/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety-tests:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate standalone safety with Python standard library (no model/download)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPT="tools/photocraft_ai_cpu/benchmark_u2netp.py"
+          python3 -m py_compile "$SCRIPT"
+          python3 "$SCRIPT" --self-test
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path("tools/photocraft_ai_cpu/benchmark_u2netp.py").read_text()
+          assert 'model_integrity(model_file)' in script
+          assert 'if not good and not allow_download:' in script
+          assert 'new_session(' in script and '"u2netp"' in script
+          assert 'providers=["CPUExecutionProvider"]' in script
+          assert 'result.save(payload, format="PNG"' in script
+          assert 'destination.open("xb")' in script
+          assert 'MAX_PIXELS = 4_000_000' in script
+          assert '--allow-model-download' in script
+          assert 'from rembg import new_session, remove' in script
+          assert 'ComfyUI' not in Path("tools/photocraft_ai_cpu").name
+          forbidden = ["http.server", "upload_image", "POST /prompt", "com.artcraft.photocraft"]
+          for text in forbidden:
+              assert text not in script, text
+          print("PASS: isolated opt-in CPU inference and non-destructive output guards")
+          PY
+      - name: Check no changes to protected Android adapters or signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f tools/photocraft_ai_cpu/README.md
+          test -f adapters/photocraft/src/ai_menu.rs
+          echo "Standalone CPU benchmark has no APK/publishing/signing steps."

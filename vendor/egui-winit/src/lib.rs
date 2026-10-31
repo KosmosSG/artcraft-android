@@ -22,7 +22,12 @@ pub use winit;
 
 pub mod clipboard;
 mod dropped_file;
+#[cfg(target_os = "android")]
+pub mod android_activity;
+pub mod open_url;
+mod pointer_icon;
 mod safe_area;
+mod system_theme;
 mod window_settings;
 
 pub use window_settings::WindowSettings;
@@ -119,6 +124,16 @@ pub struct State {
     /// Only one touch will be interpreted as pointer at any time.
     pointer_touch_id: Option<u64>,
 
+    /// Touch ids seen since the current gesture began, used to tell a multi-finger gesture apart
+    /// from a fresh single-finger one. A one-finger drag becomes a mouse drag (selection,
+    /// drag-to-scroll); as soon as a second finger joins, the gesture is multi-touch (two-finger
+    /// scroll, pinch) and must not drive the pointer, or the first finger would keep selecting text
+    /// underneath the scroll. This set is deliberately rebuilt from `Started` events only — never
+    /// pruned by `Ended` — because the platform backend may legitimately stop forwarding a
+    /// gesture's touches once it becomes a scroll, and relying on `Ended` to clean up would leave
+    /// the suppression stuck on and break every later gesture.
+    gesture_touch_ids: Vec<u64>,
+
     #[cfg(feature = "accesskit")]
     pub accesskit: Option<accesskit_winit::Adapter>,
 
@@ -169,6 +184,7 @@ impl State {
 
             simulate_touch_screen: false,
             pointer_touch_id: None,
+            gesture_touch_ids: Vec::new(),
 
             #[cfg(feature = "accesskit")]
             accesskit: None,
@@ -265,6 +281,16 @@ impl State {
         profiling::function_scope!();
 
         self.egui_input.time = Some(self.start_time.elapsed().as_secs_f64());
+
+        // Android's winit backend never emits `ThemeChanged`, so the OS light/dark state
+        // reaches egui through a direct read of the Activity's configuration instead —
+        // `RawInput::system_theme`, the same field the desktop path fills (see
+        // `system_theme`). Set every frame; egui resolves `ThemePreference::System`
+        // against it and only re-themes when the value actually changes.
+        #[cfg(target_os = "android")]
+        {
+            self.egui_input.system_theme = crate::system_theme::system_theme();
+        }
 
         // On Windows, a minimized window will have 0 width and height.
         // See: https://github.com/rust-windowing/winit/issues/208
@@ -878,6 +904,25 @@ impl State {
     fn on_touch(&mut self, window: &Window, touch: &winit::event::Touch) {
         let pixels_per_point = pixels_per_point(&self.egui_ctx, window);
 
+        // Keep track of which fingers make up the current gesture. A finger we have not seen before
+        // begins a fresh gesture, so the set resets to just that finger; a finger already in the
+        // set is another finger of the gesture in progress and is added. Two or more means
+        // multi-touch. A lifted finger is dropped, so a gesture that ends can never leave the set
+        // (and the pointer suppression) stuck on. See `gesture_touch_ids` for why both a reset on
+        // `Started` and a prune on `Ended` are needed.
+        match touch.phase {
+            winit::event::TouchPhase::Started => {
+                if !self.gesture_touch_ids.contains(&touch.id) {
+                    self.gesture_touch_ids.clear();
+                }
+                self.gesture_touch_ids.push(touch.id);
+            }
+            winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
+                self.gesture_touch_ids.retain(|id| *id != touch.id);
+            }
+            winit::event::TouchPhase::Moved => {}
+        }
+
         // Emit touch event
         self.egui_input.events.push(egui::Event::Touch {
             device_id: egui::TouchDeviceId(egui::epaint::util::hash(touch.device_id)),
@@ -897,12 +942,41 @@ impl State {
                 None => None,
             },
         });
+
+        // A multi-finger gesture (two-finger scroll or pinch) must not also act on the pointer:
+        // otherwise the first finger keeps dragging a text selection or a slider underneath the
+        // scroll. Cancel the pointer down (release the button, so an in-progress drag ends where it
+        // started rather than following the finger) and stay off the pointer for the rest of the
+        // gesture. The app is also patched (see the builder) to ignore a press while a gesture is
+        // in progress, since this release can only arrive a frame after the press.
+        if self.gesture_touch_ids.len() > 1 {
+            if self.pointer_touch_id.is_some() {
+                self.pointer_touch_id = None;
+                self.on_mouse_button_input(
+                    winit::event::ElementState::Released,
+                    winit::event::MouseButton::Left,
+                );
+            }
+            if self.pointer_pos_in_points.is_some() {
+                self.pointer_pos_in_points = None;
+                self.egui_input.events.push(egui::Event::PointerGone);
+            }
+            return;
+        }
+
         // If we're not yet translating a touch or we're translating this very
         // touch …
         if self.pointer_touch_id.is_none() || self.pointer_touch_id.unwrap_or_default() == touch.id
         {
-            // … emit PointerButton resp. PointerMoved events to emulate mouse
+            // … emit PointerButton resp. PointerMoved events to emulate mouse. A touch that never
+            // became the pointer (e.g. one that shared a scroll gesture) must not emit a release
+            // for a press that never happened.
+            let was_pointer = self.pointer_touch_id == Some(touch.id);
             match touch.phase {
+                winit::event::TouchPhase::Started if self.pointer_touch_id.is_some() => {}
+                winit::event::TouchPhase::Moved if !was_pointer => {}
+                winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled
+                    if !was_pointer => {}
                 winit::event::TouchPhase::Started => {
                     self.pointer_touch_id = Some(touch.id);
                     // First move the pointer to the right location
@@ -927,9 +1001,18 @@ impl State {
                     self.egui_input.events.push(egui::Event::PointerGone);
                 }
                 winit::event::TouchPhase::Cancelled => {
+                    // The touch was cancelled: the backend took the gesture over (a two-finger
+                    // pan becomes a scroll, a two-finger pinch a zoom). The finger may still be
+                    // on the glass, so the pointer keeps its place — the canvas only takes the
+                    // scroll while the pointer is over it — but the button is released, so the
+                    // gesture does not drag a text selection along with it.
+                    if was_pointer {
+                        self.on_mouse_button_input(
+                            winit::event::ElementState::Released,
+                            winit::event::MouseButton::Left,
+                        );
+                    }
                     self.pointer_touch_id = None;
-                    self.pointer_pos_in_points = None;
-                    self.egui_input.events.push(egui::Event::PointerGone);
                 }
             }
         }
@@ -1296,6 +1379,15 @@ impl State {
         } else {
             window.set_cursor_visible(false);
         }
+
+        // winit's Android `set_cursor` is a no-op, so the icon the interface resolved above
+        // never reaches the screen: a mouse keeps Android's default arrow over text, buttons,
+        // and splitters alike. Forward it to the Activity's surface view as a system pointer
+        // icon instead. This runs only when the icon really changed (the dedupe above returns
+        // early otherwise), so a still pointer costs no JNI traffic at all. (`None` icons are
+        // excluded by `pointer_icon_type` itself.)
+        #[cfg(target_os = "android")]
+        crate::pointer_icon::apply(cursor_icon);
     }
 }
 
@@ -1399,15 +1491,26 @@ pub fn update_viewport_info(
     viewport_info.focused = Some(window.has_focus());
 }
 
-fn open_url_in_browser(_url: &str) {
-    #[cfg(feature = "webbrowser")]
-    if let Err(err) = webbrowser::open(_url) {
-        log::warn!("Failed to open url: {err}");
+fn open_url_in_browser(url: &str) {
+    // Android has no usable `webbrowser` here (the `links` feature is off for the ArtCraft apps),
+    // so open the URL with an `ACTION_VIEW` intent instead — see `open_url`.
+    #[cfg(target_os = "android")]
+    {
+        crate::open_url::open_url(url);
+        return;
     }
 
-    #[cfg(not(feature = "webbrowser"))]
+    #[cfg(not(target_os = "android"))]
     {
-        log::warn!("Cannot open url - feature \"links\" not enabled.");
+        #[cfg(feature = "webbrowser")]
+        if let Err(err) = webbrowser::open(url) {
+            log::warn!("Failed to open url: {err}");
+        }
+
+        #[cfg(not(feature = "webbrowser"))]
+        {
+            log::warn!("Cannot open url - feature \"links\" not enabled.");
+        }
     }
 }
 

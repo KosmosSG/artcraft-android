@@ -29,6 +29,9 @@ SHA = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 MAX_APK_BYTES = 200 * 1024 * 1024
 MAX_METADATA_BYTES = 64 * 1024
+# Refuse oversized outer ZIPs before streaming the externally pinned digest.
+# Member limits alone do not bound arbitrary trailing data or ZIP overhead.
+MAX_ARTIFACT_ZIP_BYTES = 256 * 1024 * 1024
 
 
 def require(ok: bool, message: str) -> None:
@@ -69,11 +72,16 @@ def require_pinned_zip_digest(value: str | None) -> str:
     return value
 
 
-def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None = None) -> dict:
+def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None = None,
+          *, max_zip_bytes: int = MAX_ARTIFACT_ZIP_BYTES) -> dict:
     require(bool(COMMIT.fullmatch(expected_source_sha)), "Expected source must be a full lowercase Git SHA")
     if expected_zip_sha256 is not None:
         require(bool(SHA.fullmatch(expected_zip_sha256)), "Expected ZIP SHA256 is malformed")
     require(path.is_file() and not path.is_symlink(), "Artifact ZIP must be a regular file")
+    require(type(max_zip_bytes) is int and max_zip_bytes > 0,
+            "Artifact ZIP size limit must be a positive integer")
+    require(0 < path.stat().st_size <= max_zip_bytes,
+            "Artifact ZIP exceeds safe outer archive size limit")
     if expected_zip_sha256 is not None:
         with path.open("rb") as stream:
             require(digest_stream(stream) == expected_zip_sha256, "GitHub artifact ZIP SHA256 mismatch")
@@ -190,6 +198,15 @@ def self_test() -> None:
             zip_sha = digest_stream(stream)
         assert check(path, sha, zip_sha)["apk_sha256"] == digest
         assert require_pinned_zip_digest(zip_sha) == zip_sha
+        # A four-member archive can still be arbitrarily large because of
+        # ZIP padding/trailing data. Reject it before any full-file hashing.
+        for unsafe_limit in (0, path.stat().st_size - 1):
+            try:
+                check(path, sha, zip_sha, max_zip_bytes=unsafe_limit)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted invalid/oversized outer artifact ZIP")
         # Without the externally pinned GitHub ZIP digest, a self-consistent
         # forged ZIP can claim any source commit and APK checksum. Reject
         # omitted and malformed digests at the owner-facing CLI boundary.
@@ -256,7 +273,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted incorrect GitHub ZIP digest")
-    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata, 13 archive rejection cases and 2 unpinned-digest rejection cases")
+    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata, 13 archive rejection cases, 2 outer-size rejections and 2 unpinned-digest rejection cases")
     print("No APK built, signed, extracted, installed, uploaded or published")
 
 

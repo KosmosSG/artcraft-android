@@ -8,6 +8,7 @@ on:
       - '.github/workflows/photocraft-ai-unsigned-linux-lab.yml'
       - 'tools/photocraft_ai_cpu/test_public_artifact_safety.py'
       - 'tools/photocraft_ai_unsigned_artifact_verify.py'
+      - 'tools/photocraft_ai_payload_continuity.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,5 +25,6 @@ jobs:
         run: |
           python3 tools/photocraft_ai_cpu/test_public_artifact_safety.py -v
           python3 tools/photocraft_ai_unsigned_artifact_verify.py --self-test
+          python3 tools/photocraft_ai_payload_continuity.py --self-test
       - name: No model, no APK, no signing
         run: echo 'PASS - static CI artifact allowlist only'

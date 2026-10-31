@@ -378,6 +378,42 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_unauthenticated_connection_slots_fail_closed(self):
+        # A flood of incomplete headers must not create unbounded handler
+        # threads/timers before the absolute header timeout expires.
+        slots = threading.BoundedSemaphore(1)
+        self.httpd._client_slots = slots
+        self.assertTrue(slots.acquire(blocking=False))
+        try:
+            with socket.create_connection(self.address, timeout=3) as sock:
+                sock.settimeout(2)
+                try:
+                    reply = sock.recv(4096)
+                except ConnectionResetError:
+                    reply = b""
+                self.assertEqual(reply, b"")
+        finally:
+            slots.release()
+        # Saturation must not poison later consented requests.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
+    def test_connection_slot_released_after_authorized_processing(self):
+        # A completed inference must return its pre-auth admission slot,
+        # otherwise one valid request would permanently exhaust capacity.
+        slots = threading.BoundedSemaphore(1)
+        self.httpd._client_slots = slots
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+            for _ in range(100):
+                if slots.acquire(blocking=False):
+                    slots.release()
+                    break
+                threading.Event().wait(0.01)
+            else:
+                self.fail("Completed request leaked a connection slot")
+            self.assertEqual(self.request()[0], 200)
+
     def test_only_one_inference_runs_at_a_time(self):
         entered = threading.Event()
         release = threading.Event()

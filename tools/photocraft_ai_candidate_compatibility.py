@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 import stat
 import subprocess
@@ -51,13 +51,24 @@ def check_arm64_archive(apk: Path) -> dict[str, object]:
             ensure("AndroidManifest.xml" in names, "Candidate APK is missing AndroidManifest.xml")
             for entry in entries:
                 name = entry.filename
-                parts = PurePosixPath(name).parts
-                ensure(bool(name) and not name.startswith("/") and "\\" not in name
-                       and ".." not in parts and "." not in parts,
-                       "Candidate APK contains an unsafe ZIP path")
+                # PurePosixPath normalizes empty and "." segments, hiding
+                # ambiguous ZIP names that Android and desktop extractors may
+                # interpret differently. Validate raw segments instead.
+                parts = name.split("/")
+                if entry.is_dir():
+                    parts = parts[:-1]
+                ensure(bool(parts) and all(part not in ("", ".", "..") for part in parts)
+                       and not name.startswith("/") and "\\" not in name,
+                       "Candidate APK contains an unsafe or noncanonical ZIP path")
                 ensure(not entry.flag_bits & 1, "Candidate APK has an encrypted ZIP entry")
-                ensure(stat.S_IFMT(entry.external_attr >> 16) != stat.S_IFLNK,
-                       "Candidate APK contains a symbolic link")
+                # A ZIP entry without a trailing slash may still declare a
+                # directory, FIFO or device through UNIX type bits. Never
+                # accept a special file as AndroidManifest.xml or a native .so.
+                mode = stat.S_IFMT(entry.external_attr >> 16)
+                allowed_modes = (0, stat.S_IFDIR) if entry.is_dir() else (0, stat.S_IFREG)
+                ensure(mode in allowed_modes, "Candidate APK has a non-regular ZIP file")
+                ensure(not entry.is_dir() or entry.file_size == 0,
+                       "Candidate APK has a nonempty ZIP directory")
                 ensure(not name.lower().endswith(
                     (".jks", ".p12", ".keystore", ".onnx", ".pth", ".pt", ".safetensors")),
                     "Candidate APK unexpectedly bundles a key or AI model weight")
@@ -257,6 +268,33 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Unsafe candidate APK ZIP was accepted: " + str(members))
+        # A filename can look like a regular manifest/library while carrying
+        # UNIX special-file mode bits; the previous gate rejected symlinks
+        # but accepted FIFO, block-device and disguised directory entries.
+        for forbidden_mode in (stat.S_IFIFO, stat.S_IFBLK, stat.S_IFDIR):
+            with zipfile.ZipFile(candidate_path, "w") as archive:
+                for name in good:
+                    if name == "AndroidManifest.xml":
+                        info = zipfile.ZipInfo(name)
+                        info.create_system = 3
+                        info.external_attr = (forbidden_mode | 0o644) << 16
+                        archive.writestr(info, b"test-content")
+                    else:
+                        archive.writestr(name, b"test-content")
+            try:
+                check_arm64_archive(candidate_path)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted disguised special-file APK manifest")
+        for ambiguous_name in ("assets//test.dat", "assets/./test.dat"):
+            make_zip(candidate_path, good + [ambiguous_name])
+            try:
+                check_arm64_archive(candidate_path)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted noncanonical APK path: " + ambiguous_name)
         candidate_path.write_bytes(b"not-a-zip")
         try:
             check_arm64_archive(candidate_path)
@@ -264,7 +302,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (11 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (16 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

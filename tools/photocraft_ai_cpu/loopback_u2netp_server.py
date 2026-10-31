@@ -210,7 +210,10 @@ def make_handler(token: str):
                 payload = b"".join(chunks)
                 try:
                     width, height = verify_input(payload)
-                except (ValueError, OSError, SyntaxError):
+                except (ValueError, OSError, SyntaxError, Image.DecompressionBombError):
+                    # Pillow can reject huge IHDR dimensions at Image.open()
+                    # before our explicit 4 MP limit is evaluated. Treat that
+                    # as malformed input, never an unhandled handler failure.
                     return self.reply(400, b"Invalid image")
                 with tempfile.TemporaryDirectory(prefix="photocraft-u2netp-") as folder:
                     source = Path(folder) / "input.png"

@@ -164,7 +164,15 @@ def make_handler(token: str):
             if len(sizes) != 1 or self.headers.get("Transfer-Encoding") is not None:
                 return self.reply(400, b"Ambiguous input framing")
             raw_size = sizes[0]
-            if not raw_size.isdecimal() or not (1 <= int(raw_size) <= MAX_BYTES):
+            # HTTP header values are untrusted. isdecimal() alone accepts a
+            # 5000-digit length that raises ValueError in Python's int() guard
+            # (and could consume excessive CPU on runtimes without that guard).
+            # Reject overlong/invalid values BEFORE any integer conversion.
+            if (not raw_size.isascii() or not raw_size.isdecimal()
+                    or len(raw_size) > len(str(MAX_BYTES))):
+                return self.reply(413, b"Invalid input size")
+            size = int(raw_size)
+            if not 1 <= size <= MAX_BYTES:
                 return self.reply(413, b"Invalid input size")
             if not lock.acquire(blocking=False):
                 return self.reply(429, b"Another inference is running")
@@ -175,7 +183,7 @@ def make_handler(token: str):
                 # re-check an absolute deadline after each available chunk.
                 self.connection.settimeout(REQUEST_READ_TIMEOUT)
                 deadline = time.monotonic() + REQUEST_READ_TIMEOUT
-                remaining = int(raw_size)
+                remaining = size
                 chunks = []
                 try:
                     while remaining:

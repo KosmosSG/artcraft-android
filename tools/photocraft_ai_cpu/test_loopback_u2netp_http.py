@@ -28,6 +28,21 @@ spec.loader.exec_module(server)
 TOKEN = "temporary_test_token_with_at_least_32_characters"
 
 
+def incomplete_authorization_headers() -> bytes:
+    """Real CRLF-delimited HTTP headers with an unfinished bearer-token line.
+
+    A literal backslash-r/backslash-n sequence never reaches the HTTP header
+    parser and makes timeout tests pass without exercising authentication.
+    """
+    prefix = (
+        b"POST /v1/remove-background HTTP/1.1\r\n"
+        b"Host: 127.0.0.1\r\nAuthorization: Bearer "
+    )
+    assert b"\r\nAuthorization: Bearer " in prefix
+    assert b"\\r\\n" not in prefix
+    return prefix
+
+
 def sample_png() -> bytes:
     buf = io.BytesIO()
     Image.new("RGBA", (16, 16), (20, 80, 160, 255)).save(buf, format="PNG")
@@ -271,10 +286,7 @@ class LoopbackHTTPTests(unittest.TestCase):
             with patch.object(self.httpd, "handle_error") as unexpected:
                 with socket.create_connection(self.address, timeout=3) as sock:
                     sock.settimeout(2)
-                    sock.sendall(
-                        b"POST /v1/remove-background HTTP/1.1\\r\\n"
-                        b"Host: 127.0.0.1\\r\\nAuthorization: Bearer "
-                    )
+                    sock.sendall(incomplete_authorization_headers())
                     try:
                         sock.recv(4096)
                     except ConnectionResetError:
@@ -290,10 +302,7 @@ class LoopbackHTTPTests(unittest.TestCase):
             with patch.object(server.subprocess, "run") as inference:
                 with socket.create_connection(self.address, timeout=3) as sock:
                     sock.settimeout(1.5)
-                    sock.sendall(
-                        b"POST /v1/remove-background HTTP/1.1\\r\\n"
-                        b"Host: 127.0.0.1\\r\\nAuthorization: Bearer "
-                    )
+                    sock.sendall(incomplete_authorization_headers())
                     stop = threading.Event()
 
                     def trickle():
@@ -310,7 +319,7 @@ class LoopbackHTTPTests(unittest.TestCase):
                             reply = sock.recv(4096)
                         except ConnectionResetError:
                             reply = b""
-                        self.assertNotIn(b" 200 ", reply.split(b"\\r\\n", 1)[0])
+                        self.assertNotIn(b" 200 ", reply.split(b"\r\n", 1)[0])
                     finally:
                         stop.set()
                         writer.join(timeout=2)

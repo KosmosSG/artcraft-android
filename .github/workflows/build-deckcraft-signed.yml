@@ -22,8 +22,8 @@ jobs:
     env:
       DECKCRAFT_UPSTREAM_COMMIT: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
       DECKCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
-      DECKCRAFT_VERSION_NAME: 0.9.0-android.1
-      DECKCRAFT_CANDIDATE_VERSION_CODE: "100000001"
+      DECKCRAFT_VERSION_NAME: 0.9.0-android.4
+      DECKCRAFT_CANDIDATE_VERSION_CODE: "100000004"
       DECKCRAFT_PACKAGE: com.artcraft.deckcraft
 
     steps:
@@ -116,13 +116,13 @@ jobs:
           s = source.read_text()
           old = 'version = "0.9.0"'
           assert s.count(old) == 1, 'Review new upstream manifest before changing version'
-          source.write_text(s.replace(old, 'version = "0.9.0-android.1"', 1))
+          source.write_text(s.replace(old, 'version = "0.9.0-android.4"', 1))
           project = Path('builder/lib/android_project.py')
           p = project.read_text()
           formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert p.count(formula) == 1, 'Version-code override location changed: stop'
-          project.write_text(p.replace(formula, 'return 100000001', 1))
-          print('Candidate metadata set: 0.9.0-android.1 / 100000001')
+          project.write_text(p.replace(formula, 'return 100000004', 1))
+          print('Candidate metadata set: 0.9.0-android.4 / 100000004')
           PY
           git -C builder/source/deckcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
@@ -155,13 +155,13 @@ jobs:
           python3 deckcraft/android/adaptive_safe.py builder deckcraft
           cd builder
           bash build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
-          test -s output/deckcraft-0.9.0-android.1.apk
+          test -s output/deckcraft-0.9.0-android.4.apk
 
       - name: Verify pre-signing DeckCraft payload package, ARM64, version and resources
         shell: bash
         run: |
           set -euo pipefail
-          apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
+          apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.4.apk"
           test -s "$apk"
           # AAPT2 optimizes resource filenames to res/<opaque>.png/.xml in final APKs.
           # Check resource-table identities and the actual launcher pixels, not ZIP filenames.
@@ -208,8 +208,8 @@ jobs:
           aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
           badging="$("$aapt2" dump badging "$apk")"
           [[ "$badging" == *"name='com.artcraft.deckcraft'"* ]] || { echo "::error::DeckCraft package mismatch"; exit 1; }
-          [[ "$badging" == *"versionCode='100000001'"* ]] || { echo "::error::DeckCraft versionCode mismatch"; exit 1; }
-          [[ "$badging" == *"versionName='0.9.0-android.1'"* ]] || { echo "::error::DeckCraft versionName mismatch"; exit 1; }
+          [[ "$badging" == *"versionCode='100000004'"* ]] || { echo "::error::DeckCraft versionCode mismatch"; exit 1; }
+          [[ "$badging" == *"versionName='0.9.0-android.4'"* ]] || { echo "::error::DeckCraft versionName mismatch"; exit 1; }
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
@@ -239,8 +239,8 @@ jobs:
           actual_cert="$(openssl x509 -in "$certfile" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           expected_cert="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]')"
           [[ "$actual_cert" == "$expected_cert" ]] || { echo "::error::Permanent signing key differs from original DeckCraft backup certificate"; exit 1; }
-          apk_source="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
-          apk_final="$GITHUB_WORKSPACE/artifact/DeckCraft-v0.9.0-android.1-arm64-v8a.apk"
+          apk_source="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.4.apk"
+          apk_final="$GITHUB_WORKSPACE/artifact/DeckCraft-v0.9.0-android.4-arm64-v8a.apk"
           test -s "$apk_source"
           test "$(basename "$apk_final")" = "DeckCraft-v${DECKCRAFT_VERSION_NAME}-arm64-v8a.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
@@ -263,8 +263,8 @@ jobs:
           PY
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$apk_final")"
           [[ "$badging" == *"name='com.artcraft.deckcraft'"* ]]
-          [[ "$badging" == *"versionCode='100000001'"* ]]
-          [[ "$badging" == *"versionName='0.9.0-android.1'"* ]]
+          [[ "$badging" == *"versionCode='100000004'"* ]]
+          [[ "$badging" == *"versionName='0.9.0-android.4'"* ]]
           python3 - "$apk_final" <<'PY'
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
@@ -272,15 +272,15 @@ jobs:
           assert libs and all(p.startswith('lib/arm64-v8a/') for p in libs), libs
           print('PASS: ARM64-only native libraries')
           PY
-          (cd artifact && sha256sum DeckCraft-v0.9.0-android.1-arm64-v8a.apk > SHA256SUMS.txt)
+          (cd artifact && sha256sum DeckCraft-v0.9.0-android.4-arm64-v8a.apk > SHA256SUMS.txt)
           printf '%s\n' "$actual_cert" > artifact/deckcraft-signing-certificate-sha256.txt
 
       - name: Retain verified, permanently signed APK for owner device testing
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: DeckCraft-v0.9.0-android.1-arm64-permanent-signed-device-test
+          name: DeckCraft-v0.9.0-android.4-arm64-permanent-signed-device-test
           path: |
-            artifact/DeckCraft-v0.9.0-android.1-arm64-v8a.apk
+            artifact/DeckCraft-v0.9.0-android.4-arm64-v8a.apk
             artifact/SHA256SUMS.txt
             artifact/deckcraft-signing-certificate-sha256.txt
           retention-days: 14

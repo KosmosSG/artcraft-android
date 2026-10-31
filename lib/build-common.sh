@@ -321,7 +321,12 @@ if app == "pdfcraft":
         scanner.write_text(original.replace(needle, needle + addition, 1))
         fixed.append("crates/engine/src/text_fonts.rs")
 
-    updates = src / "crates/ui-egui/src/updates.rs"
+    # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
+    update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]
+    existing = [p for p in update_paths if p.is_file()]
+    if len(existing) != 1:
+        raise SystemExit("PDFCraft updater module layout changed; review required")
+    updates = existing[0]
     old = "    pub fn check_for_updates(&mut self) {\n"
     new = old + """        #[cfg(target_os = "android")]
         {
@@ -345,7 +350,7 @@ impl PdfCraftApp {
 }
 """
         updates.write_text(text)
-        fixed.append("crates/ui-egui/src/updates.rs")
+        fixed.append(str(updates.relative_to(src)))
 
 if fixed:
     print(f"  Patched app-specific Android integration: {', '.join(fixed)}")
@@ -2947,6 +2952,14 @@ if [[ -d "$SRC/vendor/winit" ]]; then
 else
     rm -rf "$SRC/vendor/winit"
     cp -a "$ROOT/vendor/winit" "$SRC/vendor/winit"
+fi
+# PDFCraft v0.15's pinned egui-winit needs winit's IME-reset API. The generic
+# builder's older mouse-aware vendor copy lacks it. For this disposable candidate
+# only, restore the exact official winit commit and reapply the guarded Android
+# mouse/scroll/hover backend. Do not silently fall back to touch-only input.
+if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.15.0" ]]; then
+    python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
+        "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
 fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path

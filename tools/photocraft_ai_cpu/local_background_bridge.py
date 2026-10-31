@@ -22,7 +22,14 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
     if not consent:
         raise ValueError("Explicit --consent-local-processing is required")
     source = input_path.expanduser().resolve(strict=True)
-    destination = output_path.expanduser().resolve()
+    # Path.resolve() follows even a dangling symlink. An output alias to a
+    # not-yet-created PNG would otherwise pass exists() and let the model
+    # write outside the path the consenting caller explicitly selected.
+    # Reject the alias BEFORE resolving it; do not change the source file.
+    requested_output = output_path.expanduser()
+    if requested_output.is_symlink():
+        raise ValueError("Output must be a new PNG path, not a symlink")
+    destination = requested_output.resolve()
     if source == destination:
         raise ValueError("Input and output cannot be identical")
     if not source.is_file() or source.stat().st_size > MAX_INPUT_BYTES:

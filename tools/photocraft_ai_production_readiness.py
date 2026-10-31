@@ -100,6 +100,12 @@ def check() -> None:
          and "size = int(raw_size)" in server
          and "remaining = size" in server,
          "Server must bound untrusted Content-Length digits before int conversion")
+    bridge = (ROOT / "tools" / "photocraft_ai_cpu" /
+              "local_background_bridge.py").read_text()
+    need("except (ValueError, OSError, SyntaxError, Image.DecompressionBombError):" in server
+         and "except Image.DecompressionBombError as exc:" in bridge
+         and "Input dimensions outside safety limit" in bridge,
+         "Pillow decompression-bomb headers must fail as controlled invalid input")
     # No model weights or other private binaries should be accidentally
     # committed with the AI integration. We only scan this small PR subtree.
     disallowed = sorted(str(p.relative_to(ROOT)) for p in

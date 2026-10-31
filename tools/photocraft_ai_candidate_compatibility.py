@@ -49,6 +49,7 @@ def check_arm64_archive(apk: Path) -> dict[str, object]:
             names = [entry.filename for entry in entries]
             ensure(len(names) == len(set(names)), "Candidate APK has duplicate ZIP entries")
             ensure("AndroidManifest.xml" in names, "Candidate APK is missing AndroidManifest.xml")
+            ensure("classes.dex" in names, "Candidate APK is missing primary classes.dex")
             for entry in entries:
                 name = entry.filename
                 # PurePosixPath normalizes empty and "." segments, hiding
@@ -69,6 +70,13 @@ def check_arm64_archive(apk: Path) -> dict[str, object]:
                 ensure(mode in allowed_modes, "Candidate APK has a non-regular ZIP file")
                 ensure(not entry.is_dir() or entry.file_size == 0,
                        "Candidate APK has a nonempty ZIP directory")
+                # Identity and a valid ZIP CRC alone do not establish a
+                # launchable application. Refuse zero-byte critical payloads.
+                if name in ("AndroidManifest.xml", "classes.dex") or (
+                    name.startswith("lib/arm64-v8a/") and name.endswith(".so")
+                ):
+                    ensure(not entry.is_dir() and entry.file_size > 0,
+                           "Candidate APK has an empty critical application payload")
                 ensure(not name.lower().endswith(
                     (".jks", ".p12", ".keystore", ".onnx", ".pth", ".pt", ".safetensors")),
                     "Candidate APK unexpectedly bundles a key or AI model weight")
@@ -251,6 +259,8 @@ def self_test() -> None:
         unsafe_cases = [
             ["classes.dex", "lib/arm64-v8a/libphotocraft.so"],
             ["AndroidManifest.xml", "classes.dex"],
+            ["AndroidManifest.xml", "lib/arm64-v8a/libphotocraft.so"],
+            ["AndroidManifest.xml", "classes2.dex", "lib/arm64-v8a/libphotocraft.so"],
             good + ["lib/armeabi-v7a/libother.so"],
             good + ["lib/x86_64/libother.so"],
             good + ["assets/u2netp.onnx"],
@@ -268,6 +278,18 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Unsafe candidate APK ZIP was accepted: " + str(members))
+        # A ZIP can have valid central-directory names and CRCs while its
+        # manifest, primary DEX or ARM64 library is zero bytes.
+        for critical in good:
+            with zipfile.ZipFile(candidate_path, "w") as archive:
+                for name in good:
+                    archive.writestr(name, b"" if name == critical else b"test-content")
+            try:
+                check_arm64_archive(candidate_path)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted empty critical APK payload: " + critical)
         # A filename can look like a regular manifest/library while carrying
         # UNIX special-file mode bits; the previous gate rejected symlinks
         # but accepted FIFO, block-device and disguised directory entries.
@@ -302,7 +324,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (16 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (21 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

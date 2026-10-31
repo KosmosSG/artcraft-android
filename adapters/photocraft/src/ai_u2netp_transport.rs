@@ -118,9 +118,23 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     let mut content_type_seen = false;
     for line in lines {
         let (name, value) = line.split_once(':').ok_or("Malformed HTTP header")?;
-        let value = value.trim();
+        // Reject malformed header names, obs-fold and control/non-ASCII values.
+        // The local Python sidecar emits ordinary ASCII HTTP fields; accepting
+        // alternate whitespace/field syntax risks parser disagreement.
+        if name.is_empty() ||
+            !name.bytes().all(|b| b.is_ascii_alphanumeric() ||
+                b"!#$%&'*+-.^_`|~".contains(&b)) ||
+            !value.bytes().all(|b| b == b'\t' || (0x20..=0x7e).contains(&b)) {
+            return Err("Malformed HTTP header".into());
+        }
+        let value = value.trim_matches(|c| c == ' ' || c == '\t');
         if name.eq_ignore_ascii_case("Content-Length") {
             if length.is_some() { return Err("Duplicate Content-Length".into()); }
+            // HTTP Content-Length is 1*DIGIT, not Rust's more permissive
+            // signed integer syntax (e.g. "+33").
+            if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("Invalid Content-Length".into());
+            }
             length = Some(value.parse::<usize>().map_err(|_| "Invalid Content-Length")?);
         }
         if name.eq_ignore_ascii_case("Content-Type") {
@@ -207,6 +221,34 @@ mod tests {
         ] {
             let v = response_with_headers(headers);
             assert!(parse_response(&v).unwrap_err().contains("Duplicate Content-Type"));
+        }
+    }
+    #[test] fn accepts_ascii_http_ows_and_decimal_length() {
+        let v = response_with_headers("Content-Type:\tIMAGE/PNG \t\r\nContent-Length:\t00033\t\r\n");
+        assert_eq!(parse_response(&v).unwrap().len(), 33);
+    }
+    #[test] fn rejects_non_decimal_content_length() {
+        for length in ["+33", "-33", "33.0", "0x21", "33,33", ""] {
+            let v = response_with_headers(&format!(
+                "Content-Type: image/png\r\nContent-Length: {length}\r\n"
+            ));
+            assert!(parse_response(&v).unwrap_err().contains("Invalid Content-Length"), "{length:?}");
+        }
+    }
+    #[test] fn rejects_malformed_http_field_names() {
+        for name in [" Content-Type", "Content-Type ", "Content Type", "Content-Type\t"] {
+            let v = response_with_headers(&format!(
+                "{name}: image/png\r\nContent-Length: 33\r\n"
+            ));
+            assert!(parse_response(&v).unwrap_err().contains("Malformed HTTP header"), "{name:?}");
+        }
+    }
+    #[test] fn rejects_control_and_non_ascii_header_values() {
+        for value in ["image/png\u{000b}", "image/png\u{007f}", "image/png\u{00a0}", "image/png\u{0000}"] {
+            let v = response_with_headers(&format!(
+                "Content-Type: {value}\r\nContent-Length: 33\r\n"
+            ));
+            assert!(parse_response(&v).unwrap_err().contains("Malformed HTTP header"), "{value:?}");
         }
     }
     #[test] fn rejects_missing_length() {

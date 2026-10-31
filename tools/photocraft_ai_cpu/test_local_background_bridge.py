@@ -52,6 +52,24 @@ class SidecarTests(unittest.TestCase):
                     bridge.run(source, output, True)
                 runner.assert_not_called()
 
+    def test_oversized_png_ihdr_is_controlled_validation_error(self):
+        # A CRC-correct 400 MP IHDR triggers Pillow's early bomb check,
+        # even though the compressed file is tiny. No CPU inference.
+        with tempfile.TemporaryDirectory() as folder:
+            source, output = Path(folder) / "input.png", Path(folder) / "output.png"
+            self.make_png(source)
+            data = source.read_bytes()
+            marker = data.index(b"IHDR")
+            dimensions = marker + 4
+            data = data[:dimensions] + (20_000).to_bytes(4, "big") * 2 + data[dimensions + 8:]
+            crc_at = marker + 4 + 13
+            source.write_bytes(data[:crc_at] + zlib.crc32(data[marker:crc_at]).to_bytes(4, "big") + data[crc_at + 4:])
+            with patch.object(bridge.subprocess, "run") as inference:
+                with self.assertRaisesRegex(ValueError, "dimensions outside safety limit"):
+                    bridge.run(source, output, True)
+                inference.assert_not_called()
+            self.assertFalse(output.exists())
+
     def test_crc_valid_but_undecodable_png_never_starts_inference(self):
         # The old image.verify() guard accepted CRC-correct PNGs whose
         # compressed IDAT stream fails only during actual pixel decoding.

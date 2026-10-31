@@ -25,6 +25,9 @@ SIGNATURE_FILE = re.compile(
 )
 MAX_APK_BYTES = 512 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+# Keep this read-only payload gate consistent with candidate compatibility.
+# A ZIP with many tiny entries can exhaust CPU/memory before byte caps apply.
+MAX_ARCHIVE_MEMBERS = 20000
 
 
 def require(condition: bool, reason: str) -> None:
@@ -58,8 +61,14 @@ def contains_apk_signing_block(path: Path, archive: zipfile.ZipFile) -> bool:
         return stream.read(16) == b"APK Sig Block 42"
 
 
-def archive_members(apk: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
+def archive_members(
+    apk: zipfile.ZipFile, *, max_entries: int = MAX_ARCHIVE_MEMBERS
+) -> dict[str, zipfile.ZipInfo]:
+    require(type(max_entries) is int and max_entries > 0,
+            "Invalid APK ZIP entry-count limit")
     entries = apk.infolist()
+    require(len(entries) <= max_entries,
+            "APK exceeds safe ZIP entry-count limit")
     names = [entry.filename for entry in entries]
     require(len(names) == len(set(names)), "APK contains duplicate ZIP members")
     require("AndroidManifest.xml" in names, "APK is missing AndroidManifest.xml")
@@ -182,6 +191,19 @@ def self_test() -> None:
         ]
         write(signed, signed_members)
         assert check(unsigned, signed, pinned)["preserved_non_signature_members"] == 4
+        # The compatibility gate already caps ZIP member counts, but this
+        # independent unsigned-to-signed gate previously did not. Exercise
+        # the same 20,000-member production ceiling with a small injected
+        # threshold, without generating a costly synthetic 20,001-file APK.
+        with zipfile.ZipFile(unsigned) as archive:
+            assert len(archive_members(archive, max_entries=4)) == 4
+            for bad_limit in (0, True, -1, 3):
+                try:
+                    archive_members(archive, max_entries=bad_limit)
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("Accepted invalid/excessive APK ZIP member count")
         # The old comparator skipped all known signature paths even if they
         # were already in the purportedly UNSIGNED input. A stale v1 signature
         # must be rejected, even with a correctly pinned input checksum.
@@ -283,7 +305,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted same APK for both roles")
-    print("PASS: owner-signed APK payload continuity (22 negative scenarios)")
+    print("PASS: owner-signed APK payload continuity (26 negative scenarios)")
     print("No APK built, signed, installed, uploaded or published")
 
 

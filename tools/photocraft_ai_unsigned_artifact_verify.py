@@ -25,6 +25,8 @@ FILES = frozenset({
     "production-identity-build-proof.json",
 })
 PUBLIC_CERT = "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"
+# Immutable owner-tested keyboard/icon source used by the verified unsigned ARM64 workflow.
+PROOF_BASE_SOURCE_COMMIT = "f708fff8a333c2246b6d342570b19db5b95f4be1"
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 MAX_APK_BYTES = 200 * 1024 * 1024
@@ -147,10 +149,18 @@ def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None 
                 "non_installable_disposable_build": True,
                 "android_arm64": True,
                 "public_release_created": False,
+                "source_commit": PROOF_BASE_SOURCE_COMMIT,
             }
             for key, value in proof_expected.items():
                 require(type(proof.get(key)) is type(value) and proof[key] == value,
                         "Build proof field mismatched: " + key)
+            # The disposable signed proof must be a *different* APK from the
+            # unsigned input. Bind its declared hash and immutable build base
+            # to the reviewed workflow; do not silently accept mixed proofs.
+            discarded_sha = proof.get("apk_sha256_discarded")
+            require(isinstance(discarded_sha, str) and bool(SHA.fullmatch(discarded_sha))
+                    and discarded_sha != apk_sha,
+                    "Missing, malformed or identical disposable-signed proof APK SHA256")
             return {
                 "status": "unsigned_artifact_integrity_only",
                 "source_sha": expected_source_sha,
@@ -180,6 +190,8 @@ def self_test() -> None:
         "version_code": 16790005, "public_reference_certificate_sha256": PUBLIC_CERT,
         "proof_signer_matches_public": False, "non_installable_disposable_build": True,
         "android_arm64": True, "public_release_created": False,
+        "source_commit": PROOF_BASE_SOURCE_COMMIT,
+        "apk_sha256_discarded": "b" * 64,
     }
     original = {
         APK_NAME: apk,
@@ -231,6 +243,12 @@ def self_test() -> None:
               if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
             [(n, json.dumps({**proof, "version_code": 16790004}).encode()
               if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
+            [(n, json.dumps({**proof, "source_commit": "0" * 40}).encode()
+              if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
+            [(n, json.dumps({**proof, "apk_sha256_discarded": digest}).encode()
+              if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
+            [(n, json.dumps({**proof, "apk_sha256_discarded": "bad-hash"}).encode()
+              if n == "production-identity-build-proof.json" else v) for n, v in original.items()],
             # Last-key-wins json.loads would accept these conflicting first
             # values. Both metadata documents must reject duplicate keys.
             [(n, b'{"production_signed": true, ' + json.dumps(verify)[1:].encode()
@@ -273,7 +291,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted incorrect GitHub ZIP digest")
-    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata, 13 archive rejection cases, 2 outer-size rejections and 2 unpinned-digest rejection cases")
+    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata, 16 archive rejection cases, 2 outer-size rejections and 2 unpinned-digest rejection cases")
     print("No APK built, signed, extracted, installed, uploaded or published")
 
 

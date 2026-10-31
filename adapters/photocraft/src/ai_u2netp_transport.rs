@@ -115,6 +115,7 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     }
     let mut length = None;
     let mut png_type = false;
+    let mut content_type_seen = false;
     for line in lines {
         let (name, value) = line.split_once(':').ok_or("Malformed HTTP header")?;
         let value = value.trim();
@@ -123,6 +124,10 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
             length = Some(value.parse::<usize>().map_err(|_| "Invalid Content-Length")?);
         }
         if name.eq_ignore_ascii_case("Content-Type") {
+            // Do not silently accept contradictory duplicate MIME declarations.
+            // The loopback server emits exactly one Content-Type.
+            if content_type_seen { return Err("Duplicate Content-Type".into()); }
+            content_type_seen = true;
             png_type = value.eq_ignore_ascii_case("image/png");
         }
         if name.eq_ignore_ascii_case("Transfer-Encoding") {
@@ -169,6 +174,15 @@ mod tests {
         result.extend_from_slice(&png);
         result
     }
+    // Keep the binary PNG body intact: lossy UTF-8 replacement can otherwise
+    // make a header rejection test pass for the wrong reason.
+    fn response_with_headers(headers: &str) -> Vec<u8> {
+        let original = sample();
+        let body_start = original.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+        let mut response = format!("HTTP/1.1 200 OK\r\n{headers}\r\n").into_bytes();
+        response.extend_from_slice(&original[body_start..]);
+        response
+    }
     #[test] fn accepts_bounded_png_framing() {
         assert_eq!(parse_response(&sample()).unwrap().len(), 33);
     }
@@ -182,12 +196,22 @@ mod tests {
         let mut v=sample();v.pop();assert!(parse_response(&v).is_err());
     }
     #[test] fn rejects_non_png_content_type() {
-        let v=sample();let s=String::from_utf8_lossy(&v).replace("image/png","text/html");
-        assert!(parse_response(s.as_bytes()).is_err());
+        let v = response_with_headers("Content-Type: text/html\r\nContent-Length: 33\r\n");
+        assert!(parse_response(&v).unwrap_err().contains("metadata"));
+    }
+    #[test] fn rejects_duplicate_content_type() {
+        for headers in [
+            "Content-Type: text/plain\r\nContent-Type: image/png\r\nContent-Length: 33\r\n",
+            "Content-Type: image/png\r\nContent-Type: text/plain\r\nContent-Length: 33\r\n",
+            "Content-Type: image/png\r\nContent-Type: image/png\r\nContent-Length: 33\r\n",
+        ] {
+            let v = response_with_headers(headers);
+            assert!(parse_response(&v).unwrap_err().contains("Duplicate Content-Type"));
+        }
     }
     #[test] fn rejects_missing_length() {
-        let v=sample();let s=String::from_utf8_lossy(&v).replace("Content-Length: 33\r\n","");
-        assert!(parse_response(s.as_bytes()).is_err());
+        let v = response_with_headers("Content-Type: image/png\r\n");
+        assert!(parse_response(&v).unwrap_err().contains("Missing Content-Length"));
     }
     #[test]
     fn rejects_non_alpha_output() {

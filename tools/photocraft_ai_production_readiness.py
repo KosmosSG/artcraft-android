@@ -96,6 +96,10 @@ def check() -> None:
          and "self.connection.settimeout(seconds_left)" in server
          and "if time.monotonic() > deadline:" in server,
          "Server must enforce an absolute total PNG upload deadline, even for slow-trickle clients")
+    need("len(raw_size) > len(str(MAX_BYTES))" in server
+         and "size = int(raw_size)" in server
+         and "remaining = size" in server,
+         "Server must bound untrusted Content-Length digits before int conversion")
     # No model weights or other private binaries should be accidentally
     # committed with the AI integration. We only scan this small PR subtree.
     disallowed = sorted(str(p.relative_to(ROOT)) for p in

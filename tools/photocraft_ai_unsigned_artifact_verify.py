@@ -56,6 +56,19 @@ def unique_json_object(pairs: list[tuple[str, object]]) -> dict:
     return result
 
 
+
+def require_pinned_zip_digest(value: str | None) -> str:
+    """Fail closed at the owner-facing CLI when artifact provenance is unpinned.
+
+    Self-test ZIP fixtures use check() without a pinned digest to exercise
+    independent archive rejection cases. Real Linux Lab handoffs MUST supply
+    the exact SHA-256 from the verified GitHub Actions artifact upload log.
+    """
+    require(value is not None, "A pinned GitHub artifact ZIP SHA256 is required")
+    require(bool(SHA.fullmatch(value)), "Pinned GitHub artifact ZIP SHA256 is malformed")
+    return value
+
+
 def check(path: Path, expected_source_sha: str, expected_zip_sha256: str | None = None) -> dict:
     require(bool(COMMIT.fullmatch(expected_source_sha)), "Expected source must be a full lowercase Git SHA")
     if expected_zip_sha256 is not None:
@@ -176,6 +189,17 @@ def self_test() -> None:
         with path.open("rb") as stream:
             zip_sha = digest_stream(stream)
         assert check(path, sha, zip_sha)["apk_sha256"] == digest
+        assert require_pinned_zip_digest(zip_sha) == zip_sha
+        # Without the externally pinned GitHub ZIP digest, a self-consistent
+        # forged ZIP can claim any source commit and APK checksum. Reject
+        # omitted and malformed digests at the owner-facing CLI boundary.
+        for unpinned in (None, "0" * 63):
+            try:
+                require_pinned_zip_digest(unpinned)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted missing or malformed GitHub artifact ZIP digest")
         bad_cases = [
             list(original.items()) + [("unexpected.apk", b"x")],
             list(original.items()) + [(APK_NAME, apk)],
@@ -232,7 +256,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted incorrect GitHub ZIP digest")
-    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata and 13 rejection cases")
+    print("PASS: unsigned artifact ZIP allowlist, hashes, source, signing metadata, 13 archive rejection cases and 2 unpinned-digest rejection cases")
     print("No APK built, signed, extracted, installed, uploaded or published")
 
 
@@ -248,7 +272,8 @@ def main() -> None:
         return
     if not args.zip or not args.expected_source_sha:
         parser.error("--zip and --expected-source-sha are required")
-    print(json.dumps(check(args.zip, args.expected_source_sha, args.expected_zip_sha256),
+    print(json.dumps(check(args.zip, args.expected_source_sha,
+                           require_pinned_zip_digest(args.expected_zip_sha256)),
                      indent=2, sort_keys=True))
 
 

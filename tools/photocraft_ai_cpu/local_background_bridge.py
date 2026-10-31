@@ -38,13 +38,18 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         raise ValueError("Output must be a new PNG path")
     if not destination.parent.is_dir():
         raise ValueError("Output parent directory must already exist")
-    with Image.open(source) as image:
-        if image.format != "PNG":
-            raise ValueError("Only PNG input is accepted")
-        width, height = image.size
-        if width < 1 or height < 1 or width * height > MAX_PIXELS:
-            raise ValueError("Input dimensions outside safety limit")
-        image.verify()
+    try:
+        with Image.open(source) as image:
+            if image.format != "PNG":
+                raise ValueError("Only PNG input is accepted")
+            width, height = image.size
+            if width < 1 or height < 1 or width * height > MAX_PIXELS:
+                raise ValueError("Input dimensions outside safety limit")
+            image.verify()
+    except Image.DecompressionBombError as exc:
+        # Pillow may reject an oversized IHDR during open(), before our own
+        # 4 MP check. Surface a controlled validation error to the CLI.
+        raise ValueError("Input dimensions outside safety limit") from exc
     # verify() checks PNG chunk CRCs but does not inflate image pixels.
     # Reject CRC-valid, corrupt IDAT streams before starting CPU inference.
     with Image.open(source) as decoded:
@@ -90,6 +95,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, Image.DecompressionBombError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print("ERROR:", exc, file=sys.stderr)
         sys.exit(1)

@@ -14,6 +14,28 @@
 - Artifact contract: package `com.artcraft.photocraft`; label `PhotoCraft`; launcher `com.artcraft.photocraft.PhotoCraftActivity`; versionName `0.14.0-android.2`; versionCode `16790005`. The original public baseline `photocraft-v0.14.0-android.1` is versionCode `16790004`.
 - Production certificate SHA-256 **must** equal `45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef`. A disposable-signed APK cannot update the owner's installed PhotoCraft.
 
+
+### Optional safer ZIP handoff check (read-only, no Android SDK needed)
+
+Before extracting the GitHub Actions artifact, run this script from the checked-out
+PR93 source on Linux Lab. The artifact ZIP must be downloaded separately to the
+local path shown; do **not** substitute an older preview or diagnostic artifact.
+
+```bash
+python3 tools/photocraft_ai_unsigned_artifact_verify.py \
+  --zip /path/to/PhotoCraft-AI-unsigned-artifact.zip \
+  --expected-source-sha fdc2b249ced6b52856a3d33c59f225de2a0ca30f \
+  --expected-zip-sha256 784f2303944726dd4f1c5d9ed75f9ee7bc8e977397fed9d54c4cee0fe6ab03ea
+```
+
+The verifier checks the *exact* four-member allowlist, member safety, ZIP SHA,
+APK SHA256SUMS, source identity, package/version and unsigned/disposable-key
+deletion metadata. It never extracts, signs, installs or publishes the APK.
+This is **metadata/integrity verification**, not cryptographic proof that the
+APK is unsigned or signed with the permanent key. The original-certificate
+and actual signed APK checks in steps 2–6 remain mandatory. The verifier has
+a self-test: `python3 tools/photocraft_ai_unsigned_artifact_verify.py --self-test`.
+
 ## Owner-controlled Linux Lab procedure (no secrets in GitHub or chat)
 
 1. Download the **unsigned** artifact ZIP, extract it locally, and compare `sha256sum -c SHA256SUMS.txt` against the extracted unsigned APK in the same directory. Check `UNSIGNED-VERIFICATION.json` reports `kind=UNSIGNED_SIGNING_INPUT_ONLY`, `source_checkout_verified=true`, `disposable_signability_test_passed=true`, `disposable_signed_apk_deleted=true` and `pr93_ci_commit=fdc2b249ced6b52856a3d33c59f225de2a0ca30f`. If any mismatch, **STOP**.

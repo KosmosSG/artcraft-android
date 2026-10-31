@@ -1,0 +1,19 @@
+name: gridcraft 4 GiB font scan regression
+on:
+  push:
+    branches: ['feature/gridcraft-4gib-font-scan-20261030']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  budget:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: python3 tools/font_scan_budget_regression.py

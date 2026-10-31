@@ -1,0 +1,35 @@
+name: Prepare VectorCraft android.13 draft release
+
+on:
+  push:
+    paths:
+      - .github/workflows/prepare-vectorcraft-android13-draft.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="vectorcraft-v0.14.0-android.13"
+          if gh api "repos/$GH_REPO/releases/tags/$TAG" >/dev/null 2>&1; then
+            echo "Release already exists; not changing it."
+            exit 0
+          fi
+          gh api "repos/$GH_REPO/releases" -X POST \
+            -f tag_name="$TAG" \
+            -f target_commitish="main" \
+            -f name="VectorCraft v0.14.0-android.13 (ARM64)" \
+            -f body="VectorCraft v0.14.0-android.13 for Android ARM64 (HONOR MagicPad 4).\n\nPending owner upload and verification of the original permanently signed APK. Before publication, attach VectorCraft-v0.14.0-android.13-arm64-v8a.apk, SHA256SUMS.txt, and verification.json; verify package com.artcraft.vectorcraft, versionCode, and the original signing certificate SHA-256 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5. Do not publish until checks pass." \
+            -F draft=true \
+            -F prerelease=false \
+            -F make_latest=false

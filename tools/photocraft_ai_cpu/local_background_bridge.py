@@ -90,6 +90,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, Image.DecompressionBombError) as exc:
         print("ERROR:", exc, file=sys.stderr)
         sys.exit(1)

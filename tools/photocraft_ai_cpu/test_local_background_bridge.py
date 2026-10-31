@@ -74,6 +74,24 @@ class SidecarTests(unittest.TestCase):
                 runner.assert_not_called()
             self.assertFalse(output.exists())
 
+    def test_refuses_dangling_output_symlink_before_inference(self):
+        # resolve() follows dangling symlinks, so an absent target previously
+        # passed exists() and could be created outside the requested output.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "input.png"
+            output = root / "output.png"
+            outside = root / "different-location.png"
+            self.make_png(source)
+            output.symlink_to(outside)
+            self.assertFalse(outside.exists())
+            with patch.object(bridge.subprocess, "run") as inference:
+                with self.assertRaisesRegex(ValueError, "symlink"):
+                    bridge.run(source, output, True)
+                inference.assert_not_called()
+            self.assertTrue(output.is_symlink())
+            self.assertFalse(outside.exists())
+
     def test_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as folder:
             source, output = Path(folder) / "input.png", Path(folder) / "output.png"

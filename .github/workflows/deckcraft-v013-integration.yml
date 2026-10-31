@@ -60,6 +60,20 @@ jobs:
           ref: 4ce2944630b04188dee8504c14151994d06c416a
           path: builder/source/deckcraft
           persist-credentials: false
+      - name: Checkout upstream UI dependency matched to DeckCraft
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/egui
+          ref: 6d518fc799681571963842f95b55a6b68431b15a
+          path: egui-source
+          persist-credentials: false
+      - name: Checkout upstream windowing dependency with ordered IME reset
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/winit
+          ref: a517b3846ee8457d84ee4975110bfda6797c44dc
+          path: winit-source
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -80,7 +94,7 @@ jobs:
           test -x "$SDKMANAGER"
           "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          python3 -m pip install 'Pillow==11.3.0'
+          python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'
       - name: Port current Android enhancements, D/C/S, fonts and recovery to official upstream
         shell: bash
         run: |
@@ -103,6 +117,7 @@ jobs:
           python3 deckcraft/android/patch_v013_host.py builder
           python3 deckcraft/android/patch_shared_fonts.py builder
           python3 deckcraft/android/patch_update_settings.py builder
+          python3 deckcraft/android/port_egui037.py builder egui-source winit-source
           git -C builder/source/deckcraft diff --check
           python3 deckcraft/android/adaptive_safe.py builder deckcraft
           python3 tools/approved-branding/approved_branding.py check

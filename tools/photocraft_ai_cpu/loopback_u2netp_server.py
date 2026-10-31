@@ -26,6 +26,10 @@ MAX_PIXELS = 4_000_000
 MAX_RESULT = 32 * 1024 * 1024
 # A client that does not finish uploading must never monopolize inference.
 REQUEST_READ_TIMEOUT = 15
+# Cap unauthenticated sockets as well as the single CPU inference worker.
+# Without this bound, many slow pre-auth clients can create many threads and
+# timers before their individual 15-second header deadlines expire.
+MAX_ACTIVE_CONNECTIONS = 16
 BRIDGE = Path(__file__).resolve().with_name("local_background_bridge.py")
 
 
@@ -36,6 +40,31 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
     sending request headers. A stalled local client could otherwise leave
     an idle handler thread open before token and consent checks execute.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._client_slots = threading.BoundedSemaphore(MAX_ACTIVE_CONNECTIONS)
+
+    def process_request(self, request, client_address):
+        # ThreadingMixIn otherwise creates an unbounded thread per accepted
+        # socket. Fail closed before spawning a handler for excess clients;
+        # never queue a request that could later run without fresh consent.
+        if not self._client_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            # A thread-start failure must not permanently consume capacity.
+            self._client_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            # Includes malformed headers, upload timeouts and worker errors.
+            self._client_slots.release()
 
     def get_request(self):
         connection, address = super().get_request()

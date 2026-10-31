@@ -454,3 +454,48 @@ original-signing continuity, HONOR MagicPad 4 in-place data/feature tests,
 U2NetP weight-rights clearance where distribution is proposed, and explicit
 owner approval are still required. No PR merge, main change, publication,
 key access, or device change was performed. PR93 remains **DRAFT**.
+
+
+## 31 October 2026, 08:30 MYT — bounded HTTP Content-Length parsing (PR93 only)
+
+**Reproduced:** the localhost server's HTTP Content-Length check used
+raw_size.isdecimal() followed by int(raw_size). A 5,000-digit decimal
+header passes isdecimal(), but Python 3.11+ raises ValueError at conversion
+(the 4,300-digit safety limit). The handler disconnected instead of returning
+a controlled error. This requires an otherwise authorized local client;
+it is not evidence of a remotely exposed service.
+
+**Fixed:** [server dfb99db9](https://github.com/KosmosSG/artcraft-android/commit/dfb99db9d7b22d6ba7ac157df34b3495f0b4641e)
+rejects overlong/non-ASCII/non-decimal length values before integer conversion,
+checks the numeric bound, and reuses the validated integer for upload.
+Per-image token consent, 24 MiB input limit, loopback binding, absolute upload
+deadline and inference behavior remain unchanged.
+[Regression 66862d8](https://github.com/KosmosSG/artcraft-android/commit/66862d8fb3dc380b129914b33181e823d33fa2fa)
+tests 5,000-digit and invalid headers, HTTP 413, no unhandled server errors,
+no inference, and a subsequent successful authorized PNG request. An initial
+test fixture accidentally double-escaped CRLF and failed CI
+[#41150492764](https://github.com/KosmosSG/artcraft-android/actions/runs/41150492764);
+[66862d8](https://github.com/KosmosSG/artcraft-android/commit/66862d8fb3dc380b129914b33181e823d33fa2fa)
+corrected the fixture. [Static source guard 71d1ad1](https://github.com/KosmosSG/artcraft-android/commit/71d1ad18eb5dc7140d6446579ef73049a3f67403)
+prevents accidental removal of the length bound.
+
+**Verified final CI:** [loopback #41150515404](https://github.com/KosmosSG/artcraft-android/actions/runs/41150515404)
+PASS **15/15** synthetic/mocked-inference tests; [production source review
+#41150527314](https://github.com/KosmosSG/artcraft-android/actions/runs/41150527314)
+PASS including the new guard; [CPU safety
+#41150515353](https://github.com/KosmosSG/artcraft-android/actions/runs/41150515353)
+PASS. No ARM64 build, signing retry, model download, key access, device
+change, PR merge or public release occurred.
+
+**Release blockers unchanged:** the clean unsigned ARM64 artifact
+[#12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+and private signing source pin adb9b2d predate the current fixes; they
+cannot be called current-source signed candidates. Private signing workflow
+[#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secret runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+remain failed with no working private runner. Historical diagnostic artifact
+[#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+remains unexpired, likely contains a disposable-key APK, and awaits the
+previously requested owner deletion. Original-signed candidate,
+HONOR MagicPad 4 in-place data-preservation tests, model-rights review,
+and final owner publication approval remain outstanding. PR93 stays DRAFT.

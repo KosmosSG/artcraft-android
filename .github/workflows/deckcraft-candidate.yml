@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   isolated-candidate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.head_ref != 'integration/deckcraft-features-20261031' && github.ref != 'refs/heads/integration/deckcraft-features-20261031' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:

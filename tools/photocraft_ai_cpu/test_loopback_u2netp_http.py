@@ -160,6 +160,27 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertIn(b" 401 ", response.split(b"\r\n", 1)[0])
             run.assert_not_called()
 
+    def test_untrusted_overlong_content_length_is_rejected_without_exception(self):
+        # Python 3.11+ rejects int() of >4300 decimal digits. Previously
+        # Content-Length passed isdecimal() then raised an uncaught ValueError,
+        # abruptly disconnecting the caller instead of returning HTTP 413.
+        head = (
+            f"POST /v1/remove-background HTTP/1.1\\r\\n"
+            f"Host: 127.0.0.1\\r\\nAuthorization: Bearer {TOKEN}\\r\\n"
+            f"X-PhotoCraft-Image-Consent: yes\\r\\nContent-Type: image/png\\r\\n"
+        ).encode().replace(b"\\r", b"\\r").replace(b"\\n", b"\\n")
+        with patch.object(self.httpd, "handle_error") as unexpected:
+            with patch.object(server.subprocess, "run") as inference:
+                for length in (b"9" * 5000, b"0" * 5000, b"25165825", b"+1", b"0"):
+                    with self.subTest(length=length[:16]):
+                        response = self.raw_request(head + b"Content-Length: " + length + b"\\r\\n\\r\\n".replace(b"\\r", b"\\r").replace(b"\\n", b"\\n"))
+                        self.assertIn(b" 413 ", response.split(b"\\r\\n", 1)[0].replace(b"\\r", b"\\r").replace(b"\\n", b"\\n"))
+                inference.assert_not_called()
+            unexpected.assert_not_called()
+        # A rejected header must not break subsequent authorized processing.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
     def test_reject_duplicate_or_conflicting_consent_and_content_type(self):
         # Duplicate yes/yes is still ambiguous: no inference may start until
         # exactly one affirmative consent and one PNG Content-Type are present.

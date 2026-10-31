@@ -1,0 +1,27 @@
+name: EffectCraft D/C/S upstream dialog patch validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/effectcraft/patch_unsaved_dcs.py'
+      - '.github/workflows/effectcraft-dcs-validation.yml'
+      - 'tools/effectcraft/test_patch_unsaved_dcs.py'
+      - 'tools/effectcraft/dcs_tests.rs'
+permissions:
+  contents: read
+jobs:
+  verify-dialog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Fetch pinned upstream and apply guarded dialog patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = '9581b53c3f8945683252af0eb5fac79e0e43aed4'
+          python3 tools/effectcraft/test_patch_unsaved_dcs.py upstream
+          python3 tools/effectcraft/patch_unsaved_dcs.py upstream
+          grep -Fq 'fn take_dcs' upstream/crates/ui-egui/src/panels/unsaved.rs
+          echo 'PASS: guarded EffectCraft source patch and button hints'

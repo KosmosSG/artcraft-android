@@ -1,0 +1,147 @@
+name: EffectCraft Android.8 unsigned Linux Lab input (repackage only)
+on:
+  push:
+    branches: [feature/effectcraft-unsaved-dcs-20261028]
+    paths:
+      - '.github/workflows/effectcraft-android8-unsigned-linuxlab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: effectcraft-android8-repackage-for-linuxlab
+  cancel-in-progress: false
+jobs:
+  repackage:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/effectcraft-unsaved-dcs-20261028'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Retrieve successful pinned EffectCraft ARM64 compile artifact (no recompile)
+        uses: actions/download-artifact@v4
+        with:
+          name: effectcraft-4gib-UNSIGNED-NOT-FOR-INSTALL
+          repository: KosmosSG/artcraft-android
+          run-id: 41013647642
+          github-token: ${{ github.token }}
+          path: input
+      - name: Install/check Android APK verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [[ ! -x "$SDK/build-tools/35.0.0/apksigner" || ! -x "$SDK/build-tools/35.0.0/zipalign" || ! -x "$SDK/build-tools/35.0.0/aapt" ]]; then
+            SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager -print -quit)"
+            test -x "$SDKMANAGER"
+            "$SDKMANAGER" --install 'build-tools;35.0.0'
+          fi
+          echo "ANDROID_APK_TOOLS=$SDK/build-tools/35.0.0" >> "$GITHUB_ENV"
+      - name: Verify exact original temporary-signed APK, source, integrity and identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd input
+          test -s EffectCraft-v0.16.0-android.8-arm64-v8a.apk
+          test -s verification.json
+          test -s SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path('verification.json').read_text())
+          for name,expected in [
+              ('package','com.artcraft.effectcraft'),
+              ('versionName','0.16.0-android.8'),
+              ('versionCode',16781320),
+              ('abi','arm64-v8a'),
+              ('source_commit','29c698944b9bb9b67608acbf64ed3f1782c4719e'),
+              ('production_signing_verified',False),
+              ('device_tested',False),
+              ('eligible_for_release',False),
+          ]:
+              assert meta.get(name)==expected,(name,meta.get(name))
+          print('PASS: exact previously compiled public input and SHA-256 verified')
+          PY
+          "$ANDROID_APK_TOOLS/apksigner" verify --verbose --print-certs EffectCraft-v0.16.0-android.8-arm64-v8a.apk | tee /tmp/effectcraft-temporary-certificate.txt
+          if grep -Eiq 'Signer #1 certificate SHA-256 digest: *10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577' /tmp/effectcraft-temporary-certificate.txt; then
+            echo '::error::Unexpected production signature on temporary APK; stop'
+            exit 1
+          fi
+          "$ANDROID_APK_TOOLS/aapt" dump badging EffectCraft-v0.16.0-android.8-arm64-v8a.apk | grep '^package:'
+      - name: Remove temporary signature entirely and zipalign unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p unsigned
+          python3 - <<'PY'
+          import zipfile, pathlib, re
+          source=pathlib.Path('input/EffectCraft-v0.16.0-android.8-arm64-v8a.apk')
+          dest=pathlib.Path('unsigned/effectcraft-unaligned-unsigned.apk')
+          signatures=re.compile(r'^META-INF/(?:[^/]+\.(?:RSA|DSA|EC|SF|MF)|SIG-[^/]*)$',re.IGNORECASE)
+          removed=[]
+          with zipfile.ZipFile(source) as original, zipfile.ZipFile(dest,'w') as output:
+              for member in original.infolist():
+                  if signatures.match(member.filename):
+                      removed.append(member.filename)
+                      continue
+                  output.writestr(member,original.read(member.filename))
+          print('Removed temporary JAR signature entries (may be none with APK v2-only signing):',removed)
+          PY
+          "$ANDROID_APK_TOOLS/zipalign" -P 16 -f 4 unsigned/effectcraft-unaligned-unsigned.apk unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk
+          rm unsigned/effectcraft-unaligned-unsigned.apk
+          "$ANDROID_APK_TOOLS/zipalign" -c -P 16 4 unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk
+          if "$ANDROID_APK_TOOLS/apksigner" verify unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk >/dev/null 2>&1; then
+            echo '::error::Output remains signed; refusing local-signing artifact'
+            exit 1
+          fi
+      - name: Verify unsigned package, version, ARM64 payload and every ZIP entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINAL=unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk
+          "$ANDROID_APK_TOOLS/aapt" dump badging "$FINAL" | tee /tmp/effectcraft-android8-badging.txt
+          grep -F "name='com.artcraft.effectcraft'" /tmp/effectcraft-android8-badging.txt
+          grep -F "versionCode='16781320'" /tmp/effectcraft-android8-badging.txt
+          grep -F "versionName='0.16.0-android.8'" /tmp/effectcraft-android8-badging.txt
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from hashlib import sha256
+          source='input/EffectCraft-v0.16.0-android.8-arm64-v8a.apk'
+          target='unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk'
+          with ZipFile(source) as old, ZipFile(target) as new:
+              assert old.testzip() is None and new.testzip() is None
+              names=new.namelist()
+              assert names and len(names)==len(set(names))
+              for name in names:
+                  assert name in old.namelist(),name
+                  assert sha256(old.read(name)).digest()==sha256(new.read(name)).digest(),name
+              libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs),libs
+              assert any(x.endswith('.dex') for x in names)
+          print('PASS: every non-signature APK entry identical; ARM64 DEX intact')
+          PY
+          (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
+          cat > unsigned/README-LINUX-LAB.txt <<'TXT'
+          EffectCraft 0.16.0-android.8 ARM64 (versionCode 16781320)
+          THIS APK IS UNSIGNED AND CANNOT BE INSTALLED.
+          Compile source: KosmosSG/artcraft-android@29c698944b9bb9b67608acbf64ed3f1782c4719e
+          Original public compile run: 41013647642. This workflow did NOT recompile or alter APK payload.
+          Sign only on HONOR Linux Lab using the ORIGINAL EFFECTCRAFT permanent key
+          through the user's ArtCraft APK Signing Manager.
+          Required old production cert SHA-256:
+          10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577
+          Compare the signed result certificate to the existing public EffectCraft Android.5
+          before installing over the existing application. DO NOT generate a new key,
+          reuse another app's keystore, or upload keystores/passwords.
+          Device testing and release approval are still required.
+          TXT
+          echo '### EffectCraft Android.8 genuinely unsigned for HONOR Linux Lab' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Reused prior successful ARM64 public build, stripped temporary signature, validated all non-signature APK members and kept release disabled.' >> "$GITHUB_STEP_SUMMARY"
+          cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload unsigned APK and signing instructions (NO PUBLIC RELEASE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-v0.16.0-android.8-ARM64-UNSIGNED-LinuxLab
+          path: unsigned/
+          retention-days: 7
+          if-no-files-found: error

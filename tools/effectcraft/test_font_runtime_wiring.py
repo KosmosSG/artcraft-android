@@ -25,7 +25,7 @@ class FontRuntimeWiringTest(unittest.TestCase):
         self.assertIn('path.strip_prefix("manual|")', self.rust)
 
     def test_rust_registers_faces_before_success_feedback(self):
-        self.assertIn('effectcraft_text::fonts::add_font_data(bytes)', self.rust)
+        self.assertIn('effectcraft_text::fonts::android_add_font_file(&file)', self.rust)
         self.assertIn('effectcraft_text::fonts::face(faces[0]).info.family.clone()', self.rust)
         self.assertIn('Font ready: {family}', self.rust)
         self.assertIn('Ok(status) if manual', self.rust)
@@ -34,7 +34,7 @@ class FontRuntimeWiringTest(unittest.TestCase):
     def test_only_canonical_private_ttf_or_otf_files_are_loaded(self):
         self.assertIn('std::fs::canonicalize(root)', self.rust)
         self.assertIn('std::fs::canonicalize(&path)', self.rust)
-        self.assertIn('file.parent() != Some(root.as_path())', self.rust)
+        self.assertIn('file.parent() == Some(root.as_path())', self.rust)
         self.assertIn('eq_ignore_ascii_case("ttf")', self.rust)
         self.assertIn('eq_ignore_ascii_case("otf")', self.rust)
 

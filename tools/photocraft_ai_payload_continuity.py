@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import re
 import stat
+import struct
 import sys
 import tempfile
 import zipfile
@@ -40,6 +41,21 @@ def sha256_stream(stream) -> str:
 
 def signature_metadata(name: str) -> bool:
     return name == "META-INF/" or bool(SIGNATURE_FILE.fullmatch(name))
+
+
+def contains_apk_signing_block(path: Path, archive: zipfile.ZipFile) -> bool:
+    """Detect a stale APK v2/v3 signing block without parsing secret material.
+
+    Android's APK Signing Block ends immediately before the ZIP central
+    directory with the 16-byte magic "APK Sig Block 42". ZIP readers can
+    accept this extra block even when the archive is called UNSIGNED.
+    Reject the marker, including malformed blocks, before owner signing.
+    """
+    if archive.start_dir < 24:
+        return False
+    with path.open("rb") as stream:
+        stream.seek(archive.start_dir - 16)
+        return stream.read(16) == b"APK Sig Block 42"
 
 
 def archive_members(apk: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
@@ -89,6 +105,8 @@ def check(unsigned_path: Path, signed_path: Path, expected_unsigned_sha256: str)
             # from payload comparison could hide a stale/disposable signature.
             require(not any(SIGNATURE_FILE.fullmatch(name) for name in before),
                     "Unsigned signing input contains preexisting JAR signature metadata")
+            require(not contains_apk_signing_block(unsigned_path, unsigned),
+                    "Unsigned signing input contains a stale APK v2/v3 signing block")
             for name in before.keys() | after.keys():
                 if signature_metadata(name):
                     continue
@@ -167,6 +185,34 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Accepted stale signature metadata in unsigned APK")
+        # Repacked APKs must also be free of v2/v3 APK Signing Blocks.
+        # Python zipfile still accepts a ZIP with this opaque block, so a
+        # valid payload checksum alone does not prove an unsigned input.
+        for footer_size in (24, 0):
+            write(unsigned, list(files.items()))
+            raw = unsigned.read_bytes()
+            with zipfile.ZipFile(unsigned) as archive:
+                central = archive.start_dir
+            eocd = raw.rfind(bytes.fromhex("504b0506"))
+            assert eocd >= 0
+            block = struct.pack("<QQ", 24, footer_size) + b"APK Sig Block 42"
+            modified = raw[:central] + block + raw[central:]
+            eocd += len(block)
+            old_offset = struct.unpack_from("<I", modified, eocd + 16)[0]
+            modified = (modified[:eocd + 16]
+                        + struct.pack("<I", old_offset + len(block))
+                        + modified[eocd + 20:])
+            unsigned.write_bytes(modified)
+            with zipfile.ZipFile(unsigned) as archive:
+                assert archive.read("classes.dex") == files["classes.dex"]
+            with unsigned.open("rb") as stream:
+                contaminated_pinned = sha256_stream(stream)
+            try:
+                check(unsigned, signed, contaminated_pinned)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted stale APK signing block in unsigned APK")
         write(unsigned, list(files.items()))
         cases = [
             (list(files.items())[:-1], None),
@@ -201,7 +247,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted same APK for both roles")
-    print("PASS: owner-signed APK payload continuity (14 negative scenarios)")
+    print("PASS: owner-signed APK payload continuity (16 negative scenarios)")
     print("No APK built, signed, installed, uploaded or published")
 
 

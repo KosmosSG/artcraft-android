@@ -44,7 +44,7 @@ jobs:
           assert manifest['version_code']==100000005
           assert manifest['previous_version_code']==100000004
           assert manifest['package']=='com.artcraft.deckcraft'
-          print('PASS: D/C/S sources and Android.4 metadata present')
+          print('PASS: D/C/S sources and 0.13.1-android.1 metadata present')
           PY
       - name: Checkout pinned Android builder
         uses: actions/checkout@v4
@@ -204,7 +204,7 @@ jobs:
           Source tests and compilation are not physical-device verification.
           Physical tablet testing and public release still require owner approval.
           TXT
-          echo "### DeckCraft Android.4 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
+          echo "### DeckCraft 0.13.1-android.1 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload verified unsigned APK for Linux Lab signing

@@ -25,6 +25,11 @@ old='if (!name.startsWith("deckcraft-") || !name.contains("arm64") || !name.ends
 new='''String expectedName = "deckcraft-v" + tag.substring("deckcraft-v".length()) + "-arm64-v8a.apk";
                             if (!name.equals(expectedName) || !"uploaded".equals(a.optString("state"))) continue;'''
 edit(java,old,new)
+edit(java,'String bestName = null;', 'String bestName = null; boolean bestPreview = false;')
+edit(java,'bestName = tag; break;', 'bestName = tag; bestPreview = r.optBoolean("prerelease"); break;')
+edit(java,'final String label = bestName;', 'final String label = bestName; final boolean preview = bestPreview;')
+edit(java,'.setTitle("DeckCraft update found")', '.setTitle(preview ? "DeckCraft preview update" : "DeckCraft stable update")')
+edit(java,'.setMessage(label + "\\nInstalled: "', '.setMessage((preview ? "Preview release\\n" : "Stable release\\n") + label + "\\nInstalled: "')
 edit(java,'if (best == null) { deckMessage(', 'if (best == null) { if (!startup) deckMessage(')
 edit(java,'} catch (Exception e) { deckMessage("Could not check updates.', '} catch (Exception e) { if (!startup) deckMessage("Could not check updates.')
 edit(java,'runOnUiThread(() -> android.widget.Toast.makeText(this, "Checking DeckCraft updates…", android.widget.Toast.LENGTH_SHORT).show());',

@@ -59,7 +59,7 @@ jobs:
           tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.9.0 | awk '{print $1}')"
           test "$tag_commit" = "$DECKCRAFT_UPSTREAM_COMMIT"
           base64 --decode deckcraft/android/icon/deckcraft-approved-192.webp.b64 > deckcraft/android/icon/deckcraft-approved-192.webp
-          echo '9d1b0eeb73c1285b88b4d4931a1fed371056b8a5e239409f1526c7531c27ed14  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
+          echo '42e11341e944a93fceab118a3171a2cea87003c5ee853af0b1e4d653a99f2a50  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
 
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
@@ -98,7 +98,7 @@ jobs:
           from PIL import Image
           import hashlib
           src = Path('deckcraft/android/icon/deckcraft-approved-192.webp')
-          assert hashlib.sha256(src.read_bytes()).hexdigest() == '9d1b0eeb73c1285b88b4d4931a1fed371056b8a5e239409f1526c7531c27ed14'
+          assert hashlib.sha256(src.read_bytes()).hexdigest() == '42e11341e944a93fceab118a3171a2cea87003c5ee853af0b1e4d653a99f2a50'
           with Image.open(src) as artwork:
               assert artwork.size == (192, 192) and artwork.format == 'WEBP'
               artwork.convert('RGBA').save(src.with_suffix('.png'), optimize=True)

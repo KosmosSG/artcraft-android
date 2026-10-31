@@ -69,6 +69,22 @@ class PublicArtifactSafetyTests(unittest.TestCase):
                     if path.lower().endswith(".apk"):
                         self.assertTrue(path.endswith("-UNSIGNED.apk"))
 
+    def test_local_signing_input_is_normalized_and_disposable_proof_deleted(self):
+        source = (ROOT / "photocraft-ai-unsigned-linux-lab.yml").read_text()
+        self.assertNotIn("force_zip64=True", source)
+        self.assertIn('x.extra = b""', source)
+        self.assertIn('x.comment = b""', source)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', source)
+        self.assertIn("zip_header_mismatch_absent", source)
+        self.assertIn("disposable_signability_test_passed", source)
+        self.assertIn("disposable_signed_apk_deleted", source)
+        self.assertIn("apksigner\" sign", source)
+        self.assertIn("apksigner\" verify", source)
+        self.assertIn("header mismatch", source)
+        self.assertIn("trap 'rm -f", source)
+        self.assertIn('test ! -e "$TEST_APK" && test ! -e "$TEST_KEY"', source)
+        self.assertNotIn("candidate-proof/pr93-local-signability-proof.apk", source)
+
     def test_no_failure_diagnostic_uploads(self):
         for filename in EXPECTED:
             with self.subTest(workflow=filename):

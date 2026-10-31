@@ -26,6 +26,13 @@ PUBLIC_SIGNER_SHA256 = (
     "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"
 )
 PUBLIC_PACKAGE = "com.artcraft.photocraft"
+MAX_APK_BYTES = 512 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+# Fail closed on common independently distributed model-weight formats.
+MODEL_WEIGHT_SUFFIXES = (
+    ".onnx", ".pth", ".pt", ".safetensors", ".tflite", ".ort",
+    ".ckpt", ".gguf", ".h5", ".hdf5",
+)
 CANDIDATE_TAG_PATTERN = re.compile(
     r"^photocraft-v(\d+)\.(\d+)\.(\d+)-android\.(\d+)$"
 )
@@ -36,16 +43,24 @@ def ensure(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def check_arm64_archive(apk: Path) -> dict[str, object]:
+def check_arm64_archive(
+    apk: Path, *, max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES
+) -> dict[str, object]:
     """Read-only fail-closed ZIP/ABI check on the ACTUAL signed candidate APK.
 
     APK package/signature identity is verified separately by inspect_apk().
     This catches a validly signed but non-ARM64, corrupt or unexpectedly
     model/key-containing archive before any tablet installation.
     """
+    ensure(apk.is_file() and not apk.is_symlink(),
+           "Candidate APK must be a regular, non-symlink file")
+    ensure(0 < apk.stat().st_size <= MAX_APK_BYTES,
+           "Candidate APK exceeds safe input size")
+    ensure(max_uncompressed_bytes > 0, "Invalid archive size limit")
     try:
         with zipfile.ZipFile(apk) as archive:
             entries = archive.infolist()
+            total_uncompressed = 0
             names = [entry.filename for entry in entries]
             ensure(len(names) == len(set(names)), "Candidate APK has duplicate ZIP entries")
             ensure("AndroidManifest.xml" in names, "Candidate APK is missing AndroidManifest.xml")
@@ -62,6 +77,10 @@ def check_arm64_archive(apk: Path) -> dict[str, object]:
                        and not name.startswith("/") and "\\" not in name,
                        "Candidate APK contains an unsafe or noncanonical ZIP path")
                 ensure(not entry.flag_bits & 1, "Candidate APK has an encrypted ZIP entry")
+                total_uncompressed += entry.file_size
+                ensure(entry.file_size <= MAX_APK_BYTES
+                       and total_uncompressed <= max_uncompressed_bytes,
+                       "Candidate APK exceeds safe uncompressed ZIP size")
                 # A ZIP entry without a trailing slash may still declare a
                 # directory, FIFO or device through UNIX type bits. Never
                 # accept a special file as AndroidManifest.xml or a native .so.
@@ -78,7 +97,7 @@ def check_arm64_archive(apk: Path) -> dict[str, object]:
                     ensure(not entry.is_dir() and entry.file_size > 0,
                            "Candidate APK has an empty critical application payload")
                 ensure(not name.lower().endswith(
-                    (".jks", ".p12", ".keystore", ".onnx", ".pth", ".pt", ".safetensors")),
+                    (".jks", ".p12", ".keystore") + MODEL_WEIGHT_SUFFIXES),
                     "Candidate APK unexpectedly bundles a key or AI model weight")
             native_libs = [name for name in names if name.startswith("lib/")
                            and name.lower().endswith(".so")]
@@ -256,6 +275,14 @@ def self_test() -> None:
                 "lib/arm64-v8a/libphotocraft.so"]
         make_zip(candidate_path, good)
         assert check_arm64_archive(candidate_path)["native_library_count"] == 1
+        # ZIP central-directory sizes must be bounded before testzip() can
+        # decompress a potentially huge, highly compressible archive.
+        try:
+            check_arm64_archive(candidate_path, max_uncompressed_bytes=8)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted candidate exceeding uncompressed size limit")
         unsafe_cases = [
             ["classes.dex", "lib/arm64-v8a/libphotocraft.so"],
             ["AndroidManifest.xml", "classes.dex"],
@@ -264,6 +291,11 @@ def self_test() -> None:
             good + ["lib/armeabi-v7a/libother.so"],
             good + ["lib/x86_64/libother.so"],
             good + ["assets/u2netp.onnx"],
+            good + ["assets/u2netp.tflite"],
+            good + ["assets/u2netp.ort"],
+            good + ["assets/u2netp.ckpt"],
+            good + ["assets/u2netp.gguf"],
+            good + ["assets/u2netp.h5"],
             good + ["assets/photocraft-release.p12"],
             good + ["../outside"],
             good + ["/absolute"],
@@ -324,7 +356,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (21 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (27 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

@@ -85,8 +85,7 @@ jobs:
                       removed.append(member.filename)
                       continue
                   output.writestr(member,original.read(member.filename))
-          assert removed,'Expected a temporary JAR signing entry; refuse ambiguous input'
-          print('Removed temporary JAR signature entries:',removed)
+          print('Removed temporary JAR signature entries (may be none with APK v2-only signing):',removed)
           PY
           "$ANDROID_APK_TOOLS/zipalign" -P 16 -f 4 unsigned/effectcraft-unaligned-unsigned.apk unsigned/EffectCraft-v0.16.0-android.8-arm64-v8a-UNSIGNED.apk
           rm unsigned/effectcraft-unaligned-unsigned.apk

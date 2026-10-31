@@ -80,6 +80,13 @@ def check() -> None:
     need('LoopbackHTTPServer(("127.0.0.1", args.port)' in server
          and "class LoopbackHTTPServer(ThreadingHTTPServer)" in server,
          "Linux Lab server must use the loopback-only bounded HTTP server")
+    need("MAX_ACTIVE_CONNECTIONS = 16" in server
+         and "threading.BoundedSemaphore(MAX_ACTIVE_CONNECTIONS)" in server
+         and "if not self._client_slots.acquire(blocking=False):" in server
+         and "self.shutdown_request(request)" in server
+         and "def process_request_thread(self, request, client_address):" in server
+         and "self._client_slots.release()" in server,
+         "Server must cap concurrent pre-auth connections and return slots")
     need("connection.settimeout(REQUEST_READ_TIMEOUT)" in server
          and "self.connection.settimeout(REQUEST_READ_TIMEOUT)" in server,
          "Server must bound both unauthenticated headers and PNG upload reads")

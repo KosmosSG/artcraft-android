@@ -28,6 +28,8 @@ PUBLIC_SIGNER_SHA256 = (
 PUBLIC_PACKAGE = "com.artcraft.photocraft"
 MAX_APK_BYTES = 512 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+# Avoid pathological central directories with huge numbers of tiny/empty files.
+MAX_ARCHIVE_MEMBERS = 20000
 # Fail closed on common independently distributed model-weight formats.
 MODEL_WEIGHT_SUFFIXES = (
     ".onnx", ".pth", ".pt", ".safetensors", ".tflite", ".ort",
@@ -44,7 +46,8 @@ def ensure(condition: bool, message: str) -> None:
 
 
 def check_arm64_archive(
-    apk: Path, *, max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES
+    apk: Path, *, max_uncompressed_bytes: int = MAX_UNCOMPRESSED_BYTES,
+    max_entries: int = MAX_ARCHIVE_MEMBERS
 ) -> dict[str, object]:
     """Read-only fail-closed ZIP/ABI check on the ACTUAL signed candidate APK.
 
@@ -57,9 +60,13 @@ def check_arm64_archive(
     ensure(0 < apk.stat().st_size <= MAX_APK_BYTES,
            "Candidate APK exceeds safe input size")
     ensure(max_uncompressed_bytes > 0, "Invalid archive size limit")
+    ensure(type(max_entries) is int and max_entries > 0,
+           "Invalid APK ZIP entry-count limit")
     try:
         with zipfile.ZipFile(apk) as archive:
             entries = archive.infolist()
+            ensure(len(entries) <= max_entries,
+                   "Candidate APK exceeds safe ZIP entry-count limit")
             total_uncompressed = 0
             names = [entry.filename for entry in entries]
             ensure(len(names) == len(set(names)), "Candidate APK has duplicate ZIP entries")
@@ -275,6 +282,24 @@ def self_test() -> None:
                 "lib/arm64-v8a/libphotocraft.so"]
         make_zip(candidate_path, good)
         assert check_arm64_archive(candidate_path)["native_library_count"] == 1
+        # The uncompressed-byte limit alone permits huge numbers of tiny
+        # ZIP members. Reject excessive central-directory entries before CRC
+        # verification, using a small synthetic threshold for fast tests.
+        for bad_limit in (0, True, 2):
+            try:
+                check_arm64_archive(candidate_path, max_entries=bad_limit)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted invalid/excessive ZIP member count")
+        make_zip(candidate_path, good + ["assets/extra.dat"])
+        try:
+            check_arm64_archive(candidate_path, max_entries=3)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted too many APK ZIP members")
+        make_zip(candidate_path, good)
         # ZIP central-directory sizes must be bounded before testzip() can
         # decompress a potentially huge, highly compressible archive.
         try:
@@ -356,7 +381,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (27 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (31 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

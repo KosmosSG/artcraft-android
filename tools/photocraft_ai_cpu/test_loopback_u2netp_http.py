@@ -142,6 +142,19 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertEqual(self.request(payload=b"broken image")[0], 400)
             run.assert_not_called()
 
+    def test_oversized_png_ihdr_returns_400_without_inference(self):
+        # Pillow raises DecompressionBombError at Image.open(), before our
+        # own 4 MP dimension guard. A malformed local request must not
+        # terminate a handler with an uncaught exception.
+        payload = oversized_ihdr_png()
+        with self.assertRaises(Image.DecompressionBombError):
+            Image.open(io.BytesIO(payload))
+        with patch.object(server.subprocess, "run") as inference:
+            self.assertEqual(self.request(payload=payload)[0], 400)
+            inference.assert_not_called()
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
     def test_crc_valid_broken_idat_is_rejected_before_inference(self):
         # PNG chunk/CRC verification alone is insufficient; the full zlib
         # stream must decode before starting CPU model work.

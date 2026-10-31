@@ -83,6 +83,12 @@ def check(unsigned_path: Path, signed_path: Path, expected_unsigned_sha256: str)
         with zipfile.ZipFile(unsigned_path) as unsigned, zipfile.ZipFile(signed_path) as signed:
             before = archive_members(unsigned)
             after = archive_members(signed)
+            # Only the *newly signed* APK may introduce v1 JAR signature
+            # metadata. The source is an explicitly unsigned signing input:
+            # silently exempting an existing META-INF/CERT.RSA or MANIFEST.MF
+            # from payload comparison could hide a stale/disposable signature.
+            require(not any(SIGNATURE_FILE.fullmatch(name) for name in before),
+                    "Unsigned signing input contains preexisting JAR signature metadata")
             for name in before.keys() | after.keys():
                 if signature_metadata(name):
                     continue
@@ -148,6 +154,20 @@ def self_test() -> None:
         ]
         write(signed, signed_members)
         assert check(unsigned, signed, pinned)["preserved_non_signature_members"] == 4
+        # The old comparator skipped all known signature paths even if they
+        # were already in the purportedly UNSIGNED input. A stale v1 signature
+        # must be rejected, even with a correctly pinned input checksum.
+        for stale in ("META-INF/MANIFEST.MF", "META-INF/CERT.RSA"):
+            write(unsigned, list(files.items()) + [(stale, b"stale-disposable-signature")])
+            with unsigned.open("rb") as stream:
+                contaminated_pinned = sha256_stream(stream)
+            try:
+                check(unsigned, signed, contaminated_pinned)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted stale signature metadata in unsigned APK")
+        write(unsigned, list(files.items()))
         cases = [
             (list(files.items())[:-1], None),
             (list(files.items()) + [("assets/extra.txt", b"surprise")], None),
@@ -181,7 +201,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted same APK for both roles")
-    print("PASS: owner-signed APK payload continuity (12 negative scenarios)")
+    print("PASS: owner-signed APK payload continuity (14 negative scenarios)")
     print("No APK built, signed, installed, uploaded or published")
 
 

@@ -47,6 +47,16 @@ def crc_valid_but_undecodable_png() -> bytes:
     return data[:start] + invalid_zlib + checksum + data[end + 4:]
 
 
+def oversized_ihdr_png() -> bytes:
+    """CRC-correct PNG whose 400 MP header trips Pillow's early bomb guard."""
+    data = sample_png()
+    marker = data.index(b"IHDR")
+    dimensions = marker + 4
+    data = data[:dimensions] + (20_000).to_bytes(4, "big") * 2 + data[dimensions + 8:]
+    crc_at = marker + 4 + 13
+    return data[:crc_at] + zlib.crc32(data[marker:crc_at]).to_bytes(4, "big") + data[crc_at + 4:]
+
+
 def mock_inference(argv, **_kwargs):
     source = Path(argv[argv.index("--input") + 1])
     dest = Path(argv[argv.index("--output") + 1])

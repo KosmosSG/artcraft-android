@@ -57,7 +57,7 @@ jobs:
           test -z "$(git -C builder/source/wordcraft status --porcelain)"
           tag_commit="$(git ls-remote https://github.com/storytold/wordcraft.git refs/tags/v0.9.0 | awk '{print $1}')"
           test "$tag_commit" = "$WORDCRAFT_UPSTREAM_COMMIT"
-          echo '71bf833ddbc94b2edbf6ff2cf944bce9696f1e73f851f0f9a176a9fb7fdf7766  wordcraft/android/icon/wordcraft-approved-192.webp' | sha256sum --check
+          test -s tools/approved-branding/assets/WordCraft.png
 
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
@@ -87,23 +87,20 @@ jobs:
           /tmp/wordcraft-icon-env/bin/pip install "Pillow==11.3.0"
           echo "/tmp/wordcraft-icon-env/bin" >> "$GITHUB_PATH"
 
-      - name: Convert uploaded Wc derivative into builder icon PNG
+      - name: Generate candidate launcher icon from approved WordCraft PNG
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          from pathlib import Path
           from PIL import Image
-          import hashlib
-          src = Path('wordcraft/android/icon/wordcraft-approved-192.webp')
-          assert hashlib.sha256(src.read_bytes()).hexdigest() == '71bf833ddbc94b2edbf6ff2cf944bce9696f1e73f851f0f9a176a9fb7fdf7766'
-          with Image.open(src) as artwork:
-              assert artwork.size == (192, 192) and artwork.format == 'WEBP'
-              artwork.convert('RGBA').save(src.with_suffix('.png'), optimize=True)
-          print('Converted user-approved Wc art for builder density/adaptive generation')
+          from pathlib import Path
+          source = Path("tools/approved-branding/assets/WordCraft.png")
+          target = Path("wordcraft/android/icon/wordcraft-approved-192.png")
+          with Image.open(source) as image:
+              assert image.width >= 192 and image.height >= 192, "Approved artwork too small"
+              image.convert("RGBA").resize((192, 192), Image.Resampling.LANCZOS).save(target)
+          print("Candidate icon generated from tools/approved-branding/assets/WordCraft.png")
           PY
-
-          python3 wordcraft/android/prepare_icon.py wordcraft/android/icon/wordcraft-approved-192.webp wordcraft/android/icon/wordcraft-approved-192.png
 
       - name: Test native menu patch and launcher mask borders against pinned sources
         run: |

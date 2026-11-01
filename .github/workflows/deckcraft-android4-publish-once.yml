@@ -1,0 +1,98 @@
+name: Publish owner-tested DeckCraft android.4 signed APK (one-time)
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deckcraft-android4-publish-once.yml
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: deckcraft-android4-one-time-publication
+  cancel-in-progress: false
+jobs:
+  publish-tested-apk:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: '41278119310'
+      ARTIFACT: DeckCraft-v0.9.0-android.4-ARM64-PERMANENT-SIGNED-TEST
+      APK: DeckCraft-v0.9.0-android.4-arm64-v8a-signed.apk
+      TAG: deckcraft-v0.9.0-android.4
+      EXPECTED_CERT: 7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
+    steps:
+      - name: Confirm owner-approved signed source and absence of release
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
+            jq -e '.status == "completed" and .conclusion == "success" and .head_branch == "main" and .name == "DeckCraft android.4 sign existing unsigned APK (manual, no release)"'
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to modify it"; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag exists; refusing to overwrite"; exit 1
+          fi
+      - name: Retrieve only successful production-signed Android.4 artifact
+        run: |
+          set -euo pipefail
+          mkdir -p stage
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$ARTIFACT" -D stage
+          test -s "stage/$APK"
+          test -s stage/SHA256SUMS.txt
+          test -s stage/signing-certificate-sha256.txt
+          (cd stage && sha256sum -c SHA256SUMS.txt)
+          actual="$(tr -d '[:space:]' < stage/signing-certificate-sha256.txt)"
+          [[ "$actual" == "$EXPECTED_CERT" ]] || { echo "::error::Production certificate metadata differs"; exit 1; }
+      - name: Independently validate APK, version, architecture and signature
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          tools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$tools/apksigner"
+          test -x "$tools/aapt"
+          "$tools/apksigner" verify --verbose --print-certs "stage/$APK" > stage/apk-verify.txt
+          cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' stage/apk-verify.txt | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          [[ "$cert" == "$EXPECTED_CERT" ]] || { echo "::error::Signer does not match original permanent DeckCraft certificate"; exit 1; }
+          "$tools/aapt" dump badging "stage/$APK" > stage/badging.txt
+          grep -q "package: name='com.artcraft.deckcraft' versionCode='100000004' versionName='0.9.0-android.4'" stage/badging.txt
+          python3 - "stage/$APK" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              assert archive.testzip() is None
+              names=archive.namelist()
+              libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+              assert 'classes.dex' in names
+          print('PASS: production signed, ARM64, package and version')
+          PY
+      - name: Publish exact tablet-tested APK without replacing other releases
+        run: |
+          set -euo pipefail
+          cat > stage/RELEASE-NOTES.md <<'EOF'
+          # DeckCraft v0.9.0-android.4 (ARM64)
+
+          Owner-installed and tested on HONOR MagicPad 4; explicitly approved for publication on 1 November 2026.
+
+          - Modal D / C / S prompts and Save/Save As acknowledgment refinements.
+          - Preserved custom font import, Android tablet controls, and approved glossy Dk launcher icon.
+          - Package: com.artcraft.deckcraft
+          - Version name: 0.9.0-android.4; version code: 100000004
+          - Architecture: arm64-v8a
+          - Signed with original permanent DeckCraft production certificate, not a replacement key.
+          - Signing source: successful GitHub Actions run 41278119310.
+          - Source base: storytold/deckcraft v0.9.0, unofficial community Android adaptation.
+
+          Back up projects before installing. Install over the previously production-signed DeckCraft rather than uninstalling. Distributed through GitHub Releases, not Google Play.
+          EOF
+          cp "stage/$APK" stage/DeckCraft-v0.9.0-android.4-arm64-v8a.apk
+          (cd stage && sha256sum DeckCraft-v0.9.0-android.4-arm64-v8a.apk > RELEASE-SHA256SUMS.txt)
+          gh release create "$TAG" \
+            "stage/DeckCraft-v0.9.0-android.4-arm64-v8a.apk" \
+            "stage/RELEASE-SHA256SUMS.txt#SHA256SUMS.txt" \
+            -R "$GITHUB_REPOSITORY" --target main \
+            --title "DeckCraft v0.9.0-android.4 (ARM64)" \
+            --notes-file stage/RELEASE-NOTES.md --latest=false
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,assets

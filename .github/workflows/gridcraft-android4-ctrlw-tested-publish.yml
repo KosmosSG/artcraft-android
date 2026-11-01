@@ -1,0 +1,92 @@
+name: Publish tested GridCraft android.4 Ctrl-W DCS fix once
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/gridcraft-android4-ctrlw-tested-publish.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: gridcraft-android4-ctrlw-tested-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: gridcraft-v0.11.1-android.4-ctrlw-dcs-fix
+      SIGN_RUN: '41362854255'
+      SIGN_ARTIFACT: GridCraft-v0.11.1-android.4-CTRL-W-DCS-ARM64-PERMANENT-SIGNED-TEST
+      APK: GridCraft-v0.11.1-android.4-CTRL-W-DCS-FIX-arm64-v8a-SIGNED.apk
+      CERT: 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d
+      SOURCE_COMMIT: 720fab9eaa178da485750009f1a2782026da6286
+    steps:
+      - name: Confirm approved signed build and refuse overwrites
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "::error::Release already exists"; exit 1; fi
+          data="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SIGN_RUN")"
+          test "$(jq -r '.status' <<<"$data")" = completed
+          test "$(jq -r '.conclusion' <<<"$data")" = success
+          test "$(jq -r '.head_sha' <<<"$data")" = d54c877a299347563dacafcd240f75c1a0f35758
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_COMMIT" --jq '.sha')" = "$SOURCE_COMMIT"
+      - name: Download exact owner-tested permanently signed artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verified
+          gh run download "$SIGN_RUN" -R "$GITHUB_REPOSITORY" -n "$SIGN_ARTIFACT" -D verified
+          test -s "verified/$APK"
+          test "$(find verified -maxdepth 1 -type f -name '*.apk' | wc -l)" = 1
+      - name: Verify certificate, version, package, ARM64 and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          signer="$(find "$sdk/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          aapt="$(find "$sdk/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          test -x "$signer" && test -x "$aapt"
+          "$signer" verify --verbose --print-certs "verified/$APK" > verified/signature-check.txt
+          python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          info=Path('verified/signature-check.txt').read_text()
+          certs={re.sub('[^0-9a-f]','',s.lower()) for s in re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})',info,re.I)}
+          assert certs=={os.environ['CERT']},'Certificate mismatch: publication blocked'
+          with zipfile.ZipFile(Path('verified')/os.environ['APK']) as z:
+              assert z.testzip() is None
+              libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert 'classes.dex' in z.namelist()
+          print('PASS: original GridCraft signing identity and ARM64')
+          PY
+          "$aapt" dump badging "verified/$APK" > verified/badging.txt
+          grep -F "name='com.artcraft.gridcraft'" verified/badging.txt
+          grep -F "versionName='0.11.1-android.4'" verified/badging.txt
+          grep -F "versionCode='16780036'" verified/badging.txt
+          (cd verified && sha256sum "$APK" > SHA256SUMS.txt)
+          cat > verified/NOTES.md <<'NOTES'
+          GridCraft v0.11.1-android.4 — Ctrl+W and D/C/S keyboard fix (device-tested).
+
+          - Ctrl+W now works while editing a worksheet cell; the draft is committed before workbook-close confirmation.
+          - D (Don't Save), C (Cancel), S (Save) continue working across repeated dialog openings.
+          - Restores modal hardware keyboard focus and preserves existing Esc editing behavior.
+          - Original permanently signed ARM64 package and approved GridCraft icon.
+          - Signed with the original GridCraft release signing certificate.
+
+          Package: com.artcraft.gridcraft. Version code: 16780036.
+          Owner-confirmed working on HONOR MagicPad 4.
+          Original earlier android.4 release remains unchanged; this is a separate same-version-code build.
+          Unsigned source build: 41335908922. Signing run: 41362854255.
+          NOTES
+      - name: Publish separate tested fix release (preserve previous android.4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" "verified/$APK" verified/SHA256SUMS.txt \
+            -R "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
+            --title "GridCraft v0.11.1-android.4 — Ctrl+W / D/C/S Fix" \
+            --notes-file verified/NOTES.md --latest=false

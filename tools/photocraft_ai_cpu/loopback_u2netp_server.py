@@ -128,12 +128,12 @@ def make_handler(token: str):
             try:
                 return super().handle_one_request()
             except (BrokenPipeError, ConnectionResetError):
-                # Closing a timed-out pre-auth socket intentionally prevents
-                # any HTTP error response. Do not emit noisy tracebacks or
-                # potentially private request metadata for that expected case.
-                # Unrelated socket failures must retain normal diagnostics.
-                if not self._header_deadline_expired.is_set():
-                    raise
+                # A client may disconnect while its CPU job is still running
+                # (for example when Android closes/cancels the dialog). The
+                # model may finish, but sending its result to the closed socket
+                # must be a routine, private failure rather than a handler
+                # traceback. This also covers intentional pre-auth timeouts.
+                # Other exceptions still use the server's normal diagnostics.
                 self.close_connection = True
 
         def parse_request(self):

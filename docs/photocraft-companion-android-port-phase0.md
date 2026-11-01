@@ -77,10 +77,23 @@ No APK build, key/secret access, artifact upload or release is permitted.
 - `adapters/photocraft/src/lib.rs` wires the UI into the existing Android
   shell without replacing the editor's input, GPU, font, document or
   staging services. The button is placed behind modal dialogs.
-- Source-only CI runs 20 Phase 0 Python regression methods plus 13 Phase 1
+- Source-only CI runs 20 Phase 0 Python regression methods plus Phase 1
   wiring/contract regression methods, Java 17 compilation against Android
-  SDK 35 and Rust **syntax parsing** via rustfmt. Those checks are not an
-  ARM64 Rust type-check, signed APK acceptance or proof of runtime behavior.
+  SDK 35 and Rust **syntax parsing** via rustfmt. The Companion overlay is
+  hidden whenever the PhotoCraft editor has a modal dialog open; D/C/S remains
+  modal and has exclusive interaction priority.
+- The pinned Android ARM64 Rust type-check workflow uses upstream PhotoCraft
+  v0.14.0 at **ff4738810134d7f7e68b49f2e4f231b686282ff3**, whose
+  eframe::App frame interface matches the Android wrapper. Official upstream
+  main has since advanced to v0.18 and is **not** assumed compatible.
+  The workflow refuses to start a heavy run while another ArtCraft ARM64
+  build is active. It performs `cargo check` only and does not package APKs,
+  sign, upload artifacts or publish releases.
+- CI run #41318783394 completed its safety preflight successfully and
+  **deferred** Rust ARM64 compilation because DeckCraft and WordCraft ARM64
+  builds were active. This means Phase 1 has NOT passed ARM64 Rust type
+  checking yet. Java compilation and Rust syntax tests alone do not prove a
+  working native application.
 
 **Device acceptance still required once a safely unsigned ARM candidate is
 compiled and owner-original-key signed:** launch and close the catalog,

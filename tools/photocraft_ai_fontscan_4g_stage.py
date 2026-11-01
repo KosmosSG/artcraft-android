@@ -84,29 +84,29 @@ def patch_java(text: str) -> str:
     # stream has completed and passed the size checks. A failed/empty/oversized
     # SAF read must leave the last good cache entry intact.
     text = exactly(text,
-        '                            File target = new File(cache, "font-" + hash + extension);\\n'
+        '                            File target = new File(cache, "font-" + hash + extension);\n'
         '                            long total = 0;',
-        '                            File target = new File(cache, "font-" + hash + extension);\\n'
-        '                            File staging = File.createTempFile("font-stage-", extension, cache);\\n'
+        '                            File target = new File(cache, "font-" + hash + extension);\n'
+        '                            File staging = File.createTempFile("font-stage-", extension, cache);\n'
         '                            long total = 0;')
     text = exactly(text,
         'OutputStream output = new FileOutputStream(target))',
         'OutputStream output = new FileOutputStream(staging))')
     text = exactly(text,
-        '                                target.delete();\\n'
+        '                                target.delete();\n'
         '                                Log.w(TAG, "Skipping shared font " + name, fontError);',
-        '                                staging.delete();\\n'
+        '                                staging.delete();\n'
         '                                Log.w(TAG, "Skipping shared font " + name, fontError);')
     text = exactly(text,
         '                            paths.put(target.getAbsolutePath());',
-        '                            try {\\n'
-        '                                java.nio.file.Files.move(staging.toPath(), target.toPath(),\\n'
-        '                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);\\n'
-        '                            } catch (Exception fontCommitError) {\\n'
-        '                                staging.delete();\\n'
-        '                                Log.w(TAG, "Could not commit shared font " + name, fontCommitError);\\n'
-        '                                continue;\\n'
-        '                            }\\n'
+        '                            try {\n'
+        '                                java.nio.file.Files.move(staging.toPath(), target.toPath(),\n'
+        '                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);\n'
+        '                            } catch (Exception fontCommitError) {\n'
+        '                                staging.delete();\n'
+        '                                Log.w(TAG, "Could not commit shared font " + name, fontCommitError);\n'
+        '                                continue;\n'
+        '                            }\n'
         '                            paths.put(target.getAbsolutePath());')
     text = exactly(text,
         '                            paths.put(target.getAbsolutePath());\n                            count++;',

@@ -21,8 +21,8 @@
     },
     "real_device_sidecar_lifecycle_stress": {
       "status": "pending",
-      "evidence": "https://github.com/KosmosSG/artcraft-android/actions/runs/41274273600",
-      "notes": "21 synthetic localhost tests pass including disconnect recovery; extended actual tablet suspend/restart/cancel testing remains."
+      "evidence": "https://github.com/KosmosSG/artcraft-android/actions/runs/41275814976",
+      "notes": "24 synthetic localhost transport tests pass, including disconnection, CPU timeouts, server restart token rotation and sequential jobs; physical-device Linux Lab suspend/resume, cancellation and stress acceptance remains pending."
     },
     "v2_to_v2_in_place_upgrade_and_data_retention": {
       "status": "pending",

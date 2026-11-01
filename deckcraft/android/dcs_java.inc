@@ -20,19 +20,26 @@
         if (!active) return 0;
         return dkDialogAction.getAndSet(0);
     }
+    // Mirror the device-tested WordCraft D/C/S modal keyboard transport.
+    private final java.util.HashSet<Integer> dkDialogKeys = new java.util.HashSet<>();
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (event != null && dkDialogActive
-                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
+        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
             final int code = event.getKeyCode();
+            // A confirmation may close on KEY_DOWN: swallow the matching KEY_UP.
+            if (dkDialogKeys.contains(code)) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_UP) dkDialogKeys.remove(code);
+                return true;
+            }
             final int shortcut = code == android.view.KeyEvent.KEYCODE_D ? 1
                     : code == android.view.KeyEvent.KEYCODE_C ? 2
                     : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
-            if (shortcut != 0 && event.hasNoModifiers()) {
-                // Consume both DOWN and UP while the dialog is active.
-                // Only the first DOWN is an action, never a key repeat.
-                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
-                        && event.getRepeatCount() == 0) {
-                    dkDialogAction.compareAndSet(0, shortcut);
+            if (dkDialogActive && shortcut != 0 && event.hasNoModifiers()) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    dkDialogKeys.add(code);
+                    if (event.getRepeatCount() == 0) {
+                        dkDialogAction.compareAndSet(0, shortcut);
+                        android.util.Log.i("DeckCraftDCS", "queued=" + shortcut);
+                    }
                 }
                 return true;
             }

@@ -116,6 +116,12 @@ def check_arm64_archive(
             ensure(bool(native_libs), "Candidate APK is missing ARM64 native libraries")
             ensure(all(name.startswith("lib/arm64-v8a/") for name in native_libs),
                    "Candidate APK includes a non-ARM64 native library")
+            # Android loads JNI libraries directly from lib/<abi>/<filename>.so.
+            # A nested directory (or a bare '.so') can pass the ABI-prefix
+            # check while providing no loadable ARM64 library at that path.
+            ensure(all(name.count("/") == 2 and len(name.rsplit("/", 1)[-1]) > 3
+                       for name in native_libs),
+                   "Candidate APK contains a non-loadable ARM64 library path")
             ensure(archive.testzip() is None, "Candidate APK has a corrupt ZIP member")
     except (zipfile.BadZipFile, EOFError, RuntimeError) as exc:
         raise ValueError("Candidate APK ZIP cannot be verified") from exc
@@ -325,6 +331,12 @@ def self_test() -> None:
             ["AndroidManifest.xml", "classes2.dex", "lib/arm64-v8a/libphotocraft.so"],
             good + ["lib/armeabi-v7a/libother.so"],
             good + ["lib/x86_64/libother.so"],
+            # The old prefix-only ABI check accepted nested .so entries,
+            # even when no library exists at a path Android can load.
+            ["AndroidManifest.xml", "classes.dex",
+             "lib/arm64-v8a/nested/libphotocraft.so"],
+            good + ["lib/arm64-v8a/nested/libextra.so"],
+            ["AndroidManifest.xml", "classes.dex", "lib/arm64-v8a/.so"],
             good + ["assets/u2netp.onnx"],
             good + ["assets/u2netp.tflite"],
             good + ["assets/u2netp.ort"],
@@ -391,7 +403,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (31 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (34 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

@@ -152,6 +152,13 @@ impl Tools {
     }
 
     pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        if self.call_bool("wcTakeNewDocument").unwrap_or(false) {
+            match app.run("file.new", serde_json::json!({})) {
+                Ok(_) => self.status = "New document requested".into(),
+                Err(error) => self.status = format!("New document: {error}"),
+            }
+            ctx.request_repaint();
+        }
         for _ in 0..2 {
             match self.call_string("wcPollFontResult") {
                 Ok(Some(raw)) => {

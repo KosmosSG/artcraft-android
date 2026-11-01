@@ -8,7 +8,9 @@
         synchronized (dkDialogKeys) {
             if (dkDialogActive != active) {
                 dkDialogKeys.clear();
-                dkDialogAction.set(0);
+                // Clear obsolete actions only when dismissing. An opening
+                // may already have received a hardware key before the first frame.
+                if (!active) dkDialogAction.set(0);
             }
             dkDialogActive = active;
             int action = dkDialogAction.getAndSet(0);

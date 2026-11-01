@@ -199,3 +199,4 @@ jobs:
 # Retry modal borrow-scoping compile correction (no signing or release).
 # Build compact modal with editor-focus suspension; unsigned test only.
 # Regression candidate: compact 330dp save modal and repeat keyboard activation (no release).
+# Diagnostic-only DCS keyboard focus trace build, unsigned; never auto publish.

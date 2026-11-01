@@ -59,6 +59,8 @@ class RevisionTests(unittest.TestCase):
             shutil.copyfile(ROOT / 'reference/SafActivity.java', root / 'templates/android/SafActivity.java')
             shutil.copyfile(ROOT / 'reference/system_fonts.rs', root / 'templates/android/system_fonts.rs')
             shutil.copyfile(ROOT / 'reference/dialogs.rs', root / 'source/wordcraft/crates/ui-egui/src/dialogs.rs')
+            (root / 'source/wordcraft/crates/ui-egui/src/dialogs').mkdir()
+            shutil.copyfile(ROOT / 'reference/chrome.rs', root / 'source/wordcraft/crates/ui-egui/src/dialogs/chrome.rs')
             java = root / 'templates/android/SafActivity.java'
             java.write_text(java.read_text().rstrip() + '\n')
             shutil.copyfile(ROOT / 'reference/ribbon.rs', root / 'source/wordcraft/crates/ui-egui/src/ribbon.rs')

@@ -13,6 +13,7 @@ import io
 from pathlib import Path
 import socket
 import subprocess
+import tempfile
 import threading
 import unittest
 import zlib
@@ -271,6 +272,31 @@ class LoopbackHTTPTests(unittest.TestCase):
                     response = self.raw_request(raw)
                     self.assertIn(f" {expected} ".encode(), response.split(b"\r\n", 1)[0])
             run.assert_not_called()
+
+    def test_inference_symlink_output_is_rejected_without_disclosing_local_file(self):
+        # Regression: a successful child could create an output symlink to a
+        # pre-existing local PNG. is_file(), stat() and PNG validation follow
+        # that alias, so the server previously returned unrelated file bytes.
+        with tempfile.TemporaryDirectory() as folder:
+            unrelated = Path(folder) / "unrelated.png"
+            unrelated.write_bytes(sample_png())
+
+            def alias_inference(argv, **_kwargs):
+                output = Path(argv[argv.index("--output") + 1])
+                output.symlink_to(unrelated)
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(server.subprocess, "run", side_effect=alias_inference) as inference:
+                code, headers, body = self.request()
+            self.assertEqual(code, 502)
+            self.assertEqual(headers["Content-Type"], "text/plain")
+            self.assertNotEqual(body, unrelated.read_bytes())
+            self.assertEqual(unrelated.read_bytes(), sample_png())
+            inference.assert_called_once()
+
+        # Rejecting a bad child output must not poison the next consented job.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
 
     def test_worker_failure_does_not_return_partial_png(self):
         result = subprocess.CompletedProcess(["no-model"], 2, stdout=b"", stderr=b"private model path")

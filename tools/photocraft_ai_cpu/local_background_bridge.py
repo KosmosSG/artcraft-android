@@ -74,6 +74,12 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         )
         if completed.returncode != 0:
             raise RuntimeError("U2NetP subprocess failed; no output committed")
+        # A child process can replace its staged output with a symlink to
+        # an unrelated local file. PNG validation follows that symlink, and
+        # hard-link publication may expose it outside the private stage.
+        # Only a regular file produced inside this private stage is allowed.
+        if staged_output.is_symlink() or not staged_output.is_file():
+            raise RuntimeError("U2NetP output must be a regular PNG file")
         from validate_output_png import inspect
         try:
             alpha = inspect(staged_output, width, height)

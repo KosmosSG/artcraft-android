@@ -145,6 +145,36 @@ class SidecarTests(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
 
+    def test_child_symlink_output_never_exposes_unrelated_local_png(self):
+        # A successful child could write a symlink instead of a PNG.
+        # inspect() follows links, so validation alone is insufficient.
+        for dangling in (False, True):
+            with self.subTest(dangling=dangling):
+                with tempfile.TemporaryDirectory() as folder:
+                    root = Path(folder)
+                    source, output = root / "input.png", root / "output.png"
+                    unrelated = root / "unrelated.png"
+                    self.make_png(source)
+                    if not dangling:
+                        self.make_png(unrelated)
+                        original = unrelated.read_bytes()
+
+                    def inference(argv, **kwargs):
+                        staged = Path(argv[argv.index("--output") + 1])
+                        staged.symlink_to(unrelated)
+                        return subprocess.CompletedProcess(argv, 0)
+
+                    with patch.object(bridge.subprocess, "run", side_effect=inference) as worker:
+                        with self.assertRaisesRegex(RuntimeError, "regular PNG"):
+                            bridge.run(source, output, True)
+                    worker.assert_called_once()
+                    self.assertFalse(output.exists())
+                    self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+                    if dangling:
+                        self.assertFalse(unrelated.exists())
+                    else:
+                        self.assertEqual(unrelated.read_bytes(), original)
+
     def test_racing_destination_creation_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

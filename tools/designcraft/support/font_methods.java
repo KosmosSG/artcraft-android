@@ -119,8 +119,8 @@
                                         (byte) third, (byte) fourth});
                                 long total = 4L;
                                 totalBytes += 4L;
-                                if (totalBytes > 2L * 1024 * 1024 * 1024)
-                                    throw new Exception("Shared font refresh reached the 2 GB limit");
+                                if (totalBytes > 4L * 1024 * 1024 * 1024)
+                                    throw new Exception("Shared font refresh reached the 4 GB limit");
                                 byte[] buffer = new byte[64 * 1024];
                                 int n;
                                 while ((n = input.read(buffer)) != -1) {
@@ -128,8 +128,8 @@
                                     if (total > 64L * 1024 * 1024)
                                         throw new Exception("Font too large: " + name);
                                     totalBytes += n;
-                                    if (totalBytes > 2L * 1024 * 1024 * 1024)
-                                        throw new Exception("Shared font refresh reached the 2 GB limit");
+                                    if (totalBytes > 4L * 1024 * 1024 * 1024)
+                                        throw new Exception("Shared font refresh reached the 4 GB limit");
                                     output.write(buffer, 0, n);
                                 }
                                 output.flush();

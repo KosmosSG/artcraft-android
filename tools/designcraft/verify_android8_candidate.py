@@ -33,8 +33,8 @@ def main(apk, sdk, source_commit):
     sdk = Path(sdk)
     cfg = check_assets()
     assert cfg["app"] == "designcraft"
-    version = "0.12.0-android.8"
-    code = "16800009"
+    version = "0.12.0-android.9"
+    code = "16800010"
     package = "com.artcraft.designcraft"
     badging = run(sdk / "aapt2", "dump", "badging", apk)
     resources = run(sdk / "aapt2", "dump", "resources", apk)

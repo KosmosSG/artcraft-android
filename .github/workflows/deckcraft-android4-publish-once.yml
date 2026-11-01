@@ -54,7 +54,7 @@ jobs:
           test -x "$tools/apksigner"
           test -x "$tools/aapt"
           "$tools/apksigner" verify --verbose --print-certs "stage/$APK" > stage/apk-verify.txt
-          cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' stage/apk-verify.txt | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          cert="$(grep -i -m1 'certificate SHA-256 digest' stage/apk-verify.txt | awk '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr -d ':\r')"
           [[ "$cert" == "$EXPECTED_CERT" ]] || { echo "::error::Signer does not match original permanent DeckCraft certificate"; exit 1; }
           "$tools/aapt" dump badging "stage/$APK" > stage/badging.txt
           grep -q "package: name='com.artcraft.deckcraft' versionCode='100000004' versionName='0.9.0-android.4'" stage/badging.txt

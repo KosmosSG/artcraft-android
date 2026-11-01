@@ -1,4 +1,4 @@
-name: DeckCraft DCS repeat-dialog fix sign test APK (manual, no release)
+name: DeckCraft blocking modal fix sign test APK (manual, no release)
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SOURCE_ARTIFACT_ID: "13079776910"
-      SOURCE_RUN_ID: "41296927655"
+      SOURCE_ARTIFACT_ID: "13080352673"
+      SOURCE_RUN_ID: "41298818949"
       EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
-      APK_OUT: DeckCraft-v0.9.0-android.4-DCS-REPEAT-FIX-TEST-arm64-v8a-signed.apk
+      APK_OUT: DeckCraft-v0.9.0-android.4-MODAL-FIX-TEST-arm64-v8a-signed.apk
     steps:
       - name: Install Android build tools
         shell: bash

@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SOURCE_ARTIFACT_ID: "13090961164"
-      SOURCE_RUN_ID: "41323743507"
+      SOURCE_ARTIFACT_ID: "13094460762"
+      SOURCE_RUN_ID: "41332645938"
       EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
-      APK_OUT: DeckCraft-v0.9.0-android.4-DCS-REPEAT-FIX-arm64-v8a-signed.apk
+      APK_OUT: DeckCraft-v0.9.0-android.4-DCS-WORDCRAFT-FIX-arm64-v8a-signed.apk
     steps:
       - name: Install Android build tools
         shell: bash

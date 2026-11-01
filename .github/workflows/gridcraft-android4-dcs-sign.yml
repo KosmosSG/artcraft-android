@@ -1,0 +1,100 @@
+name: GridCraft android.4 DCS original-key signing (owner test, no release)
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gridcraft-android4-dcs-sign.yml
+permissions:
+  actions: read
+  contents: read
+jobs:
+  sign:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '41334491563'
+      SOURCE_SHA: c13b8a8b2edac9aa1dd76d0b71c109d4a2959248
+      CERT: 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d
+      APK_OUT: GridCraft-v0.11.1-android.4-DCS-FIX-arm64-v8a-SIGNED.apk
+    steps:
+      - name: Verify pinned successful unsigned build
+        shell: bash
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN")"
+          test "$(jq -r '.conclusion' <<<"$run")" = success
+          test "$(jq -r '.head_sha' <<<"$run")" = "$SOURCE_SHA"
+      - name: Retrieve reviewed unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input output
+          gh run download "$SOURCE_RUN" -R "$GITHUB_REPOSITORY" -n GridCraft-v0.11.1-android.4-ARM64-UNSIGNED-LinuxLab -D input
+          mapfile -d '' apks < <(find input -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 1
+          cp "${apks[0]}" input.apk
+      - name: Verify source APK metadata and ARM64 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          buildtools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          echo "BUILD_TOOLS=$buildtools" >> "$GITHUB_ENV"
+          "$buildtools/aapt" dump badging input.apk > badging.txt
+          grep -F "name='com.artcraft.gridcraft'" badging.txt
+          grep -F "versionName='0.11.1-android.4'" badging.txt
+          grep -F "versionCode='16780036'" badging.txt
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('input.apk') as z:
+              assert z.testzip() is None
+              libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert 'classes.dex' in z.namelist()
+          PY
+          if "$buildtools/apksigner" verify input.apk >/dev/null 2>&1; then
+            echo "::error::Expected unsigned input, got signed"; exit 1
+          fi
+      - name: Sign with verified original GridCraft production keystore
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/gridcraft.p12" "$RUNNER_TEMP/gridcraft.pem" aligned.apk' EXIT
+          for var in KEYSTORE_B64 STOREPASS KEYPASS KEYALIAS; do
+            test -n "${!var:-}" || { echo "::error::Missing GridCraft signing secret $var"; exit 1; }
+          done
+          test "$KEYALIAS" = gridcraft
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/gridcraft.p12"
+          keytool -exportcert -rfc -keystore "$RUNNER_TEMP/gridcraft.p12" -storetype PKCS12 \
+            -storepass:env STOREPASS -alias "$KEYALIAS" > "$RUNNER_TEMP/gridcraft.pem"
+          actual="$(openssl x509 -in "$RUNNER_TEMP/gridcraft.pem" -outform DER | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "$CERT" || { echo "::error::Original GridCraft signing identity mismatch"; exit 1; }
+          "$BUILD_TOOLS/zipalign" -f -p 4 input.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/gridcraft.p12" --ks-type PKCS12 \
+            --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+            --v4-signing-enabled false --out "output/$APK_OUT" aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "output/$APK_OUT" > verify.txt
+          python3 - <<'PY'
+          import os,re
+          s=open('verify.txt').read()
+          m=re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})',s,re.I)
+          assert {re.sub('[^0-9a-f]','',v.lower()) for v in m}=={os.environ['CERT']}
+          PY
+          "$BUILD_TOOLS/aapt" dump badging "output/$APK_OUT" | grep -F "versionCode='16780036'"
+          (cd output && sha256sum "$APK_OUT" > SHA256SUMS.txt)
+          echo "GridCraft original-key signed APK verified; owner testing required; no release."
+      - name: Upload signed APK for owner testing only
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCraft-v0.11.1-android.4-DCS-ARM64-PERMANENT-SIGNED-TEST
+          path: output/
+          retention-days: 14
+          if-no-files-found: error

@@ -3,9 +3,22 @@
     public int dkUnsavedDialog(boolean active) {
         // Only one pending action is stored. No held-key set is retained
         // across dialog generations (Android may omit KEY_UP after dismissal).
-        if (!active && dkDialogActive) dkDialogAction.set(0);
+        boolean justOpened = active && !dkDialogActive;
         dkDialogActive = active;
-        return active ? dkDialogAction.getAndSet(0) : 0;
+        if (justOpened) {
+            // Match WordCraft: recover hardware-keyboard focus from the editor.
+            runOnUiThread(() -> {
+                android.view.Window window = getWindow();
+                if (window != null && window.getDecorView() != null) {
+                    window.getDecorView().setFocusableInTouchMode(true);
+                    window.getDecorView().requestFocus();
+                }
+            });
+            android.util.Log.i("DeckCraftDCS", "modal_focus_requested");
+        }
+        // Match WordCraft: do not drain a pending action when dismissing.
+        if (!active) return 0;
+        return dkDialogAction.getAndSet(0);
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && dkDialogActive

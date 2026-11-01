@@ -353,8 +353,10 @@ def self_test() -> None:
     assert patched_java.count('storageLimitReached = true;') == 2
     assert 'while (!storageLimitReached && cursor.moveToNext()' in patched_java
     assert 'while (!pending.isEmpty() && !storageLimitReached' in patched_java
-    assert patched_java.index('storageLimitReached = true;') < patched_java.index('File.createTempFile(')
-    assert patched_java.index('storageLimitReached = true;', patched_java.index('storageLimitReached = true;') + 1) < patched_java.index('output.write(buffer, 0, n);')
+    # The synthetic fixture is a list of anchors, not an ordered Java method.
+    # Check each guard's local fail-closed branch instead of global offsets.
+    assert 'scanLimitReached = true;\n                                storageLimitReached = true;\n                                break;' in patched_java
+    assert 'scanLimitReached = true;\n                                        storageLimitReached = true;\n                                        throw new java.io.IOException' in patched_java
     assert patched_java.index('cache.getUsableSpace() <=') < patched_java.index('File.createTempFile(')
     assert patched_java.index('cache.getUsableSpace() - n <') < patched_java.index('output.write(buffer, 0, n);')
     assert 'target.delete();' not in patched_java

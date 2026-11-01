@@ -298,6 +298,51 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_validated_png_cannot_be_swapped_before_http_response(self):
+        # Deterministically replace the worker PNG immediately AFTER inspect()
+        # returns. The old Path.read_bytes() followed an injected symlink or
+        # accepted a different regular PNG, exposing unconsented local bytes.
+        from validate_output_png import inspect as original_inspect
+
+        with tempfile.TemporaryDirectory() as folder:
+            unrelated = Path(folder) / "unrelated-private.png"
+            Image.new("RGBA", (16, 16), (222, 11, 33, 255)).save(unrelated)
+            original_bytes = unrelated.read_bytes()
+
+            for replacement in ("symlink", "regular", "missing"):
+                with self.subTest(replacement=replacement):
+                    def swap_after_validation(path, width, height):
+                        alpha = original_inspect(path, width, height)
+                        path.unlink()
+                        if replacement == "symlink":
+                            path.symlink_to(unrelated)
+                        elif replacement == "regular":
+                            path.write_bytes(original_bytes)
+                        return alpha
+
+                    with patch("validate_output_png.inspect", side_effect=swap_after_validation):
+                        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                            # 429 immediately after the previous response is
+                            # normal until the handler's finally releases lock.
+                            for attempt in range(40):
+                                code, headers, body = self.request()
+                                if code != 429:
+                                    break
+                                threading.Event().wait(0.02)
+                    self.assertEqual(code, 502)
+                    self.assertEqual(headers["Content-Type"], "text/plain")
+                    self.assertNotEqual(body, original_bytes)
+                    self.assertNotIn(str(unrelated).encode(), body)
+                    self.assertEqual(unrelated.read_bytes(), original_bytes)
+
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            for attempt in range(40):
+                code, _, _ = self.request()
+                if code != 429:
+                    break
+                threading.Event().wait(0.02)
+            self.assertEqual(code, 200)
+
     def test_worker_failure_does_not_return_partial_png(self):
         result = subprocess.CompletedProcess(["no-model"], 2, stdout=b"", stderr=b"private model path")
         with patch.object(server.subprocess, "run", return_value=result):

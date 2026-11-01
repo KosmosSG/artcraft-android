@@ -55,6 +55,15 @@ def patch_java(text: str) -> str:
         '                                        scanLimitReached = true;\n'
         '                                        throw new Exception("4 GiB shared font scan budget reached");\n'
         '                                    }')
+    # Preserve the completed byte count outside try-with-resources so Java
+    # can charge the accepted font against its 4 GiB cumulative budget.
+    text = exactly(text,
+        '                            File target = new File(cache, "font-" + hash + extension);',
+        '                            File target = new File(cache, "font-" + hash + extension);\n'
+        '                            long total = 0;')
+    text = exactly(text,
+        '                                int n;\n                                long total = 0;',
+        '                                int n;')
     text = exactly(text,
         '                            paths.put(target.getAbsolutePath());\n                            count++;',
         '                            paths.put(target.getAbsolutePath());\n'

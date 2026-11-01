@@ -4,6 +4,22 @@
 **Scope:** PhotoCraft Android AI Tools PR #93, local Linux Lab U2NetP CPU inference, and the public V2-signed experimental preview.  
 **Decision:** **Commercial licensing clearance NOT established. Do not represent the AI model, dataset, or model weights as commercially cleared.**
 
+## Confirmed intended use — owner statement, 1 November 2026
+
+The project owner clarified: **PhotoCraft is completely free and is being developed for personal, noncommercial development and testing only.** There is no intended paid app, subscription, monetized AI endpoint, commercial hosted processing, or distribution of U2NetP model weights by the PhotoCraft Android project.
+
+**Practical release assessment for this scope:**
+
+1. Personal local experimentation using the already downloaded U2NetP ONNX checkpoint is a materially narrower use than selling model inference or distributing weights. The U²-Net maintainer stated the released code and models follow the repository's Apache-2.0 license; preserve the license and appropriate attribution. The separate rembg code is MIT-licensed.
+2. The original maintainer stated both `u2net.pth` and `u2netp.pth` were trained with DUTS. DUTS's public terms do **not** establish an unrestricted license to the original training material. **No separate DUTS training data is downloaded, reused or redistributed by PhotoCraft.** Training-data restrictions are not automatically proven to attach to model outputs or downstream inference, but that legal question is not conclusively settled by the model license statement.
+3. The publicly downloadable PhotoCraft APK remains a **distribution of an Android client**, even though the owner's purpose is personal. Do not label all public users, uses, or the full trained model commercially cleared. No trained weight file is embedded in or downloaded by the APK; the user-managed local Linux Lab sidecar is separate.
+4. A commercial licensing outreach is **not a prerequisite for continuing the owner's personal/noncommercial testing**. If the project later includes model weights in distributed artifacts, downloads weights automatically, sells AI features, hosts inference for third parties, or promotes unrestricted commercial downstream use, reevaluate permissions and consult qualified counsel where appropriate.
+5. Preserve public notices identifying the U²-Net project/paper, Apache-2.0 model-code statement, rembg MIT code license, third-party provenance, and the original/V2 Android-signing migration warning. **No new model weights, training datasets or license files are bundled into the app.**
+
+**Disposition for the clarified current use:** Personal/noncommercial development scope recorded; commercial-rights approval is **not being claimed or sought at present**. The separate **public Stable/Latest gate** remains pending while public release policy, third-party notice completeness and remaining device/signing safeguards are reviewed. This is a scoped risk assessment, **not a legal opinion or blanket rights clearance**.
+
+Sources: [U²-Net maintainer — model and training dataset scope](https://github.com/xuebinqin/U-2-Net/issues/208), [original U²-Net project](https://github.com/xuebinqin/U-2-Net), [DUTS original website](https://saliencydetection.net/duts/), [rembg](https://github.com/danielgatis/rembg).
+
 ## What is distributed versus what runs locally
 
 The PhotoCraft AI preview APK `photocraft-v0.14.0-android.2-ai-v2-preview` contains the Android UI and loopback client but **does not bundle the U2NetP ONNX weights**. The model remains in the owner's separate Linux Lab environment, is explicitly downloaded by the owner, and runs in a manually started local Python/ONNX CPU sidecar. The APK cannot perform U2NetP background removal without that service and model. A public prerelease has already been published; the presence of the prerelease is **not** a legal clearance or stable-release approval.

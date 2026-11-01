@@ -24,6 +24,7 @@ jobs:
         run: |
           python3 -m py_compile tools/photocraft_ai_v2_upgrade_gate.py tools/photocraft_ai_candidate_compatibility.py tools/photocraft_ai_reference_signing.py
           python3 tools/photocraft_ai_v2_upgrade_gate.py --self-test
+          python3 tools/photocraft_ai_candidate_compatibility.py --self-test
       - name: Record release safety boundaries
         run: |
           {

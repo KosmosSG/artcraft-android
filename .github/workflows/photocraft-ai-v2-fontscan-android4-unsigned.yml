@@ -1,6 +1,6 @@
 name: PhotoCraft AI V2 4 GiB font catalog android.4 UNSIGNED (NO RELEASE)
 
-# PR93 android.3 candidate build: isolated preflight verified; use immutable V2 signing later.
+# PR93 android.4 font scanner candidate: staging checks verified; unsigned test only.
 # PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
 # with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
 on:

@@ -329,8 +329,12 @@
     private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
     public int wcUnsavedDialog(boolean active) {
         wcDialogActive = active;
+        // Do not silently drain a queued key while the UI is transitioning
+        // into or out of the dialog. The dialog consumes its own choice.
+        if (!active) return 0;
         int action = wcDialogAction.getAndSet(0);
-        return active ? action : 0;
+        if (action != 0) Log.i(TAG, "WC_DCS_DIAG delivered=" + action);
+        return action;
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
@@ -349,6 +353,8 @@
                 return true;
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
+            if (action != 0 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+                Log.i(TAG, "WC_DCS_DIAG key=" + action + " dialogActive=" + wcDialogActive + " modifiers=" + event.getMetaState());
             if (wcDialogActive && action != 0 && event.hasNoModifiers()) {
                 // Intercept the entire key gesture, not just ACTION_DOWN.
                 // Keep one pending choice until Rust consumes it.

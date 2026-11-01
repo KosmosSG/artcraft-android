@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SOURCE_ARTIFACT_ID: "13029954659"
-      SOURCE_RUN_ID: "41168908003"
+      SOURCE_ARTIFACT_ID: "13071931600"
+      SOURCE_RUN_ID: "41276978820"
       EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
       APK_OUT: DeckCraft-v0.9.0-android.4-arm64-v8a-signed.apk
     steps:

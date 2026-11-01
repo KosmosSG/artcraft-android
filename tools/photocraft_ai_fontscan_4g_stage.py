@@ -41,7 +41,9 @@ def patch_java(text: str) -> str:
         'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES)')
     text = exactly(text,
         '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
-        '                                if (size <= 0 || size > FONT_SCAN_MAX_FILE_BYTES) continue;\n'
+        '                                // SAF metadata may report unknown length (0 or -1).\n'
+        '                                // Actual streamed bytes are bounded below.\n'
+        '                                if (size > FONT_SCAN_MAX_FILE_BYTES) continue;\n'
         '                                if (size > FONT_SCAN_MAX_BYTES - scannedBytes) {\n'
         '                                    scanLimitReached = true;\n'
         '                                    continue;\n'
@@ -228,6 +230,25 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("source guard did not fail closed")
+    # Regression: a SAF provider reporting size=0 or -1 must not silently
+    # drop a valid font. The stream loop still enforces both byte budgets.
+    java_sample = "\\n".join([
+        '    private static final int REQ_FONT_FOLDER = 0x5045;',
+        '                int count = 0;\\n                int visitedFolders = 0;',
+        'while (!pending.isEmpty() && count < 200 && visitedFolders < 1000)',
+        'while (cursor.moveToNext() && count < 200)',
+        '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
+        '                                    if (total > 32L * 1024 * 1024)\\n                                        throw new Exception("Font too large: " + name);',
+        '                            File target = new File(cache, "font-" + hash + extension);',
+        '                                int n;\\n                                long total = 0;',
+        '                            paths.put(target.getAbsolutePath());\\n                            count++;',
+        '                result.put("count", count);\\n                results.offer(result.toString());',
+    ])
+    patched_java = patch_java(java_sample)
+    assert "if (size > FONT_SCAN_MAX_FILE_BYTES) continue;" in patched_java
+    assert "if (size <= 0 || size > FONT_SCAN_MAX_FILE_BYTES)" not in patched_java
+    assert "if (total > FONT_SCAN_MAX_FILE_BYTES)" in patched_java
+    assert "if (total > FONT_SCAN_MAX_BYTES - scannedBytes)" in patched_java
     assert "load_fonts_from_paths" in UPSTREAM_RUST
     assert "4u64 * 1024 * 1024 * 1024 - total_bytes" in UPSTREAM_RUST
     assert "total_bytes += meta.len();" in UPSTREAM_RUST

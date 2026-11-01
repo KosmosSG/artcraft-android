@@ -366,6 +366,8 @@
         if (!active) return 0;
         return gcDialogAction.getAndSet(0);
     }
+    private final java.util.concurrent.atomic.AtomicBoolean gcClosePending = new java.util.concurrent.atomic.AtomicBoolean();
+    public boolean gcTakeCloseShortcut() { return gcClosePending.getAndSet(false); }
     private final java.util.concurrent.atomic.AtomicBoolean gcEscapePending = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean gcEditorActive;
     public boolean gcEditorEscape(boolean active) {
@@ -378,6 +380,14 @@
             int code = event.getKeyCode();
             if (gcDialogKeys.contains(code)) {
                 if (event.getAction() == android.view.KeyEvent.ACTION_UP) gcDialogKeys.remove(code);
+                return true;
+            }
+            if (!gcDialogActive && code == android.view.KeyEvent.KEYCODE_W
+                    && event.isCtrlPressed() && !event.isAltPressed() && !event.isMetaPressed()) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    gcDialogKeys.add(code);
+                    if (event.getRepeatCount() == 0) gcClosePending.set(true);
+                }
                 return true;
             }
             if (gcEditorActive && !gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE

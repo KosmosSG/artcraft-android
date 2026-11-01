@@ -60,7 +60,9 @@ jobs:
           test -x "$aapt"
           "$apksigner" verify --verbose --print-certs "publish/$APK" > publish/signature-check.txt
           actual="$(sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' publish/signature-check.txt | head -1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
-          test "$actual" = "$EXPECTED_SIGNING_CERT" || { echo "::error::Signing certificate mismatch"; exit 1; }
+          echo "Observed public APK signing certificate SHA-256: $actual"
+          echo "Expected recovered-key certificate SHA-256: $EXPECTED_SIGNING_CERT"
+          test "$actual" = "$EXPECTED_SIGNING_CERT" || { echo "::error::Signing certificate mismatch; publication blocked"; exit 1; }
           "$aapt" dump badging "publish/$APK" > publish/badging.txt
           grep -F "name='com.artcraft.wordcraft'" publish/badging.txt
           grep -F "versionCode='100000006'" publish/badging.txt

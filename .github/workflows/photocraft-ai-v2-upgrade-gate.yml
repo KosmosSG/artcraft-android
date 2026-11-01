@@ -1,0 +1,35 @@
+name: PhotoCraft AI V2 signed upgrade identity self-tests (NO RELEASE)
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - 'tools/photocraft_ai_v2_upgrade_gate.py'
+      - 'tools/photocraft_ai_candidate_compatibility.py'
+      - 'tools/photocraft_ai_reference_signing.py'
+      - '.github/workflows/photocraft-ai-v2-upgrade-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  upgrade-identity-self-test:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate verifier and existing helpers without APK/keystore
+        run: |
+          python3 -m py_compile tools/photocraft_ai_v2_upgrade_gate.py tools/photocraft_ai_candidate_compatibility.py tools/photocraft_ai_reference_signing.py
+          python3 tools/photocraft_ai_v2_upgrade_gate.py --self-test
+      - name: Record release safety boundaries
+        run: |
+          {
+            echo '### PhotoCraft AI V2 upgrade certificate and versionCode guard'
+            echo 'Offline negative tests only; no real signed candidate input was provided.'
+            echo 'A future real candidate requires independent APK-to-APK validation'
+            echo 'AND owner-tested in-place data preservation, licensing and stable-release approval.'
+            echo 'No APK, keystore, model weights, merge or publication.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -25,7 +25,7 @@ jobs:
       with:
         persist-credentials: false
         repository: KosmosSG/artcraft-android
-        ref: 652f1475ff02fc7c7dc6b1652f2d36404d931838
+        ref: 189d73d064d7990a12f8f1b2727a392f6f48cc78
     - uses: actions/checkout@v5
       with:
         repository: MostafaXS1/artcraft-android
@@ -98,14 +98,14 @@ jobs:
 
         test -f "$APK"
 
-        python3 tools/designcraft/verify_android8_candidate.py "$APK" "$ANDROID_HOME/build-tools/35.0.0" "652f1475ff02fc7c7dc6b1652f2d36404d931838"
+        python3 tools/designcraft/verify_android8_candidate.py "$APK" "$ANDROID_HOME/build-tools/35.0.0" "189d73d064d7990a12f8f1b2727a392f6f48cc78"
         > candidate/verification.json
 
         cp "$APK" candidate/DesignCraft-0.12.0-android.9-TEMP-SIGNATURE-NOT-FOR-INSTALL.apk
 
         sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
 
-        printf ''%s\n'' "652f1475ff02fc7c7dc6b1652f2d36404d931838" > candidate/font-only-source-sha.txt
+        printf ''%s\n'' "189d73d064d7990a12f8f1b2727a392f6f48cc78" > candidate/font-only-source-sha.txt
 
         echo ''NOT A RELEASE: candidate has a temporary builder signature, reserved for secure permanent re-signing in DesignCraft
         signing-private.'' >> "$GITHUB_STEP_SUMMARY"

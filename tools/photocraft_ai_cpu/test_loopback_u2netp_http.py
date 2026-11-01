@@ -519,6 +519,85 @@ class LoopbackHTTPTests(unittest.TestCase):
                     self.fail("Disconnected client left local inference unavailable")
             unexpected.assert_not_called()
 
+    def test_cpu_timeout_returns_504_and_next_job_recovers(self):
+        # A stalled CPU subprocess must produce a bounded error, drop its
+        # temporary files and release the one-worker lock for the next image.
+        with patch.object(
+            server.subprocess, "run",
+            side_effect=subprocess.TimeoutExpired(cmd=["mock-inference"], timeout=180),
+        ) as inference:
+            code, headers, body = self.request()
+            self.assertEqual(code, 504)
+            self.assertEqual(headers["Content-Type"], "text/plain")
+            self.assertNotIn(TOKEN.encode(), body)
+            inference.assert_called_once()
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            code, headers, payload = self.request()
+            self.assertEqual(code, 200)
+            self.assertEqual(headers["Content-Type"], "image/png")
+            with Image.open(io.BytesIO(payload)) as img:
+                img.load()
+                self.assertEqual(img.size, (16, 16))
+
+    def test_server_restart_requires_fresh_token_and_recovers(self):
+        # Simulate manually restarting the Linux Lab server without any model
+        # weights. Tokens are ephemeral and must not survive a new server.
+        new_token = "different_restart_token_longer_than_32_characters"
+        restarted = server.LoopbackHTTPServer(
+            ("127.0.0.1", 0), server.make_handler(new_token)
+        )
+        worker = threading.Thread(
+            target=restarted.serve_forever, daemon=True
+        )
+        worker.start()
+
+        def on_restarted(token):
+            conn = http.client.HTTPConnection(*restarted.server_address, timeout=5)
+            try:
+                conn.request(
+                    "POST", "/v1/remove-background", body=sample_png(),
+                    headers={
+                        "Authorization": "Bearer " + token,
+                        "X-PhotoCraft-Image-Consent": "yes",
+                        "Content-Type": "image/png",
+                    },
+                )
+                response = conn.getresponse()
+                return response.status, response.read()
+            finally:
+                conn.close()
+
+        try:
+            with patch.object(server.subprocess, "run", side_effect=mock_inference) as inference:
+                old_code, old_body = on_restarted(TOKEN)
+                self.assertEqual(old_code, 401)
+                self.assertNotIn(new_token.encode(), old_body)
+                self.assertEqual(inference.call_count, 0)
+                new_code, new_png = on_restarted(new_token)
+                self.assertEqual(new_code, 200)
+                with Image.open(io.BytesIO(new_png)) as image:
+                    image.load()
+                    self.assertEqual(image.size, (16, 16))
+                self.assertEqual(inference.call_count, 1)
+        finally:
+            restarted.shutdown()
+            restarted.server_close()
+            worker.join(timeout=3)
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            # Original running service stays isolated and usable.
+            self.assertEqual(self.request()[0], 200)
+
+    def test_sequential_consent_jobs_do_not_exhaust_inference_lock(self):
+        # Multiple normal jobs must not leak worker state. Actual long-running
+        # tablet memory behavior remains a separate physical-device gate.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference) as run:
+            for _ in range(12):
+                code, headers, payload = self.request()
+                self.assertEqual(code, 200)
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                self.assertGreater(len(payload), 30)
+            self.assertEqual(run.call_count, 12)
+
     def test_only_one_inference_runs_at_a_time(self):
         entered = threading.Event()
         release = threading.Event()

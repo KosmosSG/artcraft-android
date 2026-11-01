@@ -197,3 +197,4 @@ jobs:
 # Rebuild DCS modal repeated-open key reset candidate (unsigned, no release).
 # Rebuild modal overlay regression candidate; unsigned for owner testing only.
 # Retry modal borrow-scoping compile correction (no signing or release).
+# Build compact modal with editor-focus suspension; unsigned test only.

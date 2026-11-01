@@ -264,6 +264,12 @@ def make_handler(token: str):
                         )
                     except subprocess.TimeoutExpired:
                         return self.reply(504, b"CPU inference timed out")
+                    except OSError:
+                        # A missing/unlaunchable Linux Lab Python or bridge
+                        # must not tear down the HTTP handler or expose a
+                        # private executable path in a traceback/response.
+                        # The temporary input and worker lock still clean up.
+                        return self.reply(502, b"CPU worker could not start")
                     if completed.returncode != 0 or output.is_symlink() or not output.is_file():
                         # A model subprocess must never redirect the server's
                         # temporary output to an unrelated local file. A

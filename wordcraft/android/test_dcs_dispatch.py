@@ -24,12 +24,12 @@ class DispatchBehavior(unittest.TestCase):
             (root/'android/view').mkdir(parents=True)
             (root/'android/view/KeyEvent.java').write_text('''package android.view;
 public class KeyEvent {
- public static final int ACTION_DOWN=0,ACTION_UP=1,KEYCODE_D=32,KEYCODE_C=31,KEYCODE_S=47,KEYCODE_ESCAPE=111,FLAG_SOFT_KEYBOARD=2;
+ public static final int ACTION_DOWN=0,ACTION_UP=1,KEYCODE_D=32,KEYCODE_C=31,KEYCODE_S=47,KEYCODE_N=42,KEYCODE_ESCAPE=111,FLAG_SOFT_KEYBOARD=2;
  int key,action,repeat,flags; boolean modified;
  public KeyEvent(int k,int a,int r,boolean m,int f){key=k;action=a;repeat=r;modified=m;flags=f;}
  public int getKeyCode(){return key;} public int getAction(){return action;}
  public int getRepeatCount(){return repeat;} public int getFlags(){return flags;}
- public boolean hasNoModifiers(){return !modified;} public boolean isSystem(){return false;}
+ public boolean hasNoModifiers(){return !modified;} public boolean isCtrlPressed(){return modified;} public boolean isAltPressed(){return false;} public boolean isMetaPressed(){return false;} public boolean isSystem(){return false;}
 }''')
             (root/'Harness.java').write_text('''import android.view.KeyEvent;
 class Parent { int forwarded=0; public boolean dispatchKeyEvent(KeyEvent e){forwarded++;return false;}

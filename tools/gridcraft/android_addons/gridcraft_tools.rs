@@ -23,6 +23,22 @@ pub struct GridCraftTools {
     feedback_until: Option<std::time::Instant>,
 }
 impl GridCraftTools {
+    pub fn close_shortcut(&self, inner: &mut gridcraft_ui_egui::SheetApp, ctx: &eframe::egui::Context) {
+        // Capture Ctrl+W from Java even when the Android IME owns cell focus.
+        let triggered = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("gcTakeCloseShortcut"), jni_sig!("()Z"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?.z()
+        }).unwrap_or(false);
+        if !triggered { return; }
+        // Commit the in-progress cell before deciding whether workbook is dirty.
+        // On validation error, preserve the editor and show its message instead.
+        if !inner.commit_edit(0, 0, false, false) { ctx.request_repaint(); return; }
+        inner.run_or_alert("file.close", serde_json::json!({}));
+        ctx.request_repaint();
+    }
     pub fn editor_escape(&self, inner: &mut gridcraft_ui_egui::SheetApp, ctx: &eframe::egui::Context) {
         let active = inner.android_editor_escape_active();
         let result = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {

@@ -204,3 +204,5 @@ jobs:
 # Verify single dialog-state update prevents DCS input loss after reopening.
 # Retest repeated-open DCS with stateless key delivery; no publishing.
 # WordCraft modal-focus recovery port test, no auto publish.
+
+# Rebuild device-tested WordCraft full D/C/S gesture parity, commit ed63982 (unsigned test only).

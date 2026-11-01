@@ -11,7 +11,15 @@ def apply(root):
     new = old.replace('ui.button(tl!("Cancel"))', 'ui.button(format!("{} (C)", tl!("Cancel")))').replace('ui.button(tl!("Don\'t Save"))', 'ui.button(format!("{} (D)", tl!("Don\'t Save")))').replace('primary_button(ui, tl!("Save"))', 'primary_button(ui, format!("{} (S)", tl!("Save")))')
     anchor = '            let answer = if ui.input(|i| i.key_pressed(egui::Key::Escape)) {'
     replacement = '''            let queued = ui.ctx().data_mut(|data| data.remove_temp::<u8>(egui::Id::new("wordcraft.unsaved.dcs")));
-            let shortcut = match queued.or_else(|| take_dcs(ui.ctx())) {
+            let shortcut = match queued.or_else(|| take_dcs(ui.ctx())).or_else(|| {
+                ui.input(|i| {
+                    if i.modifiers.any() { None }
+                    else if i.key_pressed(egui::Key::D) { Some(1) }
+                    else if i.key_pressed(egui::Key::C) { Some(2) }
+                    else if i.key_pressed(egui::Key::S) { Some(3) }
+                    else { None }
+                })
+            }) {
                 Some(1) => Some("dontSave"), Some(2) => Some("cancel"), Some(3) => Some("save"), _ => None,
             };
             let answer = if let Some(answer) = shortcut {

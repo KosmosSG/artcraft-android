@@ -487,14 +487,14 @@ class LoopbackHTTPTests(unittest.TestCase):
 
         payload = sample_png()
         head = (
-            f"POST /v1/remove-background HTTP/1.1\\r\\n"
-            f"Host: 127.0.0.1\\r\\nAuthorization: Bearer {TOKEN}\\r\\n"
-            "X-PhotoCraft-Image-Consent: yes\\r\\n"
-            "Content-Type: image/png\\r\\n"
-            f"Content-Length: {len(payload)}\\r\\n\\r\\n"
+            f"POST /v1/remove-background HTTP/1.1\r\n"
+            f"Host: 127.0.0.1\r\nAuthorization: Bearer {TOKEN}\r\n"
+            "X-PhotoCraft-Image-Consent: yes\r\n"
+            "Content-Type: image/png\r\n"
+            f"Content-Length: {len(payload)}\r\n\r\n"
         ).encode("ascii")
         # Real CRLF, not literal backslash + r/n bytes.
-        self.assertIn(b"\\r\\nAuthorization:", head)
+        self.assertIn(b"\r\nAuthorization:", head)
         with patch.object(self.httpd, "handle_error") as unexpected:
             with patch.object(server.subprocess, "run", side_effect=delayed_inference) as inference:
                 with socket.create_connection(self.address, timeout=3) as sock:

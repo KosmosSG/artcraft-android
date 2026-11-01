@@ -288,7 +288,9 @@ def self_test() -> None:
         '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
         '                                    if (total > 32L * 1024 * 1024)\n                                        throw new Exception("Font too large: " + name);',
         '                            File target = new File(cache, "font-" + hash + extension);',
+        '                                 OutputStream output = new FileOutputStream(target)) {',
         '                                int n;\n                                long total = 0;',
+        '                                target.delete();\n                                Log.w(TAG, "Skipping shared font " + name, fontError);',
         '                            paths.put(target.getAbsolutePath());\n                            count++;',
         '                result.put("count", count);\n                results.offer(result.toString());',
     ])

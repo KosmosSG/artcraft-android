@@ -14,10 +14,10 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN: '41334491563'
-      SOURCE_SHA: c13b8a8b2edac9aa1dd76d0b71c109d4a2959248
+      SOURCE_RUN: '41335908922'
+      SOURCE_SHA: 720fab9eaa178da485750009f1a2782026da6286
       CERT: 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d
-      APK_OUT: GridCraft-v0.11.1-android.4-DCS-FIX-arm64-v8a-SIGNED.apk
+      APK_OUT: GridCraft-v0.11.1-android.4-CTRL-W-DCS-FIX-arm64-v8a-SIGNED.apk
     steps:
       - name: Verify pinned successful unsigned build
         shell: bash
@@ -94,7 +94,7 @@ jobs:
       - name: Upload signed APK for owner testing only
         uses: actions/upload-artifact@v4
         with:
-          name: GridCraft-v0.11.1-android.4-DCS-ARM64-PERMANENT-SIGNED-TEST
+          name: GridCraft-v0.11.1-android.4-CTRL-W-DCS-ARM64-PERMANENT-SIGNED-TEST
           path: output/
           retention-days: 14
           if-no-files-found: error

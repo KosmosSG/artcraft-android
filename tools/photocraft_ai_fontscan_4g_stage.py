@@ -140,9 +140,14 @@ UPSTREAM_RUST = """    /// Register SAF-cached shared-font files by PATH, not by
     pub fn register_font_paths(&mut self, paths: &[std::path::PathBuf]) -> usize {
         use std::io::Read as _;
         let mut accepted = Vec::new();
+        let mut total_bytes = 0u64;
         for path in paths {
             let Ok(meta) = std::fs::metadata(path) else { continue };
             if !meta.is_file() || meta.len() == 0 || meta.len() > 32 * 1024 * 1024 {
+                continue;
+            }
+            // Java enforces this budget, but fail closed on malformed JNI data too.
+            if meta.len() > 4u64 * 1024 * 1024 * 1024 - total_bytes {
                 continue;
             }
             let Ok(mut source) = std::fs::File::open(path) else { continue };
@@ -156,6 +161,7 @@ UPSTREAM_RUST = """    /// Register SAF-cached shared-font files by PATH, not by
                 continue;
             }
             accepted.push(path.as_path());
+            total_bytes += meta.len();
         }
         if accepted.is_empty() {
             return 0;
@@ -183,6 +189,9 @@ def stage(root: Path) -> None:
     java = root / "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
     adapter = root / "adapters/photocraft/src/lib.rs"
     upstream = root / "source/photocraft/crates/text/src/fonts.rs"
+    # Validate ALL three pinned sources before modifying any of them. A changed
+    # upstream anchor must not leave a half-patched, buildable runner workspace.
+    changes = []
     for file, patch in ((java, patch_java), (adapter, patch_rust_adapter),
                         (upstream, patch_upstream_fonts)):
         if not file.is_file():
@@ -191,6 +200,8 @@ def stage(root: Path) -> None:
         modified = patch(raw)
         if raw == modified:
             raise ValueError("Font scanner patch made no change: " + str(file))
+        changes.append((file, modified))
+    for file, modified in changes:
         file.write_text(modified)
         print("STAGED (ephemeral runner only):", file)
     print("PASS: 4 GiB aggregate SAF scan / 5,000 files / 32 MiB per font")
@@ -209,6 +220,8 @@ def self_test() -> None:
         else:
             raise AssertionError("source guard did not fail closed")
     assert "load_fonts_from_paths" in UPSTREAM_RUST
+    assert "4u64 * 1024 * 1024 * 1024 - total_bytes" in UPSTREAM_RUST
+    assert "total_bytes += meta.len();" in UPSTREAM_RUST
     assert "std::fs::read" not in UPSTREAM_RUST
     assert "fs::read(path)" not in SHARED_RUST
     assert "register_font_paths(&candidates)" in SHARED_RUST

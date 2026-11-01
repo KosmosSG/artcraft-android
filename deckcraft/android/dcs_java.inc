@@ -1,43 +1,28 @@
     private final java.util.concurrent.atomic.AtomicInteger dkDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean dkDialogActive;
-    private final java.util.HashSet<Integer> dkDialogKeys = new java.util.HashSet<>();
     public int dkUnsavedDialog(boolean active) {
-        // A dialog can close before Android delivers its matching KEY_UP.
-        // Reset held-key tracking on either modal boundary so D/C/S work
-        // again on the next opening. Coordinate with dispatchKeyEvent.
-        synchronized (dkDialogKeys) {
-            if (dkDialogActive != active) {
-                dkDialogKeys.clear();
-                // Clear obsolete actions only when dismissing. An opening
-                // may already have received a hardware key before the first frame.
-                if (!active) dkDialogAction.set(0);
-            }
-            if (dkDialogActive != active) android.util.Log.i("DeckCraftDCS", "modal_active=" + active);
-            dkDialogActive = active;
-            int action = dkDialogAction.getAndSet(0);
-            return active ? action : 0;
-        }
+        // Only one pending action is stored. No held-key set is retained
+        // across dialog generations (Android may omit KEY_UP after dismissal).
+        if (!active && dkDialogActive) dkDialogAction.set(0);
+        dkDialogActive = active;
+        return active ? dkDialogAction.getAndSet(0) : 0;
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
-            int code = event.getKeyCode();
-            if (code == android.view.KeyEvent.KEYCODE_D || code == android.view.KeyEvent.KEYCODE_C || code == android.view.KeyEvent.KEYCODE_S) {
-                android.util.Log.i("DeckCraftDCS", "key=" + code + " event=" + event.getAction() + " active=" + dkDialogActive + " focus=" + (getCurrentFocus() == null ? "none" : getCurrentFocus().getClass().getSimpleName()));
-            }
-            synchronized (dkDialogKeys) {
-                if (dkDialogKeys.contains(code)) {
-                    if (event.getAction() == android.view.KeyEvent.ACTION_UP) dkDialogKeys.remove(code);
-                    return true;
+        if (event != null && dkDialogActive
+                && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
+            final int code = event.getKeyCode();
+            final int shortcut = code == android.view.KeyEvent.KEYCODE_D ? 1
+                    : code == android.view.KeyEvent.KEYCODE_C ? 2
+                    : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
+            if (shortcut != 0 && event.hasNoModifiers()) {
+                // Consume both DOWN and UP while the dialog is active.
+                // Only the first DOWN is an action, never a key repeat.
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    dkDialogAction.compareAndSet(0, shortcut);
                 }
-                int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
-                if (dkDialogActive && action != 0 && event.hasNoModifiers()
-                        && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                    dkDialogKeys.add(code);
-                    if (event.getRepeatCount() == 0) dkDialogAction.compareAndSet(0, action);
-                    return true;
-                }
+                return true;
             }
         }
-
         return super.dispatchKeyEvent(event);
     }

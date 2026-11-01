@@ -168,8 +168,9 @@ class CompanionAndroidPhase1Contract(unittest.TestCase):
         self.assertIn('self.open = !self.open', RUST_UI)
         self.assertIn('self.pending.is_none()', RUST_UI)
         self.assertIn('Some("cancel")', RUST_UI)
-        self.assertIn('if value.get("id").and_then(Value::as_u64) != self.pending', RUST_UI) if False else None
+        self.assertIn('if self.pending.is_none()', RUST_UI)
         self.assertIn('!= self.pending', RUST_UI)
+        self.assertIn('.order(egui::Order::Middle)', RUST_UI)
 
 
 if __name__ == "__main__":

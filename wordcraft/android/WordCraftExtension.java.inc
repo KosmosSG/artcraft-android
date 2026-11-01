@@ -349,10 +349,13 @@
                 return true;
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
-            if (wcDialogActive && action != 0 && event.hasNoModifiers()
-                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                wcDialogKeys.add(code);
-                if (event.getRepeatCount() == 0) wcDialogAction.compareAndSet(0, action);
+            if (wcDialogActive && action != 0 && event.hasNoModifiers()) {
+                // Intercept the entire key gesture, not just ACTION_DOWN.
+                // Keep one pending choice until Rust consumes it.
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    wcDialogKeys.add(code);
+                    if (event.getRepeatCount() == 0) wcDialogAction.compareAndSet(0, action);
+                }
                 return true;
             }
         }

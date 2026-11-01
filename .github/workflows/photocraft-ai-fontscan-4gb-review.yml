@@ -30,12 +30,20 @@ jobs:
           git fetch --no-tags --depth=1 https://github.com/KosmosSG/artcraft-android.git f708fff8a333c2246b6d342570b19db5b95f4be1
           git show FETCH_HEAD:adapters/photocraft/src/lib.rs > "$ROOT/adapters/photocraft/src/lib.rs"
           git show FETCH_HEAD:adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java > "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
+          git show FETCH_HEAD:adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java > "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java"
           git init -q "$RUNNER_TEMP/official-photo-fonts"
           git -C "$RUNNER_TEMP/official-photo-fonts" fetch --no-tags --depth=1 https://github.com/storytold/photocraft.git ff4738810134d7f7e68b49f2e4f231b686282ff3
           git -C "$RUNNER_TEMP/official-photo-fonts" show FETCH_HEAD:crates/text/src/fonts.rs > "$ROOT/source/photocraft/crates/text/src/fonts.rs"
           python3 tools/photocraft_ai_fontscan_4g_stage.py "$ROOT"
           rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/adapters/photocraft/src/lib.rs" > /dev/null
           rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/source/photocraft/crates/text/src/fonts.rs" > /dev/null
+          ANDROID_JAR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms/android-35/android.jar"
+          test -s "$ANDROID_JAR"
+          mkdir -p "$RUNNER_TEMP/photocraft-fontscan-java-classes"
+          javac -source 17 -target 17 -cp "$ANDROID_JAR" -d "$RUNNER_TEMP/photocraft-fontscan-java-classes" \
+            "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java" \
+            "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
+          echo 'PASS: actual modified PhotoCraft Android SAF scanner compiled with Android SDK 35'
           python3 - "$ROOT" <<'PY'
           from pathlib import Path
           import sys

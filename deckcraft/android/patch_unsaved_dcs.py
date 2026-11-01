@@ -50,13 +50,16 @@ def apply(root):
         egui::Modal::new(egui::Id::new(("deckcraft.confirm.modal", d.id.clone()))).show(ctx, |ui| {
             // Keep the original compact centered confirmation appearance.
             // The modal backdrop blocks canvas pointer interactions.
-            ui.set_min_width(460.0);
-            ui.set_max_width(500.0);
+            // Original compact save prompt proportions; modal remains blocking.
+            ui.set_min_width(330.0);
+            ui.set_max_width(355.0);
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space(165.0);
-                    ui.heading("DeckCraft");
-                    if ui.button("×").clicked() { close = true; }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("×").clicked() { close = true; }
+                        ui.add_space(112.0);
+                        ui.heading("DeckCraft");
+                    });
                 });
                 ui.separator();
                 close |= body(app, ui, &mut d);

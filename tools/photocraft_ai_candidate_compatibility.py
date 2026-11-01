@@ -26,6 +26,11 @@ PUBLIC_SIGNER_SHA256 = (
     "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"
 )
 PUBLIC_PACKAGE = "com.artcraft.photocraft"
+# Verified separately published V2 preview certificate. It CANNOT update the
+# original-signed production PhotoCraft installation in place.
+V2_PREVIEW_SIGNER_SHA256 = (
+    "edda8ab30390e383e10450193b8ae5864312a6ff80e9d6c7f3437816524e6936"
+)
 MAX_APK_BYTES = 512 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
 # Avoid pathological central directories with huge numbers of tiny/empty files.
@@ -232,6 +237,11 @@ def self_test() -> None:
     rejected = [
         (baseline, {**new, "package": "com.artcraft.photocraft.ai.preview"}, normal),
         (baseline, {**new, "signer_certificate_sha256": "0" * 64}, normal),
+        # The real 1 Nov 2026 V2-signed AI prerelease is a distinct signing
+        # lineage, not an in-place upgrade for the original public APK.
+        (baseline, {**new, "signer_certificate_sha256": V2_PREVIEW_SIGNER_SHA256}, normal),
+        ({**baseline, "signer_certificate_sha256": V2_PREVIEW_SIGNER_SHA256}, new, normal),
+        (baseline, {**new, "tag": "photocraft-v0.14.0-android.2-ai-v2-preview"}, normal),
         (baseline, {**new, "version_code": PUBLIC_VERSION_CODE}, normal),
         (baseline, {**new, "version_code": PUBLIC_VERSION_CODE - 1}, normal),
         (baseline, {**new, "tag": PUBLIC_TAG, "version_name": "0.14.0-android.1"}, normal),

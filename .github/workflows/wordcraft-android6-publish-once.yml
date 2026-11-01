@@ -59,9 +59,20 @@ jobs:
           test -x "$apksigner"
           test -x "$aapt"
           "$apksigner" verify --verbose --print-certs "publish/$APK" > publish/signature-check.txt
-          actual="$(sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' publish/signature-check.txt | head -1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
-          echo "Observed public APK signing certificate SHA-256: $actual"
-          echo "Expected recovered-key certificate SHA-256: $EXPECTED_SIGNING_CERT"
+          # apksigner output varies across build-tools versions; parse the digest label, not a fixed Signer prefix.
+          actual="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          output=Path('publish/signature-check.txt').read_text()
+          matches=re.findall(r'certificate SHA-256 digest:\\s*([0-9a-fA-F:]{64,95})', output, re.I)
+          values={re.sub(r'[^0-9A-F]','',m.upper()) for m in matches}
+          if len(values)!=1 or len(next(iter(values)))!=64:
+              raise SystemExit('Cannot uniquely parse the 64-hex signing certificate SHA-256; refusing publication')
+          print(next(iter(values)))
+          PY
+          )"
+          echo "Observed APK signing certificate SHA-256: $actual"
+          echo "Expected original signing certificate SHA-256: $EXPECTED_SIGNING_CERT"
           test "$actual" = "$EXPECTED_SIGNING_CERT" || { echo "::error::Signing certificate mismatch; publication blocked"; exit 1; }
           "$aapt" dump badging "publish/$APK" > publish/badging.txt
           grep -F "name='com.artcraft.wordcraft'" publish/badging.txt

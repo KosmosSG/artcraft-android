@@ -40,6 +40,22 @@ jobs:
           test "$GITHUB_REF" = "refs/heads/feature/photocraft-android-ai-tools-20261029"
           echo "Verified PR93 source commit: $GITHUB_SHA"
 
+      # Gate the expensive ARM64 compile on the exact current local-only
+      # HTTP/PNG/bridge regression suites. No model weights or keys are used.
+      - name: Preflight current U2NetP localhost and PNG regression suites (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install 'Pillow==12.3.0'
+          python3 -m py_compile \
+            tools/photocraft_ai_cpu/loopback_u2netp_server.py \
+            tools/photocraft_ai_cpu/validate_output_png.py \
+            tools/photocraft_ai_cpu/local_background_bridge.py
+          python3 tools/photocraft_ai_cpu/validate_output_png.py --self-test
+          python3 tools/photocraft_ai_cpu/test_loopback_u2netp_http.py -v
+          python3 tools/photocraft_ai_cpu/test_local_background_bridge.py -v
+          echo 'PASS: current PR93 local transport and PNG regression tests before ARM64 build'
+
       - name: Test isolated AI Tools declarations and prepare checked-in preview overlay
         shell: bash
         run: |

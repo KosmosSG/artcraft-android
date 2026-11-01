@@ -14,8 +14,10 @@ MAX_PIXELS = 4_000_000
 def inspect(path: Path, width: int, height: int) -> tuple[int, int]:
     if width < 1 or height < 1 or width * height > MAX_PIXELS:
         raise ValueError("Invalid expected image dimensions")
-    if not path.is_file() or path.stat().st_size > MAX_BYTES:
-        raise ValueError("Missing or oversized PNG")
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BYTES:
+        # Never validate an inference output that aliases an unrelated file.
+        # The local subprocess is only authorized to write its new PNG path.
+        raise ValueError("Missing, symlinked or oversized PNG")
     from PIL import Image, ImageFile
     Image.MAX_IMAGE_PIXELS = MAX_PIXELS
     ImageFile.LOAD_TRUNCATED_IMAGES = False
@@ -43,6 +45,14 @@ def self_test() -> None:
         path = Path(directory) / "test.png"
         Image.new("RGBA", (16, 12), (255, 0, 0, 200)).save(path)
         assert inspect(path, 16, 12) == (200, 200)
+        alias = Path(directory) / "alias.png"
+        alias.symlink_to(path)
+        try:
+            inspect(alias, 16, 12)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted symlinked output PNG")
         for size in [(15, 12), (0, 12), (5000, 5000)]:
             try:
                 inspect(path, *size)

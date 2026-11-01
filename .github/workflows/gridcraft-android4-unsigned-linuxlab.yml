@@ -169,3 +169,5 @@ jobs:
       - name: Discard ephemeral builder signing material
         if: always()
         run: rm -rf builder/keys builder/output
+
+# Rebuild Android.4 unsigned ARM64 with tested WordCraft-style modal-focus and DCS gesture fix.

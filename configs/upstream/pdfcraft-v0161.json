@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "application": "pdfcraft",
+  "official_upstream": "storytold/pdfcraft",
+  "stable_tag": "v0.16.1",
+  "tag_commit": "24bb85308e4b65404fc908506ade6341a29999d7",
+  "upstream_workspace_version": "0.16.1",
+  "published_at_utc": "2026-10-31T03:59:54Z",
+  "android_base_branch": "integration/pdfcraft-v015-arm64-candidate-20261029",
+  "integration_status": "source-provenance-only-v015-build-still-failing",
+  "android_build_verified": false,
+  "permanent_signing_authorized": false,
+  "production_release_authorized": false
+}

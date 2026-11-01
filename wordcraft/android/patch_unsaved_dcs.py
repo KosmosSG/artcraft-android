@@ -45,7 +45,15 @@ def apply(root):
             });
     }
 '''
-    chrome.write_text(chrome_source.replace(window_anchor, modal_backdrop + window_anchor, 1))
+    # Force the dialog to the same foreground order as the backdrop;
+    # egui's default Window order is Middle, which lets the backdrop
+    # steal every click from the Save / Don't Save / Cancel buttons.
+    foreground_window = window_anchor.replace(
+        '.collapsible(false).resizable(false)',
+        '.collapsible(false).resizable(false).order(egui::Order::Foreground)',
+    )
+    patched = chrome_source.replace(window_anchor, modal_backdrop + foreground_window, 1)
+    chrome.write_text(patched)
 
 HELPER = '\n/// Consume only unmodified D/C/S presses; ignore repeats and preserve IME events.\nfn take_dcs(ctx: &egui::Context) -> Option<u8> {\n    ctx.input_mut(|i| {\n        let mut answer = None;\n        let mut consumed = false;\n        i.events.retain(|e| {\n            if let egui::Event::Key { key, pressed, repeat, modifiers, .. } = e {\n                let action = match key { egui::Key::D => 1, egui::Key::C => 2, egui::Key::S => 3, _ => 0 };\n                if action != 0 && !modifiers.any() {\n                    consumed = true;\n                    if *pressed && !*repeat && answer.is_none() { answer = Some(action); }\n                    return false;\n                }\n            }\n            true\n        });\n        if consumed {\n            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if matches!(t.as_str(), "d" | "D" | "c" | "C" | "s" | "S")));\n        }\n        answer\n    })\n}\n\nimpl WordApp {\n    pub fn android_unsaved_dcs_active(&self) -> bool {\n        matches!(self.dialog, Some(Dialog::SaveChanges { .. }))\n    }\n\n    pub fn android_capture_unsaved_dcs(&self, ctx: &egui::Context) {\n        if self.android_unsaved_dcs_active() {\n            if let Some(action) = take_dcs(ctx) {\n                ctx.data_mut(|d| d.insert_temp(egui::Id::new("wordcraft.unsaved.dcs"), action));\n            }\n        }\n    }\n}\n'
 if __name__ == "__main__": apply(sys.argv[1])

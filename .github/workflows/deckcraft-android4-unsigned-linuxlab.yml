@@ -194,3 +194,4 @@ jobs:
 # Requested unsigned Android.4 Linux Lab build; no signing or release.
 # D/C/S hardware keyboard text-event regression candidate (no signing/release).
 # Rebuild modal-focus DCS fix for regression review; unsigned only.
+# Rebuild DCS modal repeated-open key reset candidate (unsigned, no release).

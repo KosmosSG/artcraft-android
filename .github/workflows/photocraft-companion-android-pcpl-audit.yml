@@ -8,11 +8,25 @@ on:
       - tools/photocraft_companion_pcpl_audit.py
       - tools/test_photocraft_companion_pcpl_audit.py
       - .github/workflows/photocraft-companion-android-pcpl-audit.yml
+      - tools/test_photocraft_companion_android_phase1.py
+      - adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+      - adapters/photocraft/java/com/artcraft/photocraft/CompanionPluginCatalog.java
+      - adapters/photocraft/src/lib.rs
+      - adapters/photocraft/src/companion_catalog.rs
+      - adapters/photocraft/Cargo.toml
+      - adapters/photocraft/prepare.sh
   pull_request:
     paths:
       - tools/photocraft_companion_pcpl_audit.py
       - tools/test_photocraft_companion_pcpl_audit.py
       - .github/workflows/photocraft-companion-android-pcpl-audit.yml
+      - tools/test_photocraft_companion_android_phase1.py
+      - adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+      - adapters/photocraft/java/com/artcraft/photocraft/CompanionPluginCatalog.java
+      - adapters/photocraft/src/lib.rs
+      - adapters/photocraft/src/companion_catalog.rs
+      - adapters/photocraft/Cargo.toml
+      - adapters/photocraft/prepare.sh
 
 permissions:
   contents: read
@@ -40,6 +54,28 @@ jobs:
         run: |
           python3 -m unittest discover -s tools \
             -p test_photocraft_companion_pcpl_audit.py -v
+
+      - name: Read-only Android SAF/JNI integration regression suite
+        run: |
+          python3 -m unittest discover -s tools \
+            -p test_photocraft_companion_android_phase1.py -v
+
+      - name: Parse Android Rust UI module without building a heavy APK
+        run: |
+          rustfmt --edition 2024 --emit stdout \
+            adapters/photocraft/src/companion_catalog.rs >/dev/null
+
+      - name: Compile Android Java sources against SDK 35 (no APK)
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          jar="$sdk/platforms/android-35/android.jar"
+          test -f "$jar" || { echo "Android SDK 35 android.jar unavailable" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/photocraft-companion-classes"
+          javac -source 17 -target 17 -cp "$jar" \
+            -d "$RUNNER_TEMP/photocraft-companion-classes" \
+            adapters/photocraft/java/com/artcraft/photocraft/CompanionPluginCatalog.java \
+            adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
 
       - name: Confirm no Android build or production signing
         run: |

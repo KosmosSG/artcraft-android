@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "application": "lightcraft",
+  "official_upstream": "storytold/lightcraft",
+  "stable_tag": "v0.16.0",
+  "tag_commit": "cdf00cc84bf87f544d6dbc40e3bc0456641661a9",
+  "upstream_workspace_version": "0.16.0",
+  "published_at_utc": "2026-10-31T03:53:25Z",
+  "android_base_branch": "icons/lightcraft-approved-20261024",
+  "integration_status": "source-provenance-only-not-ported",
+  "android_build_verified": false,
+  "permanent_signing_authorized": false,
+  "production_release_authorized": false
+}

@@ -171,3 +171,5 @@ jobs:
         run: rm -rf builder/keys builder/output
 
 # Rebuild Android.4 unsigned ARM64 with tested WordCraft-style modal-focus and DCS gesture fix.
+
+# Test native Ctrl+W while cell editor active: commit draft and retain unsaved-changes dialog.

@@ -28,11 +28,13 @@ fn new(app: AndroidApp) -> Self {
     let ime = ime_bridge::ime::ImeBridge::new(&app);
     Self { app, probe: InputProbe::default(), }
 }
-fn logic(&mut self) {
+fn logic(&mut self, ctx: &egui::Context) {
     self.poll_file_picker();
+    self.inner.logic(ctx);
 }
 fn ui(&mut self, ui: &mut egui::Ui) {
     system_fonts::install_system_fonts(ui.ctx());
+    self.inner.ui(ui);
 }
 """)
         (stage / "Cargo.toml").write_text('[package.metadata.android]\npackage = "com.artcraft.gridcraft.candidate"\n')

@@ -18,6 +18,8 @@ EXPECTED_PACKAGE = "com.artcraft.photocraft"
 STEPS = (
     "v2_signed_ai_artifact_verified",
     "owner_feature_acceptance",
+    "candidate_specific_owner_device_acceptance",
+    "owner_signing_policy_compliance",
     "model_weight_and_dataset_rights_review",
     "real_device_sidecar_lifecycle_stress",
     "v2_to_v2_in_place_upgrade_and_data_retention",
@@ -63,7 +65,21 @@ def self_test() -> None:
     assert not ready and "model_weight_and_dataset_rights_review" in blocked
     assert "real_device_sidecar_lifecycle_stress" in blocked
     assert "stable_release_owner_signoff" in blocked
+    assert "candidate_specific_owner_device_acceptance" in blocked
+    assert "owner_signing_policy_compliance" in blocked
     assert record["checks"]["owner_feature_acceptance"]["status"] == "passed"
+    assert record["checks"]["candidate_specific_owner_device_acceptance"]["status"] == "pending"
+    assert record["checks"]["owner_signing_policy_compliance"]["status"] == "pending"
+    # The owner-tested android.2 preview and a green V2-signing job must not
+    # silently approve android.3 or override the owner-only original-key policy.
+    missing = deepcopy(record)
+    del missing["checks"]["owner_signing_policy_compliance"]
+    try:
+        check_record(missing)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Signing-policy gate can be omitted")
     for broken in ("", "0" * 64):
         x = deepcopy(record)
         x["v2_certificate_sha256"] = broken
@@ -91,7 +107,7 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("Unapproved stable promotion bypassed record guard")
-    print("PASS: seven release gates validated and negative fail-closed cases rejected")
+    print("PASS: nine release gates validated and negative fail-closed cases rejected")
 
 
 def main() -> int:

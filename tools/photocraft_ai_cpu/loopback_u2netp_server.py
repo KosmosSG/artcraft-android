@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import secrets
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -276,14 +277,39 @@ def make_handler(token: str):
                         # symlink could otherwise pass PNG validation and be
                         # returned to the consenting caller as if inferred.
                         return self.reply(502, b"CPU inference or validation failed")
-                    if output.stat().st_size > MAX_RESULT:
-                        return self.reply(502, b"Output exceeds safety limit")
+                    # Snapshot the worker's output identity before validation.
+                    # Even inside our private staging directory, never return a
+                    # different file swapped into that path after inspection.
+                    try:
+                        original = output.stat()
+                        if original.st_size > MAX_RESULT:
+                            return self.reply(502, b"Output exceeds safety limit")
+                    except OSError:
+                        return self.reply(502, b"Output PNG unavailable")
                     from validate_output_png import inspect
                     try:
                         inspect(output, width, height)
                     except Exception:
                         return self.reply(502, b"Output PNG validation failed")
-                    return self.reply(200, output.read_bytes(), "image/png")
+                    # Path.read_bytes() follows a symlink and reads without a
+                    # byte cap. Open without following links, compare identity,
+                    # and bound the response even if the file changed size.
+                    try:
+                        descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
+                        with os.fdopen(descriptor, "rb") as verified_file:
+                            current = os.fstat(verified_file.fileno())
+                            if ((current.st_dev, current.st_ino) !=
+                                    (original.st_dev, original.st_ino)):
+                                return self.reply(502, b"Output PNG changed")
+                            if (not stat.S_ISREG(current.st_mode)
+                                    or current.st_size > MAX_RESULT):
+                                return self.reply(502, b"Output exceeds safety limit")
+                            png = verified_file.read(MAX_RESULT + 1)
+                        if len(png) > MAX_RESULT:
+                            return self.reply(502, b"Output exceeds safety limit")
+                    except OSError:
+                        return self.reply(502, b"Output PNG unavailable")
+                    return self.reply(200, png, "image/png")
             finally:
                 lock.release()
 

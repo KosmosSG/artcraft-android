@@ -264,7 +264,11 @@ def make_handler(token: str):
                         )
                     except subprocess.TimeoutExpired:
                         return self.reply(504, b"CPU inference timed out")
-                    if completed.returncode != 0 or not output.is_file():
+                    if completed.returncode != 0 or output.is_symlink() or not output.is_file():
+                        # A model subprocess must never redirect the server's
+                        # temporary output to an unrelated local file. A
+                        # symlink could otherwise pass PNG validation and be
+                        # returned to the consenting caller as if inferred.
                         return self.reply(502, b"CPU inference or validation failed")
                     if output.stat().st_size > MAX_RESULT:
                         return self.reply(502, b"Output exceeds safety limit")

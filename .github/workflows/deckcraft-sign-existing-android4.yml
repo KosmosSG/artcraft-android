@@ -1,4 +1,4 @@
-name: DeckCraft DCS single-state fix signing (manual, no release)
+name: DeckCraft DCS repeat-dialog key fix signing (manual, no release)
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SOURCE_ARTIFACT_ID: "13090026612"
-      SOURCE_RUN_ID: "41322097812"
+      SOURCE_ARTIFACT_ID: "13090961164"
+      SOURCE_RUN_ID: "41323743507"
       EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
-      APK_OUT: DeckCraft-v0.9.0-android.4-DCS-STATE-FIX-arm64-v8a-signed.apk
+      APK_OUT: DeckCraft-v0.9.0-android.4-DCS-REPEAT-FIX-arm64-v8a-signed.apk
     steps:
       - name: Install Android build tools
         shell: bash
@@ -104,7 +104,7 @@ jobs:
       - name: Upload signed APK for owner device testing
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: DeckCraft-v0.9.0-android.4-DCS-STATE-FIX-ARM64-SIGNED-TEST
+          name: DeckCraft-v0.9.0-android.4-DCS-REPEAT-FIX-ARM64-SIGNED-TEST
           path: signed-output/
           retention-days: 14
           if-no-files-found: error

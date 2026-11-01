@@ -15,9 +15,9 @@
       "notes": "Owner confirmed seven PhotoCraft AI checks on HONOR MagicPad 4."
     },
     "candidate_specific_owner_device_acceptance": {
-      "status": "pending",
-      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41278752124",
-      "notes": "android.3 private V2-signed candidate exists, but owner has NOT accepted an in-place HONOR MagicPad 4 update or verified preserved projects, settings, fonts, shortcuts, AI, updater and local sidecar lifecycle; android.2 preview acceptance cannot be reused."
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6556329700",
+      "notes": "Owner reported testing the exact V2-signed android.3 candidate and said everything looks good on 1 Nov 2026. This is owner-reported general device acceptance only; a specifically documented in-place data-preserving upgrade, extended Linux Lab lifecycle tests, licensing, and original-vs-V2 signer policy remain separate pending gates."
     },
     "owner_signing_policy_compliance": {
       "status": "pending",

@@ -324,6 +324,8 @@
 
     private final java.util.concurrent.atomic.AtomicInteger wcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean wcDialogActive;
+    private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();
+    public boolean wcTakeNewDocument() { return wcNewDocument.getAndSet(0) != 0; }
     private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
     public int wcUnsavedDialog(boolean active) {
         wcDialogActive = active;
@@ -335,6 +337,15 @@
             int code = event.getKeyCode();
             if (wcDialogKeys.contains(code)) {
                 if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(code);
+                return true;
+            }
+            // Ctrl+N may be consumed by Android before egui's keyboard shortcuts.
+            // Queue its command for the UI thread, never run the editor on the Java thread.
+            if (!wcDialogActive && code == android.view.KeyEvent.KEYCODE_N
+                    && event.isCtrlPressed() && !event.isAltPressed()
+                    && !event.isMetaPressed()) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) wcNewDocument.set(1);
                 return true;
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;

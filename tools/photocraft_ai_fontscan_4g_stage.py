@@ -100,7 +100,20 @@ def patch_java(text: str) -> str:
     text = exactly(text,
         '                            paths.put(target.getAbsolutePath());',
         '                            try {\n'
+        '                                // Reject a corrupt/non-font replacement before touching the last good cache.\n'
+        '                                try (java.io.DataInputStream stagedInput = new java.io.DataInputStream(\n'
+        '                                        new java.io.FileInputStream(staging))) {\n'
+        '                                    byte[] magic = new byte[4];\n'
+        '                                    stagedInput.readFully(magic);\n'
+        '                                    boolean sfnt = (magic[0] == 0 && magic[1] == 1 && magic[2] == 0 && magic[3] == 0)\n'
+        '                                            || (magic[0] == 79 && magic[1] == 84 && magic[2] == 84 && magic[3] == 79)\n'
+        '                                            || (magic[0] == 116 && magic[1] == 114 && magic[2] == 117 && magic[3] == 101)\n'
+        '                                            || (magic[0] == 116 && magic[1] == 116 && magic[2] == 99 && magic[3] == 102);\n'
+        '                                    if (!sfnt) throw new java.io.IOException("Invalid font signature: " + name);\n'
+        '                                }\n'
+        '                                // Same-directory atomic replacement; fail closed if the filesystem refuses.\n'
         '                                java.nio.file.Files.move(staging.toPath(), target.toPath(),\n'
+        '                                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,\n'
         '                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);\n'
         '                            } catch (Exception fontCommitError) {\n'
         '                                staging.delete();\n'
@@ -315,6 +328,11 @@ def self_test() -> None:
     assert 'target.delete();' not in patched_java
     assert 'java.nio.file.Files.move(staging.toPath(), target.toPath(),' in patched_java
     assert 'java.nio.file.StandardCopyOption.REPLACE_EXISTING' in patched_java
+    assert 'java.nio.file.StandardCopyOption.ATOMIC_MOVE' in patched_java
+    assert 'stagedInput.readFully(magic);' in patched_java
+    assert 'if (!sfnt) throw new java.io.IOException' in patched_java
+    assert patched_java.count('magic[0] ==') == 4
+    assert patched_java.index('stagedInput.readFully(magic);') < patched_java.index('Files.move(staging.toPath()')
     assert patched_java.index('Files.move(staging.toPath()') < patched_java.index('paths.put(target.getAbsolutePath());')
     assert patched_java.count('staging.delete();') == 2
     assert "streamed_bytes" in patched_java

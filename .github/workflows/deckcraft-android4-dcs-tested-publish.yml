@@ -1,0 +1,99 @@
+name: Publish device-tested DeckCraft android.4 DCS fix once
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deckcraft-android4-dcs-tested-publish.yml
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: deckcraft-android4-dcs-tested-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: deckcraft-v0.9.0-android.4-dcs-fix
+      SIGN_RUN: '41334047931'
+      SIGN_ARTIFACT: DeckCraft-v0.9.0-android.4-DCS-REPEAT-FIX-ARM64-SIGNED-TEST
+      APK: DeckCraft-v0.9.0-android.4-DCS-WORDCRAFT-FIX-arm64-v8a-signed.apk
+      CERT: 7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
+      SOURCE_COMMIT: 4a41bf3b2717386efaa94a1d36d5a51367024697
+    steps:
+      - name: Guard release and validate tested signing workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release exists; no overwrite"
+            exit 1
+          fi
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SIGN_RUN")"
+          test "$(jq -r '.status' <<<"$run")" = completed
+          test "$(jq -r '.conclusion' <<<"$run")" = success
+          test "$(jq -r '.head_sha' <<<"$run")" = '9e4070b68824e249ca8eed299fb662df09c5a6fb'
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_COMMIT" --jq '.sha')" = "$SOURCE_COMMIT"
+      - name: Retrieve exact signed APK tested on device
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verified
+          gh run download "$SIGN_RUN" -R "$GITHUB_REPOSITORY" -n "$SIGN_ARTIFACT" -D verified
+          test -s "verified/$APK"
+          test -s verified/signing-certificate-sha256.txt
+          test "$(tr -d '\r\n ' < verified/signing-certificate-sha256.txt)" = "$CERT"
+      - name: Verify signed APK certificate, metadata and architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          signer="$(find "$sdk/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          aapt="$(find "$sdk/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          test -x "$signer" && test -x "$aapt"
+          "$signer" verify --verbose --print-certs "verified/$APK" > verified/signing-check.txt
+          python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          lines=Path('verified/signing-check.txt').read_text()
+          values={re.sub('[^0-9A-F]','',s.upper()) for s in re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})',lines,re.I)}
+          assert values=={os.environ['CERT'].upper()},'Signed certificate mismatch; refuse publication'
+          with zipfile.ZipFile(Path('verified')/os.environ['APK']) as z:
+              assert z.testzip() is None
+              libs=[x for x in z.namelist() if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs),libs
+              assert 'classes.dex' in z.namelist()
+          print('Original certificate, ARM64 payload and DEX verified')
+          PY
+          "$aapt" dump badging "verified/$APK" > verified/badging.txt
+          grep -F "name='com.artcraft.deckcraft'" verified/badging.txt
+          grep -F "versionCode='100000004'" verified/badging.txt
+          grep -F "versionName='0.9.0-android.4'" verified/badging.txt
+          (cd verified && sha256sum "$APK" > SHA256SUMS.txt)
+          cat > verified/NOTES.md <<'NOTES'
+          DeckCraft v0.9.0-android.4 D/C/S Fix — tested ARM64 release.
+
+          - Correct repeated use of unsaved-changes dialog shortcuts: D (Don't Save), C (Cancel), S (Save).
+          - Port device-tested WordCraft keyboard gesture handling, including key-up after dialog dismissal.
+          - Preserve compact modal confirmation design and block background canvas interaction.
+          - Preserve existing DeckCraft Android.4 package, icon, and font integration.
+          - Permanently signed using the original DeckCraft release certificate.
+
+          This is an updated Android.4 build (version code 100000004), not android.5.
+          Android may not allow a same-version-code reinstall on every device; keep a backup of important documents.
+          Device-tested and approved by the owner before publication.
+          Source build: 41332645938. Permanent signing run: 41334047931.
+          The earlier deckcraft-v0.9.0-android.4 release is preserved.
+          NOTES
+      - name: Publish separate release without altering original android.4 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" "verified/$APK" verified/SHA256SUMS.txt \
+            -R "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
+            --title "DeckCraft v0.9.0-android.4 — D/C/S Fix" \
+            --notes-file verified/NOTES.md \
+            --latest=false

@@ -14,6 +14,13 @@ ROOT = Path(__file__).parent
 
 
 class RevisionTests(unittest.TestCase):
+    def test_candidate_icon_uses_approved_png_not_obsolete_webp(self):
+        source = Image.open(ROOT.parent.parent / 'tools/approved-branding/assets/WordCraft.png').convert('RGBA')
+        generated = Image.open(ROOT / 'icon/wordcraft-approved-192.png').convert('RGBA')
+        expected = source.resize((192, 192), Image.Resampling.LANCZOS)
+        self.assertEqual(generated.size, (192, 192))
+        self.assertEqual(generated.tobytes(), expected.tobytes())
+
     def test_normalized_icon_and_adaptive_masks_have_no_black_border(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -57,6 +64,9 @@ class RevisionTests(unittest.TestCase):
             shutil.copyfile(ROOT / 'reference/build-common.sh', root / 'lib/build-common.sh')
             shutil.copyfile(ROOT / 'reference/app_icons.py', root / 'lib/app_icons.py')
             shutil.copyfile(ROOT / 'reference/SafActivity.java', root / 'templates/android/SafActivity.java')
+            shutil.copyfile(ROOT / 'reference/system_fonts.rs', root / 'templates/android/system_fonts.rs')
+            shutil.copyfile(ROOT / 'reference/dialogs.rs', root / 'source/wordcraft/crates/ui-egui/src/dialogs.rs')
+
             java = root / 'templates/android/SafActivity.java'
             java.write_text(java.read_text().rstrip() + '\n')
             shutil.copyfile(ROOT / 'reference/ribbon.rs', root / 'source/wordcraft/crates/ui-egui/src/ribbon.rs')

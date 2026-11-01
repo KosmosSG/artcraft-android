@@ -321,3 +321,64 @@
             }
         });
     }
+
+    private final java.util.concurrent.atomic.AtomicInteger wcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean wcDialogActive;
+    private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();
+    public boolean wcTakeNewDocument() { return wcNewDocument.getAndSet(0) != 0; }
+    private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
+    public int wcUnsavedDialog(boolean active) {
+        boolean justOpened = active && !wcDialogActive;
+        wcDialogActive = active;
+        if (justOpened) {
+            // The native Activity can retain keyboard focus in the editor/IME.
+            // Reacquire the app window when the modal opens, without requiring
+            // a manual tap on the WordCraft dialog title bar.
+            runOnUiThread(() -> {
+                android.view.Window window = getWindow();
+                if (window != null && window.getDecorView() != null) {
+                    window.getDecorView().setFocusableInTouchMode(true);
+                    window.getDecorView().requestFocus();
+                }
+            });
+            Log.i(TAG, "WC_DCS_DIAG modal_focus_requested");
+        }
+        // Do not silently drain a queued key while the UI is transitioning
+        // into or out of the dialog. The dialog consumes its own choice.
+        if (!active) return 0;
+        int action = wcDialogAction.getAndSet(0);
+        if (action != 0) Log.i(TAG, "WC_DCS_DIAG delivered=" + action);
+        return action;
+    }
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
+            int code = event.getKeyCode();
+            if (wcDialogKeys.contains(code)) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(code);
+                return true;
+            }
+            // Ctrl+N may be consumed by Android before egui's keyboard shortcuts.
+            // Queue its command for the UI thread, never run the editor on the Java thread.
+            if (!wcDialogActive && code == android.view.KeyEvent.KEYCODE_N
+                    && event.isCtrlPressed() && !event.isAltPressed()
+                    && !event.isMetaPressed()) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) wcNewDocument.set(1);
+                return true;
+            }
+            int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
+            if (action != 0 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+                Log.i(TAG, "WC_DCS_DIAG key=" + action + " dialogActive=" + wcDialogActive + " modifiers=" + event.getMetaState());
+            if (wcDialogActive && action != 0 && event.hasNoModifiers()) {
+                // Intercept the entire key gesture, not just ACTION_DOWN.
+                // Keep one pending choice until Rust consumes it.
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    wcDialogKeys.add(code);
+                    if (event.getRepeatCount() == 0) wcDialogAction.compareAndSet(0, action);
+                }
+                return true;
+            }
+        }
+
+        return super.dispatchKeyEvent(event);
+    }

@@ -328,7 +328,21 @@
     public boolean wcTakeNewDocument() { return wcNewDocument.getAndSet(0) != 0; }
     private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
     public int wcUnsavedDialog(boolean active) {
+        boolean justOpened = active && !wcDialogActive;
         wcDialogActive = active;
+        if (justOpened) {
+            // The native Activity can retain keyboard focus in the editor/IME.
+            // Reacquire the app window when the modal opens, without requiring
+            // a manual tap on the WordCraft dialog title bar.
+            runOnUiThread(() -> {
+                android.view.Window window = getWindow();
+                if (window != null && window.getDecorView() != null) {
+                    window.getDecorView().setFocusableInTouchMode(true);
+                    window.getDecorView().requestFocus();
+                }
+            });
+            Log.i(TAG, "WC_DCS_DIAG modal_focus_requested");
+        }
         // Do not silently drain a queued key while the UI is transitioning
         // into or out of the dialog. The dialog consumes its own choice.
         if (!active) return 0;

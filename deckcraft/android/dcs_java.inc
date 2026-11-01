@@ -12,14 +12,14 @@
                 // may already have received a hardware key before the first frame.
                 if (!active) dkDialogAction.set(0);
             }
-            dkDialogActive = active;
+            if (dkDialogActive != active) android.util.Log.i("DeckCraftDCS", "modal_active=" + active);\n            dkDialogActive = active;
             int action = dkDialogAction.getAndSet(0);
             return active ? action : 0;
         }
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
-            int code = event.getKeyCode();
+            int code = event.getKeyCode();\n            if (code == android.view.KeyEvent.KEYCODE_D || code == android.view.KeyEvent.KEYCODE_C || code == android.view.KeyEvent.KEYCODE_S) {\n                android.util.Log.i("DeckCraftDCS", "key=" + code + " event=" + event.getAction() + " active=" + dkDialogActive + " focus=" + (getCurrentFocus() == null ? "none" : getCurrentFocus().getClass().getSimpleName()));\n            }
             synchronized (dkDialogKeys) {
                 if (dkDialogKeys.contains(code)) {
                     if (event.getAction() == android.view.KeyEvent.ACTION_UP) dkDialogKeys.remove(code);

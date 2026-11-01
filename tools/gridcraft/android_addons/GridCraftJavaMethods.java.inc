@@ -348,9 +348,23 @@
     private volatile boolean gcDialogActive;
     private final java.util.HashSet<Integer> gcDialogKeys = new java.util.HashSet<>();
     public int gcUnsavedDialog(boolean active) {
+        boolean justOpened = active && !gcDialogActive;
         gcDialogActive = active;
-        int action = gcDialogAction.getAndSet(0);
-        return active ? action : 0;
+        if (justOpened) {
+            // Restore hardware keyboard focus on each modal opening, as in
+            // the device-tested WordCraft/DeckCraft confirmation dialog.
+            runOnUiThread(() -> {
+                android.view.Window window = getWindow();
+                if (window != null && window.getDecorView() != null) {
+                    window.getDecorView().setFocusableInTouchMode(true);
+                    window.getDecorView().requestFocus();
+                }
+            });
+            android.util.Log.i("GridCraftDCS", "modal_focus_requested");
+        }
+        // Never drain queued D/C/S when closing the dialog.
+        if (!active) return 0;
+        return gcDialogAction.getAndSet(0);
     }
     private final java.util.concurrent.atomic.AtomicBoolean gcEscapePending = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean gcEditorActive;
@@ -373,10 +387,12 @@
                 return true;
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
-            if (gcDialogActive && action != 0 && event.hasNoModifiers()
-                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                gcDialogKeys.add(code);
-                if (event.getRepeatCount() == 0) gcDialogAction.compareAndSet(0, action);
+            if (gcDialogActive && action != 0 && event.hasNoModifiers()) {
+                // Consume both key down and up even across modal transitions.
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    gcDialogKeys.add(code);
+                    if (event.getRepeatCount() == 0) gcDialogAction.compareAndSet(0, action);
+                }
                 return true;
             }
         }

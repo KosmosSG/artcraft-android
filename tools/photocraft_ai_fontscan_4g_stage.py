@@ -80,6 +80,34 @@ def patch_java(text: str) -> str:
     text = exactly(text,
         '                                int n;\n                                long total = 0;',
         '                                int n;')
+    # Never truncate an existing cached font before a replacement provider
+    # stream has completed and passed the size checks. A failed/empty/oversized
+    # SAF read must leave the last good cache entry intact.
+    text = exactly(text,
+        '                            File target = new File(cache, "font-" + hash + extension);\\n'
+        '                            long total = 0;',
+        '                            File target = new File(cache, "font-" + hash + extension);\\n'
+        '                            File staging = File.createTempFile("font-stage-", extension, cache);\\n'
+        '                            long total = 0;')
+    text = exactly(text,
+        'OutputStream output = new FileOutputStream(target))',
+        'OutputStream output = new FileOutputStream(staging))')
+    text = exactly(text,
+        '                                target.delete();\\n'
+        '                                Log.w(TAG, "Skipping shared font " + name, fontError);',
+        '                                staging.delete();\\n'
+        '                                Log.w(TAG, "Skipping shared font " + name, fontError);')
+    text = exactly(text,
+        '                            paths.put(target.getAbsolutePath());',
+        '                            try {\\n'
+        '                                java.nio.file.Files.move(staging.toPath(), target.toPath(),\\n'
+        '                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);\\n'
+        '                            } catch (Exception fontCommitError) {\\n'
+        '                                staging.delete();\\n'
+        '                                Log.w(TAG, "Could not commit shared font " + name, fontCommitError);\\n'
+        '                                continue;\\n'
+        '                            }\\n'
+        '                            paths.put(target.getAbsolutePath());')
     text = exactly(text,
         '                            paths.put(target.getAbsolutePath());\n                            count++;',
         '                            paths.put(target.getAbsolutePath());\n'
@@ -277,6 +305,16 @@ def self_test() -> None:
     assert patched_java.index("streamedBytes += n;") < patched_java.index("if (total > FONT_SCAN_MAX_FILE_BYTES)")
     assert "streamedBytes = FONT_SCAN_MAX_BYTES;" in patched_java
     assert "n > FONT_SCAN_MAX_BYTES - streamedBytes" in patched_java
+    # A failed SAF stream must not truncate or delete an earlier valid cache.
+    # Replacement is staged and only committed after the complete read.
+    assert 'File.createTempFile("font-stage-", extension, cache)' in patched_java
+    assert 'new FileOutputStream(staging)' in patched_java
+    assert 'new FileOutputStream(target)' not in patched_java
+    assert 'target.delete();' not in patched_java
+    assert 'java.nio.file.Files.move(staging.toPath(), target.toPath(),' in patched_java
+    assert 'java.nio.file.StandardCopyOption.REPLACE_EXISTING' in patched_java
+    assert patched_java.index('Files.move(staging.toPath()') < patched_java.index('paths.put(target.getAbsolutePath());')
+    assert patched_java.count('staging.delete();') == 2
     assert "streamed_bytes" in patched_java
     assert "inspected_entries" in patched_java
     assert "inspectedEntries >= FONT_SCAN_MAX_ENTRIES" in patched_java

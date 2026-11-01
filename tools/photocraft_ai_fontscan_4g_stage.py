@@ -30,6 +30,7 @@ def patch_java(text: str) -> str:
         '    // Entire SAF tree; counts disk bytes scanned, not Android RAM.\n'
         '    private static final long FONT_SCAN_MAX_BYTES = 4L * 1024 * 1024 * 1024;\n'
         '    private static final long FONT_SCAN_MAX_FILE_BYTES = 32L * 1024 * 1024;\n'
+        '    private static final long FONT_SCAN_STORAGE_RESERVE_BYTES = 64L * 1024 * 1024;\n'
         '    private static final int FONT_SCAN_MAX_FILES = 5000;\n'
         '    private static final int FONT_SCAN_MAX_ENTRIES = 20000;')
     text = exactly(text,
@@ -89,6 +90,22 @@ def patch_java(text: str) -> str:
         '                            File target = new File(cache, "font-" + hash + extension);\n'
         '                            File staging = File.createTempFile("font-stage-", extension, cache);\n'
         '                            long total = 0;')
+    # Keep a small device-storage reserve while copying a potentially 4 GiB
+    # catalog. This is a best-effort floor, not a free-space guarantee.
+    text = exactly(text,
+        '                            File staging = File.createTempFile("font-stage-", extension, cache);',
+        '                            if (cache.getUsableSpace() <= FONT_SCAN_STORAGE_RESERVE_BYTES) {\n'
+        '                                scanLimitReached = true;\n'
+        '                                break;\n'
+        '                            }\n'
+        '                            File staging = File.createTempFile("font-stage-", extension, cache);')
+    text = exactly(text,
+        '                                    output.write(buffer, 0, n);',
+        '                                    if (cache.getUsableSpace() - n < FONT_SCAN_STORAGE_RESERVE_BYTES) {\n'
+        '                                        scanLimitReached = true;\n'
+        '                                        throw new java.io.IOException("Insufficient free space for font cache");\n'
+        '                                    }\n'
+        '                                    output.write(buffer, 0, n);')
     text = exactly(text,
         'OutputStream output = new FileOutputStream(target))',
         'OutputStream output = new FileOutputStream(staging))')
@@ -325,6 +342,10 @@ def self_test() -> None:
     assert 'File.createTempFile("font-stage-", extension, cache)' in patched_java
     assert 'new FileOutputStream(staging)' in patched_java
     assert 'new FileOutputStream(target)' not in patched_java
+    assert 'FONT_SCAN_STORAGE_RESERVE_BYTES = 64L * 1024 * 1024' in patched_java
+    assert patched_java.count('cache.getUsableSpace()') == 2
+    assert patched_java.index('cache.getUsableSpace() <=') < patched_java.index('File.createTempFile(')
+    assert patched_java.index('cache.getUsableSpace() - n <') < patched_java.index('output.write(buffer, 0, n);')
     assert 'target.delete();' not in patched_java
     assert 'java.nio.file.Files.move(staging.toPath(), target.toPath(),' in patched_java
     assert 'java.nio.file.StandardCopyOption.REPLACE_EXISTING' in patched_java

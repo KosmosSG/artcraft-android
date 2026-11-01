@@ -299,10 +299,11 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertEqual(self.request()[0], 200)
 
     def test_validated_png_cannot_be_swapped_before_http_response(self):
-        # Deterministically replace the worker PNG immediately AFTER inspect()
-        # returns. The old Path.read_bytes() followed an injected symlink or
-        # accepted a different regular PNG, exposing unconsented local bytes.
-        from validate_output_png import inspect as original_inspect
+        # Regression: a file replaced immediately after PNG validation used
+        # to be returned by Path.read_bytes(), even if it was an unrelated
+        # regular PNG with a reused inode. The response now uses a bounded
+        # in-memory snapshot, so path changes cannot alter response bytes.
+        from validate_output_png import inspect_bytes as original_inspect
 
         with tempfile.TemporaryDirectory() as folder:
             unrelated = Path(folder) / "unrelated-private.png"
@@ -311,8 +312,15 @@ class LoopbackHTTPTests(unittest.TestCase):
 
             for replacement in ("symlink", "regular", "missing"):
                 with self.subTest(replacement=replacement):
-                    def swap_after_validation(path, width, height):
-                        alpha = original_inspect(path, width, height)
+                    worker = {}
+
+                    def inference(argv, **kwargs):
+                        worker["path"] = Path(argv[argv.index("--output") + 1])
+                        return mock_inference(argv, **kwargs)
+
+                    def swap_after_validation(payload, width, height):
+                        alpha = original_inspect(payload, width, height)
+                        path = worker["path"]
                         path.unlink()
                         if replacement == "symlink":
                             path.symlink_to(unrelated)
@@ -320,20 +328,23 @@ class LoopbackHTTPTests(unittest.TestCase):
                             path.write_bytes(original_bytes)
                         return alpha
 
-                    with patch("validate_output_png.inspect", side_effect=swap_after_validation):
-                        with patch.object(server.subprocess, "run", side_effect=mock_inference):
-                            # 429 immediately after the previous response is
-                            # normal until the handler's finally releases lock.
+                    with patch("validate_output_png.inspect_bytes", side_effect=swap_after_validation):
+                        with patch.object(server.subprocess, "run", side_effect=inference):
+                            # The previous response may precede release of the
+                            # one-worker lock; transient 429 is intentional.
                             for attempt in range(40):
                                 code, headers, body = self.request()
                                 if code != 429:
                                     break
                                 threading.Event().wait(0.02)
-                    self.assertEqual(code, 502)
-                    self.assertEqual(headers["Content-Type"], "text/plain")
+                    self.assertEqual(code, 200)
+                    self.assertEqual(headers["Content-Type"], "image/png")
                     self.assertNotEqual(body, original_bytes)
                     self.assertNotIn(str(unrelated).encode(), body)
                     self.assertEqual(unrelated.read_bytes(), original_bytes)
+                    with Image.open(io.BytesIO(body)) as image:
+                        image.load()
+                        self.assertEqual(image.getpixel((8, 8)), (80, 120, 200, 255))
 
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             for attempt in range(40):

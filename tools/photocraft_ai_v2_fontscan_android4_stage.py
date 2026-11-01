@@ -122,7 +122,7 @@ def self_test() -> None:
         else:
             raise AssertionError("Unsafe staging anchor was accepted")
     assert PRODUCTION != PREVIEW and OLD_VERSION != PROPOSED_VERSION
-    assert "android.3" in PROPOSED_VERSION
+    assert "android.4" in PROPOSED_VERSION
     assert OLD_VERSION == "0.14.0-android.1"
     assert PROPOSED_VERSION == "0.14.0-android.4"
     assert 16790007 > 16790004

@@ -113,7 +113,6 @@ jobs:
           cp builder/templates/android/SafActivity.java wordcraft/android/reference/SafActivity.java
           cp builder/templates/android/system_fonts.rs wordcraft/android/reference/system_fonts.rs
           cp builder/source/wordcraft/crates/ui-egui/src/dialogs.rs wordcraft/android/reference/dialogs.rs
-          cp builder/source/wordcraft/crates/ui-egui/src/dialogs/chrome.rs wordcraft/android/reference/chrome.rs
           cp builder/source/wordcraft/crates/ui-egui/src/ribbon.rs wordcraft/android/reference/ribbon.rs
           python3 -m unittest discover -s wordcraft/android -p 'test_revision.py' -v
 

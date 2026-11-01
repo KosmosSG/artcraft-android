@@ -1,0 +1,43 @@
+{
+  "package": "com.artcraft.photocraft",
+  "v2_certificate_sha256": "EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936",
+  "release_channel": "prerelease",
+  "pr_93_state": "draft",
+  "checks": {
+    "v2_signed_ai_artifact_verified": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268439675",
+      "notes": "V2-signed ARM64 AI preview produced; private signature and published checksum verified."
+    },
+    "owner_feature_acceptance": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6552850028",
+      "notes": "Owner confirmed seven PhotoCraft AI checks on HONOR MagicPad 4."
+    },
+    "model_weight_and_dataset_rights_review": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/docs/photocraft-ai-model-rights-review.md",
+      "notes": "U2NetP code/weight claims reviewed; DUTS dataset commercial rights remain unclear; no model weights bundled."
+    },
+    "real_device_sidecar_lifecycle_stress": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/actions/runs/41274273600",
+      "notes": "21 synthetic localhost tests pass including disconnect recovery; extended actual tablet suspend/restart/cancel testing remains."
+    },
+    "v2_to_v2_in_place_upgrade_and_data_retention": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268525156",
+      "notes": "Matching V2 certificate and increasing versionCode proven in CI; on-device data-preserving upgrade not independently verified."
+    },
+    "original_signed_to_v2_migration_notice": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.2-ai-v2-preview",
+      "notes": "Public release notes warn that old original-signature PhotoCraft requires backup/uninstall for V2 migration."
+    },
+    "stable_release_owner_signoff": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/pull/93",
+      "notes": "Preview was approved and tested; separate stable/Latest release approval has not been recorded."
+    }
+  }
+}

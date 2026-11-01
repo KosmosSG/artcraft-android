@@ -65,10 +65,17 @@ def self_test() -> None:
     assert not ready and "model_weight_and_dataset_rights_review" in blocked
     assert "real_device_sidecar_lifecycle_stress" in blocked
     assert "stable_release_owner_signoff" in blocked
-    assert "candidate_specific_owner_device_acceptance" in blocked
     assert "owner_signing_policy_compliance" in blocked
     assert record["checks"]["owner_feature_acceptance"]["status"] == "passed"
-    assert record["checks"]["candidate_specific_owner_device_acceptance"]["status"] == "pending"
+    # Owner may later accept android.3 in chat; keep the external evidence
+    # independently required and never confuse this with data retention.
+    acceptance = record["checks"]["candidate_specific_owner_device_acceptance"]
+    assert acceptance["status"] in ("pending", "passed")
+    assert ("candidate_specific_owner_device_acceptance" in blocked) == (acceptance["status"] == "pending")
+    x = deepcopy(record)
+    x["checks"]["candidate_specific_owner_device_acceptance"]["status"] = "pending"
+    _, unresolved = check_record(x)
+    assert "candidate_specific_owner_device_acceptance" in unresolved
     assert record["checks"]["owner_signing_policy_compliance"]["status"] == "pending"
     # The owner-tested android.2 preview and a green V2-signing job must not
     # silently approve android.3 or override the owner-only original-key policy.

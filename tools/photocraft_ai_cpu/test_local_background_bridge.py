@@ -175,6 +175,63 @@ class SidecarTests(unittest.TestCase):
                     else:
                         self.assertEqual(unrelated.read_bytes(), original)
 
+    def test_worker_stage_swap_before_publication_cannot_change_validated_png(self):
+        # A surviving worker child may replace its result between validation
+        # and publication. The old os.link(staged_output, destination) would
+        # publish the swapped bytes. Only a trusted snapshot may be linked.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+            observed = {}
+
+            def inference(argv, **kwargs):
+                staged = Path(argv[argv.index("--output") + 1])
+                Image.new("RGBA", (16, 16), (10, 80, 130, 200)).save(staged)
+                observed["staged"] = staged
+                observed["expected"] = staged.read_bytes()
+                return subprocess.CompletedProcess(argv, 0)
+
+            real_link = bridge.os.link
+
+            def swap_at_link(src, dst, **kwargs):
+                staged = observed["staged"]
+                self.assertNotEqual(Path(src), staged)
+                staged.unlink()
+                Image.new("RGBA", (16, 16), (220, 20, 20, 255)).save(staged)
+                self.assertNotEqual(staged.read_bytes(), observed["expected"])
+                return real_link(src, dst, **kwargs)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with patch.object(bridge.os, "link", side_effect=swap_at_link):
+                    with patch("sys.stdout", new_callable=io.StringIO):
+                        bridge.run(source, output, True)
+            self.assertEqual(output.read_bytes(), observed["expected"])
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+            self.assertEqual(list(root.glob("photocraft-ai-verified-*")), [])
+
+    def test_worker_hardlink_to_unrelated_png_is_rejected(self):
+        # A hardlink is a regular file, but is not an independent worker output.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            unrelated = root / "unrelated.png"
+            self.make_png(source)
+            self.make_png(unrelated)
+            original = unrelated.read_bytes()
+
+            def inference(argv, **kwargs):
+                staged = Path(argv[argv.index("--output") + 1])
+                bridge.os.link(unrelated, staged)
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with self.assertRaisesRegex(RuntimeError, "bounded regular PNG"):
+                    bridge.run(source, output, True)
+            self.assertFalse(output.exists())
+            self.assertEqual(unrelated.read_bytes(), original)
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
     def test_racing_destination_creation_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

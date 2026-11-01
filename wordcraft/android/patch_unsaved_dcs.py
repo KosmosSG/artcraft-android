@@ -24,8 +24,8 @@ def apply(root):
 
     # The ordinary egui Window is not modal. Install an interactive,
     # foreground backdrop *behind* Save Changes to intercept canvas touches.
-    chrome = root / "crates/ui-egui/src/dialogs/chrome.rs"
-    chrome_source = chrome.read_text()
+    chrome = target
+    chrome_source = target.read_text()
     window_anchor = '    let window = crate::window_close::window(ctx, egui::Window::new(tl!(title)).id(id).collapsible(false).resizable(false));'
     if chrome_source.count(window_anchor) != 1:
         raise ValueError("WordCraft dialog window anchor changed")

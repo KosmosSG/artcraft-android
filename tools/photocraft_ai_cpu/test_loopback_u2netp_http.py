@@ -592,8 +592,18 @@ class LoopbackHTTPTests(unittest.TestCase):
         # tablet memory behavior remains a separate physical-device gate.
         with patch.object(server.subprocess, "run", side_effect=mock_inference) as run:
             for _ in range(12):
-                code, headers, payload = self.request()
-                self.assertEqual(code, 200)
+                # The HTTP client can receive a complete response before the
+                # worker's finally block has released its single-inference
+                # lock. A brief 429 is intentional backpressure, not failure;
+                # retry within a bound rather than removing server safety.
+                for attempt in range(40):
+                    code, headers, payload = self.request()
+                    if code == 200:
+                        break
+                    self.assertEqual(code, 429)
+                    threading.Event().wait(0.02)
+                else:
+                    self.fail("Sequential request failed to recover from busy worker")
                 self.assertEqual(headers["Cache-Control"], "no-store")
                 self.assertGreater(len(payload), 30)
             self.assertEqual(run.call_count, 12)

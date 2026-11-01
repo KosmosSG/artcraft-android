@@ -27,7 +27,7 @@
     "model_weight_and_dataset_rights_review": {
       "status": "pending",
       "evidence": "https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/docs/photocraft-ai-model-rights-review.md",
-      "notes": "U2NetP code/weight claims reviewed; DUTS dataset commercial rights remain unclear; no model weights bundled."
+      "notes": "Owner clarified on 1 Nov 2026: PhotoCraft is free and intended for personal, noncommercial development/testing. No model weights or DUTS dataset are bundled in the public APK; Linux Lab model service is separate. Commercial licensing inquiry is not needed for owner-only testing. U²-Net author states code/models Apache-2.0, but DUTS-derived training rights and public third-party use/notice obligations are not blanket-cleared. Keep public Stable/Latest gate pending until the remaining release-policy review; do not claim commercial approval."
     },
     "real_device_sidecar_lifecycle_stress": {
       "status": "pending",

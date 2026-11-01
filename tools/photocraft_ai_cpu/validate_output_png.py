@@ -38,6 +38,37 @@ def inspect(path: Path, width: int, height: int) -> tuple[int, int]:
             raise ValueError("Output is entirely transparent")
         return low, high
 
+def inspect_bytes(payload: bytes, width: int, height: int) -> tuple[int, int]:
+    """Validate the exact bounded bytes that the HTTP server will return.
+
+    Unlike a path-based validation followed by a separate read, this cannot
+    inspect one PNG and then accidentally return a different file after a
+    rename, symlink swap, or immediate inode reuse in the staging directory.
+    """
+    import io
+    from PIL import Image, ImageFile
+    if width < 1 or height < 1 or width * height > MAX_PIXELS:
+        raise ValueError("Invalid expected image dimensions")
+    if not payload or len(payload) > MAX_BYTES:
+        raise ValueError("Missing or oversized PNG bytes")
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    ImageFile.LOAD_TRUNCATED_IMAGES = False
+    with Image.open(io.BytesIO(payload)) as image:
+        if image.format != "PNG" or image.size != (width, height):
+            raise ValueError("Unexpected format or dimensions")
+        if image.mode not in ("RGBA", "LA"):
+            raise ValueError("PNG must contain an alpha channel")
+        image.verify()
+    with Image.open(io.BytesIO(payload)) as image:
+        image.load()
+        if image.size != (width, height) or image.mode not in ("RGBA", "LA"):
+            raise ValueError("Decoded image properties changed")
+        low, high = image.getchannel("A").getextrema()
+        if high == 0:
+            raise ValueError("Output is entirely transparent")
+        return low, high
+
+
 def self_test() -> None:
     import tempfile
     from PIL import Image
@@ -45,6 +76,7 @@ def self_test() -> None:
         path = Path(directory) / "test.png"
         Image.new("RGBA", (16, 12), (255, 0, 0, 200)).save(path)
         assert inspect(path, 16, 12) == (200, 200)
+        assert inspect_bytes(path.read_bytes(), 16, 12) == (200, 200)
         alias = Path(directory) / "alias.png"
         alias.symlink_to(path)
         try:

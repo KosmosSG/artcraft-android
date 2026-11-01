@@ -14,6 +14,16 @@
       "evidence": "https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6552850028",
       "notes": "Owner confirmed seven PhotoCraft AI checks on HONOR MagicPad 4."
     },
+    "candidate_specific_owner_device_acceptance": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41278752124",
+      "notes": "android.3 private V2-signed candidate exists, but owner has NOT accepted an in-place HONOR MagicPad 4 update or verified preserved projects, settings, fonts, shortcuts, AI, updater and local sidecar lifecycle; android.2 preview acceptance cannot be reused."
+    },
+    "owner_signing_policy_compliance": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/pull/93#issuecomment-6554059878",
+      "notes": "Latest PR93 task policy requires owner-only HONOR Linux Lab original-certificate signing, while private GitHub V2-signing run 41278752124 succeeded with a DIFFERENT V2 certificate. Neither its CI success nor an earlier V2 prerelease overrides the explicit policy; owner must explicitly reconcile before any stable publication. No seamless original-key-to-V2 upgrade."
+    },
     "model_weight_and_dataset_rights_review": {
       "status": "pending",
       "evidence": "https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/docs/photocraft-ai-model-rights-review.md",

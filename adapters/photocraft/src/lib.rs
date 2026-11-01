@@ -671,7 +671,12 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui, _frame);
-        self.companion.show(ui.ctx(), &self.bridge);
+        // PhotoCraft's own unsaved-changes and other modal dialogs must keep exclusive
+        // pointer/keyboard focus. Hide the optional Companion overlay until all
+        // dialogs close instead of allowing a catalog button behind a modal.
+        if self.inner.ui.dialogs.is_empty() {
+            self.companion.show(ui.ctx(), &self.bridge);
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

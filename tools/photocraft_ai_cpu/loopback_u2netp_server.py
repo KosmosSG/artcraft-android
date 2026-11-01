@@ -174,9 +174,12 @@ def make_handler(token: str):
             # Reject duplicate credentials rather than allowing the HTTP
             # parser to silently choose one of several Authorization values.
             auth_values = self.headers.get_all("Authorization", [])
-            if len(auth_values) != 1 or not hmac.compare_digest(
-                auth_values[0], "Bearer " + token,
-            ):
+            # email.message decodes raw HTTP header octets as Latin-1.
+            # hmac.compare_digest(str, str) raises TypeError on non-ASCII
+            # values (e.g. Authorization: Bearer \\xff). Treat malformed
+            # credentials as a normal 401, never an unhandled handler error.
+            if (len(auth_values) != 1 or not auth_values[0].isascii()
+                    or not hmac.compare_digest(auth_values[0], "Bearer " + token)):
                 return self.reply(401, b"Unauthorized")
             # Consent must be an unambiguous, single affirmative header.
             # BaseHTTPRequestHandler.headers.get() silently chooses the first

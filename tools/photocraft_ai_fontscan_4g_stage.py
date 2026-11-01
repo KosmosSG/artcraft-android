@@ -13,6 +13,8 @@ import sys
 
 FONT_LIMIT_BYTES = 4 * 1024**3
 FONT_FILE_LIMIT = 5000
+# Cap SAF provider rows, including non-fonts and invalid metadata.
+FONT_ENTRY_LIMIT = 20000
 PER_FONT_BYTES = 32 * 1024**2
 
 def exactly(text: str, old: str, new: str) -> str:
@@ -28,17 +30,22 @@ def patch_java(text: str) -> str:
         '    // Entire SAF tree; counts disk bytes scanned, not Android RAM.\n'
         '    private static final long FONT_SCAN_MAX_BYTES = 4L * 1024 * 1024 * 1024;\n'
         '    private static final long FONT_SCAN_MAX_FILE_BYTES = 32L * 1024 * 1024;\n'
-        '    private static final int FONT_SCAN_MAX_FILES = 5000;')
+        '    private static final int FONT_SCAN_MAX_FILES = 5000;\n'
+        '    private static final int FONT_SCAN_MAX_ENTRIES = 20000;')
     text = exactly(text,
         '                int count = 0;\n                int visitedFolders = 0;',
-        '                int count = 0;\n                long scannedBytes = 0L;\n'
+        '                int count = 0;\n                int inspectedEntries = 0;\n                long scannedBytes = 0L;\n'
         '                boolean scanLimitReached = false;\n                int visitedFolders = 0;')
     text = exactly(text,
         'while (!pending.isEmpty() && count < 200 && visitedFolders < 1000)',
-        'while (!pending.isEmpty() && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000)')
+        'while (!pending.isEmpty() && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000 && inspectedEntries < FONT_SCAN_MAX_ENTRIES)')
     text = exactly(text,
         'while (cursor.moveToNext() && count < 200)',
-        'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES)')
+        'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES && inspectedEntries < FONT_SCAN_MAX_ENTRIES)')
+    text = exactly(text,
+        '                            String documentId = cursor.getString(0);',
+        '                            inspectedEntries++;\n'
+        '                            String documentId = cursor.getString(0);')
     text = exactly(text,
         '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
         '                                // SAF metadata may report unknown length (0 or -1).\n'
@@ -75,10 +82,12 @@ def patch_java(text: str) -> str:
         '                result.put("count", count);\n'
         '                results.offer(result.toString());',
         '                result.put("count", count);\n'
+        '                result.put("inspected_entries", inspectedEntries);\n'
         '                result.put("scanned_bytes", scannedBytes);\n'
         '                result.put("scan_budget_bytes", FONT_SCAN_MAX_BYTES);\n'
         '                result.put("scan_limit_reached", scanLimitReached\n'
-        '                        || count >= FONT_SCAN_MAX_FILES || !pending.isEmpty());\n'
+        '                        || count >= FONT_SCAN_MAX_FILES\n'
+        '                        || inspectedEntries >= FONT_SCAN_MAX_ENTRIES || !pending.isEmpty());\n'
         '                results.offer(result.toString());')
     return text
 
@@ -222,6 +231,7 @@ def stage(root: Path) -> None:
 def self_test() -> None:
     assert FONT_LIMIT_BYTES == 4294967296
     assert FONT_FILE_LIMIT == 5000
+    assert FONT_ENTRY_LIMIT == 20000
     assert PER_FONT_BYTES == 33554432
     for bad in ((0, "x", "y"), (2, "x", "y")):
         try:
@@ -237,6 +247,7 @@ def self_test() -> None:
         '                int count = 0;\n                int visitedFolders = 0;',
         'while (!pending.isEmpty() && count < 200 && visitedFolders < 1000)',
         'while (cursor.moveToNext() && count < 200)',
+        '                            String documentId = cursor.getString(0);',
         '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
         '                                    if (total > 32L * 1024 * 1024)\n                                        throw new Exception("Font too large: " + name);',
         '                            File target = new File(cache, "font-" + hash + extension);',
@@ -245,6 +256,11 @@ def self_test() -> None:
         '                result.put("count", count);\n                results.offer(result.toString());',
     ])
     patched_java = patch_java(java_sample)
+    assert "FONT_SCAN_MAX_ENTRIES = 20000" in patched_java
+    assert "inspectedEntries++;" in patched_java
+    assert "inspectedEntries < FONT_SCAN_MAX_ENTRIES" in patched_java
+    assert "inspected_entries" in patched_java
+    assert "inspectedEntries >= FONT_SCAN_MAX_ENTRIES" in patched_java
     assert "if (size > FONT_SCAN_MAX_FILE_BYTES) continue;" in patched_java
     assert "if (size <= 0 || size > FONT_SCAN_MAX_FILE_BYTES)" not in patched_java
     assert "if (total > FONT_SCAN_MAX_FILE_BYTES)" in patched_java
@@ -256,7 +272,7 @@ def self_test() -> None:
     assert "fs::read(path)" not in SHARED_RUST
     assert "register_font_paths(&candidates)" in SHARED_RUST
     assert "scan_limit_reached" in SHARED_RUST
-    print("PASS: 4 GiB capacity, fail-closed patching and lazy registration invariants")
+    print("PASS: 4 GiB capacity, 20k provider-row traversal cap, fail-closed patching and lazy registration invariants")
 
 if __name__ == "__main__":
     try:

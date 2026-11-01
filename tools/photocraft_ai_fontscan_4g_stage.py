@@ -36,13 +36,13 @@ def patch_java(text: str) -> str:
     text = exactly(text,
         '                int count = 0;\n                int visitedFolders = 0;',
         '                int count = 0;\n                int inspectedEntries = 0;\n                long scannedBytes = 0L;\n                long streamedBytes = 0L;\n'
-        '                boolean scanLimitReached = false;\n                int visitedFolders = 0;')
+        '                boolean scanLimitReached = false;\n                boolean storageLimitReached = false;\n                int visitedFolders = 0;')
     text = exactly(text,
         'while (!pending.isEmpty() && count < 200 && visitedFolders < 1000)',
-        'while (!pending.isEmpty() && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000 && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
+        'while (!pending.isEmpty() && !storageLimitReached && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000 && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
     text = exactly(text,
         'while (cursor.moveToNext() && count < 200)',
-        'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
+        'while (!storageLimitReached && cursor.moveToNext() && count < FONT_SCAN_MAX_FILES && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
     text = exactly(text,
         '                            String documentId = cursor.getString(0);',
         '                            inspectedEntries++;\n'
@@ -96,6 +96,7 @@ def patch_java(text: str) -> str:
         '                            File staging = File.createTempFile("font-stage-", extension, cache);',
         '                            if (cache.getUsableSpace() <= FONT_SCAN_STORAGE_RESERVE_BYTES) {\n'
         '                                scanLimitReached = true;\n'
+        '                                storageLimitReached = true;\n'
         '                                break;\n'
         '                            }\n'
         '                            File staging = File.createTempFile("font-stage-", extension, cache);')
@@ -103,6 +104,7 @@ def patch_java(text: str) -> str:
         '                                    output.write(buffer, 0, n);',
         '                                    if (cache.getUsableSpace() - n < FONT_SCAN_STORAGE_RESERVE_BYTES) {\n'
         '                                        scanLimitReached = true;\n'
+        '                                        storageLimitReached = true;\n'
         '                                        throw new java.io.IOException("Insufficient free space for font cache");\n'
         '                                    }\n'
         '                                    output.write(buffer, 0, n);')
@@ -345,6 +347,14 @@ def self_test() -> None:
     assert 'new FileOutputStream(target)' not in patched_java
     assert 'FONT_SCAN_STORAGE_RESERVE_BYTES = 64L * 1024 * 1024' in patched_java
     assert patched_java.count('cache.getUsableSpace()') == 2
+    # A mid-stream low-space failure must stop the entire scan after cleanup,
+    # not read/reject thousands more provider files with no disk capacity.
+    assert 'boolean storageLimitReached = false;' in patched_java
+    assert patched_java.count('storageLimitReached = true;') == 2
+    assert 'while (!storageLimitReached && cursor.moveToNext()' in patched_java
+    assert 'while (!pending.isEmpty() && !storageLimitReached' in patched_java
+    assert patched_java.index('storageLimitReached = true;') < patched_java.index('File.createTempFile(')
+    assert patched_java.index('storageLimitReached = true;', patched_java.index('storageLimitReached = true;') + 1) < patched_java.index('output.write(buffer, 0, n);')
     assert patched_java.index('cache.getUsableSpace() <=') < patched_java.index('File.createTempFile(')
     assert patched_java.index('cache.getUsableSpace() - n <') < patched_java.index('output.write(buffer, 0, n);')
     assert 'target.delete();' not in patched_java

@@ -471,6 +471,54 @@ class LoopbackHTTPTests(unittest.TestCase):
                 self.fail("Completed request leaked a connection slot")
             self.assertEqual(self.request()[0], 200)
 
+    def test_client_disconnect_during_cpu_inference_is_routine_and_server_recovers(self):
+        # Android can close or cancel the AI dialog after an upload succeeds
+        # but before the local CPU subprocess produces its PNG. A write to
+        # that socket must not produce a handler traceback, leak the token,
+        # leave the inference lock held, or break later consenting requests.
+        started = threading.Event()
+        release = threading.Event()
+
+        def delayed_inference(*args, **kwargs):
+            started.set()
+            if not release.wait(timeout=4):
+                raise AssertionError("Mock inference never released")
+            return mock_inference(*args, **kwargs)
+
+        payload = sample_png()
+        head = (
+            f"POST /v1/remove-background HTTP/1.1\\r\\n"
+            f"Host: 127.0.0.1\\r\\nAuthorization: Bearer {TOKEN}\\r\\n"
+            "X-PhotoCraft-Image-Consent: yes\\r\\n"
+            "Content-Type: image/png\\r\\n"
+            f"Content-Length: {len(payload)}\\r\\n\\r\\n"
+        ).encode("ascii")
+        # Real CRLF, not literal backslash + r/n bytes.
+        self.assertIn(b"\\r\\nAuthorization:", head)
+        with patch.object(self.httpd, "handle_error") as unexpected:
+            with patch.object(server.subprocess, "run", side_effect=delayed_inference) as inference:
+                with socket.create_connection(self.address, timeout=3) as sock:
+                    sock.sendall(head + payload)
+                    self.assertTrue(started.wait(timeout=3))
+                    # Force a disconnect before inference sends its response.
+                    sock.shutdown(socket.SHUT_RDWR)
+                release.set()
+                # Give the handler time to deliver (and reject) its PNG.
+                threading.Event().wait(0.15)
+                inference.assert_called_once()
+            with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                # Request-recovery may briefly race the previous handler's
+                # finally block. Poll without assuming exact scheduling.
+                for _ in range(40):
+                    code, _, _ = self.request()
+                    if code == 200:
+                        break
+                    self.assertEqual(code, 429)
+                    threading.Event().wait(0.03)
+                else:
+                    self.fail("Disconnected client left local inference unavailable")
+            unexpected.assert_not_called()
+
     def test_only_one_inference_runs_at_a_time(self):
         entered = threading.Event()
         release = threading.Event()

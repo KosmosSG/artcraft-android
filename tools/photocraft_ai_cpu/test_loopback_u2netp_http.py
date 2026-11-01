@@ -519,6 +519,38 @@ class LoopbackHTTPTests(unittest.TestCase):
                     self.fail("Disconnected client left local inference unavailable")
             unexpected.assert_not_called()
 
+    def test_cpu_worker_launch_oserror_returns_private_502_and_recovers(self):
+        # A missing/unlaunchable Linux Lab Python or bridge raises OSError
+        # before subprocess.run returns. Previously this escaped do_POST,
+        # closed the socket and logged a handler traceback with local paths.
+        # It must be a bounded 502 with no private path or token disclosed.
+        for failure in (
+            FileNotFoundError(2, "No such file", "/home/honor/private/bridge.py"),
+            PermissionError(13, "Permission denied", "/home/honor/private/python"),
+        ):
+            with self.subTest(error=type(failure).__name__):
+                with patch.object(self.httpd, "handle_error") as unexpected:
+                    with patch.object(server.subprocess, "run", side_effect=failure) as worker:
+                        code, headers, body = self.request()
+                        self.assertEqual(code, 502)
+                        self.assertEqual(headers["Content-Type"], "text/plain")
+                        self.assertEqual(headers["Cache-Control"], "no-store")
+                        self.assertNotIn(b"/home/honor", body)
+                        self.assertNotIn(TOKEN.encode(), body)
+                        worker.assert_called_once()
+                    unexpected.assert_not_called()
+                # The failed request must release the inference lock and
+                # leave the local service usable for fresh per-image consent.
+                with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                    for _ in range(40):
+                        code, _, _ = self.request()
+                        if code == 200:
+                            break
+                        self.assertEqual(code, 429)
+                        threading.Event().wait(0.03)
+                    else:
+                        self.fail("Worker launch failure leaked inference lock")
+
     def test_cpu_timeout_returns_504_and_next_job_recovers(self):
         # A stalled CPU subprocess must produce a bounded error, drop its
         # temporary files and release the one-worker lock for the next image.

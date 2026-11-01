@@ -92,6 +92,76 @@ class SidecarTests(unittest.TestCase):
                 runner.assert_not_called()
             self.assertFalse(output.exists())
 
+    def test_success_commits_only_validated_png_and_removes_staging(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+
+            def inference(argv, **kwargs):
+                staged = Path(argv[argv.index("--output") + 1])
+                self.assertNotEqual(staged, output)
+                self.assertFalse(output.exists())
+                self.make_png(staged)
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with patch("sys.stdout", new_callable=io.StringIO):
+                    bridge.run(source, output, True)
+            with Image.open(output) as image:
+                image.load()
+                self.assertEqual(image.size, (16, 16))
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
+    def test_failed_inference_does_not_leave_partial_output(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+
+            def inference(argv, **kwargs):
+                Path(argv[argv.index("--output") + 1]).write_bytes(b"partial")
+                return subprocess.CompletedProcess(argv, 1)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with self.assertRaisesRegex(RuntimeError, "no output committed"):
+                    bridge.run(source, output, True)
+            self.assertFalse(output.exists())
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
+    def test_timeout_cleans_staged_output_without_touching_destination(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+
+            def inference(argv, **kwargs):
+                Path(argv[argv.index("--output") + 1]).write_bytes(b"partial")
+                raise subprocess.TimeoutExpired(cmd=argv, timeout=180)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    bridge.run(source, output, True)
+            self.assertFalse(output.exists())
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
+    def test_racing_destination_creation_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+
+            def inference(argv, **kwargs):
+                self.make_png(Path(argv[argv.index("--output") + 1]))
+                output.write_bytes(b"other-writer-data")
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with self.assertRaisesRegex(ValueError, "new PNG"):
+                    bridge.run(source, output, True)
+            self.assertEqual(output.read_bytes(), b"other-writer-data")
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
     def test_refuses_dangling_output_symlink_before_inference(self):
         # resolve() follows dangling symlinks, so an absent target previously
         # passed exists() and could be created outside the requested output.

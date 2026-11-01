@@ -8,7 +8,9 @@ No model download is permitted by this bridge.
 from __future__ import annotations
 import argparse
 import json
+import os
 from pathlib import Path
+import tempfile
 import subprocess
 import sys
 from PIL import Image
@@ -56,25 +58,35 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         decoded.load()
         if decoded.size != (width, height):
             raise ValueError("Decoded PNG dimensions changed")
-    # Use the already-verified U2NetP model only; never pass download consent.
-    # Do not capture the image or raw result in logs.
-    completed = subprocess.run(
-        [sys.executable, str(BENCHMARK), "--run",
-         "--input", str(source), "--output", str(destination)],
-        # No output is consumed; capturing a verbose or failing inference
-        # process into RAM could exhaust the Linux Lab CPU sidecar.
-        check=False, timeout=180,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    if completed.returncode != 0:
-        # The benchmark may have produced an incomplete output; never import it.
-        raise RuntimeError("U2NetP subprocess failed; inspect isolated benchmark logs")
-    from validate_output_png import inspect
-    try:
-        alpha = inspect(destination, width, height)
-    except Exception:
-        # Preserve output for diagnosis; never claim it is safe to import.
-        raise RuntimeError("U2NetP output failed full PNG validation")
+    # Run inference into a private temporary directory on the SAME filesystem
+    # as the requested output. A failed/timeout/invalid inference must not
+    # leave a partial user-visible PNG. Do not pass model-download consent.
+    # Never capture image data or arbitrary subprocess logs in memory.
+    with tempfile.TemporaryDirectory(
+        prefix="photocraft-ai-stage-", dir=destination.parent
+    ) as stage_dir:
+        staged_output = Path(stage_dir) / "result.png"
+        completed = subprocess.run(
+            [sys.executable, str(BENCHMARK), "--run",
+             "--input", str(source), "--output", str(staged_output)],
+            check=False, timeout=180,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError("U2NetP subprocess failed; no output committed")
+        from validate_output_png import inspect
+        try:
+            alpha = inspect(staged_output, width, height)
+        except Exception as exc:
+            raise RuntimeError("U2NetP output failed full PNG validation") from exc
+        # An exclusive hard link publishes the validated bytes atomically.
+        # Unlike rename/replace, it cannot overwrite a file or symlink created
+        # at the destination after the initial preflight (TOCTOU protection).
+        # Failure to link is fail-closed; temporary data is always removed.
+        try:
+            os.link(staged_output, destination)
+        except FileExistsError as exc:
+            raise ValueError("Output must be a new PNG path") from exc
     print(json.dumps({
         "status": "validated_local_output",
         "width": width, "height": height,

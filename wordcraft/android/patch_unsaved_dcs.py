@@ -37,7 +37,7 @@ def apply(root):
             .fixed_pos(egui::Pos2::ZERO)
             .interactable(true)
             .show(ctx, |ui| {
-                let rect = ctx.screen_rect();
+                let rect = ctx.content_rect();
                 ui.allocate_rect(rect, egui::Sense::click_and_drag());
                 ui.painter().rect_filled(
                     rect, 0.0, egui::Color32::from_black_alpha(100),

@@ -53,8 +53,8 @@ injection='''    if app == "deckcraft":
             'struct AndroidShell {': 'struct AndroidShell {\\n    dk: dcs_bridge::ModalBridge,',
             'let ime = ime_bridge::ime::ImeBridge::new(&app);': 'let dk = dcs_bridge::ModalBridge::new(&app);\\n        let ime = ime_bridge::ime::ImeBridge::new(&app);',
             'Self { inner, app, ime,': 'Self { inner, app, ime, dk,',
-            '        self.inner.logic(ctx);': '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.dk.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\\n        self.inner.logic(ctx);',
-            '        self.inner.ui(ui);': '        self.inner.ui(ui);\\n        self.dk.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());',
+            '        self.inner.logic(ctx);': '        self.dk.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\\n        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.inner.logic(ctx);',
+            '        self.inner.ui(ui);': '        self.inner.ui(ui);',
         }
         for before, after in replacements.items():
             if entry.count(before) != 1: raise ValueError('DeckCraft shell anchor changed: '+before)

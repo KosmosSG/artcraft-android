@@ -149,6 +149,28 @@ class LoopbackHTTPTests(unittest.TestCase):
             self.assertEqual(self.request(consent=None)[0], 403)
             run.assert_not_called()
 
+    def test_non_ascii_bearer_header_returns_401_without_handler_exception(self):
+        # BaseHTTPRequestHandler decodes raw header bytes as Latin-1. Python's
+        # hmac.compare_digest(str, str) raises TypeError for non-ASCII input;
+        # malformed credentials must not crash the handler or run inference.
+        head = (
+            b"POST /v1/remove-background HTTP/1.1\\r\\n"
+            b"Host: 127.0.0.1\\r\\n"
+            b"Authorization: Bearer "
+        )
+        tail = b"\\r\\nX-PhotoCraft-Image-Consent: yes\\r\\nContent-Type: image/png\\r\\nContent-Length: 1\\r\\n\\r\\nx"
+        with patch.object(self.httpd, "handle_error") as unexpected:
+            with patch.object(server.subprocess, "run") as inference:
+                for byte in (b"\\x80", b"\\xff"):
+                    with self.subTest(byte=byte):
+                        response = self.raw_request(head + byte + tail)
+                        self.assertIn(b" 401 ", response.split(b"\\r\\n", 1)[0])
+                inference.assert_not_called()
+            unexpected.assert_not_called()
+        # Rejected malformed credentials cannot poison the next valid request.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            self.assertEqual(self.request()[0], 200)
+
     def test_non_png_bad_path_and_empty_payload_refused(self):
         with patch.object(server.subprocess, "run") as run:
             self.assertEqual(self.request(mime="image/jpeg")[0], 415)

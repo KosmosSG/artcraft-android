@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -39,7 +40,7 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
             raise ValueError(f"{label}: not signed with permanent V2 certificate")
         if not isinstance(item.get("version_code"), int) or isinstance(item.get("version_code"), bool):
             raise ValueError(f"{label}: invalid versionCode type")
-        if not isinstance(item.get("apk_sha256"), str) or len(item["apk_sha256"]) != 64:
+        if not isinstance(item.get("apk_sha256"), str) or re.fullmatch(r"[0-9a-fA-F]{64}", item["apk_sha256"]) is None:
             raise ValueError(f"{label}: invalid APK SHA-256")
     if (reference["version_name"], reference["version_code"],
             reference["apk_sha256"].lower()) != (
@@ -54,7 +55,8 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
         raise ValueError("Candidate must use a canonical PhotoCraft release tag")
     if candidate.get("version_name") != tag.removeprefix("photocraft-v"):
         raise ValueError("Candidate tag must match Android versionName")
-    release_key(tag)  # Verifies Android revision syntax and canonical naming.
+    if release_key(tag) <= release_key(V2_AI_PREVIEW_IDENTITY_TAG):
+        raise ValueError("Candidate versionName must be newer than published V2 AI preview")
     return {
         "package": PACKAGE,
         "signing_certificate_sha256": V2_CERT.upper(),
@@ -100,12 +102,21 @@ def self_test() -> None:
         ("candidate", "tag", "photocraft-v0.14.0-android.2-ai-v2-preview"),
         ("candidate", "tag", "photocraft-v0.14.0-android.4"),
         ("candidate", "tag", "vectorcraft-v0.14.0-android.3"),
+        # A higher numeric versionCode must not conceal a versionName rollback.
+        ("candidate", "tag", "photocraft-v0.13.0-android.3"),
+        ("candidate", "tag", "photocraft-v0.14.0-android.1"),
+        ("candidate", "apk_sha256", "g" * 64),
+        ("baseline", "apk_sha256", "z" * 64),
         ("candidate", "version_name", "0.14.1"),
         ("candidate", "apk_sha256", V2_AI_PREVIEW_SHA),
     ]
     for who, key, value in cases:
         r, c = copy.deepcopy(ref), copy.deepcopy(target)
         (r if who == "baseline" else c)[key] = value
+        if who == "candidate" and key == "tag" and value in (
+            "photocraft-v0.13.0-android.3", "photocraft-v0.14.0-android.1"
+        ):
+            c["version_name"] = value.removeprefix("photocraft-v")
         try:
             verify_pair(r, c)
         except ValueError:

@@ -179,7 +179,8 @@ impl CompanionCatalog {
                 self.pending = None;
                 break;
             };
-            if value.get("kind").and_then(Value::as_str) != Some("companion")
+            if self.pending.is_none()
+                || value.get("kind").and_then(Value::as_str) != Some("companion")
                 || value.get("id").and_then(Value::as_u64) != self.pending
             {
                 continue; // Never accept an unrelated or stale request result.
@@ -207,7 +208,7 @@ impl CompanionCatalog {
         // Small, explicitly tapped entry point separate from File > Open and shortcuts.
         // Right-bottom placement avoids the established top menu and contextual text strip.
         egui::Area::new(egui::Id::new("photocraft_companion_catalog_button"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-18.0, -18.0))
             .show(ctx, |ui| {
                 egui::Frame::default().show(ui, |ui| {

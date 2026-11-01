@@ -122,8 +122,17 @@ def check_arm64_archive(
             ensure(all(name.count("/") == 2 and len(name.rsplit("/", 1)[-1]) > 3
                        for name in native_libs),
                    "Candidate APK contains a non-loadable ARM64 library path")
+            # ZIP CRC and ABI path alone do not establish a loadable ARM64
+            # library. Read only the first 20 decoded bytes of each .so.
+            for name in native_libs:
+                with archive.open(name) as library:
+                    elf = library.read(20)
+                ensure(len(elf) == 20 and elf[:4] == b"\x7fELF"
+                       and elf[4:6] == b"\x02\x01"
+                       and elf[18:20] == b"\xb7\x00",
+                       "Candidate APK contains a non-ARM64 ELF native library")
             ensure(archive.testzip() is None, "Candidate APK has a corrupt ZIP member")
-    except (zipfile.BadZipFile, EOFError, RuntimeError) as exc:
+    except (zipfile.BadZipFile, EOFError, RuntimeError, NotImplementedError) as exc:
         raise ValueError("Candidate APK ZIP cannot be verified") from exc
     return {"arm64_only": True, "native_library_count": len(native_libs),
             "zip_crc_verified": True, "model_weights_embedded": False}
@@ -290,7 +299,10 @@ def self_test() -> None:
     def make_zip(path: Path, members: list[str]) -> None:
         with zipfile.ZipFile(path, "w") as archive:
             for name in members:
-                archive.writestr(name, b"test-content")
+                # Synthetic valid ELF64 little-endian AArch64 native header.
+                payload = (b"\x7fELF\x02\x01" + b"\x00" * 12
+                           + b"\xb7\x00" + b"test-content") if name.lower().endswith(".so") else b"test-content"
+                archive.writestr(name, payload)
 
     with tempfile.TemporaryDirectory() as directory:
         candidate_path = Path(directory) / "candidate.apk"
@@ -316,6 +328,24 @@ def self_test() -> None:
         else:
             raise AssertionError("Accepted too many APK ZIP members")
         make_zip(candidate_path, good)
+        # CRC-valid fake .so payloads, ELF32, wrong CPU and big-endian
+        # headers must all fail despite a valid ARM64 ZIP path.
+        bad_elf_headers = (
+            b"not-an-elf",
+            b"\x7fELF\x01\x01" + b"\x00" * 12 + b"\xb7\x00",
+            b"\x7fELF\x02\x01" + b"\x00" * 12 + b"\x28\x00",
+            b"\x7fELF\x02\x02" + b"\x00" * 12 + b"\xb7\x00",
+        )
+        for bad_elf in bad_elf_headers:
+            with zipfile.ZipFile(candidate_path, "w") as archive:
+                for name in good:
+                    archive.writestr(name, bad_elf if name.endswith(".so") else b"test-content")
+            try:
+                check_arm64_archive(candidate_path)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted a non-ARM64 ELF native library")
         # ZIP central-directory sizes must be bounded before testzip() can
         # decompress a potentially huge, highly compressible archive.
         try:
@@ -403,7 +433,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Corrupt candidate APK ZIP was accepted")
-    print("PASS: ARM64 archive and no-embedded-model/key checks (34 rejection scenarios)")
+    print("PASS: ARM64 archive and no-embedded-model/key checks (38 rejection scenarios)")
     print(f"PASS: production upgrade compatibility gates ({len(rejected)} rejection scenarios)")
 
 

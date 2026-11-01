@@ -58,7 +58,14 @@ def patch_java(text: str) -> str:
     text = exactly(text,
         '                                    if (total > 32L * 1024 * 1024)\n'
         '                                        throw new Exception("Font too large: " + name);',
-        '                                    // Charge provider bytes even for rejected or oversized files.\n'\n        '                                    if (n > FONT_SCAN_MAX_BYTES - streamedBytes) {\n'\n        '                                        scanLimitReached = true;\n'\n        '                                        streamedBytes = FONT_SCAN_MAX_BYTES;\n'\n        '                                        throw new Exception("4 GiB font read budget reached");\n'\n        '                                    }\n'\n        '                                    streamedBytes += n;\n'\n        '                                    if (total > FONT_SCAN_MAX_FILE_BYTES)\n'
+        '                                    // Charge provider bytes even for rejected or oversized files.\n'
+        '                                    if (n > FONT_SCAN_MAX_BYTES - streamedBytes) {\n'
+        '                                        scanLimitReached = true;\n'
+        '                                        streamedBytes = FONT_SCAN_MAX_BYTES;\n'
+        '                                        throw new Exception("4 GiB font read budget reached");\n'
+        '                                    }\n'
+        '                                    streamedBytes += n;\n'
+        '                                    if (total > FONT_SCAN_MAX_FILE_BYTES)\n'
         '                                        throw new Exception("Font too large: " + name);\n'
         '                                    if (total > FONT_SCAN_MAX_BYTES - scannedBytes) {\n'
         '                                        scanLimitReached = true;\n'
@@ -263,6 +270,11 @@ def self_test() -> None:
     assert "inspectedEntries < FONT_SCAN_MAX_ENTRIES" in patched_java
     assert "streamedBytes < FONT_SCAN_MAX_BYTES" in patched_java
     assert "streamedBytes += n;" in patched_java
+    # Regression: charge actual provider reads before the per-font rejection,
+    # and never allow a read past the cumulative 4 GiB budget.
+    assert patched_java.count("streamedBytes += n;") == 1
+    assert patched_java.index("if (n > FONT_SCAN_MAX_BYTES - streamedBytes)") < patched_java.index("streamedBytes += n;")
+    assert patched_java.index("streamedBytes += n;") < patched_java.index("if (total > FONT_SCAN_MAX_FILE_BYTES)")
     assert "streamedBytes = FONT_SCAN_MAX_BYTES;" in patched_java
     assert "n > FONT_SCAN_MAX_BYTES - streamedBytes" in patched_java
     assert "streamed_bytes" in patched_java

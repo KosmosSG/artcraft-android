@@ -317,6 +317,7 @@ def self_test() -> None:
         '                            String documentId = cursor.getString(0);',
         '                                if (size <= 0 || size > 32L * 1024 * 1024) continue;',
         '                                    if (total > 32L * 1024 * 1024)\n                                        throw new Exception("Font too large: " + name);',
+        '                                    output.write(buffer, 0, n);',
         '                            File target = new File(cache, "font-" + hash + extension);',
         '                                 OutputStream output = new FileOutputStream(target)) {',
         '                                int n;\n                                long total = 0;',

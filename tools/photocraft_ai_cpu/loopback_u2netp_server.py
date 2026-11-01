@@ -277,30 +277,14 @@ def make_handler(token: str):
                         # symlink could otherwise pass PNG validation and be
                         # returned to the consenting caller as if inferred.
                         return self.reply(502, b"CPU inference or validation failed")
-                    # Snapshot the worker's output identity before validation.
-                    # Even inside our private staging directory, never return a
-                    # different file swapped into that path after inspection.
-                    try:
-                        original = output.stat()
-                        if original.st_size > MAX_RESULT:
-                            return self.reply(502, b"Output exceeds safety limit")
-                    except OSError:
-                        return self.reply(502, b"Output PNG unavailable")
-                    from validate_output_png import inspect
-                    try:
-                        inspect(output, width, height)
-                    except Exception:
-                        return self.reply(502, b"Output PNG validation failed")
-                    # Path.read_bytes() follows a symlink and reads without a
-                    # byte cap. Open without following links, compare identity,
-                    # and bound the response even if the file changed size.
+                    # Read a bounded, no-follow snapshot from the worker file.
+                    # Validate the SAME bytes that will be sent to PhotoCraft:
+                    # validating a path then reopening it permits a file swap
+                    # (even inode reuse) to expose unrelated local PNG bytes.
                     try:
                         descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
                         with os.fdopen(descriptor, "rb") as verified_file:
                             current = os.fstat(verified_file.fileno())
-                            if ((current.st_dev, current.st_ino) !=
-                                    (original.st_dev, original.st_ino)):
-                                return self.reply(502, b"Output PNG changed")
                             if (not stat.S_ISREG(current.st_mode)
                                     or current.st_size > MAX_RESULT):
                                 return self.reply(502, b"Output exceeds safety limit")
@@ -309,6 +293,11 @@ def make_handler(token: str):
                             return self.reply(502, b"Output exceeds safety limit")
                     except OSError:
                         return self.reply(502, b"Output PNG unavailable")
+                    from validate_output_png import inspect_bytes
+                    try:
+                        inspect_bytes(png, width, height)
+                    except Exception:
+                        return self.reply(502, b"Output PNG validation failed")
                     return self.reply(200, png, "image/png")
             finally:
                 lock.release()

@@ -202,3 +202,4 @@ jobs:
 # Diagnostic-only DCS keyboard focus trace build, unsigned; never auto publish.
 # Retry diagnostic APK packaging after DeckCraft Java syntax fix (manual signing required).
 # Verify single dialog-state update prevents DCS input loss after reopening.
+# Retest repeated-open DCS with stateless key delivery; no publishing.

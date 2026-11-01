@@ -22,5 +22,30 @@ def apply(root):
     source = source[:start] + new + source[end:]
     target.write_text(source + HELPER + Path(__file__).with_name("dcs_tests.rs").read_text())
 
+    # The ordinary egui Window is not modal. Install an interactive,
+    # foreground backdrop *behind* Save Changes to intercept canvas touches.
+    chrome = root / "crates/ui-egui/src/dialogs/chrome.rs"
+    chrome_source = chrome.read_text()
+    window_anchor = '    let window = crate::window_close::window(ctx, egui::Window::new(tl!(title)).id(id).collapsible(false).resizable(false));'
+    if chrome_source.count(window_anchor) != 1:
+        raise ValueError("WordCraft dialog window anchor changed")
+    modal_backdrop = '''    if matches!(&d, Dialog::SaveChanges { .. }) {
+        // This Area precedes the dialog Window in the foreground layer:
+        // background editor/ribbon input must not pass through.
+        egui::Area::new(egui::Id::new("wordcraft.unsaved.modal.backdrop"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::Pos2::ZERO)
+            .interactable(true)
+            .show(ctx, |ui| {
+                let rect = ctx.screen_rect();
+                ui.allocate_rect(rect, egui::Sense::click_and_drag());
+                ui.painter().rect_filled(
+                    rect, 0.0, egui::Color32::from_black_alpha(100),
+                );
+            });
+    }
+'''
+    chrome.write_text(chrome_source.replace(window_anchor, modal_backdrop + window_anchor, 1))
+
 HELPER = '\n/// Consume only unmodified D/C/S presses; ignore repeats and preserve IME events.\nfn take_dcs(ctx: &egui::Context) -> Option<u8> {\n    ctx.input_mut(|i| {\n        let mut answer = None;\n        let mut consumed = false;\n        i.events.retain(|e| {\n            if let egui::Event::Key { key, pressed, repeat, modifiers, .. } = e {\n                let action = match key { egui::Key::D => 1, egui::Key::C => 2, egui::Key::S => 3, _ => 0 };\n                if action != 0 && !modifiers.any() {\n                    consumed = true;\n                    if *pressed && !*repeat && answer.is_none() { answer = Some(action); }\n                    return false;\n                }\n            }\n            true\n        });\n        if consumed {\n            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if matches!(t.as_str(), "d" | "D" | "c" | "C" | "s" | "S")));\n        }\n        answer\n    })\n}\n\nimpl WordApp {\n    pub fn android_unsaved_dcs_active(&self) -> bool {\n        matches!(self.dialog, Some(Dialog::SaveChanges { .. }))\n    }\n\n    pub fn android_capture_unsaved_dcs(&self, ctx: &egui::Context) {\n        if self.android_unsaved_dcs_active() {\n            if let Some(action) = take_dcs(ctx) {\n                ctx.data_mut(|d| d.insert_temp(egui::Id::new("wordcraft.unsaved.dcs"), action));\n            }\n        }\n    }\n}\n'
 if __name__ == "__main__": apply(sys.argv[1])

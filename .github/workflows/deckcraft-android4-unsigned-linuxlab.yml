@@ -193,3 +193,4 @@ jobs:
         run: rm -rf builder/keys builder/output
 # Requested unsigned Android.4 Linux Lab build; no signing or release.
 # D/C/S hardware keyboard text-event regression candidate (no signing/release).
+# Rebuild modal-focus DCS fix for regression review; unsigned only.

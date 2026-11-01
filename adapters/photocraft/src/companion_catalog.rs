@@ -212,7 +212,7 @@ impl CompanionCatalog {
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-18.0, -18.0))
             .show(ctx, |ui| {
                 egui::Frame::default().show(ui, |ui| {
-                    if ui.button("Plugins · Preview").clicked() {
+                    if ui.add(egui::Button::new("Plugins · Preview").min_size(egui::vec2(154.0, 44.0))).clicked() {
                         self.open = !self.open;
                     }
                 });
@@ -233,7 +233,8 @@ impl CompanionCatalog {
                 ui.separator();
                 let import = ui.add_enabled(
                     self.pending.is_none(),
-                    egui::Button::new("Import .pcpl descriptor (SAF)"),
+                    egui::Button::new("Import .pcpl descriptor (SAF)")
+                        .min_size(egui::vec2(260.0, 44.0)),
                 );
                 if import.clicked() {
                     self.next_id = self.next_id.wrapping_add(1).max(1);
@@ -249,7 +250,7 @@ impl CompanionCatalog {
                     ui.spinner();
                     ui.label("Waiting for Android document picker...");
                 }
-                if ui.button("Refresh catalog").clicked() {
+                if ui.add(egui::Button::new("Refresh catalog").min_size(egui::vec2(160.0, 40.0))).clicked() {
                     self.load_snapshot(bridge);
                 }
                 ui.label(&self.status);

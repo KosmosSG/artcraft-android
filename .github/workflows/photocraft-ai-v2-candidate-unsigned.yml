@@ -1,5 +1,6 @@
 name: PhotoCraft AI V2 unified stable candidate UNSIGNED (NO RELEASE)
 
+# PR93 android.3 candidate build: isolated preflight verified; use immutable V2 signing later.
 # PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
 # with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
 on:

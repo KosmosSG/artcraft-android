@@ -34,14 +34,14 @@ def patch_java(text: str) -> str:
         '    private static final int FONT_SCAN_MAX_ENTRIES = 20000;')
     text = exactly(text,
         '                int count = 0;\n                int visitedFolders = 0;',
-        '                int count = 0;\n                int inspectedEntries = 0;\n                long scannedBytes = 0L;\n'
+        '                int count = 0;\n                int inspectedEntries = 0;\n                long scannedBytes = 0L;\n                long streamedBytes = 0L;\n'
         '                boolean scanLimitReached = false;\n                int visitedFolders = 0;')
     text = exactly(text,
         'while (!pending.isEmpty() && count < 200 && visitedFolders < 1000)',
-        'while (!pending.isEmpty() && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000 && inspectedEntries < FONT_SCAN_MAX_ENTRIES)')
+        'while (!pending.isEmpty() && count < FONT_SCAN_MAX_FILES && visitedFolders < 1000 && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
     text = exactly(text,
         'while (cursor.moveToNext() && count < 200)',
-        'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES && inspectedEntries < FONT_SCAN_MAX_ENTRIES)')
+        'while (cursor.moveToNext() && count < FONT_SCAN_MAX_FILES && inspectedEntries < FONT_SCAN_MAX_ENTRIES && streamedBytes < FONT_SCAN_MAX_BYTES)')
     text = exactly(text,
         '                            String documentId = cursor.getString(0);',
         '                            inspectedEntries++;\n'
@@ -58,7 +58,7 @@ def patch_java(text: str) -> str:
     text = exactly(text,
         '                                    if (total > 32L * 1024 * 1024)\n'
         '                                        throw new Exception("Font too large: " + name);',
-        '                                    if (total > FONT_SCAN_MAX_FILE_BYTES)\n'
+        '                                    // Charge provider bytes even for rejected or oversized files.\n'\n        '                                    if (n > FONT_SCAN_MAX_BYTES - streamedBytes) {\n'\n        '                                        scanLimitReached = true;\n'\n        '                                        streamedBytes = FONT_SCAN_MAX_BYTES;\n'\n        '                                        throw new Exception("4 GiB font read budget reached");\n'\n        '                                    }\n'\n        '                                    streamedBytes += n;\n'\n        '                                    if (total > FONT_SCAN_MAX_FILE_BYTES)\n'
         '                                        throw new Exception("Font too large: " + name);\n'
         '                                    if (total > FONT_SCAN_MAX_BYTES - scannedBytes) {\n'
         '                                        scanLimitReached = true;\n'
@@ -83,11 +83,11 @@ def patch_java(text: str) -> str:
         '                results.offer(result.toString());',
         '                result.put("count", count);\n'
         '                result.put("inspected_entries", inspectedEntries);\n'
-        '                result.put("scanned_bytes", scannedBytes);\n'
+        '                result.put("scanned_bytes", scannedBytes);\n                result.put("streamed_bytes", streamedBytes);\n'
         '                result.put("scan_budget_bytes", FONT_SCAN_MAX_BYTES);\n'
         '                result.put("scan_limit_reached", scanLimitReached\n'
         '                        || count >= FONT_SCAN_MAX_FILES\n'
-        '                        || inspectedEntries >= FONT_SCAN_MAX_ENTRIES || !pending.isEmpty());\n'
+        '                        || inspectedEntries >= FONT_SCAN_MAX_ENTRIES\n                        || streamedBytes >= FONT_SCAN_MAX_BYTES || !pending.isEmpty());\n'
         '                results.offer(result.toString());')
     return text
 
@@ -240,6 +240,8 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("source guard did not fail closed")
+    # Regression: a rejected/oversized font still consumes provider read budget;
+    # otherwise 20k malformed 32 MiB entries can read hundreds of GiB.
     # Regression: a SAF provider reporting size=0 or -1 must not silently
     # drop a valid font. The stream loop still enforces both byte budgets.
     java_sample = "\n".join([
@@ -259,8 +261,14 @@ def self_test() -> None:
     assert "FONT_SCAN_MAX_ENTRIES = 20000" in patched_java
     assert "inspectedEntries++;" in patched_java
     assert "inspectedEntries < FONT_SCAN_MAX_ENTRIES" in patched_java
+    assert "streamedBytes < FONT_SCAN_MAX_BYTES" in patched_java
+    assert "streamedBytes += n;" in patched_java
+    assert "streamedBytes = FONT_SCAN_MAX_BYTES;" in patched_java
+    assert "n > FONT_SCAN_MAX_BYTES - streamedBytes" in patched_java
+    assert "streamed_bytes" in patched_java
     assert "inspected_entries" in patched_java
     assert "inspectedEntries >= FONT_SCAN_MAX_ENTRIES" in patched_java
+    assert "streamedBytes >= FONT_SCAN_MAX_BYTES" in patched_java
     assert "if (size > FONT_SCAN_MAX_FILE_BYTES) continue;" in patched_java
     assert "if (size <= 0 || size > FONT_SCAN_MAX_FILE_BYTES)" not in patched_java
     assert "if (total > FONT_SCAN_MAX_FILE_BYTES)" in patched_java
@@ -272,7 +280,7 @@ def self_test() -> None:
     assert "fs::read(path)" not in SHARED_RUST
     assert "register_font_paths(&candidates)" in SHARED_RUST
     assert "scan_limit_reached" in SHARED_RUST
-    print("PASS: 4 GiB capacity, 20k provider-row traversal cap, fail-closed patching and lazy registration invariants")
+    print("PASS: 4 GiB provider read cap (including rejected fonts), 20k row traversal cap, fail-closed patching and lazy registration")
 
 if __name__ == "__main__":
     try:

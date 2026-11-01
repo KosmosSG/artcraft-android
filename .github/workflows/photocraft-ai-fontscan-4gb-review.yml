@@ -35,7 +35,7 @@ jobs:
           git -C "$RUNNER_TEMP/official-photo-fonts" show FETCH_HEAD:crates/text/src/fonts.rs > "$ROOT/source/photocraft/crates/text/src/fonts.rs"
           python3 tools/photocraft_ai_fontscan_4g_stage.py "$ROOT"
           rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/adapters/photocraft/src/lib.rs" > /dev/null
-          rustfmt --edition 2024 --emit stdout "$ROOT/source/photocraft/crates/text/src/fonts.rs" > /dev/null
+          rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/source/photocraft/crates/text/src/fonts.rs" > /dev/null
           python3 - "$ROOT" <<'PY'
           from pathlib import Path
           import sys

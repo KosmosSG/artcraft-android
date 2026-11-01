@@ -148,6 +148,14 @@ class CompanionAndroidPhase1Contract(unittest.TestCase):
         self.assertIn('self.companion.poll(&self.bridge, ctx)', RUST_SHELL)
         self.assertIn('self.companion.show(ui.ctx(), &self.bridge)', RUST_SHELL)
 
+    def test_companion_overlay_never_bypasses_photo_editor_modals(self):
+        # Source contract: the preview area is omitted entirely while editor
+        # dialogs (including unsaved-changes D/C/S) are visible.
+        self.assertIn('if self.inner.ui.dialogs.is_empty()', RUST_SHELL)
+        opening = RUST_SHELL.index('if self.inner.ui.dialogs.is_empty()')
+        showing = RUST_SHELL.index('self.companion.show(ui.ctx(), &self.bridge)', opening)
+        self.assertLess(showing - opening, 220)
+
     def test_launcher_and_signing_identity_untouched(self):
         self.assertIn('package = "com.artcraft.photocraft"', CARGO)
         self.assertIn('label = "PhotoCraft"', CARGO)

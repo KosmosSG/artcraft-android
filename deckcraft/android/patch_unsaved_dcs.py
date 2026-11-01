@@ -48,12 +48,19 @@ def apply(root):
     assert s.count(old_show)==1, "DeckCraft modal window location changed"
     modal_show='''    if matches!(d.id.as_str(), "close" | "quit") {
         egui::Modal::new(egui::Id::new(("deckcraft.confirm.modal", d.id.clone()))).show(ctx, |ui| {
-            ui.set_min_width(340.0);
-            ui.horizontal(|ui| {
-                ui.heading("DeckCraft");
-                if ui.button("✕").clicked() { close = true; }
+            // Keep the original compact centered confirmation appearance.
+            // The modal backdrop blocks canvas pointer interactions.
+            ui.set_min_width(460.0);
+            ui.set_max_width(500.0);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(165.0);
+                    ui.heading("DeckCraft");
+                    if ui.button("×").clicked() { close = true; }
+                });
+                ui.separator();
+                close |= body(app, ui, &mut d);
             });
-            close |= body(app, ui, &mut d);
         });
     } else {
 ''' + old_show + '''

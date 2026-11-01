@@ -14,6 +14,13 @@ ROOT = Path(__file__).parent
 
 
 class RevisionTests(unittest.TestCase):
+    def test_candidate_icon_uses_approved_png_not_obsolete_webp(self):
+        source = Image.open(ROOT.parent.parent / 'tools/approved-branding/assets/WordCraft.png').convert('RGBA')
+        generated = Image.open(ROOT / 'icon/wordcraft-approved-192.png').convert('RGBA')
+        expected = source.resize((192, 192), Image.Resampling.LANCZOS)
+        self.assertEqual(generated.size, (192, 192))
+        self.assertEqual(generated.tobytes(), expected.tobytes())
+
     def test_normalized_icon_and_adaptive_masks_have_no_black_border(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

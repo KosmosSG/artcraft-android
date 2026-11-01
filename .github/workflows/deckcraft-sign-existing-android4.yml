@@ -104,7 +104,7 @@ jobs:
       - name: Upload signed APK for owner device testing
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: DeckCraft-v0.9.0-android.4-COMPACT-MODAL-ARM64-SIGNED-TEST
+          name: DeckCraft-v0.9.0-android.4-COMPACT-DCS-RETEST-ARM64-SIGNED-TEST
           path: signed-output/
           retention-days: 14
           if-no-files-found: error

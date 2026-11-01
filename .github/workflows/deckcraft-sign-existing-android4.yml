@@ -1,4 +1,4 @@
-name: DeckCraft compact modal focus sign test APK (manual, no release)
+name: DeckCraft compact DCS second-open sign test APK (manual, no release)
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SOURCE_ARTIFACT_ID: "13081014392"
-      SOURCE_RUN_ID: "41300759927"
+      SOURCE_ARTIFACT_ID: "13087457121"
+      SOURCE_RUN_ID: "41315175819"
       EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
-      APK_OUT: DeckCraft-v0.9.0-android.4-COMPACT-MODAL-TEST-arm64-v8a-signed.apk
+      APK_OUT: DeckCraft-v0.9.0-android.4-COMPACT-DCS-RETEST-arm64-v8a-signed.apk
     steps:
       - name: Install Android build tools
         shell: bash

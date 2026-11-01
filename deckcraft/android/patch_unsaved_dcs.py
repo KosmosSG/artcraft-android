@@ -59,6 +59,12 @@ def apply(root):
 ''' + old_show + '''
     }'''
     s=s.replace(old_show,modal_show,1)
+    # Delay the mutable 'open' borrow until the ordinary Window branch.
+    # A Window holding &mut open across Modal::show prevents later reading open.
+    assert s.count('.open(&mut open);')==1
+    s=s.replace('.open(&mut open);', ';', 1)
+    assert s.count('    window.show(ctx, |ui| {')==1
+    s=s.replace('    window.show(ctx, |ui| {','    window.open(&mut open).show(ctx, |ui| {',1)
     p.write_text(s)
     p=root/'crates/ui-egui/src/lib.rs';s=p.read_text()
     def once(a,b):

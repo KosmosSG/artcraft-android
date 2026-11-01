@@ -9,7 +9,12 @@ def apply(root):
     end=s.index('        "zoom" =>',start)
     old=s[start:end];new=old
     for label,key in [("Don't Save","D"),("Cancel","C"),("Save","S")]:new=new.replace('new("'+label+'")','new("'+label+' ('+key+')")')
-    new=new.replace('            let mut done = false;','''            let shortcut = ui.ctx().data_mut(|data| data.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))).or_else(|| take_dcs(ui.ctx()));
+    new=new.replace('            let mut done = false;','''            // Always drain modal shortcut events, even if Java already queued the action.
+            // A lazy or_else() skips take_dcs when Java supplied an action, allowing
+            // associated egui Text/Key events to reach the focused slide text editor.
+            let java_action = ui.ctx().data_mut(|data| data.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs")));
+            let egui_action = take_dcs(ui.ctx());
+            let shortcut = java_action.or(egui_action);
             let mut done = false;''')
     new=new.replace('24.0))).clicked() {\n                    let _ = app.session.execute', '24.0))).clicked() || shortcut == Some(1) {\n                    let _ = app.session.execute')
     new=new.replace('24.0))).clicked() {\n                    run(app, "file.close"', '24.0))).clicked() || shortcut == Some(1) {\n                    run(app, "file.close"')

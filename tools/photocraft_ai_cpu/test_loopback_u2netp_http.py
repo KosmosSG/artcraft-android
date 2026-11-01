@@ -531,7 +531,14 @@ class LoopbackHTTPTests(unittest.TestCase):
             with self.subTest(error=type(failure).__name__):
                 with patch.object(self.httpd, "handle_error") as unexpected:
                     with patch.object(server.subprocess, "run", side_effect=failure) as worker:
-                        code, headers, body = self.request()
+                        # A previous valid response can arrive before its
+                        # handler finally releases the one-worker lock.
+                        # Retry intentional 429 backpressure, never bypass it.
+                        for _ in range(40):
+                            code, headers, body = self.request()
+                            if code != 429:
+                                break
+                            threading.Event().wait(0.03)
                         self.assertEqual(code, 502)
                         self.assertEqual(headers["Content-Type"], "text/plain")
                         self.assertEqual(headers["Cache-Control"], "no-store")

@@ -29,6 +29,37 @@ def apply(root):
     new=new.replace(anchor,anchor.replace('                        done = true;', '                        }\n                        done = true;'))
     if old==new:raise ValueError('Already patched')
     p.write_text(s[:start]+new+s[end:]+HELPER+Path(__file__).with_name('dcs_tests.rs').read_text())
+    # Unlike egui::Window, egui::Modal blocks pointer interaction behind
+    # the confirmation dialog. Keep the generic window for other dialogs.
+    p=root/'crates/ui-egui/src/dialogs.rs';s=p.read_text()
+    old_show='''    window.show(ctx, |ui| {
+        ui.set_min_width(match d.id.as_str() {
+            "themeColors" => 700.0,
+            "themeFonts" => 400.0,
+            _ => 340.0,
+        });
+        if d.id == "themeColors" {
+            ui.set_min_height(360.0);
+        } else if d.id == "themeFonts" {
+            ui.set_min_height(280.0);
+        }
+        close = body(app, ui, &mut d);
+    });'''
+    assert s.count(old_show)==1, "DeckCraft modal window location changed"
+    modal_show='''    if matches!(d.id.as_str(), "close" | "quit") {
+        egui::Modal::new(egui::Id::new(("deckcraft.confirm.modal", d.id.clone()))).show(ctx, |ui| {
+            ui.set_min_width(340.0);
+            ui.horizontal(|ui| {
+                ui.heading("DeckCraft");
+                if ui.button("✕").clicked() { close = true; }
+            });
+            close |= body(app, ui, &mut d);
+        });
+    } else {
+''' + old_show + '''
+    }'''
+    s=s.replace(old_show,modal_show,1)
+    p.write_text(s)
     p=root/'crates/ui-egui/src/lib.rs';s=p.read_text()
     def once(a,b):
         nonlocal s

@@ -46,3 +46,26 @@ def stage_trial_metadata(builder_root: Path) -> None:
             raise RuntimeError("STOP: staged builder version source differs; refuse rewrite")
         data = data.replace(old, new, 1)
     path.write_text(data, encoding="utf-8")
+
+def stage_trial_branding_metadata(builder_root: Path) -> None:
+    """Update ONLY approved-branding version fields in an isolated trial checkout.
+
+    The approved Ec artwork and original production release manifest stay committed
+    as-is. The v0.20 trial builder copies this disposable manifest before the build.
+    """
+    import json
+
+    path = Path(builder_root) / "tools/approved-branding/assets/manifest.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    expected = {
+        "app": "effectcraft",
+        "package": "com.artcraft.effectcraft",
+        "version_name": "0.16.0-android.8",
+        "version_code": 16781320,
+    }
+    for key, value in expected.items():
+        if type(data.get(key)) is not type(value) or data.get(key) != value:
+            raise RuntimeError(f"STOP: approved EffectCraft branding {key} changed; review manually")
+    data["version_name"] = "0.20.0-android.1"
+    data["version_code"] = 16810001
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

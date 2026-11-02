@@ -1,5 +1,6 @@
 """Tests for EffectCraft isolated v0.20 menu and metadata migration guards."""
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from v020_compat import (
     MODERN_ANCHOR,
     menu_path_and_anchor,
     stage_trial_metadata,
+    stage_trial_branding_metadata,
 )
 
 
@@ -57,6 +59,45 @@ class MetadataMigrationTests(unittest.TestCase):
             self.assertNotIn('version_code = 16781315', revised)
             with self.assertRaisesRegex(RuntimeError, "refuse rewrite"):
                 stage_trial_metadata(Path(d))
+
+    def test_isolated_trial_branding_version_not_artwork(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            p = root / "tools/approved-branding/assets/manifest.json"
+            p.parent.mkdir(parents=True)
+            original = {
+                "app": "effectcraft",
+                "package": "com.artcraft.effectcraft",
+                "display_name": "EffectCraft",
+                "bg_color": "#060084",
+                "source_sha256": "original-approved-art-sha",
+                "resources": {"res/drawable/icon.png": "original-approved-icon-sha"},
+                "version_name": "0.16.0-android.8",
+                "version_code": 16781320,
+            }
+            p.write_text(json.dumps(original), encoding="utf-8")
+            stage_trial_branding_metadata(root)
+            changed = json.loads(p.read_text(encoding="utf-8"))
+            self.assertEqual(changed["version_name"], "0.20.0-android.1")
+            self.assertEqual(changed["version_code"], 16810001)
+            for key in original.keys() - {"version_name", "version_code"}:
+                self.assertEqual(changed[key], original[key])
+            with self.assertRaisesRegex(RuntimeError, "STOP"):
+                stage_trial_branding_metadata(root)
+
+    def test_refuse_unexpected_branding_package_or_release_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            p = root / "tools/approved-branding/assets/manifest.json"
+            p.parent.mkdir(parents=True)
+            for bad in (
+                {"app": "photocraft", "package": "com.artcraft.effectcraft", "version_name": "0.16.0-android.8", "version_code": 16781320},
+                {"app": "effectcraft", "package": "com.other.effectcraft", "version_name": "0.16.0-android.8", "version_code": 16781320},
+                {"app": "effectcraft", "package": "com.artcraft.effectcraft", "version_name": "0.20.0-android.1", "version_code": 16781320},
+            ):
+                p.write_text(json.dumps(bad), encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "STOP"):
+                    stage_trial_branding_metadata(root)
 
 
 if __name__ == "__main__":

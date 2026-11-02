@@ -52,8 +52,9 @@ jobs:
           python3 tools/effectcraft/prepare_candidate.py .
           PYTHONPATH=tools/effectcraft python3 - <<'PY'
           from pathlib import Path
-          from v020_compat import stage_trial_metadata, menu_path_and_anchor
+          from v020_compat import stage_trial_metadata, stage_trial_branding_metadata, menu_path_and_anchor
           stage_trial_metadata(Path('.'))
+          stage_trial_branding_metadata(Path('.'))
           path, anchor = menu_path_and_anchor(Path('source/effectcraft'))
           print('Verified EffectCraft v0.20 menu location:', path)
           PY

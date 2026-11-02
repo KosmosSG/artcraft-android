@@ -76,7 +76,7 @@ def stage(root: Path) -> None:
     # versionName AND Android versionCode *after* the adapter has been staged.
     # Keep its exact original image/resource hashes, but advance the metadata
     # in the disposable runner only. Without this, the hook silently resets
-    # android.2 back to android.1 and the production-upgrade test fails.
+    # the proposed version back to android.1 and the upgrade test fails.
     if (record.get("version_name"), record.get("version_code")) != (OLD_VERSION, 16790004):
         raise ValueError("Unexpected public PhotoCraft branding version baseline")
     record["package"] = PRODUCTION
@@ -110,7 +110,7 @@ def stage(root: Path) -> None:
     builder.write_text(build_text)
     print("PASS: temporary v0.14 menus guard covers candidate-review android.5 without legacy patch")
     print("PASS: staging ONLY — regular PhotoCraft name, package, Activity and icon preserved")
-    print("PASS: proposed review version", PROPOSED_VERSION)
+    print("PASS: proposed review version", PROPOSED_VERSION, "code", PROPOSED_CODE)
     print("IMPORTANT: output is signed with a disposable key; NEVER install/publish its APK")
 
 
@@ -124,9 +124,9 @@ def self_test() -> None:
         else:
             raise AssertionError("Unsafe staging anchor was accepted")
     assert PRODUCTION != PREVIEW and OLD_VERSION != PROPOSED_VERSION
-    assert "android.3" in PROPOSED_VERSION
-    assert OLD_VERSION == "0.14.0-android.1"
     assert PROPOSED_VERSION == "0.14.0-android.5"
+    assert PROPOSED_CODE == 16790008
+    assert OLD_VERSION == "0.14.0-android.1"
     assert PROPOSED_CODE > V2_STABLE_CODE
     assert PROPOSED_CODE > 16790004
     print("PASS: isolated production identity conversion anchor and version floor tests")

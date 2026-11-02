@@ -1,6 +1,9 @@
 // FilmCraft-only feature bridge. Never share SAF picker result queues with media imports.
     private static final int FC_FONT_PICK = 0x4651;
     private static final int FC_FONT_TREE = 0x4652;
+    // Bound scans by files, folders and bytes independently. 4 GiB is not a file-count limit.
+    private static final int FC_SCAN_MAX_FONT_FILES = 5000;
+    private static final int FC_SCAN_MAX_FOLDERS = 2048;
     private static final String FC_PREFS = "filmcraft_android_features";
     private static final String FC_TREE_PREF = "shared_font_tree_uri";
     private static final String FC_RELEASES_API =
@@ -114,6 +117,11 @@
 
     private java.io.File fcCopyFont(android.net.Uri uri, java.io.File directory)
             throws java.io.IOException {
+        return fcCopyFont(uri, directory, new long[]{0});
+    }
+
+    private java.io.File fcCopyFont(android.net.Uri uri, java.io.File directory, long[] scanBytes)
+            throws java.io.IOException {
         String name = displayName(uri);
         String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
         String extension = lower.endsWith(".ttf") ? ".ttf" :
@@ -138,6 +146,11 @@
                     throw new java.io.IOException("Font exceeds 32 MiB");
                 }
                 for (int j = 0; j < n && inspected < 4; j++) header[inspected++] = buf[j];
+                if (scanBytes[0] > 4L * 1024 * 1024 * 1024 - n) {
+                    scanBytes[0] = 4L * 1024 * 1024 * 1024;
+                    throw new java.io.IOException("Font scan reached the 4 GB limit");
+                }
+                scanBytes[0] += n;
                 stream.write(buf, 0, n);
                 total += n;
             }
@@ -189,8 +202,8 @@
                 java.util.HashSet<String> visited = new java.util.HashSet<>();
                 queue.add(DocumentsContract.getTreeDocumentId(tree));
                 int folders = 0;
-                long totalBytes = 0;
-                while (!queue.isEmpty() && folders < 128 && accepted + skipped < 256) {
+                long[] scanBytes = {0};
+                while (!queue.isEmpty() && folders < FC_SCAN_MAX_FOLDERS && accepted + skipped < FC_SCAN_MAX_FONT_FILES && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                     String parent = queue.removeFirst();
                     if (!visited.add(parent)) continue;
                     folders++;
@@ -201,12 +214,12 @@
                                     DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                                     DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
                         if (cursor == null) continue;
-                        while (cursor.moveToNext() && accepted + skipped < 256) {
+                        while (cursor.moveToNext() && accepted + skipped < FC_SCAN_MAX_FONT_FILES && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                             String child = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
                             if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                                if (queue.size() < 128) queue.addLast(child);
+                                if (queue.size() < FC_SCAN_MAX_FOLDERS) queue.addLast(child);
                                 continue;
                             }
                             String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
@@ -214,12 +227,7 @@
                             try {
                                 android.net.Uri fontUri =
                                         DocumentsContract.buildDocumentUriUsingTree(tree, child);
-                                java.io.File saved = fcCopyFont(fontUri, cache);
-                                totalBytes += saved.length();
-                                if (totalBytes > 128L * 1024 * 1024) {
-                                    saved.delete();
-                                    throw new java.io.IOException("Shared font cache limit reached");
-                                }
+                                java.io.File saved = fcCopyFont(fontUri, cache, scanBytes);
                                 paths.put(saved.getAbsolutePath());
                                 accepted++;
                             } catch (Exception error) {
@@ -229,8 +237,15 @@
                         }
                     }
                 }
+                String limit = accepted + skipped >= FC_SCAN_MAX_FONT_FILES
+                        ? " (5,000-file limit reached; some fonts remain)"
+                        : folders >= FC_SCAN_MAX_FOLDERS && !queue.isEmpty()
+                            ? " (2,048-folder limit reached; some folders remain)"
+                            : scanBytes[0] >= 4L * 1024 * 1024 * 1024
+                                ? " (4 GiB scan budget reached; some fonts remain)" : "";
                 fcAnswer("font_folder", "ok",
-                        "Shared fonts loaded: " + accepted + "; skipped: " + skipped, paths);
+                        "Font files found: " + accepted + "; skipped: " + skipped
+                                + "; folders scanned: " + folders + limit, paths);
             } catch (Exception error) {
                 fcAnswer("font_folder", "error", error.toString(), null);
             }

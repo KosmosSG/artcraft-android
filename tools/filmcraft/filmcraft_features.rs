@@ -2,7 +2,7 @@
 //! Uses FilmCraft's own font registry, not PhotoCraft's text engine.
 use android_activity::AndroidApp;
 use jni::{JavaVM, jni_sig, jni_str, objects::{JObject, JString, JValue}};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 const MAX_FONT_BYTES: u64 = 32 * 1024 * 1024;
@@ -17,6 +17,10 @@ pub struct FilmcraftFeatures {
     pending_updates: bool,
     startup_updates: bool,
     font_status: String,
+    pending_registration: VecDeque<PathBuf>,
+    registration_good: usize,
+    registration_bad: usize,
+    registration_message: String,
     update_status: String,
     update_page: Option<String>,
 }
@@ -136,6 +140,10 @@ impl FilmcraftFeatures {
             pending_updates: false,
             startup_updates,
             font_status: String::new(),
+            pending_registration: VecDeque::new(),
+            registration_good: 0,
+            registration_bad: 0,
+            registration_message: String::new(),
             update_status: String::new(),
             update_page: None,
         };
@@ -190,7 +198,7 @@ impl FilmcraftFeatures {
         let mut good = 0; let mut bad = 0;
         let Ok(files) = std::fs::read_dir(folder) else { return (0, 0) };
         for (index, file) in files.enumerate() {
-            if index >= 256 { break; }
+            if index >= 5000 { break; }
             let Ok(file) = file else { bad += 1; continue; };
             let path = file.path();
             if !path.is_file() { continue; }
@@ -200,6 +208,31 @@ impl FilmcraftFeatures {
             }
         }
         (good, bad)
+    }
+
+    /// Avoid blocking an egui frame while registering thousands of font faces.
+    fn register_pending_fonts(&mut self, ctx: &egui::Context) {
+        if self.pending_registration.is_empty() { return; }
+        for _ in 0..24 {
+            let Some(path) = self.pending_registration.pop_front() else { break; };
+            match self.register_file(&path) {
+                Ok(n) => self.registration_good += n,
+                Err(error) => {
+                    self.registration_bad += 1;
+                    log::warn!("Font register failed: {error}");
+                }
+            }
+        }
+        if self.pending_registration.is_empty() {
+            self.pending_font = false;
+            self.font_status = format!("{}. Registered {} faces; registration skipped {}",
+                self.registration_message, self.registration_good, self.registration_bad);
+            Self::native_menu_status(ctx, &self.font_status);
+        } else {
+            self.font_status = format!("Registering fonts: {} faces; {} files remaining",
+                self.registration_good, self.pending_registration.len());
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
 
     /// Bridge native FilmCraft menu commands to the existing Java/SAF operations.
@@ -261,7 +294,7 @@ impl FilmcraftFeatures {
                 let source = option_env!("GITHUB_SHA").unwrap_or("unknown");
                 let source = &source[..source.len().min(12)];
                 self.update_status = format!(
-                    "FilmCraft Android 0.10.0-android.3 | source {source} | disposable test signature"
+                    "FilmCraft Android 0.10.0-android.5 | source {source}"
                 );
             },
             _ => return String::new(),
@@ -343,23 +376,27 @@ impl FilmcraftFeatures {
             let message = v["message"].as_str().unwrap_or("Unknown error");
             match kind {
                 "font_import" | "font_folder" => {
-                    self.pending_font = false;
                     if state == "ok" {
-                        let mut good = 0; let mut bad = 0;
+                        self.pending_registration.clear();
+                        self.registration_good = 0;
+                        self.registration_bad = 0;
+                        self.registration_message = message.to_owned();
                         if let Some(paths) = v["paths"].as_array() {
-                            for path in paths.iter().take(256).filter_map(|x| x.as_str()) {
-                                match self.register_file(Path::new(path)) {
-                                    Ok(n) => good += n,
-                                    Err(error) => {
-                                        bad += 1;
-                                        log::warn!("Font register failed: {error}");
-                                    }
-                                }
-                            }
+                            self.pending_registration.extend(
+                                paths.iter().take(5000).filter_map(|x| x.as_str()).map(PathBuf::from)
+                            );
                         }
-                        self.font_status = format!("{message}. Registered {good} faces; skipped {bad}");
-                    } else if state != "cancel" {
-                        self.font_status = message.to_owned();
+                        self.pending_font = !self.pending_registration.is_empty();
+                        self.font_status = if self.pending_font {
+                            format!("{message}. Registering {} cached fonts in batches…",
+                                    self.pending_registration.len())
+                        } else {
+                            format!("{message}. No new font paths to register")
+                        };
+                    } else {
+                        self.pending_font = false;
+                        self.pending_registration.clear();
+                        if state != "cancel" { self.font_status = message.to_owned(); }
                     }
                 },
                 "updates" => {
@@ -389,6 +426,7 @@ impl FilmcraftFeatures {
             }
             ctx.request_repaint();
         }
+        self.register_pending_fonts(ctx);
         if self.pending_font || self.pending_updates {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }

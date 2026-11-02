@@ -39,8 +39,8 @@
     "res/mipmap-hdpi/ic_launcher_round.png": "04025663cb8a1cba01f610837315256e6fcef1e98da8f967dbc2bf769875dbd8"
   },
   "display_name": "FilmCraft",
-  "version_name": "0.10.0-android.3",
-  "version_code": 1000003,
-  "previous_version_code": 1000002,
+  "version_name": "0.10.0-android.5",
+  "version_code": 1000005,
+  "previous_version_code": 1000004,
   "package": "com.artcraft.filmcraft"
 }

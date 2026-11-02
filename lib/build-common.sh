@@ -2911,11 +2911,11 @@ fi
 
 # Some apps also use arboard (the clipboard) from a crate in the launcher's dependency graph
 # (PDFCraft does). arboard ships no Android backend and its Unix backend needs X11/Wayland, so it
-# cannot compile for `aarch64-linux-android`. Vendor the builder's Android-compatible stub (a
-# no-op clipboard) and patch it in, exactly like rfd above. Clipboard access degrades gracefully;
-# real Android clipboard support needs a platform adapter (see adapters/README.md).
+# cannot compile for `aarch64-linux-android`. Vendor the builder's reviewed
+# Android-compatible JNI text-clipboard bridge and patch it in, just like rfd above.
+# Unsupported image/HTML operations may be limited; test these separately.
 if grep -rqE '\barboard\b' "$SRC"/crates/*/src 2>/dev/null; then
-    echo "Vendoring an Android-compatible arboard for $TITLE (clipboard access becomes a no-op)..."
+    echo "Vendoring the JNI-backed Android arboard for $TITLE..."
     mkdir -p "$SRC/vendor"
     rm -rf "$SRC/vendor/arboard"
     cp -a "$ROOT/vendor/arboard" "$SRC/vendor/arboard"
@@ -3007,6 +3007,24 @@ if entry not in s:
     tomllib.loads(s)
     p.write_text(s)
 PY
+fi
+
+# Official PDFCraft v0.17.0 can resolve arboard 3.7.0 from the upstream lock even
+# when our existing Android JNI-backed arboard 3.6.1 is [patch.crates-io].
+# That 3.7 crate has no Android platform and fails with missing platform::Clipboard.
+# Select the already reviewed Android JNI implementation for this *candidate only*;
+# never silently replace it with a stub or bypass clipboard tests. Cargo will fail
+# closed if a newer upstream dependency actually requires arboard >=3.7.
+if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.17.0" ]]; then
+    grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
+        fail "PDFCraft Android clipboard patch missing; refusing v0.17 build"
+    cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||
+        fail "Cannot resolve PDFCraft v0.17 against reviewed Android arboard 3.6.1"
+    cargo tree --manifest-path "$SRC/Cargo.toml" --target aarch64-linux-android -i arboard |
+        grep -F 'arboard v3.6.1 (' |
+        grep -F 'vendor/arboard' >/dev/null ||
+        fail "Unreviewed Android clipboard dependency resolution; aborting"
+    echo "PDFCraft Android clipboard uses reviewed JNI-backed arboard 3.6.1."
 fi
 
 # A `target/` directory left behind by running cargo inside a vendored crate must never be

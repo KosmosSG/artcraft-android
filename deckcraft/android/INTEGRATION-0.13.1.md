@@ -154,3 +154,29 @@ Ctrl+A selects all text, Ctrl+C copies selected text, Ctrl+X cuts and Ctrl+V
 pastes; verify also after multiple edits, other app clipboard integration,
 trackpad pan smoothness, D/C/S, Escape, dark theme and touchscreen gestures.
 No permanent GitHub signing or publication; temporary test signing only.
+
+## v0.14.1-android.9 — clipboard freshness + smooth trackpad pan (2026-11-02)
+
+Owner tested Android.8 on HONOR MagicPad 4: Ctrl+A WORKS; Ctrl+C and Ctrl+X
+appear to copy/cut but Ctrl+V inserts the WRONG or OLD text (laggy); Paste
+Ctrl+V hint, Ctrl+W, D/C/S, Escape, pinch zoom, touch pan, and Dark Theme
+WORK. Trackpad scrolling improved but less smooth than the touchscreen.
+
+Root cause hypothesis supported by code: official app publish_clipboard(ctx)
+calls egui ctx.copy_text(), which is committed asynchronously in frame output,
+but DeckCraft's Android Activity hardware Ctrl+V path reads ClipboardManager
+before the newer copied text is guaranteed present. Android.9 puts the
+newly copied plain selection in a one-shot ctx slot, flushes it immediately
+after app.logic via JNI into Android ClipboardManager setPrimaryClip(), and
+makes the live Android clipboard authoritative over an older raw egui Paste
+snapshot. Added source/regression assertions for copying FIRST then SECOND,
+cutting SECOND, and pasting the most recent text (no previous clipboard leak).
+The normal clipboard output remains for other app integration and fallback.
+
+For trackpad point-wheel motion while an overflowing canvas is hovered,
+Android.9 interpolates consecutive frame deltas (72% new, 28% previous),
+retaining separate touchscreen touch-pan handling and original 10–400% zoom.
+This is a test candidate only: do not merge, production-sign or publish.
+Use local disposable-signature APK after successful ARM64 unsigned build,
+then owner must test Copy/Cut/Paste repeated, cross-app clipboard, trackpad
+pan, Ctrl+A/W, D/C/S, Esc, two-finger touchscreen pinch/pan, Dark Theme.

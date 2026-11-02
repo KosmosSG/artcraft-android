@@ -37,10 +37,34 @@ impl ModalBridge {
                 if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action as u8); }
                 if let Some(text) = text {
                     let id = egui::Id::new("deckcraft.android.clip_text");
-                    if d.get_temp::<String>(id).is_none() { d.insert_temp(id, text); }
+                    // Prefer the live Android ClipboardManager over a potentially stale
+                    // egui Paste event captured before this UI frame.
+                    d.insert_temp(id, text);
                 }
             });
             ctx.request_repaint();
+        }
+    }
+
+    pub fn editor_flush_clipboard(&self, ctx: &egui::Context) {
+        let pending = ctx.data_mut(|d| d.remove_temp::<String>(
+            egui::Id::new("deckcraft.android.clipboard.pending")));
+        let Some(text) = pending else { return; };
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = JObject::from(env.new_string(&text)?);
+            let written = env.call_method(
+                &*activity,
+                JNIString::new("dkSetEditorClipboardText"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&value)],
+            )?.z()?;
+            Ok(written)
+        });
+        if !matches!(result, Ok(true)) {
+            log::warn!("DeckCraft Android clipboard immediate write failed");
         }
     }
 

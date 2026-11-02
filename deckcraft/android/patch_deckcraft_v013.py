@@ -202,11 +202,13 @@ def apply(root):
                     }
                     Some(2) => {
                         self.publish_clipboard(ctx, false);
+                        self.android_queue_clipboard_sync(ctx);
                         handled_clipboard = true;
                     }
                     Some(3) => {
                         let revision = self.session.active().map(|d| d.revision);
                         self.publish_clipboard(ctx, true);
+                        self.android_queue_clipboard_sync(ctx);
                         if self.session.active().map(|d| d.revision) != revision {
                             self.note_application_edit(ctx);
                         }
@@ -242,11 +244,13 @@ def apply(root):
                         match ev {
                             egui::Event::Copy => {
                                 self.publish_clipboard(ctx, false);
+                        self.android_queue_clipboard_sync(ctx);
                                 handled_clipboard = true;
                             }
                             egui::Event::Cut => {
                                 let revision = self.session.active().map(|d| d.revision);
                                 self.publish_clipboard(ctx, true);
+                        self.android_queue_clipboard_sync(ctx);
                                 if self.session.active().map(|d| d.revision) != revision {
                                     self.note_application_edit(ctx);
                                 }
@@ -274,6 +278,20 @@ def apply(root):
             }
         }
         if ctx.memory(|m| m.focused().is_some()) || modal {''')
+    # Publish Copy/Cut text to Android ClipboardManager synchronously in this
+    # same frame via the host bridge; egui's platform-output copy is deferred.
+    edit('app/keys.rs',
+        '''    /// Match the Android hardware keyboard close shortcut even if a text''',
+        '''    pub(crate) fn android_queue_clipboard_sync(&self, ctx: &egui::Context) {
+        let text = self.session.clipboard.plain.clone();
+        if !text.is_empty() {
+            ctx.data_mut(|d| d.insert_temp(
+                egui::Id::new("deckcraft.android.clipboard.pending"), text));
+        }
+    }
+
+    /// Match the Android hardware keyboard close shortcut even if a text''')
+
     # Expose the shortcut-match helper to host-side Rust regression tests.
     edit('app/keys.rs',
         '''    fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {''',
@@ -382,7 +400,21 @@ def apply(root):
             )) { if touch_pan_active { 1.65_f32 } else { 1.95_f32 } } else { 1.0 };
             #[cfg(not(target_os = "android"))]
             let scroll_gain = 1.0_f32;
-            offset -= wheel * scroll_gain;
+            #[cfg(target_os = "android")]
+            let frame_scroll = if !touch_pan_active && scroll_gain > 1.0 {
+                let key = scroll_id.with("deckcraft_trackpad_smooth");
+                let old: egui::Vec2 = ui.data_mut(|d| d.get_temp(key)).unwrap_or(egui::Vec2::ZERO);
+                let next = if wheel != egui::Vec2::ZERO {
+                    old * 0.28 + wheel * scroll_gain * 0.72
+                } else {
+                    egui::Vec2::ZERO
+                };
+                ui.data_mut(|d| d.insert_temp(key, next));
+                next
+            } else { wheel * scroll_gain };
+            #[cfg(not(target_os = "android"))]
+            let frame_scroll = wheel * scroll_gain;
+            offset -= frame_scroll;
         } else if !touch_pan_active {
             // A two-finger swipe over a fitted slide must not turn pages.
             wheel_navigation(app, ui, carry_id, doc_uid);

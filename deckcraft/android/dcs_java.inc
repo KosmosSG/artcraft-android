@@ -6,6 +6,19 @@
     public int dkTakeEditorClose() { return dkEditorClose.getAndSet(0); }
     private final java.util.concurrent.atomic.AtomicInteger dkEditorClipboard = new java.util.concurrent.atomic.AtomicInteger();
     public int dkTakeEditorClipboard() { return dkEditorClipboard.getAndSet(0); }
+
+    // Synchronously publish the just-copied selection before the next Ctrl+V
+    // reads ClipboardManager. egui platform-output copying is deferred until
+    // the frame finishes, and otherwise can return the previous selection.
+    public boolean dkSetEditorClipboardText(String text) {
+        if (text == null) return false;
+        android.content.ClipboardManager manager =
+            (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+        if (manager == null) return false;
+        manager.setPrimaryClip(android.content.ClipData.newPlainText("DeckCraft", text));
+        return true;
+    }
+
     public String dkEditorClipboardText() {
         android.content.ClipboardManager manager =
             (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);

@@ -202,6 +202,50 @@ mod android_dcs_regression {
     }
 
     #[test]
+    fn latest_copy_and_cut_text_replace_old_clipboard_and_paste_correctly() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[30.0,30.0,280.0,80.0], "text":"FIRST TEXT"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        let first = app.session.execute("edit.copy", &json!({})).unwrap();
+        assert_eq!(first["text"], "FIRST TEXT");
+        app.android_queue_clipboard_sync(&ctx);
+        assert_eq!(
+            ctx.data_mut(|d| d.remove_temp::<String>(
+                egui::Id::new("deckcraft.android.clipboard.pending"))),
+            Some("FIRST TEXT".into())
+        );
+        app.session.execute("text.insert", &json!({"text":"SECOND TEXT"})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        let second = app.session.execute("edit.copy", &json!({})).unwrap();
+        assert_eq!(second["text"], "SECOND TEXT");
+        app.android_queue_clipboard_sync(&ctx);
+        assert_eq!(
+            ctx.data_mut(|d| d.remove_temp::<String>(
+                egui::Id::new("deckcraft.android.clipboard.pending"))),
+            Some("SECOND TEXT".into()),
+            "The clipboard must use the new copied selection, never the old one"
+        );
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        let cut = app.session.execute("edit.cut", &json!({})).unwrap();
+        assert_eq!(cut["text"], "SECOND TEXT");
+        app.android_queue_clipboard_sync(&ctx);
+        assert_eq!(
+            ctx.data_mut(|d| d.remove_temp::<String>(
+                egui::Id::new("deckcraft.android.clipboard.pending"))),
+            Some("SECOND TEXT".into()),
+            "Cut should publish exactly what was removed"
+        );
+        app.session.execute("edit.paste", &json!({"text":"SECOND TEXT"})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        let copied = app.session.execute("edit.copy", &json!({})).unwrap();
+        assert_eq!(copied["text"], "SECOND TEXT");
+    }
+
+    #[test]
     fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
         let mut app = app();
         app.dialog = Some(dialogs::Dialog::new("close"));

@@ -40,11 +40,11 @@ jobs:
           from pathlib import Path
           manifest=json.loads(Path('tools/approved-branding/assets/manifest.json').read_text())
           assert manifest['app']=='deckcraft'
-          assert manifest['version_name']=='0.14.1-android.8'
-          assert manifest['version_code']==100000012
-          assert manifest['previous_version_code']==100000011
+          assert manifest['version_name']=='0.14.1-android.9'
+          assert manifest['version_code']==100000013
+          assert manifest['previous_version_code']==100000012
           assert manifest['package']=='com.artcraft.deckcraft'
-          print('PASS: D/C/S sources and 0.14.1-android.8 metadata present')
+          print('PASS: D/C/S sources and 0.14.1-android.9 metadata present')
           PY
       - name: Checkout pinned Android builder
         uses: actions/checkout@v4
@@ -107,12 +107,12 @@ jobs:
           s=source.read_text()
           old='version = "0.14.1"'
           assert s.count(old)==1, 'Official v0.14.1 source changed; stop'
-          source.write_text(s.replace(old,'version = "0.14.1-android.8"',1))
+          source.write_text(s.replace(old,'version = "0.14.1-android.9"',1))
           project=Path('builder/lib/android_project.py')
           s=project.read_text()
           formula='return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert s.count(formula)==1, 'Pinned version generator changed; stop'
-          project.write_text(s.replace(formula,'return 100000012',1))
+          project.write_text(s.replace(formula,'return 100000013',1))
           PY
           python3 deckcraft/android/patch_v013_host.py builder
           python3 deckcraft/android/patch_shared_fonts.py builder
@@ -151,7 +151,8 @@ jobs:
           assert '(resp.hovered() || on_bar || touch_pan_active) && !zooming' in canvas
           assert 'else if !touch_pan_active' in canvas
           assert 'let scroll_gain = if ui.input(' in canvas
-          assert 'offset -= wheel * scroll_gain;' in canvas
+          assert 'offset -= frame_scroll;' in canvas
+          assert 'deckcraft_trackpad_smooth' in canvas
           keys=Path('builder/source/deckcraft/crates/ui-egui/src/app/keys.rs').read_text()
           assert 'Self::android_editing_ctrl_w(&events)' in keys
           assert 'self.close_presentation();' in keys
@@ -168,6 +169,11 @@ jobs:
           bridge=Path('builder/templates/android/dcs_bridge.rs').read_text()
           assert 'pub fn editor_close(' in bridge
           assert 'pub fn editor_clipboard(' in bridge
+          assert 'pub fn editor_flush_clipboard(' in bridge
+          assert 'dkSetEditorClipboardText' in java
+          assert 'self.dk.editor_flush_clipboard(ctx);' in shell
+          assert 'deckcraft.android.clipboard.pending' in keys
+          assert 'android_queue_clipboard_sync(ctx)' in keys
           assert 'dkTakeEditorClipboard' in java
           assert 'dkEditorClipboardText' in java
           assert 'self.inner.android_capture_editor_clipboard_raw(ctx, raw);' in shell
@@ -181,7 +187,7 @@ jobs:
           assert 'app.importFont' in menu, 'Font import command missing from menu'
           # Rust menu_tree regression test checks the actual Help/File split.
           assert 'fn import_font_is_help_only_no_duplicate_file_menu()' in ui
-          print('PASS: Android.8 Ctrl+A/C/X/V event capture, system clipboard, Ctrl+V tooltip and trackpad scaling')
+          print('PASS: Android.9 immediate Android clipboard sync, latest-copy selection test and damped trackpad panning')
           print('PASS: Android two-finger pan reaches canvas after hover cancellation and does not navigate on fitted page')
           print('PASS: Android canvas pinch fallback scoped by touch origin; existing wheel zoom retained')
           print('PASS: Android.4 blocking modal and focus, eager D/C/S, selectable theme, left menus')
@@ -199,17 +205,17 @@ jobs:
         run: |
           set -euo pipefail
           bash builder/build.sh -deckcraft -packagename=com.artcraft.deckcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DeckCraft.png"
-          test -s builder/output/deckcraft-0.14.1-android.8.apk
+          test -s builder/output/deckcraft-0.14.1-android.9.apk
       - name: Strip disposable signature, validate unsigned APK and record SHA256
         shell: bash
         run: |
           set -euo pipefail
-          APK=builder/output/deckcraft-0.14.1-android.8.apk
+          APK=builder/output/deckcraft-0.14.1-android.9.apk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/deckcraft-android4-badging.txt
           grep -F "name='com.artcraft.deckcraft'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionName='0.14.1-android.8'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionCode='100000012'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionName='0.14.1-android.9'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionCode='100000013'" /tmp/deckcraft-android4-badging.txt
           mkdir -p unsigned
           python3 - "$APK" <<'PY'
           from zipfile import ZipFile
@@ -223,9 +229,9 @@ jobs:
                       continue
                   unsigned.writestr(entry,original.read(entry.filename))
           PY
-          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.14.1-android.8-arm64-v8a-UNSIGNED.apk
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.14.1-android.9-arm64-v8a-UNSIGNED.apk
           rm unsigned/unsigned-before-align.apk
-          FINAL=unsigned/DeckCraft-v0.14.1-android.8-arm64-v8a-UNSIGNED.apk
+          FINAL=unsigned/DeckCraft-v0.14.1-android.9-arm64-v8a-UNSIGNED.apk
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$FINAL"
           if "$BUILD_TOOLS/apksigner" verify "$FINAL" >/dev/null 2>&1; then
               echo "::error::Temporary signing certificate still valid; refusing unsigned artifact"
@@ -233,8 +239,8 @@ jobs:
           fi
           "$BUILD_TOOLS/aapt" dump badging "$FINAL" > /tmp/deckcraft-unsigned-badging.txt
           grep -F "name='com.artcraft.deckcraft'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionName='0.14.1-android.8'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionCode='100000012'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionName='0.14.1-android.9'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionCode='100000013'" /tmp/deckcraft-unsigned-badging.txt
           python3 - "$FINAL" <<'PY'
           import sys,zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
@@ -245,11 +251,11 @@ jobs:
               assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
               assert 'classes.dex' in names
               assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
-          print('PASS: 0.14.1-android.8, production package, ARM64, DEX, valid unsigned payload')
+          print('PASS: 0.14.1-android.9, production package, ARM64, DEX, valid unsigned payload')
           PY
           (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
           cat > unsigned/README.txt <<'TXT'
-          DeckCraft 0.14.1-android.8 ARM64 unsigned integration candidate.
+          DeckCraft 0.14.1-android.9 ARM64 unsigned integration candidate.
           This artifact is unsigned. For device testing, use a disposable test key
           and uninstall the previous APK after backing up documents. Reserve the
           original DeckCraft production key for approved release candidates.
@@ -260,13 +266,13 @@ jobs:
           Source tests and compilation are not physical-device verification.
           Physical tablet testing and public release still require owner approval.
           TXT
-          echo "### DeckCraft 0.14.1-android.8 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
+          echo "### DeckCraft 0.14.1-android.9 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload verified unsigned APK for Linux Lab signing
         uses: actions/upload-artifact@v4
         with:
-          name: DeckCraft-v0.14.1-android.8-ARM64-UNSIGNED-LinuxLab
+          name: DeckCraft-v0.14.1-android.9-ARM64-UNSIGNED-LinuxLab
           path: unsigned/
           retention-days: 7
           if-no-files-found: error

@@ -156,6 +156,13 @@ def install(builder: Path, additions: Path):
     if icon_source.count(legacy_hook) != 1:
         raise RuntimeError("Pinned legacy icon generator changed")
     icon_script.write_text(icon_source.replace(legacy_hook, legacy, 1))
+    # v0.15 adds an acknowledged SAF callback ONLY to the GridCraft generated
+    # builder recipe, never the original product's permanent-signing paths.
+    # It is a source transformation: the real Rust/Java launch is still unbuilt.
+    if source_version == "0.15.0":
+        import runpy
+        saf_patch = runpy.run_path(str(Path(__file__).with_name("port_v0150_builder_saf.py")))
+        text = saf_patch["transform"](text)
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
     for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):

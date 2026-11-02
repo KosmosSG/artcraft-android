@@ -116,22 +116,22 @@ def self_test() -> None:
     import copy
     good_badging = (
         "package: name='com.artcraft.photocraft' versionCode='16790008' "
-        "versionName='0.14.0-android.5'\\n"
-        "application-label:'PhotoCraft'\\n"
-        "application-label-en:'PhotoCraft'\\n"
+        "versionName='0.14.0-android.5'\n"
+        "application-label:'PhotoCraft'\n"
+        "application-label-en:'PhotoCraft'\n"
         "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity' "
-        "label='PhotoCraft' icon='res/drawable/icon.png'\\n"
+        "label='PhotoCraft' icon='res/drawable/icon.png'\n"
     )
     verify_production_launcher_badging(good_badging)
     for bad in (
         good_badging.replace("application-label:'PhotoCraft'", "application-label:'PhotoCraft AI'"),
-        good_badging.replace("application-label:'PhotoCraft'\\n", ""),
-        good_badging + "application-label:'PhotoCraft'\\n",
-        good_badging + "application-label:garbled\\n",
+        good_badging.replace("application-label:'PhotoCraft'\n", ""),
+        good_badging + "application-label:'PhotoCraft'\n",
+        good_badging + "application-label:garbled\n",
         good_badging.replace("PhotoCraftActivity", "PreviewActivity"),
         good_badging.replace("launchable-activity:", "other-activity:"),
-        good_badging + "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'\\n",
-        good_badging + "launchable-activity:broken\\n",
+        good_badging + "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'\n",
+        good_badging + "launchable-activity:broken\n",
     ):
         try:
             verify_production_launcher_badging(bad)

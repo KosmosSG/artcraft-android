@@ -33,6 +33,11 @@ V2_STABLE_VERSION = "0.14.0-android.4"
 V2_STABLE_CODE = 16790007
 V2_STABLE_SHA = "d50857fe7d563821563d29842299858bbda09ea49e3786c420ec02f21b8e6367"
 V2_STABLE_TAG = "photocraft-v0.14.0-android.4"
+# 2 Nov 2026: the owner rejected this signed candidate on real hardware:
+# Ctrl+W did not respond, and it lacked the android.4 4 GiB font-scan stage.
+# Signature/version compatibility alone must never override that decision.
+OWNER_REJECTED_VERSION = "0.14.0-android.5"
+OWNER_REJECTED_CODE = 16790008
 PUBLISHED_BASELINES = {
     V2_AI_PREVIEW_VERSION: (V2_AI_PREVIEW_CODE, V2_AI_PREVIEW_SHA),
     V2_STABLE_VERSION: (V2_STABLE_CODE, V2_STABLE_SHA),
@@ -85,6 +90,9 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
         raise ValueError("Candidate APK must differ from all pinned published V2 releases")
     if candidate["version_code"] <= V2_STABLE_CODE:
         raise ValueError("Candidate versionCode must exceed current stable PhotoCraft android.4")
+    if (candidate.get("version_name") == OWNER_REJECTED_VERSION
+            or candidate["version_code"] == OWNER_REJECTED_CODE):
+        raise ValueError("Owner-rejected android.5: Ctrl+W device regression; do not approve or publish")
     tag = candidate.get("tag")
     if not isinstance(tag, str) or not tag.startswith("photocraft-v"):
         raise ValueError("Candidate must use a canonical PhotoCraft release tag")
@@ -116,7 +124,7 @@ def self_test() -> None:
     import copy
     good_badging = (
         "package: name='com.artcraft.photocraft' versionCode='16790008' "
-        "versionName='0.14.0-android.5'\n"
+        "versionName='0.14.0-android.6'\n"
         "application-label:'PhotoCraft'\n"
         "application-label-en:'PhotoCraft'\n"
         "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity' "
@@ -144,8 +152,8 @@ def self_test() -> None:
         "apk_sha256": V2_AI_PREVIEW_SHA, "signer_certificate_sha256": V2_CERT,
     }
     target = {
-        "package": PACKAGE, "tag": "photocraft-v0.14.0-android.5",
-        "version_name": "0.14.0-android.5", "version_code": 16790008,
+        "package": PACKAGE, "tag": "photocraft-v0.14.0-android.6",
+        "version_name": "0.14.0-android.6", "version_code": 16790009,
         "apk_sha256": "a" * 64, "signer_certificate_sha256": V2_CERT,
     }
     good = verify_pair(ref, target)
@@ -157,6 +165,20 @@ def self_test() -> None:
         "version_code": V2_STABLE_CODE, "apk_sha256": V2_STABLE_SHA,
     }
     assert verify_pair(stable_ref, target)["reference_version"] == V2_STABLE_VERSION
+    # Both rejected versionName and rejected versionCode are independently
+    # blocked, including attempts to disguise the regression as android.6.
+    for rejected in (
+        {**target, "tag": "photocraft-v0.14.0-android.5",
+         "version_name": OWNER_REJECTED_VERSION},
+        {**target, "version_code": OWNER_REJECTED_CODE},
+    ):
+        for baseline in (ref, stable_ref):
+            try:
+                verify_pair(baseline, rejected)
+            except ValueError as error:
+                assert "Owner-rejected android.5" in str(error), str(error)
+            else:
+                raise AssertionError("Owner-rejected android.5 was accepted")
     # A historical .2 preview may still be a reference, but no downgrade
     # below today's public stable .4 is ever permitted.
     stale_candidate = {
@@ -206,6 +228,7 @@ def self_test() -> None:
             continue
         raise AssertionError(f"Fail-open regression: {who} {key} {value!r}")
     print(f"PASS: V2 current-stable (.4) plus historical-preview (.2) baseline gate; {len(cases)} negative regressions")
+    print("PASS: owner-rejected android.5 versionName/code blocked against both V2 baselines")
     print("NOT PROVEN: real-device data migration, licensing, or stable-release approval")
 
 

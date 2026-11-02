@@ -321,6 +321,14 @@ if app == "pdfcraft":
         scanner.write_text(original.replace(needle, needle + addition, 1))
         fixed.append("crates/engine/src/text_fonts.rs")
 
+    # Guarded Android-only PDFCraft View-menu integration; never touches desktop.
+    import subprocess
+    subprocess.run(
+        [sys.executable, str(Path.cwd() / "tools/pdfcraft/android_tools_menu_patch.py"), str(src)],
+        check=True,
+    )
+    fixed.append("crates/ui-egui/src/menus.rs (Android toolbar View toggle)")
+
     # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
     update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]
     existing = [p for p in update_paths if p.is_file()]
@@ -377,7 +385,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "26-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "27-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2696,10 +2704,10 @@ impl eframe::App for AndroidShell {{
         checks = [
             ("    probe: InputProbe,", "    probe: InputProbe,\n    pdf_mobile: pdfcraft_mobile::Mobile,"),
             ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
-             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
+             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
-            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);"),
-            ("        self.inner.ui(ui, frame);", "        self.pdf_mobile.toolbar(ui);\n        self.inner.ui(ui, frame);"),
+            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);\n        self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());"),
+            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        self.inner.ui(ui, frame);"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:

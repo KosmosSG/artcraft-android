@@ -24,7 +24,7 @@ jobs:
         path: suite
         persist-credentials: false
     - name: Verify isolated v0.16.0 version staging and baseline preservation
-      run: python3 -m unittest discover -s suite/tools/filmcraft -p 'test_upstream_v016_stage.py' -v
+      run: python3 -m unittest discover -s suite/tools/filmcraft -p 'test_upstream_v016_*.py' -v
     - name: Validate 4 GiB Java scan boundaries
       run: cd suite && python3 tools/font_scan_budget_regression.py
     - name: Validate app-specific keyboard focus handoff
@@ -125,6 +125,9 @@ jobs:
       run: |
         set -euo pipefail
         python3 suite/tools/filmcraft/stage_runtime_hook.py filmcraft-builder/lib/build-common.sh
+        # FilmCraft v0.16's egui 0.37 IME API requires its matching storyTold winit fork.
+        # Do not overwrite either upstream Git pin with older Android builder vendors.
+        python3 suite/tools/filmcraft/stage_v016_builder_deps.py filmcraft-builder/lib/build-common.sh
         mkdir -p filmcraft-builder/tools/filmcraft
         cp suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/filmcraft_features.rs suite/tools/filmcraft/FilmCraftActivity.features.java.inc filmcraft-builder/tools/filmcraft/
         python3 suite/tools/filmcraft/runtime_patch.py --self-test

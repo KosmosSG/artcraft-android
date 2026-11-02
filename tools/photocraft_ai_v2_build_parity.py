@@ -48,9 +48,11 @@ def require(text: str, needles: tuple[str, ...], label: str) -> None:
 
 
 def accepted_recipe(text: str) -> None:
-    require(text, COMMON + FONT_PARITY, "accepted android.4 recipe")
-    if "if: ${{ false }}" in text:
-        raise ValueError("accepted android.4 reference recipe unexpectedly archived")
+    require(text, COMMON + FONT_PARITY + ("if: ${{ false }}",), "accepted android.4 recipe")
+    # The exact historical recipe is retained for comparison, but must never
+    # spend CI minutes rebuilding an already-published stable version.
+    if "if: github.repository == 'KosmosSG/artcraft-android' && github.ref" in text:
+        raise ValueError("historical android.4 ARM64 build must stay archived")
 
 
 def rejected_recipe(text: str) -> None:
@@ -117,6 +119,7 @@ def self_test() -> None:
         (accepted_recipe, stable.replace(FONT_PARITY[3], "", 1), "font file count missing"),
         (accepted_recipe, stable.replace(COMMON[0], 'BASE="unreviewed"', 1), "keyboard baseline changed"),
         (accepted_recipe, stable.replace(COMMON[1], ""), "keyboard focus check missing"),
+        (accepted_recipe, stable.replace("if: ${{ false }}", "if: ${{ true }}", 1), "stable android.4 rebuild reenabled"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[0], "if: ${{ true }}", 1), "android.5 reenabled"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[2], "", 1), "android.5 rejection missing"),
         (obsolete_proof_recipe, obsolete.replace("if: ${{ false }}", "if: ${{ true }}", 1), "obsolete proof reenabled"),
@@ -134,7 +137,7 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: rejected android.5 workflow remains disabled; thirteen negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; fourteen negative mutations rejected")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")

@@ -12,3 +12,11 @@ class NativeTouchAndTools(unittest.TestCase):
             "QuickTool::Hand", "QuickTool::Select", "ctx.input_mut"):
             self.assertIn(check,s)
 if __name__=="__main__": unittest.main()
+
+class SaveAndNavigationRegression(unittest.TestCase):
+    def test_dcs_repeat_focus_and_touch_hint(self):
+        s=(ROOT/"tools"/"pdfcraft"/"android_interaction_patch.py").read_text()
+        for marker in ("ARTCRAFT_ANDROID_DCS", "Key::D", "Key::C", "Key::S",
+                       "ARTCRAFT_ANDROID_REPEAT_TOOL_KEYS", "ctx.text_edit_focused()",
+                       "ARTCRAFT_ANDROID_TOUCH_HINT", "Touch: swipe to scroll"):
+            self.assertIn(marker,s)

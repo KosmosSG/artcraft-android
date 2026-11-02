@@ -6,19 +6,27 @@ import unittest
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/"tools"/"pdfcraft"))
 from android_input_patch import patch
+from android_onefinger_patch import patch as patch_onefinger
+from android_trackpad_patch import patch as patch_trackpad
 from winit_v015_compat import with_ime_api
 
 class AndroidInputCompatibility(unittest.TestCase):
     def test_pinned_vendor_input_overlay(self):
         source=(ROOT/"vendor"/"winit"/"src"/"platform_impl"/"android"/"mod.rs").read_text()
-        patched=patch(with_ime_api(source))
-        self.assertEqual(patch(patched),patched)
+        patched=patch_trackpad(patch_onefinger(patch(with_ime_api(source))))
+        self.assertEqual(patch_trackpad(patch_onefinger(patch(patched))),patched)
         for needle in [
             "fn pdfcraft_android_gesture",
             "MotionAction::PointerDown if count >= 2",
             "MouseScrollDelta::PixelDelta",
             "event::WindowEvent::CursorMoved { device_id, position: mid }",
             "motion_event.source() == Source::Touchscreen",
+            "PDFCRAFT_ANDROID_ONE_FINGER_NAVIGATION",
+            "PdfTouchMode::SinglePan",
+            "PdfTouchMode::SingleSelect",
+            "std::time::Duration::from_millis(300)",
+            "PDFCRAFT_ANDROID_TRACKPAD_SCROLL",
+            "motion_event.source() == Source::Touchpad",
             "PdfTouchMode::Scroll",
             "TouchPhase::Cancelled",
             "PinchGesture",

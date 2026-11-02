@@ -72,4 +72,24 @@ change(app,
         // ARTCRAFT_ANDROID_REPEAT_KEYS: upstream tool_keys() now uses precise
         // editor focus; avoid a second H/V consumer after shortcuts().
 """)
-print("PASS: PDFCraft D/C/S modal hints, repeated bare tools and focused input guards")
+canvas=src/"crates/ui-egui/src/canvas.rs"
+change(canvas,
+"""    let navigation_enabled = app.dialog.is_none() && app.close_request.is_none() && !app.palette_open && ui.is_enabled() && ui.input(|i| i.focused);""",
+"""    // ARTCRAFT_ANDROID_TOUCH_HINT: finger users have no hover tooltip.
+    #[cfg(target_os = "android")]
+    if app.quick_tool == QuickTool::Select && !app.modal_open() {
+        let origin = ui.min_rect().min + egui::vec2(16.0, 12.0);
+        egui::Area::new(egui::Id::new("pdfcraft-touch-select-hint"))
+            .fixed_pos(origin)
+            .order(egui::Order::Tooltip)
+            .interactable(false)
+            .show(ui.ctx(), |hint| {
+                egui::Frame::group(hint.style())
+                    .fill(hint.visuals().panel_fill)
+                    .show(hint, |hint| {
+                        hint.small("Touch: swipe to scroll • hold and drag to select");
+                    });
+            });
+    }
+    let navigation_enabled = app.dialog.is_none() && app.close_request.is_none() && !app.palette_open && ui.is_enabled() && ui.input(|i| i.focused);""")
+print("PASS: PDFCraft D/C/S, repeatable tools and touch selection hint")

@@ -52,6 +52,9 @@ def prepare(source: Path, builder_android: Path) -> None:
     # PDFCraft-only: do not replace the shared Android keyboard/mouse backend.
     from android_input_patch import patch as patch_android_input
     overlay = patch_android_input(overlay)
+    from android_onefinger_patch import patch as patch_onefinger
+    from android_trackpad_patch import patch as patch_trackpad
+    overlay = patch_trackpad(patch_onefinger(overlay))
     keycodes = (builder_android / "keycodes.rs").read_bytes()
     with tempfile.TemporaryDirectory(prefix=".pdfcraft-winit-", dir=vendor.parent) as temp:
         pinned = Path(temp) / "pinned"

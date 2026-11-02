@@ -85,7 +85,7 @@ def archived_ai_preview_recipe(text: str) -> None:
     # The preview artifact is allowed ONLY for its separate package identity.
     # The failure-diagnostics path must not recursively upload an APK copied
     # by verify_apk.py into icon-verification/.
-    if re.search(r"(?m)^\\s+icon-verification/\\s*$", text):
+    if re.search(r"(?m)^\s+icon-verification/\s*$", text):
         raise ValueError("preview failure diagnostics may expose disposable APK copies")
 
 

@@ -3,6 +3,11 @@ from pathlib import Path
 import sys
 
 def apply(root):
+    # Upstream v0.14.0 split the save dialog into dispatch.rs and chrome.rs.
+    # Keep the shipped v0.9.0 implementation available for regression tests.
+    if (Path(root) / "crates/ui-egui/src/dialogs/dispatch.rs").is_file():
+        from patch_unsaved_dcs_v014 import apply as apply_v014
+        return apply_v014(root)
     target = Path(root) / "crates/ui-egui/src/dialogs.rs"
     source = target.read_text()
     start = source.index('        Dialog::SaveChanges { name, message, .. } => {')

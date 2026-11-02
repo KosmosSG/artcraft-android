@@ -215,6 +215,12 @@ def main():
         raise SystemExit("Missing DesignCraft pinned upstream v0.16 manifest")
     patch_source(src)
     patch_launcher(root, android)
+    # Integrate existing Android SAF folder scanner and physical keys only
+    # for the isolated v0.16 review; other applications remain unchanged.
+    from patch_v016_interactions import ui_source, launcher, java_source
+    ui_source(src)
+    launcher(android)
+    java_source(root, android)
     install_icons(root, src, android)
     print("DesignCraft v0.16: Android font import, modal D/C/S and branding staged")
 

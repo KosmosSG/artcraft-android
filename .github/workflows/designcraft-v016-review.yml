@@ -102,7 +102,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: UNVERIFIED-DesignCraft-v016-DEBUG-arm64-not-for-updates
+          name: UNVERIFIED-DesignCraft-v0.16.0-android.1-DEBUG-arm64-not-for-updates
           path: output/designcraft-*-debug.apk
           retention-days: 3
           if-no-files-found: error

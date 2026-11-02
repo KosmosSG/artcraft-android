@@ -92,6 +92,22 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertNotIn("softprops/action-gh-release", workflow)
         self.assertNotIn("secrets.", workflow)
 
+    def test_android_graphics_start_is_deferred_to_first_resumed(self):
+        # A native Android window is unavailable before Resumed. The pinned
+        # eframe renderer owns Suspended/Resumed surface lifecycle, while the
+        # DesignCraft shell is created only by its AppCreator callback.
+        marker = '    if saf and app == "designcraft":'
+        self.assertEqual(self.shell.count(marker), 1)
+        entry = self.shell.split(marker, 1)[1].split("    elif saf:", 1)[0]
+        self.assertIn("android_app: Some(android_app)", entry)
+        self.assertIn("eframe::run_native(", entry)
+        creator = entry.index("        Box::new(move |_cc| {{")
+        constructed = entry.index("            {inner_decl} = {construct_expr};")
+        self.assertLess(creator, constructed)
+        self.assertIn("let shell = AndroidShell::new(", entry)
+        self.assertNotIn("native_window()", entry)
+        self.assertNotIn("wgpu::Surface", entry)
+
     def test_source_review_cannot_claim_publication(self):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))

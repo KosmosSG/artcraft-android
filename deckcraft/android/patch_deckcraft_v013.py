@@ -155,7 +155,7 @@ def apply(root):
     let zooming = resp.hovered() && (zoom_delta - 1.0).abs() > 1e-3;''',
         '''    let (wheel, zoom_delta, hover) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
     #[cfg(target_os = "android")]
-    let touch_zoom_anchor: Option<Pos2> = {
+    let (touch_zoom_anchor, touch_pan_active): (Option<Pos2>, bool) = {
         let id = scroll_id.with("deckcraft_android_pinch_anchor");
         let (events, now, multi) = ui.input(|i| (i.events.clone(), i.time, i.multi_touch()));
         let mut last: Option<(Pos2, f64)> = ui.data_mut(|d| d.get_temp(id));
@@ -183,13 +183,21 @@ def apply(root):
             }
         }
         let native_pinch = events.iter().any(|e| matches!(e, egui::Event::Zoom(_)));
+        // Android's two-finger pan is translated by winit into a point wheel
+        // event. It also clears hover, so the canvas must remember the origin.
+        // A mouse/trackpad wheel alone cannot activate this without a touch.
+        let native_pan = events.iter().any(|e| matches!(e,
+            egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. }));
         let allowed = app.dialog.is_none() && app.palette.is_none() && !app.backstage_open();
-        let anchor = if allowed && (native_pinch || multi_anchor.is_some()) {
+        let anchor = if allowed && (native_pinch || native_pan || multi_anchor.is_some()) {
             multi_anchor.or_else(|| {
                 last.filter(|(pos, time)| avail.contains(*pos) && now >= *time && now - *time < 8.0)
                     .map(|(pos, _)| pos)
             })
         } else { None };
+        // Pan only if this wheel event belongs to a touch that began on the
+        // slide canvas, NOT if it belongs to the ribbon, mouse or modal.
+        let touch_pan = allowed && native_pan && anchor.is_some();
         if let Some(pos) = anchor {
             last = Some((pos, now));
         }
@@ -198,16 +206,33 @@ def apply(root):
             if let Some(origin) = last { d.insert_temp(id, origin); }
             else { d.remove_temp::<(Pos2, f64)>(id); }
         });
-        anchor
+        (anchor, touch_pan)
     };
     #[cfg(not(target_os = "android"))]
-    let touch_zoom_anchor: Option<Pos2> = None;
+    let (touch_zoom_anchor, touch_pan_active): (Option<Pos2>, bool) = (None, false);
     // The Android backend can cancel the pointer hover for a pinch. Zoom only
     // if the original pointer is over the canvas OR a pinch began inside it.
     let zooming = (resp.hovered() || touch_zoom_anchor.is_some()) && (zoom_delta - 1.0).abs() > 1e-3;''')
     edit('canvas.rs',
         '''zooming.then_some(hover).flatten(), avail''',
         '''zooming.then_some(touch_zoom_anchor.or(hover)).flatten(), avail''')
+
+    edit('canvas.rs',
+        '''    if (resp.hovered() || on_bar) && !zooming {
+        if overflow != egui::Vec2::ZERO {
+            offset -= wheel;
+        } else {
+            wheel_navigation(app, ui, carry_id, doc_uid);
+        }
+    }''',
+        '''    if (resp.hovered() || on_bar || touch_pan_active) && !zooming {
+        if overflow != egui::Vec2::ZERO {
+            offset -= wheel;
+        } else if !touch_pan_active {
+            // A two-finger swipe over a fitted slide must not turn pages.
+            wheel_navigation(app, ui, carry_id, doc_uid);
+        }
+    }''')
 
     print('DeckCraft 0.14.1: font persistence, native menus, update routing and D/C/S ported')
 

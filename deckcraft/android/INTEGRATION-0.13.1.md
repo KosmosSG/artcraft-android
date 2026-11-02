@@ -70,3 +70,22 @@ menus or D/C/S modal. Keep released Android.4 DCS fix, dark theme and Esc
 behaviour. Next APK is a disposable-cert testing build: no permanent signing,
 merge or publication until owner validates pinch inward/outward and all
 previously working behaviours on the tablet.
+
+## v0.14.1-android.5 Android two-finger canvas pan follow-up (2026-11-02)
+
+Owner tested device v0.14.1-android.4: pinch out/in WORK, D/C/S and Escape WORK,
+Dark Theme WORK, but two-finger canvas scrolling/panning NOT WORKING. A winit
+Android two-finger PanGesture is routed to egui::MouseWheel Point; winit drops
+normal touch hover on the second finger, so upstream DeckCraft canvas ignores
+wheel scrolling unless resp.hovered(). Android.5 adds a canvas-origin-scoped
+point-wheel fallback to the same existing touch-anchor logic as pinch zoom,
+permitting offset scroll only when the canvas overflows after zoom. It also
+prevents two-finger swipe over a fitted slide from being mistaken for page
+navigation. The modal, ribbon, existing pointer selection, pinch, D/C/S,
+Escape, zoom constraints, dark theme and approved icon are preserved.
+
+Device test: after pinch zooming past fit (e.g. 180%-250%), place two fingers
+on the slide and move them together to pan horizontally/vertically; confirm
+no object selection, no unwanted slide changes, and existing pinch in/out,
+D/C/S and Esc still work. Generate temporary-key test APK from successful
+unsigned build, with no additional production GitHub signing run and no release.

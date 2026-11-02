@@ -131,21 +131,21 @@ pub fn artcraft_ai_tools_visible() -> bool {
     # The full tablet fork uses GameActivity and its own JNI bridge. Carry
     # only its safe UI-scroll behavior through this temporary adapter overlay:
     # the published NativeActivity/SAF/keyboard source remains byte-identical.
-    replace_once(host, "mod ai_menu;\\n", "mod ai_menu;\\nmod ui_touch_scroll;\\n")
+    replace_once(host, "mod ai_menu;\n", "mod ai_menu;\nmod ui_touch_scroll;\n")
     replace_once(
         host,
-        "    modifiers: egui::Modifiers,\\n    ai_menu: ai_menu::AndroidAiMenu,\\n",
-        "    modifiers: egui::Modifiers,\\n    touch_scroll: ui_touch_scroll::UiTouchScroll,\\n    ai_menu: ai_menu::AndroidAiMenu,\\n",
+        "    modifiers: egui::Modifiers,\n    ai_menu: ai_menu::AndroidAiMenu,\n",
+        "    modifiers: egui::Modifiers,\n    touch_scroll: ui_touch_scroll::UiTouchScroll,\n    ai_menu: ai_menu::AndroidAiMenu,\n",
     )
     replace_once(
         host,
-        "        apply_android_modifiers(&mut self.modifiers, raw);\\n        self.inner.raw_input_hook(ctx, raw);\\n",
-        "        apply_android_modifiers(&mut self.modifiers, raw);\\n        self.touch_scroll.route(ctx, raw);\\n        self.inner.raw_input_hook(ctx, raw);\\n",
+        "        apply_android_modifiers(&mut self.modifiers, raw);\n        self.inner.raw_input_hook(ctx, raw);\n",
+        "        apply_android_modifiers(&mut self.modifiers, raw);\n        self.touch_scroll.route(ctx, raw);\n        self.inner.raw_input_hook(ctx, raw);\n",
     )
     replace_once(
         host,
-        "                modifiers: egui::Modifiers::default(),\\n                ai_menu: ai_menu::AndroidAiMenu::new(",
-        "                modifiers: egui::Modifiers::default(),\\n                touch_scroll: ui_touch_scroll::UiTouchScroll::default(),\\n                ai_menu: ai_menu::AndroidAiMenu::new(",
+        "                modifiers: egui::Modifiers::default(),\n                ai_menu: ai_menu::AndroidAiMenu::new(",
+        "                modifiers: egui::Modifiers::default(),\n                touch_scroll: ui_touch_scroll::UiTouchScroll::default(),\n                ai_menu: ai_menu::AndroidAiMenu::new(",
     )
 
     # A prerelease SemVer label is valid for Cargo and for Android's versionName.
@@ -153,8 +153,8 @@ pub fn artcraft_ai_tools_visible() -> bool {
     # naming convention solely for the compatibility APK and About information.
     replace_once(
         adapter / "Cargo.toml",
-        "version.workspace = true\\n",
-        'version = "0.19.0-android.1"\\n',
+        "version.workspace = true\n",
+        'version = "0.19.0-android.1"\n',
     )
     print("PhotoCraft v0.19.0-android.1 compatibility, AI and two-finger UI scrolling staged (runner only).")
 

@@ -30,6 +30,9 @@ mod system_fonts;
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
 
+// Opt-in, read-only Companion manifest catalog; distinct from document SAF picker and AI PR #93.
+mod companion_catalog;
+
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.
 const ANDROID_SHELL_MARKER: &str = "ARTCRAFT_PHOTOCRAFT_ANDROID_SHELL_V2_MODIFIERS_FULLSCREEN";
@@ -526,6 +529,7 @@ struct PhotoCraftAndroidApp {
     inner: PhotocraftApp,
     bridge: AndroidFileBridge,
     picker: Arc<PickerState>,
+    companion: companion_catalog::CompanionCatalog,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -657,6 +661,7 @@ impl PhotoCraftAndroidApp {
 impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.picker.poll(&self.bridge, ctx);
+        self.companion.poll(&self.bridge, ctx);
         // Deliver any file the system asked us to open through the app's own inbox.
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
@@ -666,6 +671,12 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         self.inner.ui(ui, _frame);
+        // PhotoCraft's own unsaved-changes and other modal dialogs must keep exclusive
+        // pointer/keyboard focus. Hide the optional Companion overlay until all
+        // dialogs close instead of allowing a catalog button behind a modal.
+        if self.inner.ui.dialogs.is_empty() {
+            self.companion.show(ui.ctx(), &self.bridge);
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -774,6 +785,7 @@ fn android_main(android_app: AndroidApp) {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
                 picker: app_picker.clone(),
+                companion: companion_catalog::CompanionCatalog::default(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
                 intent_inbox: app_intent_inbox.clone(),

@@ -1,0 +1,152 @@
+name: PhotoCraft Companion pinned v0.14 ARM64 typecheck (NO APK NO SIGNING)
+
+on:
+  push:
+    branches:
+      - feature/photocraft-companion-android-catalog-20261101
+    paths:
+      - .github/workflows/photocraft-companion-arm64-typecheck.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: photocraft-companion-pinned-v014-arm64-typecheck
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      safe_to_compile: ${{ steps.suite-load.outputs.safe_to_compile }}
+    steps:
+      - name: Check concurrent ArtCraft ARM64 runs before using a heavy runner
+        id: suite-load
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = "https://api.github.com/repos/KosmosSG/artcraft-android/actions/runs?per_page=100"
+          req = urllib.request.Request(url, headers={
+              "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+              "Accept": "application/vnd.github+json",
+          })
+          with urllib.request.urlopen(req, timeout=20) as response:
+              payload = json.load(response)
+          current = os.environ["GITHUB_RUN_ID"]
+          active = [
+              (str(run["id"]), run["name"], run["status"])
+              for run in payload.get("workflow_runs", [])
+              if str(run["id"]) != current
+              and run.get("status") != "completed"
+              and (
+                  "ARM64" in run.get("name", "")
+                  or "signed" in run.get("name", "").lower()
+                  or "Build PhotoCraft APK" in run.get("name", "")
+              )
+          ]
+          if active:
+              print("DEFER: other ArtCraft ARM64 candidates are active; no new heavy build:")
+              for item in active:
+                  print("  run", *item)
+              decision = "no"
+          else:
+              print("No competing ArtCraft ARM64 runs found; one source-only cross-typecheck allowed.")
+              decision = "yes"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print("safe_to_compile=" + decision, file=output)
+          PY
+
+  source-typecheck:
+    needs: preflight
+    if: needs.preflight.outputs.safe_to_compile == 'yes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - name: Checkout exact PR 109 source; never persist credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out official PhotoCraft v0.14.0 source at immutable commit
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/photocraft
+          ref: ff4738810134d7f7e68b49f2e4f231b686282ff3
+          path: source/photocraft
+          persist-credentials: false
+
+      - name: Enforce source identity and untouched production package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source/photocraft rev-parse HEAD)" = 'ff4738810134d7f7e68b49f2e4f231b686282ff3'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import pathlib, tomllib, re
+          root = pathlib.Path('source/photocraft')
+          ws = tomllib.loads((root/'Cargo.toml').read_text())
+          assert ws['workspace']['package']['version'] == '0.14.0'
+          ui = (root/'crates/ui-egui/src/lib.rs').read_text()
+          for symbol in ('impl eframe::App for PhotocraftApp', 'fn logic(', 'fn ui(', 'fn raw_input_hook('):
+              assert symbol in ui, 'Unexpected upstream UI frame contract: '+symbol
+          android = tomllib.loads(pathlib.Path('adapters/photocraft/Cargo.toml').read_text())['package']['metadata']['android']
+          assert android['package'] == 'com.artcraft.photocraft'
+          assert android['application']['label'] == 'PhotoCraft'
+          assert android['build_targets'] == ['aarch64-linux-android']
+          assert android['java_sources'] == 'java'
+          print('PASS: original package/label and upstream v0.14.0 frame interface')
+          PY
+
+      - name: Install Rust aarch64 type-check target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK/NDK only if required for cross checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(realpath "$ANDROID_HOME")"
+          test -f "$SDK/platforms/android-35/android.jar"
+          if [ ! -d "$SDK/ndk/27.2.12479018" ]; then
+            "$SDK/cmdline-tools/latest/bin/sdkmanager" --install 'ndk;27.2.12479018'
+          fi
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Stage read-only Companion adapter into pinned official source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash adapters/photocraft/prepare.sh photocraft PhotoCraft source/photocraft
+          test -f source/photocraft/apps/photocraft-android/src/companion_catalog.rs
+          test -f source/photocraft/apps/photocraft-android/java/com/artcraft/photocraft/CompanionPluginCatalog.java
+          echo "Builder commit: $GITHUB_SHA"
+          echo "Official upstream source: ff4738810134d7f7e68b49f2e4f231b686282ff3"
+
+      - name: Type-check Android ARM64 Rust target, not an APK build
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: '2'
+          CARGO_INCREMENTAL: '0'
+          CARGO_PROFILE_DEV_DEBUG: '0'
+        run: |
+          set -euo pipefail
+          cd source/photocraft
+          cargo check -p photocraft-android --target aarch64-linux-android -j 2
+
+      - name: Refuse signing, APK creation, and APK artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find source -type f \( -name '*.apk' -o -name '*.jks' -o -name '*.keystore' \) -print -quit | grep -q .; then
+            echo 'STOP: unexpected signing or APK material found' >&2
+            exit 1
+          fi
+          echo 'Source-only ARM64 type check; no APK, keystore, signing, upload or release'

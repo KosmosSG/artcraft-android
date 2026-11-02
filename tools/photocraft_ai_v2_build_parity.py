@@ -18,6 +18,8 @@ OBSOLETE_PROOF = ROOT / ".github/workflows/photocraft-ai-production-dryrun.yml"
 AI_PREVIEW_WORKFLOW = ROOT / ".github/workflows/photocraft-ai-menu-pr93-test.yml"
 AI_MENU = ROOT / "adapters/photocraft/src/ai_menu.rs"
 AI_STAGE = ROOT / "tools/photocraft_ai_preview_stage.py"
+STABLE_STAGE = ROOT / "tools/photocraft_ai_v2_fontscan_android4_stage.py"
+REJECTED_STAGE = ROOT / "tools/photocraft_ai_v2_candidate_stage.py"
 WINDOW_PATCH = ROOT / "tools/photocraft_ai_window_patch.py"
 BASELINE = "f708fff8a333c2246b6d342570b19db5b95f4be1"
 
@@ -189,6 +191,40 @@ def ai_one_shot_token_boundary(menu: str) -> None:
         raise ValueError("AI token must be consumed before snapshot and worker start")
 
 
+
+def stage_transform_parity(stable: str, rejected: str) -> None:
+    """Guard actual staging operations shared by accepted .4 and rejected .5.
+
+    This excludes an observed staging-script keyboard-patch difference; it
+    does not reproduce Ctrl+W on the owner's Android hardware or rule out
+    different packaging, fonts, focus state, or input-method behavior.
+    """
+    require(stable, ('PROPOSED_VERSION = "0.14.0-android.4"',
+                     'record["version_code"] = 16790007'), "android.4 stage identity")
+    require(rejected, ('PROPOSED_VERSION = "0.14.0-android.5"',
+                       'PROPOSED_CODE = 16790008',
+                       'V2_STABLE_CODE = 16790007'), "android.5 stage identity")
+
+    def normalized_stage(source: str) -> str:
+        start, end = "def stage(root: Path) -> None:", "def self_test() -> None:"
+        if source.count(start) != 1 or source.count(end) != 1:
+            raise ValueError("Stage function boundaries changed")
+        body = source.split(start, 1)[1].split(end, 1)[0]
+        lines = []
+        for line in body.splitlines():
+            if not line.strip() or line.strip().startswith(("#", "print(")):
+                continue
+            line = line.replace("0.14.0-android.4", "0.14.0-android.CANDIDATE")
+            line = line.replace("0.14.0-android.5", "0.14.0-android.CANDIDATE")
+            line = line.replace('record["version_code"] = 16790007',
+                                'record["version_code"] = PROPOSED_CODE')
+            lines.append(line)
+        return "\n".join(lines)
+
+    if normalized_stage(stable) != normalized_stage(rejected):
+        raise ValueError("Android.5 stage transformations diverge from accepted Android.4")
+
+
 def self_test() -> None:
     stable = ACCEPTED.read_text(encoding="utf-8")
     rejected = REJECTED.read_text(encoding="utf-8")
@@ -197,6 +233,8 @@ def self_test() -> None:
     ai_menu = AI_MENU.read_text(encoding="utf-8")
     ai_stage = AI_STAGE.read_text(encoding="utf-8")
     window_patch = WINDOW_PATCH.read_text(encoding="utf-8")
+    stable_stage = STABLE_STAGE.read_text(encoding="utf-8")
+    rejected_stage = REJECTED_STAGE.read_text(encoding="utf-8")
     accepted_recipe(stable)
     rejected_recipe(rejected)
     obsolete_proof_recipe(obsolete)
@@ -204,8 +242,17 @@ def self_test() -> None:
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
     ai_hidden_consent_boundary(ai_menu)
     ai_one_shot_token_boundary(ai_menu)
+    stage_transform_parity(stable_stage, rejected_stage)
 
     mutations = (
+        (lambda text: stage_transform_parity(stable_stage, text),
+         rejected_stage.replace("build_text = exactly(build_text, guard, replacement)",
+                                "build_text = build_text.replace(guard, replacement)", 1),
+         "android.5 staging bypasses checked builder anchor"),
+        (lambda text: stage_transform_parity(stable_stage, text),
+         rejected_stage.replace("setup = exactly(setup, selector,",
+                                "setup = setup.replace(selector,", 1),
+         "android.5 staging bypasses checked prepare anchor"),
         (archived_ai_preview_recipe, ai_preview.replace("    if: ${{ false }}", "    if: ${{ true }}", 1), "preview ARM64 job reenabled"),
         (archived_ai_preview_recipe, ai_preview.replace("  workflow_dispatch:", "  push:\\n  workflow_dispatch:", 1), "preview push trigger restored"),
         (archived_ai_preview_recipe, ai_preview.replace("cancel-in-progress: false", "cancel-in-progress: true", 1), "preview run cancellation restored"),
@@ -254,6 +301,7 @@ def self_test() -> None:
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
     print("PASS: starting AI processing consumes the one-use UI token without retaining a dialog copy")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
+    print("PASS: accepted .4 and rejected .5 source transforms match apart from version metadata; two mutations rejected")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")
 
 

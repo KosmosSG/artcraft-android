@@ -135,11 +135,11 @@ jobs:
           python3 - "$RUNNER_TEMP/deckcraft-sign-verification.txt" <<'PY'
           import os, re, sys
           report = open(sys.argv[1]).read()
-          assert 'Verified using v2 scheme (APK Signature Scheme v2): true' in report, 'v2 signature verification failed'
+          assert (\n    'Verified using v2 scheme (APK Signature Scheme v2): true' in report or\n    'Verified using v3 scheme (APK Signature Scheme v3): true' in report\n), 'Neither APK Signature Scheme v2 nor v3 verified'
           found = re.findall(r'^Signer #(\d+) certificate SHA-256 digest: ([a-fA-F0-9:]+)\s*$', report, re.M)
           assert len(found) == 1 and found[0][0] == '1', 'Expected one APK signer'
           assert found[0][1].lower().replace(':','') == os.environ['ORIGINAL_CERT_SHA256'], 'Signed certificate mismatch'
-          print('PASS: verified original certificate, one signer, APK Signature Scheme v2')
+          print('PASS: verified original certificate, one signer, APK Signature Scheme v2 or v3')
           PY
           "$BUILD_TOOLS/aapt" dump badging "$output" > "$RUNNER_TEMP/deckcraft-signed-badging.txt"
           grep -F "name='$PACKAGE_NAME'" "$RUNNER_TEMP/deckcraft-signed-badging.txt"

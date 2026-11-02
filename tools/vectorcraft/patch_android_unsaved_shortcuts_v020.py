@@ -57,11 +57,11 @@ def patch(root: Path) -> None:
         "Cancel label")
     source = once(source,
         'discard = widgets::secondary_button(ui, label).clicked();',
-        'discard = widgets::secondary_button(ui, if d.kind == crate::unsaved::KIND { "Don\\'t Save (D)" } else { label }).clicked();',
+        'discard = widgets::secondary_button(ui, if d.kind == crate::unsaved::KIND { "Don\'t Save (D)" } else { label }).clicked();',
         "Discard label")
     save = root / "crates/ui-egui/src/dialogs/save_changes.rs"
     contract = save.read_text()
-    for phrase in ('ok: Some("Save"),', 'discard: Some("Don\\'t Save"),',
+    for phrase in ('ok: Some("Save"),', 'discard: Some("Don\'t Save"),',
                    'confirm: |app, _| crate::unsaved::confirm(app),'):
         if phrase not in contract:
             raise RuntimeError(f"Save Changes callback contract differs: {phrase}")

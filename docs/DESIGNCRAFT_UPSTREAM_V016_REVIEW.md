@@ -21,3 +21,23 @@
 5. Require exact signed APK HONOR MagicPad 4 acceptance and separate explicit owner merge/publication approval. No private GitHub Actions signing, auto-merge, release/tag or Latest change.
 
 This is a source provenance staging PR, **not** a v0.16 Android integration or new installable APK.
+
+## Reference-feature parity review (2026-11-02; no device verification)
+
+Reference: `MostafaXS1/artcraft-android` changelog and builder, evaluated against this branch. These labels describe **source presence**, not working v0.16 Android functionality. Every feature needs compiled APK/device verification before release.
+
+| Requested feature | Current DesignCraft v0.16 integration status |
+| --- | --- |
+| Automatic document save and crash recovery | **Partial**: DesignCraft-specific recovery folder, previous-recovery open and guarded save hooks added; periodic dirty-document autosave and SAF original-file synchronization not yet validated. |
+| Auto-build on commit | **Present**: dedicated debug-only GitHub Actions push workflow; currently compilation failing, no publish/sign job. |
+| Save and restore sessions | **Partial**: UI/preferences persist and recovery hooks added; restoring complete open-tab/workspace state not verified. |
+| Two-finger scrolling | **Unverified / pending**: patched shared winit supports mouse/trackpad wheel, not proof that touch-screen two-finger pan works. |
+| Better UI scaling on mobile | **Partial / pending**: existing builder has density-based scaling logic; v0.16 app API and HONOR tablet behavior not validated. |
+| GPU acceleration | **Pending runtime validation**: wgpu renderer configured in launcher; cannot claim acceleration without Vulkan/GLES runtime diagnostics and device test. |
+| Finger hold = right-click | **Not confirmed**: mouse right-button translation exists; finger long-press -> secondary click requires a distinct gesture mapping and canvas test. |
+| Adaptive app icons | **Existing suite support; pending APK check**: preserve approved DesignCraft Dc artwork and packaged adaptive icon layers. |
+| Adaptive cursor | **Not confirmed**: pointer-move events supported for hardware mouse; Android pointer icon changing by egui hover state not yet verified. |
+
+**Build blocker identified:** upstream v0.16's `craft-dialogs` transitively needs `rfd 0.17`; previous Android vendoring check looked only for literal direct `rfd::` calls. The builder now opts into the existing vendored Android-compatible `rfd` when `-designcraft-v016` is used. This is a *source change only* until the experimental ARM64 job passes. Native `rfd` dialogs in the compatibility vendor may return cancel; the app's SAF bridge must be checked end to end before releasing.
+
+Release gates: no automatic signing, no auto-merge, no publish, no change to Android.9, no claims of parity until hardware testing.

@@ -2795,7 +2795,10 @@ PY
 # `aarch64-linux-android`. Vendor the builder's Android-compatible copy (a stub backend that
 # resolves dialogs to "cancelled") and patch it into the workspace so the launcher builds. Real
 # open/save on Android needs a platform adapter (see adapters/README.md).
-if grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
+# DesignCraft v0.16.0 uses rfd indirectly via craft-dialogs; its crates need
+# the vendored Android backend even when source files contain no direct `rfd::` call.
+# Keep the existing conditional detection unchanged for all other apps.
+if [[ "$DESIGNCRAFT_V016" == true ]] || grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
     echo "Vendoring an Android-compatible rfd for $TITLE (native file dialogs become no-ops)..."
     mkdir -p "$SRC/vendor"
     rm -rf "$SRC/vendor/rfd"

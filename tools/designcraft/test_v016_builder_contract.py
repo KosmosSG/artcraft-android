@@ -64,6 +64,15 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))
 
+    def test_indirect_designcraft_dialog_dependency_has_android_backend(self):
+        # DesignCraft v0.16 imports craft-dialogs, which imports rfd indirectly:
+        # the old source-grep-only guard missed it and ARM64 compilation failed.
+        self.assertIn('if [[ "$DESIGNCRAFT_V016" == true ]] || grep -rqE', self.shell)
+        self.assertIn('cp -a "$ROOT/vendor/rfd" "$SRC/vendor/rfd"', self.shell)
+        backend = (ROOT / "vendor" / "rfd" / "src" / "backend.rs").read_text()
+        self.assertIn('#[cfg(target_os = "android")]', backend)
+        self.assertIn('mod android;', backend)
+
 
 if __name__ == "__main__":
     unittest.main()

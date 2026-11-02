@@ -2,6 +2,10 @@
 // Not used by PhotoCraft or any other suite app. No APK installation occurs here.
 private static final int PDF_FONT_REQUEST = 0x5351;
 private static final int PDF_FONT_TREE_REQUEST = 0x5352;
+private static final long PDF_FONT_SCAN_MAX_BYTES = 4L * 1024 * 1024 * 1024; // 4 GiB; avoids int overflow
+private static final int PDF_FONT_SCAN_MAX_FILES = 5000; // candidate TTF/OTF files per refresh
+private static final int PDF_FONT_SCAN_MAX_FOLDERS = 10000; // recursive SAF traversal safety cap
+private static final long PDF_FONT_FILE_MAX_BYTES = 16L * 1024 * 1024;
 private static final String PDF_FONT_TREE_PREF = "pdfcraft.font.tree.uri";
 private static final String PDF_STARTUP_UPDATE_PREF = "pdfcraft.updater.startup";
 private static final String PDF_RELEASES_API =
@@ -97,6 +101,10 @@ private boolean pdfHandlePicker(int requestCode, int resultCode, Intent data) {
     return true;
 }
 private File pdfCopyFont(Uri uri, String name) throws Exception {
+    return pdfCopyFont(uri, name, new long[]{0L});
+}
+// The mutable long tracks bytes across every font opened during a single refresh.
+private File pdfCopyFont(Uri uri, String name, long[] scanBytes) throws Exception {
     String lower = name.toLowerCase(java.util.Locale.ROOT);
     if (!(lower.endsWith(".ttf") || lower.endsWith(".otf")))
         throw new java.io.IOException("Only TTF/OTF files are supported");
@@ -114,9 +122,14 @@ private File pdfCopyFont(Uri uri, String name) throws Exception {
         long total = 0;
         int length;
         while ((length = in.read(bytes)) != -1) {
+            if (total > PDF_FONT_FILE_MAX_BYTES - length)
+                throw new java.io.IOException("Font exceeds 16 MiB size limit");
+            if (scanBytes[0] > PDF_FONT_SCAN_MAX_BYTES - length) {
+                scanBytes[0] = PDF_FONT_SCAN_MAX_BYTES; // stop folder scan after this file
+                throw new java.io.IOException("4 GiB shared font scan budget reached");
+            }
             total += length;
-            if (total > 16L * 1024 * 1024)
-                throw new java.io.IOException("Font exceeds 16 MB size limit");
+            scanBytes[0] += length;
             out.write(bytes, 0, length);
             digest.update(bytes, 0, length);
         }
@@ -158,9 +171,13 @@ private void pdfScanFontFolder(Uri tree) {
             java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
             java.util.HashSet<String> visited = new java.util.HashSet<>();
             pending.add(DocumentsContract.getTreeDocumentId(tree));
+            long[] scanBytes = {0L};
+            int examined = 0;
             int copied = 0;
             int skipped = 0;
-            while (!pending.isEmpty() && copied < 200 && visited.size() < 1000) {
+            while (!pending.isEmpty() && examined < PDF_FONT_SCAN_MAX_FILES
+                    && visited.size() < PDF_FONT_SCAN_MAX_FOLDERS
+                    && scanBytes[0] < PDF_FONT_SCAN_MAX_BYTES) {
                 String parent = pending.removeFirst();
                 if (!visited.add(parent)) continue;
                 Uri list = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent);
@@ -170,34 +187,47 @@ private void pdfScanFontFolder(Uri tree) {
                                 DocumentsContract.Document.COLUMN_MIME_TYPE,
                                 DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
                     if (cursor == null) continue;
-                    while (cursor.moveToNext() && copied < 200) {
+                    while (cursor.moveToNext() && examined < PDF_FONT_SCAN_MAX_FILES
+                            && scanBytes[0] < PDF_FONT_SCAN_MAX_BYTES) {
                         String id = cursor.getString(0);
                         String name = cursor.getString(1);
                         String mime = cursor.getString(2);
                         if (id == null || name == null) continue;
                         if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                            if (pending.size() + visited.size() < 1000) pending.addLast(id);
+                            if (!visited.contains(id) && pending.size() + visited.size() < PDF_FONT_SCAN_MAX_FOLDERS) pending.addLast(id);
                             continue;
                         }
                         String lower = name.toLowerCase(java.util.Locale.ROOT);
                         if (!(lower.endsWith(".ttf") || lower.endsWith(".otf"))) continue;
+                        examined++; // includes invalid and duplicate matching files
                         if (!cursor.isNull(3) && (cursor.getLong(3) <= 0
-                                || cursor.getLong(3) > 16L * 1024 * 1024)) {
+                                || cursor.getLong(3) > PDF_FONT_FILE_MAX_BYTES)) {
                             skipped++; continue;
                         }
                         try {
                             Uri font = DocumentsContract.buildDocumentUriUsingTree(tree, id);
-                            pdfCopyFont(font, name);
+                            pdfCopyFont(font, name, scanBytes);
                             copied++;
                         } catch (Exception error) {
                             skipped++;
                             Log.w(TAG, "A shared PDFCraft font could not be imported", error);
                         }
+                        if (examined % 500 == 0)
+                            pdfFontMessage("Scanning shared fonts: " + examined + " / "
+                                    + PDF_FONT_SCAN_MAX_FILES + " checked; " + copied
+                                    + " imported; " + skipped + " skipped");
                     }
                 }
             }
-            pdfFontMessage("Shared folder refreshed: " + copied + " imported; "
-                    + skipped + " skipped. Reopen text-font selector.");
+            String stop = scanBytes[0] >= PDF_FONT_SCAN_MAX_BYTES
+                    ? " 4 GiB read budget reached."
+                    : examined >= PDF_FONT_SCAN_MAX_FILES
+                      ? " 5,000-font scan cap reached."
+                      : !pending.isEmpty() ? " Folder traversal cap reached." : " Scan complete.";
+            pdfFontMessage("Shared folder refreshed: " + examined + " fonts checked; "
+                    + copied + " imported; " + skipped + " skipped; "
+                    + (scanBytes[0] / (1024L * 1024L)) + " MiB read." + stop
+                    + " Reopen text-font selector.");
         } catch (Exception error) {
             pdfFontMessage("Shared font folder: " + error.getMessage());
         }

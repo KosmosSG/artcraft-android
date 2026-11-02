@@ -1967,6 +1967,13 @@ else:
 # in a tiny struct that forwards `logic`/`ui`. Emit the same wrapper here.
 has_eframe_app = bool(re.search(r"impl\s+eframe::App\s+for\s+" + re.escape(app_type) + r"\b", ui_text))
 has_raw_hook = bool(re.search(r"pub fn raw_input_hook\b", ui_text))
+# Current DesignCraft (v0.16) takes both egui::Context and RawInput, while
+# earlier versions and other apps only accepted RawInput. Inspect the source
+# signature when generating the shell so one Android adapter supports both.
+raw_hook_has_ctx = bool(re.search(
+    r"pub\s+fn\s+raw_input_hook\s*\(\s*&mut\s+self\s*,\s*\w+\s*:\s*&egui::Context\s*,",
+    ui_text,
+))
 if not re.search(r"\bServices\b|\bNoServices\b", construct) and "Services" not in ui_root and not spec:
     raise SystemExit(f"The UI crate does not visibly export Services; a custom adapter is required for {app}.")
 
@@ -2183,7 +2190,11 @@ icon = "@mipmap/ic_launcher"
         inner_logic = "let _ = frame;\n        self.inner.logic(ctx);"
         inner_ui = "let _ = frame;\n        self.inner.ui(ui);"
         if has_raw_hook:
-            inner_hook = "let _ = ctx;\n        self.inner.raw_input_hook(raw);"
+            inner_hook = (
+                "self.inner.raw_input_hook(ctx, raw);"
+                if raw_hook_has_ctx
+                else "let _ = ctx;\n        self.inner.raw_input_hook(raw);"
+            )
         else:
             inner_hook = "let _ = (ctx, raw);"
 

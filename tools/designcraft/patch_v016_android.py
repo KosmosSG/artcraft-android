@@ -176,55 +176,22 @@ def install_icons(root: Path, src: Path, android: Path):
     updated, matches = re.subn(r'^icon\s*=\s*"[^"]+"', 'icon = "@mipmap/ic_launcher"', original, count=1, flags=re.M)
     if matches != 1:
         raise ValueError("Missing generated launcher icon field")
-    # Keep upstream engine version 0.16.0 pinned, but label this isolated
-    # Android candidate using the existing ArtCraft android.N convention.
-    # The debug-only package identity remains com.artcraft.designcraft;
-    # this version code is deliberately newer than public android.9.
+    # Keep the upstream v0.16 core pinned while identifying the Android build
+    # separately. Do not change the signing identity or published release.
     candidate_version = "0.16.0-android.1"
-    updated, package_matches = re.subn(
-        r'^version\.workspace\s*=\s*true\s*
-        updated += ('\n[[package.metadata.android.uses_permission]]\n'
-                    'name = "android.permission.INTERNET"\n')
-    manifest.write_text(updated)
-
-    # About dialog and app header should show the same design instead of cat.
-    # This copies the approved texture while leaving upstream generic icons.
-    approved_branding.ui_brand(src, "designcraft")
-    print("DesignCraft v0.16: installed approved glossy Dc launcher and in-app brand")
-
-def main():
-    if len(sys.argv) != 4:
-        raise SystemExit("usage: patch_v016_android.py REPO_ROOT SOURCE_DIR ANDROID_DIR")
-    root, src, android = map(lambda p: Path(p).resolve(), sys.argv[1:])
-    if src.name != "designcraft" or android.name != "designcraft-android":
-        raise SystemExit("Refusing to patch any non-DesignCraft Android source")
-    if not (root / "configs/upstream/designcraft-v016.json").is_file():
-        raise SystemExit("Missing DesignCraft pinned upstream v0.16 manifest")
-    patch_source(src)
-    patch_launcher(root, android)
-    install_icons(root, src, android)
-    print("DesignCraft v0.16: Android font import, modal D/C/S and branding staged")
-
-if __name__ == "__main__":
-    main()
-,
-        f'version = "{candidate_version}"', updated, count=1, flags=re.M,
-    )
-    if package_matches != 1:
-        raise ValueError("Expected one workspace-inherited Android crate version")
-    updated, apk_matches = re.subn(
-        r'^apk_name\s*=\s*"[^"]+"',
-        f'apk_name = "designcraft-{candidate_version}"',
-        updated, count=1, flags=re.M,
-    )
-    if apk_matches != 1:
-        raise ValueError("Expected one generated APK name")
-    if "[package.metadata.android]" not in updated:
+    if updated.count("version.workspace = true") != 1:
+        raise ValueError("Generated Android manifest version changed")
+    updated = updated.replace("version.workspace = true",
+                              f'version = "{candidate_version}"', 1)
+    updated, named = re.subn(r'^apk_name\s*=\s*"[^"]+"',
+                             f'apk_name = "designcraft-{candidate_version}"',
+                             updated, count=1, flags=re.M)
+    if named != 1:
+        raise ValueError("Generated APK name changed")
+    if updated.count("[package.metadata.android]") != 1:
         raise ValueError("Missing Android package metadata")
-    updated = updated.replace(
-        "[package.metadata.android]",
-        "[package.metadata.android]\nversion_code = 16900001", 1,
-    )
+    updated = updated.replace("[package.metadata.android]",
+                              "[package.metadata.android]\nversion_code = 16900001", 1)
     # The upstream v0.16 update UI needs Android Internet permission to
     # resolve GitHub hosts; the generic launcher did not request it.
     if 'android.permission.INTERNET' not in updated:

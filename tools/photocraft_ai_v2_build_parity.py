@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ACCEPTED = ROOT / ".github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml"
 REJECTED = ROOT / ".github/workflows/photocraft-ai-v2-candidate-unsigned.yml"
 OBSOLETE_PROOF = ROOT / ".github/workflows/photocraft-ai-production-dryrun.yml"
+AI_PREVIEW_WORKFLOW = ROOT / ".github/workflows/photocraft-ai-menu-pr93-test.yml"
 AI_MENU = ROOT / "adapters/photocraft/src/ai_menu.rs"
 AI_STAGE = ROOT / "tools/photocraft_ai_preview_stage.py"
 WINDOW_PATCH = ROOT / "tools/photocraft_ai_window_patch.py"
@@ -67,6 +68,14 @@ def require_archived_single_job(text: str, label: str) -> None:
     guards = re.findall(r"(?m)^    if:[ \t]*(.*?)[ \t]*$", block)
     if guards != ["${{ false }}"]:
         raise ValueError(f"{label}: archived job must have one exact false guard, got {guards}")
+
+
+def archived_ai_preview_recipe(text: str) -> None:
+    """Owner-tested preview must not auto-build after ordinary PR93 edits."""
+    require_archived_single_job(text, "archived AI preview")
+    if "  push:" in text or "  workflow_dispatch:" not in text:
+        raise ValueError("AI preview must be manual-only and owner-gated")
+    require(text, ("if: ${{ false }}", "cancel-in-progress: false"), "archived AI preview")
 
 
 def accepted_recipe(text: str) -> None:
@@ -151,16 +160,21 @@ def self_test() -> None:
     stable = ACCEPTED.read_text(encoding="utf-8")
     rejected = REJECTED.read_text(encoding="utf-8")
     obsolete = OBSOLETE_PROOF.read_text(encoding="utf-8")
+    ai_preview = AI_PREVIEW_WORKFLOW.read_text(encoding="utf-8")
     ai_menu = AI_MENU.read_text(encoding="utf-8")
     ai_stage = AI_STAGE.read_text(encoding="utf-8")
     window_patch = WINDOW_PATCH.read_text(encoding="utf-8")
     accepted_recipe(stable)
     rejected_recipe(rejected)
     obsolete_proof_recipe(obsolete)
+    archived_ai_preview_recipe(ai_preview)
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
     ai_hidden_consent_boundary(ai_menu)
 
     mutations = (
+        (archived_ai_preview_recipe, ai_preview.replace("    if: ${{ false }}", "    if: ${{ true }}", 1), "preview ARM64 job reenabled"),
+        (archived_ai_preview_recipe, ai_preview.replace("  workflow_dispatch:", "  push:\\n  workflow_dispatch:", 1), "preview push trigger restored"),
+        (archived_ai_preview_recipe, ai_preview.replace("cancel-in-progress: false", "cancel-in-progress: true", 1), "preview run cancellation restored"),
         (accepted_recipe, stable.replace(FONT_PARITY[0], "", 1), "missing font scanner"),
         (accepted_recipe, stable.replace(FONT_PARITY[1], "", 1), "font scanner not applied"),
         (accepted_recipe, stable.replace(FONT_PARITY[3], "", 1), "font file count missing"),
@@ -190,7 +204,8 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-three negative mutations rejected")
+    print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")

@@ -82,6 +82,19 @@ jobs:
           grep -Fq 'pub fn reset_ime_with_request(&self, _request_id: u64)' vendor/winit/src/window.rs
           echo "Reviewed Android winit IME compatibility APIs present."
 
+      - name: Adapt v0.19 UI menus and ImportOptions (temporary checkout ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_v019_adapter_overlay.py
+          python3 tools/photocraft_v019_adapter_overlay.py \
+            --upstream source/photocraft \
+            --android-adapter adapters/photocraft
+          grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs
+          echo 'Only disposable-runner source files were patched. Published release untouched.'
+
       - name: Compile debug-only upstream v0.19 Android compatibility candidate
         shell: bash
         run: |

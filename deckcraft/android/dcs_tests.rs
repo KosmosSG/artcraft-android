@@ -80,7 +80,6 @@ mod android_dcs_regression {
         ctrl.ctrl = true;
         ctrl.command = true;
         let mut raw = egui::RawInput::default();
-        raw.modifiers = ctrl;
         raw.events = vec![key_event(egui::Key::S, true, false, ctrl), egui::Event::Text("s".into())];
         app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
         assert_eq!(raw.events.len(), 2, "Ctrl+S must not become bare Save in dialog");

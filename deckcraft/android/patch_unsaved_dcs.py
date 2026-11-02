@@ -57,8 +57,10 @@ impl SlideApp {
             matches!(event, egui::Event::Key { modifiers, .. }
                 if modifiers.ctrl || modifiers.alt || modifiers.command)
         });
-        let plain_text = !modified_key
-            && !raw.modifiers.ctrl && !raw.modifiers.alt && !raw.modifiers.command;
+        // egui 0.37 RawInput has no frame-wide modifiers field.
+        // The Android shell already stamps Ctrl/Alt/Command on each Key event.
+        // Only accept printable text when the raw batch has no modified key.
+        let plain_text = !modified_key;
         let has_ime = raw.events.iter().any(|e| matches!(e, egui::Event::Ime(_)));
         let mut action = None;
         let mut saw_shortcut_key = false;

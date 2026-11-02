@@ -1,5 +1,17 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Archived historical android.4 ARM64 rebuild (2 November 2026):** The
+> published, owner-accepted V2 android.4 APK remains the only stable release.
+> The old `.github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml`
+> ARM64 job is now disabled even for manual dispatch, while its exact
+> keyboard/AI/4 GiB font-scan build recipe remains available as a read-only
+> parity reference. [Commit 502ef91a](https://github.com/KosmosSG/artcraft-android/commit/502ef91a08a6cca34179eade5fc520ffa647b905).
+> [Source guard 72e80c95](https://github.com/KosmosSG/artcraft-android/commit/72e80c95b7d8c81fef6375b82073470f8ca959c2)
+> requires this archive state and adds a negative test against reactivation.
+> The rejected android.5 job and obsolete android.2 disposable proof remain
+> disabled. This prevents redundant heavy builds; it is **not** a Ctrl+W
+> runtime fix. CI confirmation is pending. No APK, signing or release action.
+
 > **Ctrl+W overlay source regression gate (2 November 2026):**
 > [PR93 source guard](../tools/photocraft_ai_v2_build_parity.py) now checks
 > that the experimental AI menu/Window toggle do not add key-consumption or

@@ -35,7 +35,10 @@ jobs:
           assert 'new_session(' in script and '"u2netp"' in script
           assert 'providers=["CPUExecutionProvider"]' in script
           assert 'result.save(payload, format="PNG"' in script
-          assert 'destination.open("xb")' in script
+          assert 'os.path.lexists(result)' in script
+          assert 'os.O_CREAT | os.O_EXCL' in script
+          assert 'write_new_output(destination, payload.getvalue())' in script
+          assert 'Followed raced output symlink' in script
           assert 'MAX_PIXELS = 4_000_000' in script
           assert '--allow-model-download' in script
           assert 'from rembg import new_session, remove' in script

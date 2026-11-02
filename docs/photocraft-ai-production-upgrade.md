@@ -1,10 +1,22 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Ctrl+W overlay source regression gate (2 November 2026):**
+> [PR93 source guard](../tools/photocraft_ai_v2_build_parity.py) now checks
+> that the experimental AI menu/Window toggle do not add key-consumption or
+> Ctrl+W interception and that the staged adapter retains the existing
+> discard-dialog and Escape keyboard hooks. Three new negative mutations
+> fail closed. [Lightweight CI #41420475729](https://github.com/KosmosSG/artcraft-android/actions/runs/41420475729)
+> **passed** at commit `17214f9d`, including the actual published android.4
+> V2 APK identity check; **zero artifacts** were uploaded. This is a
+> *source-boundary* regression guard, **not** proof that Android.5's Ctrl+W
+> failure has been reproduced or fixed. Android.5 remains rejected; no
+> replacement build or signing is authorized.
+>
 > **Read-only build-parity regression check (2 November 2026):** New
 > [source-only guard](../tools/photocraft_ai_v2_build_parity.py) checks the
 > exact accepted android.4 recipe for pinned keyboard/AI integration and its
 > 4 GiB/5,000-font overlay, and refuses reactivation of the rejected android.5
-> workflow. Seven negative source mutations are exercised; this does **not**
+> workflow. Thirteen negative source mutations are exercised; this does **not**
 > establish the cause of Ctrl+W failing on hardware. [CI run #41401513433](https://github.com/KosmosSG/artcraft-android/actions/runs/41401513433)
 > passed the parity test, V2 rejection tests and read-only inspection of the
 > actual published android.4 APK/signature. No new candidate was built or

@@ -2,15 +2,10 @@ name: PhotoCraft AI Tools Menu ARM64 Preview PR93 (no release)
 
 # PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
 # with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
+# Owner already tested AI Preview #53; no new preview APK is authorized.
+# Retain the recipe for source review, but never auto-build on PR93 edits.
+# A future preview requires a new explicit owner decision and guard change.
 on:
-  push:
-    branches: [feature/photocraft-android-ai-tools-20261029]
-    paths:
-      - '.github/workflows/photocraft-ai-menu-pr93-test.yml'
-      - 'adapters/photocraft/**'
-      - 'tools/photocraft_ai_preview_stage.py'
-      - 'tools/photocraft_ai_window_patch.py'
-      - 'docs/photocraft-android-ai-tools.md'
   workflow_dispatch:
 
 permissions:
@@ -18,11 +13,11 @@ permissions:
 
 concurrency:
   group: photocraft-ai-menu-pr93-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   arm64-preview:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

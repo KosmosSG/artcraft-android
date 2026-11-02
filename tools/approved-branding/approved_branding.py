@@ -70,7 +70,9 @@ pub fn show(ui: &mut egui::Ui, size: f32) -> egui::Response {
     }
     touched=['lib.rs']
     if app in hooks:
-        file,anchor,body=hooks[app];p=root/file
+        file,anchor,body=hooks[app]
+        if app == 'deckcraft' and (root/'dialogs/about.rs').exists(): file='dialogs/about.rs'
+        p=root/file
         p.write_text(once(p.read_text(),anchor,anchor+'\n    #[cfg(target_os = "android")] { '+body+' }'))
         touched.append(file)
     elif app=='pdfcraft':

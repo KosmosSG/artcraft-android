@@ -9,6 +9,7 @@ the on-device keyboard bug. Never builds, signs, installs or publishes APKs.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCEPTED = ROOT / ".github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml"
@@ -47,7 +48,29 @@ def require(text: str, needles: tuple[str, ...], label: str) -> None:
             raise ValueError(f"{label}: missing source-only parity guard: {needle}")
 
 
+def require_archived_single_job(text: str, label: str) -> None:
+    """Fail closed if an archived workflow gains an unguarded second job.
+
+    An arbitrary 'if: false' string is insufficient: a later active job,
+    or a second job-level if, could still compile an unwanted APK.
+    Only the exact one-job, one-false-guard shape is allowed.
+    """
+    if len(re.findall(r"(?m)^jobs:\s*$", text)) != 1:
+        raise ValueError(f"{label}: missing or duplicate jobs block")
+    jobs = text.split("\njobs:\n", 1)
+    if len(jobs) != 2:
+        raise ValueError(f"{label}: jobs block must use explicit YAML lines")
+    block = jobs[1]
+    names = re.findall(r"(?m)^  ([A-Za-z0-9_-]+):[ \t]*$", block)
+    if names != ["arm64-preview"]:
+        raise ValueError(f"{label}: expected only archived arm64-preview job, got {names}")
+    guards = re.findall(r"(?m)^    if:[ \t]*(.*?)[ \t]*$", block)
+    if guards != ["${{ false }}"]:
+        raise ValueError(f"{label}: archived job must have one exact false guard, got {guards}")
+
+
 def accepted_recipe(text: str) -> None:
+    require_archived_single_job(text, "accepted android.4 recipe")
     require(text, COMMON + FONT_PARITY + ("if: ${{ false }}",), "accepted android.4 recipe")
     # The exact historical recipe is retained for comparison, but must never
     # spend CI minutes rebuilding an already-published stable version.
@@ -56,6 +79,7 @@ def accepted_recipe(text: str) -> None:
 
 
 def rejected_recipe(text: str) -> None:
+    require_archived_single_job(text, "rejected android.5 recipe")
     require(text, COMMON + REJECTED_GUARDS, "rejected android.5 recipe")
     # This old workflow intentionally omitted the 4 GiB font-scan overlay.
     # It is NOT a feature-parity template for future builds, even if someone
@@ -65,6 +89,7 @@ def rejected_recipe(text: str) -> None:
 
 
 def obsolete_proof_recipe(text: str) -> None:
+    require_archived_single_job(text, "obsolete android.2 proof")
     # Old original-certificate android.2 proof is below published V2 android.4.
     # verify_apk.py copies a disposable-signed APK into icon-verification;
     # only JSON may be uploaded, and cleanup must remove that copied APK.
@@ -125,6 +150,9 @@ def self_test() -> None:
         (obsolete_proof_recipe, obsolete.replace("if: ${{ false }}", "if: ${{ true }}", 1), "obsolete proof reenabled"),
         (obsolete_proof_recipe, obsolete.replace("rm -rf icon-verification/", "", 1), "disposable APK copy not cleaned"),
         (obsolete_proof_recipe, obsolete.replace("path: candidate-proof/production-identity-build-proof.json", "path: icon-verification/", 1), "unsafe artifact path"),
+        (accepted_recipe, stable + "\n  accidental-arm64:\n    runs-on: ubuntu-24.04\n    steps: []\n", "extra unguarded stable job"),
+        (rejected_recipe, rejected.replace("    if: ${{ false }}", "    if: ${{ false }}\n    if: ${{ true }}", 1), "second job-level if bypasses rejection"),
+        (obsolete_proof_recipe, obsolete.replace("    if: ${{ false }}", "      if: ${{ false }}", 1), "disabled condition moved to a step"),
         (lambda text: ai_keyboard_boundary(text, ai_stage, window_patch), ai_menu + "\\nconsume_key(", "AI menu key interception"),
         (lambda text: ai_keyboard_boundary(ai_menu, text, window_patch), ai_stage.replace("artcraft_discard_prompt_owns_keyboard", "", 1), "discard keyboard guard missing"),
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
@@ -137,7 +165,7 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; fourteen negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; seventeen negative mutations rejected")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")

@@ -149,6 +149,8 @@ jobs:
           set -euo pipefail
           python3 -m py_compile wordcraft/android/patch_builder.py
           python3 wordcraft/android/patch_builder.py builder
+          python3 wordcraft/android/workspace_v014.py builder
+          bash -n builder/lib/build-common.sh
 
       - name: Compile candidate with per-run temporary builder key
         shell: bash

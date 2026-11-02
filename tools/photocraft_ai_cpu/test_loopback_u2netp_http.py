@@ -298,6 +298,38 @@ class LoopbackHTTPTests(unittest.TestCase):
         with patch.object(server.subprocess, "run", side_effect=mock_inference):
             self.assertEqual(self.request()[0], 200)
 
+    def test_inference_hardlink_output_is_rejected_without_disclosing_local_file(self):
+        # Unlike a symlink, a hard link passes is_file() and O_NOFOLLOW.
+        # A worker could otherwise return bytes from an unrelated local PNG.
+        with tempfile.TemporaryDirectory() as folder:
+            unrelated = Path(folder) / "unrelated-private.png"
+            Image.new("RGBA", (16, 16), (44, 77, 111, 255)).save(unrelated)
+            original = unrelated.read_bytes()
+
+            def hardlink_inference(argv, **_kwargs):
+                output = Path(argv[argv.index("--output") + 1])
+                output.hardlink_to(unrelated)
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(server.subprocess, "run", side_effect=hardlink_inference) as worker:
+                code, headers, body = self.request()
+            self.assertEqual(code, 502)
+            self.assertEqual(headers["Content-Type"], "text/plain")
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertNotEqual(body, original)
+            self.assertNotIn(str(unrelated).encode(), body)
+            self.assertEqual(unrelated.read_bytes(), original)
+            worker.assert_called_once()
+
+        # Rejected output must release the worker lock for the next request.
+        with patch.object(server.subprocess, "run", side_effect=mock_inference):
+            for _ in range(40):
+                code, _, _ = self.request()
+                if code != 429:
+                    break
+                threading.Event().wait(0.03)
+            self.assertEqual(code, 200)
+
     def test_validated_png_cannot_be_swapped_before_http_response(self):
         # Regression: a file replaced immediately after PNG validation used
         # to be returned by Path.read_bytes(), even if it was an unrelated

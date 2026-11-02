@@ -41,6 +41,30 @@ PUBLISHED_BASELINES = {
 # the hash of the exact APK rather than treating the tag as a versionName.
 
 
+
+def verify_production_launcher_badging(badging: str) -> None:
+    """Require the actual signed APK to retain PhotoCraft's public UI identity.
+
+    This is intentionally checked against aapt output, not source declarations:
+    a same-package, same-certificate APK could otherwise pass V2 update
+    identity tests while silently replacing the app label or launch activity.
+    """
+    if not isinstance(badging, str):
+        raise ValueError("Candidate aapt badging must be text")
+    lines = badging.splitlines()
+    labels = [line for line in lines if line.startswith("application-label:")]
+    if labels != ["application-label:'PhotoCraft'"]:
+        raise ValueError("Candidate must retain exactly one PhotoCraft app label")
+    launchers = [line for line in lines if line.startswith("launchable-activity:")]
+    if len(launchers) != 1:
+        raise ValueError("Candidate must have exactly one production launcher")
+    match = re.fullmatch(
+        r"launchable-activity:\s+name='([^']+)'(?:\s+.*)?", launchers[0]
+    )
+    if match is None or match.group(1) != "com.artcraft.photocraft.PhotoCraftActivity":
+        raise ValueError("Candidate must retain the PhotoCraft launcher activity")
+
+
 def verify_pair(reference: dict, candidate: dict) -> dict:
     for label, item in (("baseline", reference), ("candidate", candidate)):
         if type(item) is not dict:
@@ -90,6 +114,30 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
 
 def self_test() -> None:
     import copy
+    good_badging = (
+        "package: name='com.artcraft.photocraft' versionCode='16790008' "
+        "versionName='0.14.0-android.5'\\n"
+        "application-label:'PhotoCraft'\\n"
+        "application-label-en:'PhotoCraft'\\n"
+        "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity' "
+        "label='PhotoCraft' icon='res/drawable/icon.png'\\n"
+    )
+    verify_production_launcher_badging(good_badging)
+    for bad in (
+        good_badging.replace("application-label:'PhotoCraft'", "application-label:'PhotoCraft AI'"),
+        good_badging.replace("application-label:'PhotoCraft'\\n", ""),
+        good_badging + "application-label:'PhotoCraft'\\n",
+        good_badging + "application-label:garbled\\n",
+        good_badging.replace("PhotoCraftActivity", "PreviewActivity"),
+        good_badging.replace("launchable-activity:", "other-activity:"),
+        good_badging + "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'\\n",
+        good_badging + "launchable-activity:broken\\n",
+    ):
+        try:
+            verify_production_launcher_badging(bad)
+        except ValueError:
+            continue
+        raise AssertionError("Fail-open regression: unsafe candidate launcher/label")
     ref = {
         "package": PACKAGE, "tag": V2_AI_PREVIEW_IDENTITY_TAG,
         "version_name": V2_AI_PREVIEW_VERSION, "version_code": V2_AI_PREVIEW_CODE,
@@ -184,7 +232,12 @@ def main() -> int:
         raise ValueError("Reference and candidate must be different APKs")
     ref = inspect_apk(a.reference_apk, a.aapt, a.apksigner, "photocraft-v" + a.reference_version)
     candidate = inspect_apk(a.candidate_apk, a.aapt, a.apksigner, a.candidate_tag)
+    candidate_badging = subprocess.check_output(
+        [str(a.aapt), "dump", "badging", str(a.candidate_apk)], text=True
+    )
+    verify_production_launcher_badging(candidate_badging)
     report = verify_pair(ref, candidate)
+    report["production_label_launcher_check"] = "passed"
     # Verify the actual candidate archive includes arm64 binaries and no
     # bundled model weights, keystores, unsafe paths or unexpected ABI.
     report["archive"] = check_arm64_archive(a.candidate_apk)

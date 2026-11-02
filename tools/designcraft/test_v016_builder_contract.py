@@ -60,6 +60,28 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertTrue((ROOT / "templates" / "android" / "ime_bridge.rs").is_file())
         self.assertTrue((ROOT / "templates" / "android" / "system_fonts.rs").is_file())
 
+    def test_egui_v037_uses_pinned_compatible_winit_fork(self):
+        # The suite's older vendored 0.30.13 winit is NOT compatible with
+        # official v0.16's custom egui-winit IME-reset event and window API.
+        # The pinned fork is verified before selectively restoring mouse input.
+        self.assertIn('DESIGNCRAFT_WINIT_REV="a517b3846ee8457d84ee4975110bfda6797c44dc"', self.shell)
+        self.assertIn("grep -q 'ImeResetCompleted'", self.shell)
+        self.assertIn("grep -q 'reset_ime_with_request'", self.shell)
+        self.assertIn('overlay_winit_android_mouse.py', self.shell)
+        overlay = (ROOT / "tools" / "designcraft" / "overlay_winit_android_mouse.py").read_text()
+        self.assertIn("MotionAction::Scroll", overlay)
+        self.assertIn("MotionAction::HoverMove", overlay)
+        self.assertIn("target = target[:x] + motion + target[y:]", overlay)
+
+    def test_designcraft_shell_is_constructed_by_eframe_app_creator(self):
+        # eframe 0.37 manages Resumed/Suspended internally. Its AppCreator
+        # runs on the first Resumed; our launcher must not construct UI early.
+        self.assertIn('if saf and app == "designcraft":', self.shell)
+        self.assertIn('Called from eframe\'s first Resumed', self.shell)
+        self.assertIn("let shell = AndroidShell::new(", self.shell)
+        self.assertIn("Box::new(move |_cc| {{", self.shell)
+        self.assertIn('GENERATOR_VERSION = "25" if app == "designcraft" else "24"', self.shell)
+
     def test_source_review_cannot_claim_publication(self):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))

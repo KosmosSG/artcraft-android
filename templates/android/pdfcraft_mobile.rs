@@ -11,6 +11,7 @@ pub struct Mobile {
     app: AndroidApp,
     renderer: String,
     updates_open: bool,
+    toolbar_shown: bool,
     font_status: String,
     update_status: String,
     update_url: Option<String>,
@@ -22,12 +23,13 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), updates_open: false,
+            app, renderer: "Renderer not initialized".into(), updates_open: false, toolbar_shown: true,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
         };
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
+        mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(true);
         mobile
     }
 
@@ -50,6 +52,39 @@ impl Mobile {
             Ok(())
         }).map_err(|err| err.to_string())
     }
+    pub fn toolbar_shown(&self) -> bool { self.toolbar_shown }
+
+    fn read_toolbar_setting(&self) -> Result<bool, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfToolbarVisible"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|err| err.to_string())
+    }
+
+    fn save_toolbar_setting(&self, visible: bool) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfSetToolbarVisible"),
+                jni_sig!("(Z)V"), &[JValue::Bool(visible)])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
+
+    /// One Java preference write per actual change, never a JNI call every frame.
+    pub fn sync_toolbar_preference(&mut self, visible: bool) {
+        if visible != self.toolbar_shown {
+            if let Err(error) = self.save_toolbar_setting(visible) {
+                self.font_status = format!("Toolbar preference not saved: {error}");
+            }
+            self.toolbar_shown = visible;
+        }
+    }
+
     fn request(&self, action: Action) -> Result<(), String> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -155,10 +190,11 @@ impl Mobile {
         }
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
-    /// Always-visible Android toolbar above the PDF editor. In android.1/.2 the
-    /// import actions were buried in a collapsed *bottom* "Fonts ▾" panel;
-    /// users could not find them. No drawer or second tap is now required.
-    pub fn toolbar(&mut self, parent: &mut egui::Ui) {
+    /// Optional native View > Android tools panel. Hidden means NO egui widget
+    /// is drawn above the real application menu, giving the PDF editor its space.
+    /// Return true when "Hide panel" was clicked, so the shell can toggle it.
+    pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool {
+        let mut hide_requested = false;
         parent.group(|ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Fonts:");
@@ -179,6 +215,11 @@ impl Mobile {
                 }
                 ui.separator();
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
+                ui.separator();
+                if ui.button("Hide panel").on_hover_text(
+                    "Reopen from View > Android tools panel").clicked() {
+                    hide_requested = true;
+                }
             });
             // Keep import/scan feedback on screen without hiding the actual actions.
             ui.label(&self.font_status).on_hover_text(
@@ -203,5 +244,6 @@ impl Mobile {
                 ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
             }
         });
+        hide_requested
     }
 }

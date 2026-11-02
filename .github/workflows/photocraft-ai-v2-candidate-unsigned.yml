@@ -33,6 +33,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Reject obsolete android.3 candidate before any heavy ARM64 build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This legacy workflow is intentionally pinned to android.3/code 16790006.
+          # Public V2 stable android.4/code 16790007 is already installed by owner.
+          # Never spend ARM64 minutes or upload an obsolete non-upgrade candidate.
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from photocraft_ai_v2_upgrade_gate import V2_STABLE_CODE, V2_STABLE_VERSION
+          proposed_code = 16790006
+          proposed_version = '0.14.0-android.3'
+          if proposed_code <= V2_STABLE_CODE:
+              raise SystemExit(f'STOP: obsolete candidate {proposed_version} ({proposed_code}) cannot upgrade published V2 {V2_STABLE_VERSION} ({V2_STABLE_CODE}); create a separately reviewed newer-version workflow before ARM64 compilation')
+          PY
+
       - name: Verify exact PR93 source identity before preparing immutable overlay
         shell: bash
         run: |

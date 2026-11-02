@@ -75,7 +75,18 @@ def archived_ai_preview_recipe(text: str) -> None:
     require_archived_single_job(text, "archived AI preview")
     if "  push:" in text or "  workflow_dispatch:" not in text:
         raise ValueError("AI preview must be manual-only and owner-gated")
-    require(text, ("if: ${{ false }}", "cancel-in-progress: false"), "archived AI preview")
+    require(text, (
+        "if: ${{ false }}", "cancel-in-progress: false",
+        "package: name='com.artcraft.photocraft.ai.preview'",
+        "path: candidate/",
+        "icon-verification/verification.json",
+        "rm -f output/*.apk icon-verification/*.apk candidate/*.apk",
+    ), "archived AI preview")
+    # The preview artifact is allowed ONLY for its separate package identity.
+    # The failure-diagnostics path must not recursively upload an APK copied
+    # by verify_apk.py into icon-verification/.
+    if re.search(r"(?m)^\\s+icon-verification/\\s*$", text):
+        raise ValueError("preview failure diagnostics may expose disposable APK copies")
 
 
 def accepted_recipe(text: str) -> None:
@@ -175,6 +186,9 @@ def self_test() -> None:
         (archived_ai_preview_recipe, ai_preview.replace("    if: ${{ false }}", "    if: ${{ true }}", 1), "preview ARM64 job reenabled"),
         (archived_ai_preview_recipe, ai_preview.replace("  workflow_dispatch:", "  push:\\n  workflow_dispatch:", 1), "preview push trigger restored"),
         (archived_ai_preview_recipe, ai_preview.replace("cancel-in-progress: false", "cancel-in-progress: true", 1), "preview run cancellation restored"),
+        (archived_ai_preview_recipe, ai_preview.replace("icon-verification/verification.json", "icon-verification/", 1), "preview failure upload includes disposable APK"),
+        (archived_ai_preview_recipe, ai_preview.replace("rm -f output/*.apk icon-verification/*.apk candidate/*.apk", "", 1), "preview disposable APK copies retained"),
+        (archived_ai_preview_recipe, ai_preview.replace("com.artcraft.photocraft.ai.preview", "com.artcraft.photocraft", 1), "preview production package identity substitution"),
         (accepted_recipe, stable.replace(FONT_PARITY[0], "", 1), "missing font scanner"),
         (accepted_recipe, stable.replace(FONT_PARITY[1], "", 1), "font scanner not applied"),
         (accepted_recipe, stable.replace(FONT_PARITY[3], "", 1), "font file count missing"),
@@ -204,7 +218,7 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-three negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-six negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")

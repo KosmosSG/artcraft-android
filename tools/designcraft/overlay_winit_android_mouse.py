@@ -57,8 +57,11 @@ def main() -> None:
         if required not in motion:
             raise SystemExit(f"ArtCraft motion block missing required behavior: {required}")
     target = target[:x] + motion + target[y:]
-    if "pub fn reset_ime_with_request" in target:
-        raise SystemExit("Unexpected IME window code inside Android motion module")
+    # The pinned Storytold Android module deliberately implements this
+    # no-op platform hook. egui-winit v0.37 calls it through winit::Window;
+    # rejecting its presence incorrectly aborts every DesignCraft v0.16 build.
+    if "pub fn reset_ime_with_request" not in target:
+        raise SystemExit("Pinned Storytold Android IME reset hook was lost")
 
     target_path.write_text(target)
     print("Preserved Storytold winit IME/lifecycle; added ArtCraft mouse/hover/wheel/touch Android translation")

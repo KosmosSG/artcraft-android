@@ -69,6 +69,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+      - name: Bootstrap Android command-line tools and pinned SDK/NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018'
       - name: Confirm Android SDK/NDK and prepare build dependencies
         run: |
           set -euo pipefail

@@ -19,7 +19,11 @@ concurrency:
 
 jobs:
   arm64-preview:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    # ARCHIVED: android.4 is already the owner-accepted, V2-signed stable release.
+    # Retain this historical build recipe for read-only source parity only.
+    # Never rerun a costly disposable-signed ARM64 candidate at the same version,
+    # even via workflow_dispatch. The published release is not modified.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

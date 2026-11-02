@@ -12,31 +12,29 @@ MAX_BYTES = 24 * 1024 * 1024
 MAX_PIXELS = 4_000_000
 
 def inspect(path: Path, width: int, height: int) -> tuple[int, int]:
+    """Validate one immutable file snapshot, not a mutable pathname.
+
+    The old is_file()/stat()/Image.open() sequence could follow a hard link
+    or block on a FIFO swapped in after the check. Open without following
+    symlinks or blocking on special files, then validate the same bytes read
+    from the checked regular, single-link descriptor.
+    """
+    import os
+    import stat
     if width < 1 or height < 1 or width * height > MAX_PIXELS:
         raise ValueError("Invalid expected image dimensions")
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BYTES:
-        # Never validate an inference output that aliases an unrelated file.
-        # The local subprocess is only authorized to write its new PNG path.
-        raise ValueError("Missing, symlinked or oversized PNG")
-    from PIL import Image, ImageFile
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
-    ImageFile.LOAD_TRUNCATED_IMAGES = False
-    with Image.open(path) as image:
-        if image.format != "PNG" or image.size != (width, height):
-            raise ValueError("Unexpected format or dimensions")
-        if image.mode not in ("RGBA", "LA"):
-            raise ValueError("PNG must contain an alpha channel")
-        image.verify()
-    # Reopen and force full pixel decode: verify() alone does not decode pixels.
-    with Image.open(path) as image:
-        image.load()
-        if image.size != (width, height) or image.mode not in ("RGBA", "LA"):
-            raise ValueError("Decoded image properties changed")
-        alpha = image.getchannel("A")
-        low, high = alpha.getextrema()
-        if high == 0:
-            raise ValueError("Output is entirely transparent")
-        return low, high
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as image_file:
+            info = os.fstat(image_file.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_size > MAX_BYTES):
+                raise ValueError("Missing, aliased or oversized PNG")
+            payload = image_file.read(MAX_BYTES + 1)
+    except OSError:
+        # Do not disclose local filesystem paths in caller-facing errors.
+        raise ValueError("Missing, aliased or unreadable PNG") from None
+    return inspect_bytes(payload, width, height)
 
 def inspect_bytes(payload: bytes, width: int, height: int) -> tuple[int, int]:
     """Validate the exact bounded bytes that the HTTP server will return.
@@ -85,6 +83,29 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Accepted symlinked output PNG")
+        # A hard link is not a symlink and would pass the old is_file()
+        # check; reject it before any bytes are inspected.
+        import os
+        hardlink = Path(directory) / "hardlink.png"
+        os.link(path, hardlink)
+        try:
+            inspect(hardlink, 16, 12)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted hard-linked output PNG")
+        hardlink.unlink()
+        # A FIFO must not block a local test indefinitely while waiting
+        # for a writer, even if swapped in after a preliminary path check.
+        if hasattr(os, "mkfifo"):
+            fifo = Path(directory) / "fifo.png"
+            os.mkfifo(fifo)
+            try:
+                inspect(fifo, 16, 12)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted FIFO output PNG")
         for size in [(15, 12), (0, 12), (5000, 5000)]:
             try:
                 inspect(path, *size)

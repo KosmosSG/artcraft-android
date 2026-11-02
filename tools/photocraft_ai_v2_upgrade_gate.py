@@ -25,9 +25,20 @@ V2_AI_PREVIEW_CODE = 16790005
 # Hash of the actual unchanged APK in the public AI V2 preview release.
 V2_AI_PREVIEW_SHA = "78d04d7e64ee9546e83dc98dfacc505dfbed5acf91e1f76e10e841ea76208598"
 V2_AI_PREVIEW_IDENTITY_TAG = "photocraft-v0.14.0-android.2"
-# The GitHub preview's actual tag includes '-ai-v2-preview'. inspect_apk's
-# canonical tag argument validates embedded versionName only, while this
-# fixed APK hash pins the exact published preview bytes independently.
+# 1 Nov 2026: the public owner-tested core PhotoCraft editor became stable
+# at android.4, permanently signed with the SAME V2 certificate. Its AI
+# subsystem remains experimental. This exact stable APK is now the *minimum*
+# future update baseline, even if comparing a historical android.2 preview.
+V2_STABLE_VERSION = "0.14.0-android.4"
+V2_STABLE_CODE = 16790007
+V2_STABLE_SHA = "d50857fe7d563821563d29842299858bbda09ea49e3786c420ec02f21b8e6367"
+V2_STABLE_TAG = "photocraft-v0.14.0-android.4"
+PUBLISHED_BASELINES = {
+    V2_AI_PREVIEW_VERSION: (V2_AI_PREVIEW_CODE, V2_AI_PREVIEW_SHA),
+    V2_STABLE_VERSION: (V2_STABLE_CODE, V2_STABLE_SHA),
+}
+# The older preview's actual GitHub tag contains '-ai-v2-preview'. We pin
+# the hash of the exact APK rather than treating the tag as a versionName.
 
 
 def verify_pair(reference: dict, candidate: dict) -> dict:
@@ -42,27 +53,29 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
             raise ValueError(f"{label}: invalid versionCode type")
         if not isinstance(item.get("apk_sha256"), str) or re.fullmatch(r"[0-9a-fA-F]{64}", item["apk_sha256"]) is None:
             raise ValueError(f"{label}: invalid APK SHA-256")
-    if (reference["version_name"], reference["version_code"],
-            reference["apk_sha256"].lower()) != (
-            V2_AI_PREVIEW_VERSION, V2_AI_PREVIEW_CODE, V2_AI_PREVIEW_SHA):
-        raise ValueError("Baseline must match exact publicly published V2 AI preview APK")
-    if candidate["apk_sha256"].lower() == reference["apk_sha256"].lower():
-        raise ValueError("Candidate APK must be new bytes")
-    if candidate["version_code"] <= V2_AI_PREVIEW_CODE:
-        raise ValueError("Candidate Android versionCode must be higher than AI V2 preview")
+    baseline = PUBLISHED_BASELINES.get(reference["version_name"])
+    if baseline is None or (reference["version_code"],
+                            reference["apk_sha256"].lower()) != baseline:
+        raise ValueError("Reference APK must match an exact published V2 PhotoCraft release")
+    if candidate["apk_sha256"].lower() in {sha for _, sha in PUBLISHED_BASELINES.values()}:
+        raise ValueError("Candidate APK must differ from all pinned published V2 releases")
+    if candidate["version_code"] <= V2_STABLE_CODE:
+        raise ValueError("Candidate versionCode must exceed current stable PhotoCraft android.4")
     tag = candidate.get("tag")
     if not isinstance(tag, str) or not tag.startswith("photocraft-v"):
         raise ValueError("Candidate must use a canonical PhotoCraft release tag")
     if candidate.get("version_name") != tag.removeprefix("photocraft-v"):
         raise ValueError("Candidate tag must match Android versionName")
-    if release_key(tag) <= release_key(V2_AI_PREVIEW_IDENTITY_TAG):
-        raise ValueError("Candidate versionName must be newer than published V2 AI preview")
+    if release_key(tag) <= release_key(V2_STABLE_TAG):
+        raise ValueError("Candidate versionName must be newer than current stable PhotoCraft android.4")
     return {
         "package": PACKAGE,
         "signing_certificate_sha256": V2_CERT.upper(),
-        "reference_version": V2_AI_PREVIEW_VERSION,
-        "reference_version_code": V2_AI_PREVIEW_CODE,
-        "reference_sha256": V2_AI_PREVIEW_SHA,
+        "reference_version": reference["version_name"],
+        "reference_version_code": reference["version_code"],
+        "reference_sha256": reference["apk_sha256"],
+        "minimum_published_stable_version": V2_STABLE_VERSION,
+        "minimum_published_stable_version_code": V2_STABLE_CODE,
         "candidate_version": candidate["version_name"],
         "candidate_version_code": candidate["version_code"],
         "candidate_sha256": candidate["apk_sha256"],
@@ -70,7 +83,8 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
         "physical_device_in_place_update": "NOT TESTED",
         "data_preservation": "NOT TESTED",
         "model_rights": "NOT CLEARED",
-        "stable_release_approval": "NOT GIVEN",
+        "future_ai_update_approval": "NOT GIVEN",
+        "existing_editor_stable_release": V2_STABLE_TAG,
     }
 
 
@@ -82,13 +96,32 @@ def self_test() -> None:
         "apk_sha256": V2_AI_PREVIEW_SHA, "signer_certificate_sha256": V2_CERT,
     }
     target = {
-        "package": PACKAGE, "tag": "photocraft-v0.14.0-android.3",
-        "version_name": "0.14.0-android.3", "version_code": 16790006,
+        "package": PACKAGE, "tag": "photocraft-v0.14.0-android.5",
+        "version_name": "0.14.0-android.5", "version_code": 16790008,
         "apk_sha256": "a" * 64, "signer_certificate_sha256": V2_CERT,
     }
     good = verify_pair(ref, target)
     assert good["apk_update_identity_check"] == "passed"
     assert good["data_preservation"] == "NOT TESTED"
+    assert good["minimum_published_stable_version_code"] == 16790007
+    stable_ref = {
+        **ref, "tag": V2_STABLE_TAG, "version_name": V2_STABLE_VERSION,
+        "version_code": V2_STABLE_CODE, "apk_sha256": V2_STABLE_SHA,
+    }
+    assert verify_pair(stable_ref, target)["reference_version"] == V2_STABLE_VERSION
+    # A historical .2 preview may still be a reference, but no downgrade
+    # below today's public stable .4 is ever permitted.
+    stale_candidate = {
+        **target, "tag": V2_STABLE_TAG, "version_name": V2_STABLE_VERSION,
+        "version_code": V2_STABLE_CODE,
+    }
+    for prev in (ref, stable_ref):
+        try:
+            verify_pair(prev, stale_candidate)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted a candidate that cannot upgrade stable android.4")
     cases = [
         ("baseline", "apk_sha256", "b" * 64),
         ("baseline", "signer_certificate_sha256", "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"),
@@ -96,13 +129,14 @@ def self_test() -> None:
         ("baseline", "version_name", "0.14.0-android.1"),
         ("candidate", "package", "com.artcraft.photocraft.ai.preview"),
         ("candidate", "signer_certificate_sha256", "45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef"),
-        ("candidate", "version_code", V2_AI_PREVIEW_CODE),
-        ("candidate", "version_code", V2_AI_PREVIEW_CODE - 1),
+        ("candidate", "version_code", V2_STABLE_CODE),
+        ("candidate", "version_code", V2_STABLE_CODE - 1),
         ("candidate", "version_code", True),
         ("candidate", "tag", "photocraft-v0.14.0-android.2-ai-v2-preview"),
         ("candidate", "tag", "photocraft-v0.14.0-android.4"),
         ("candidate", "tag", "vectorcraft-v0.14.0-android.3"),
         # A higher numeric versionCode must not conceal a versionName rollback.
+        ("candidate", "tag", "photocraft-v0.14.0-android.3"),
         ("candidate", "tag", "photocraft-v0.13.0-android.3"),
         ("candidate", "tag", "photocraft-v0.14.0-android.1"),
         ("candidate", "apk_sha256", "g" * 64),
@@ -114,7 +148,8 @@ def self_test() -> None:
         r, c = copy.deepcopy(ref), copy.deepcopy(target)
         (r if who == "baseline" else c)[key] = value
         if who == "candidate" and key == "tag" and value in (
-            "photocraft-v0.13.0-android.3", "photocraft-v0.14.0-android.1"
+            "photocraft-v0.14.0-android.3", "photocraft-v0.13.0-android.3",
+            "photocraft-v0.14.0-android.1"
         ):
             c["version_name"] = value.removeprefix("photocraft-v")
         try:
@@ -122,7 +157,7 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError(f"Fail-open regression: {who} {key} {value!r}")
-    print(f"PASS: V2 baseline vs new stable-candidate identity gate; {len(cases)} negative regressions")
+    print(f"PASS: V2 current-stable (.4) plus historical-preview (.2) baseline gate; {len(cases)} negative regressions")
     print("NOT PROVEN: real-device data migration, licensing, or stable-release approval")
 
 
@@ -130,6 +165,9 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--self-test", action="store_true")
     p.add_argument("--reference-apk", type=Path)
+    p.add_argument("--reference-version", choices=tuple(PUBLISHED_BASELINES),
+                   default=V2_STABLE_VERSION,
+                   help="Expected signed baseline APK version; defaults to current stable android.4")
     p.add_argument("--candidate-apk", type=Path)
     p.add_argument("--candidate-tag")
     p.add_argument("--aapt", type=Path)
@@ -144,7 +182,7 @@ def main() -> int:
         p.error("Read-only comparison requires both signed APKs, candidate tag and Android tools")
     if a.reference_apk.resolve() == a.candidate_apk.resolve():
         raise ValueError("Reference and candidate must be different APKs")
-    ref = inspect_apk(a.reference_apk, a.aapt, a.apksigner, V2_AI_PREVIEW_IDENTITY_TAG)
+    ref = inspect_apk(a.reference_apk, a.aapt, a.apksigner, "photocraft-v" + a.reference_version)
     candidate = inspect_apk(a.candidate_apk, a.aapt, a.apksigner, a.candidate_tag)
     report = verify_pair(ref, candidate)
     # Verify the actual candidate archive includes arm64 binaries and no
@@ -152,8 +190,8 @@ def main() -> int:
     report["archive"] = check_arm64_archive(a.candidate_apk)
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    print("PASS: Signed V2 candidate is identity/version/ABI-compatible with AI V2 preview")
-    print("NOT PROVEN: on-device upgrade, data preservation, model rights or stable release approval")
+    print("PASS: V2 candidate signed identity/version/ABI exceeds current published stable android.4")
+    print("NOT PROVEN: on-device upgrade, data preservation, model rights or future release approval")
     return 0
 
 

@@ -20,6 +20,7 @@ SOURCES = {
     "app": "crates/ui-egui/src/app.rs",
     "quit": "crates/ui-egui/src/app/quit.rs",
     "dialog": "crates/ui-egui/src/dialogs/show.rs",
+    "commands": "crates/ui-egui/src/app/commands.rs",
 }
 
 
@@ -148,6 +149,16 @@ def port(checkout: Path, *, verify_only: bool = False) -> dict:
         "            self.android_pending_close=Some((uid,revision,rx,quit));\n        }\n    }",
         "            self.android_pending_close=Some((uid,revision,rx,quit));\n"
         "            return true;\n        }\n        false\n    }", "save_close.rs")
+    # GridCraft 0.15 moved alert() under app::commands with pub(super)
+    # visibility. This Android-only save shim is in crate root lib.rs, so
+    # allow crate-local access without making the method public to API users.
+    src["commands"] = once(
+        src["commands"],
+        "    pub(super) fn alert(&mut self, e: String) {",
+        "    // " + MARKER + ": save failure surfaced from root Android SAF shim.\n"
+        "    pub(crate) fn alert(&mut self, e: String) {",
+        SOURCES["commands"],
+    )
     src["lib"] += "\n" + save + "\n" + (ROOT / "editor_escape.rs").read_text() + "\n" + (ROOT / "dcs_tests.rs").read_text() + "\n" + APP_HELPER
     src["quit"] = once(
         src["quit"],
@@ -195,6 +206,7 @@ def port(checkout: Path, *, verify_only: bool = False) -> dict:
         "app": "self.android_poll_save_close(ctx);",
         "quit": "return self.android_save_and_close(quitting);",
         "dialog": "gridcraft_android_take_dcs(ui.ctx())",
+        "commands": "pub(crate) fn alert(&mut self, e: String)",
     }.items():
         if required not in src[key]:
             raise RuntimeError(f"{SOURCES[key]} missing post-ported {required}")

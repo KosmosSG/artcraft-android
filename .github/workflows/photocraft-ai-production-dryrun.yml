@@ -19,7 +19,10 @@ concurrency:
 
 jobs:
   arm64-preview:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    # ARCHIVED: android.2 disposable production-package proof predates the
+    # published V2 android.4 baseline. Never run an obsolete heavy APK build.
+    # Keep only for historical read-only diagnosis; manual dispatch skips it.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

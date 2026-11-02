@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: storytold/wordcraft
-          ref: 2e6db0bd88795e80375176c01665cff7dbe2b057
+          ref: 5cd53f184aab11def13b7fced18727159b9bc96a
           path: builder/source/wordcraft
           persist-credentials: false
 

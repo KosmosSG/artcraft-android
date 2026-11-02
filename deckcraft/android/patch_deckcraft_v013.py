@@ -119,11 +119,17 @@ def apply(root):
             ui.set_max_width(380.0);
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("×").clicked() { close = true; }
-                        ui.add_space(94.0);
-                        ui.heading("DeckCraft");
-                    });
+                    // Symmetric 24pt left spacer and close button keep the
+                    // title geometrically centered within the real modal width.
+                    let width = ui.available_width();
+                    let gap = ui.spacing().item_spacing.x;
+                    ui.add_sized([24.0, 26.0], egui::Label::new(""));
+                    ui.add_sized([(width - 48.0 - 2.0 * gap).max(100.0), 26.0],
+                        egui::Label::new(egui::RichText::new("DeckCraft").size(20.0))
+                            .halign(egui::Align::Center));
+                    if ui.add_sized([24.0, 26.0], egui::Button::new("×")).clicked() {
+                        close = true;
+                    }
                 });
                 ui.separator();
                 close |= body(app, ui, &mut d);
@@ -272,12 +278,26 @@ def apply(root):
                     }
                 }
                 if handled_clipboard {
+                    // Update the slide and publish clipboard output immediately
+                    // rather than waiting for a pointer tap to cause a paint.
+                    ctx.request_repaint();
                     self.drain_requests();
                     return;
                 }
             }
         }
         if ctx.memory(|m| m.focused().is_some()) || modal {''')
+    # Physical keyboard commands are occasionally consumed by the Android IME
+    # before the UI frame advances. Poll only while slide text is actively
+    # edited, so Java's one-shot shortcut queue drains without an extra tap.
+    edit('app/keys.rs',
+         '''        let events = ctx.input(|i| i.events.clone());''',
+         '''        let events = ctx.input(|i| i.events.clone());
+        #[cfg(target_os = "android")]
+        if self.session.active().is_some_and(|d| d.selection.text.is_some()) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(24));
+        }''')
+
     # Publish Copy/Cut text to Android ClipboardManager synchronously in this
     # same frame via the host bridge; egui's platform-output copy is deferred.
     edit('app/keys.rs',
@@ -287,6 +307,7 @@ def apply(root):
         if !text.is_empty() {
             ctx.data_mut(|d| d.insert_temp(
                 egui::Id::new("deckcraft.android.clipboard.pending"), text));
+            ctx.request_repaint();
         }
     }
 
@@ -405,7 +426,11 @@ def apply(root):
                 let key = scroll_id.with("deckcraft_trackpad_smooth");
                 let old: egui::Vec2 = ui.data_mut(|d| d.get_temp(key)).unwrap_or(egui::Vec2::ZERO);
                 let next = if wheel != egui::Vec2::ZERO {
-                    old * 0.28 + wheel * scroll_gain * 0.72
+                    let delta = old * 0.32 + wheel * scroll_gain * 0.68;
+                    // Avoid extreme one-frame jumps when the trackpad emits a
+                    // burst; this does not affect direct touchscreen gestures.
+                    egui::vec2(delta.x.clamp(-80.0, 80.0),
+                               delta.y.clamp(-80.0, 80.0))
                 } else {
                     egui::Vec2::ZERO
                 };

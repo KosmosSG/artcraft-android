@@ -180,3 +180,27 @@ This is a test candidate only: do not merge, production-sign or publish.
 Use local disposable-signature APK after successful ARM64 unsigned build,
 then owner must test Copy/Cut/Paste repeated, cross-app clipboard, trackpad
 pan, Ctrl+A/W, D/C/S, Esc, two-finger touchscreen pinch/pan, Dark Theme.
+
+## v0.14.1-android.10 — clipboard redraw, trackpad spike limiting and centered modal title (2026-11-03)
+
+Owner tested Android.9 on HONOR MagicPad 4: new clipboard content now correct, but
+Copy and Cut occasionally require tapping elsewhere before changes appear; input
+still feels slow. Trackpad two-finger pan improved but sometimes triggers the
+MagicOS system right-edge panel (phone device overlay screenshot); D/C/S and Escape
+continue working. Save-dialog DeckCraft heading appears slightly off-center.
+
+Android.10 refreshes the app while a custom slide-text editor is active (24ms
+scheduled repaint while editing) and requests immediate repaint when a raw
+clipboard shortcut arrives, after the editor handles Copy/Cut/Paste and when
+new clipboard data is queued, to avoid waiting for an unrelated touch.
+Trackpad-only point-wheel smoothing retains existing gain but clamps extreme
+per-frame deltas to ±80 px, making gestures less jumpy; native touchscreen
+pan/pinch unchanged. This does not override Android/MagicOS system edge-swipe
+recognizers; those remain OS-owned. D/C/S modal header uses symmetric slots
+and a true centered egui label, preserving close X, buttons and modal safety.
+
+No production signing, merge or release. Unsigned ARM64 CI and device testing are
+mandatory. After CI success use local disposable test signing with no additional
+GitHub signing job. Retest immediate Ctrl+A/C/X/V with focused text, no extra tap,
+repeat D/C/S, centered title, trackpad pan away from screen edges and native
+touchscreen gestures and themes.

@@ -165,6 +165,9 @@ impl SlideApp {
         });
         let Some(action) = action else { return; };
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.android.clip_action"), action));
+        // Wake the UI immediately, even if Android consumed the key before a
+        // frame; the custom text field must not wait for another touch.
+        ctx.request_repaint();
         if action == 4 {
             // AndroidShell has already appended a real system-clipboard Paste.
             if let Some(text) = raw.events.iter().find_map(|e| match e {

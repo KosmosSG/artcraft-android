@@ -19,6 +19,7 @@ Options:
   -appname=<name>     Override the display name (default: app's built-in title)
   -packagename=<pkg>  Override the Android package (default: com.artcraft.<app>)
   -appicon=<path>     Use a custom launcher icon PNG (default: app's own icon)
+  -designcraft-v016   Use pinned official DesignCraft v0.16.0 source (review builds only)
   -h, --help          Show this help
 
 App names:
@@ -50,6 +51,7 @@ fi
 APPNAME=""
 PACKAGENAME=""
 APPICON=""
+DESIGNCRAFT_V016=false
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         -h|--help)
@@ -66,6 +68,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -appicon=*)
             APPICON="${1#-appicon=}"
+            shift
+            ;;
+        -designcraft-v016)
+            DESIGNCRAFT_V016=true
             shift
             ;;
         -*)
@@ -106,6 +112,10 @@ case "$APP" in
     *) echo "Unsupported app: $APP" >&2; usage; exit 2 ;;
 esac
 if [[ -n "$APPNAME" ]]; then TITLE="$APPNAME"; fi
+if [[ "$DESIGNCRAFT_V016" == true && "$APP" != "designcraft" ]]; then
+    echo "The -designcraft-v016 source lock is only available for DesignCraft." >&2
+    exit 2
+fi
 
 SRC="source/$APP"
 REPO="https://github.com/storytold/$APP.git"
@@ -255,6 +265,26 @@ if command -v rustup >/dev/null 2>&1 && ! rustup target list --installed | grep 
 fi
 
 say 3 "Fetching official source for $TITLE..."
+# Opt-in source provenance gate for isolated v0.16 integration. Never reset a
+# user's existing checkout, and never silently upgrade it to an unreviewed commit.
+DESIGNCRAFT_LOCKED_COMMIT=""
+if [[ "$DESIGNCRAFT_V016" == true ]]; then
+    DESIGNCRAFT_LOCKED_COMMIT="$(python3 - "$ROOT/configs/upstream/designcraft-v016.json" <<'PY'
+import json, re, sys
+from pathlib import Path
+lock = json.loads(Path(sys.argv[1]).read_text())
+if (lock.get("schema_version") != 1
+        or lock.get("official_upstream") != "storytold/designcraft"
+        or lock.get("stable_tag") != "v0.16.0"
+        or lock.get("upstream_workspace_version") != "0.16.0"
+        or not re.fullmatch(r"[0-9a-f]{40}", lock.get("tag_commit", ""))):
+    raise SystemExit("STOP: incompatible DesignCraft official v0.16 source lock")
+if lock.get("production_release_authorized") or lock.get("permanent_signing_authorized"):
+    raise SystemExit("STOP: source review lock must not authorize release or signing")
+print(lock["tag_commit"])
+PY
+)" || fail "Could not verify the DesignCraft v0.16.0 source-lock configuration."
+fi
 if [[ -e "$SRC" ]]; then
     [[ -d "$SRC/.git" ]] || fail "$SRC exists but is not a Git checkout. Move it aside manually before retrying."
     ORIGIN="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
@@ -262,11 +292,24 @@ if [[ -e "$SRC" ]]; then
         "https://github.com/storytold/$APP") ;;
         *) fail "$SRC has unexpected origin '$ORIGIN'; refusing to reuse or overwrite it." ;;
     esac
+    if [[ "$DESIGNCRAFT_V016" == true ]]; then
+        ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Could not identify the existing DesignCraft checkout."
+        [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
+            fail "Existing DesignCraft source is at $ACTUAL_SOURCE_SHA, not pinned v0.16.0 ($DESIGNCRAFT_LOCKED_COMMIT). Preserve it: run this in a separate clean builder checkout, or review its migration manually."
+    fi
     echo "Reusing existing source checkout (including your Android port changes)."
     echo "Commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     echo "Source is not automatically reset or updated."
 else
-    git clone --depth 1 "$REPO" "$SRC"
+    if [[ "$DESIGNCRAFT_V016" == true ]]; then
+        git clone --depth 1 --branch v0.16.0 "$REPO" "$SRC" || fail "Unable to fetch the pinned official DesignCraft v0.16.0 tag."
+        ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Cannot identify the cloned upstream source."
+        [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
+            fail "DesignCraft tag did not resolve to the audited source commit. No Android build will proceed."
+        echo "Verified official DesignCraft v0.16.0 source at $ACTUAL_SOURCE_SHA (no publication authorized)."
+    else
+        git clone --depth 1 "$REPO" "$SRC"
+    fi
 fi
 
 # Upstream `main` is normally green, but a regression can sit there for a while (the upstream
@@ -1571,12 +1614,22 @@ PERSIST_RECIPES = {
         if let Ok(prefs) = serde_json::from_slice::<@ENGINE@::Prefs>(&bytes) {
             inner.session.prefs = prefs;
         }
+    }
+    // Recover unsaved work from a previous interrupted run. This is scoped to
+    // DesignCraft's own app-private directory, not the user's SAF originals.
+    let recovery_root = dir.join("Recovery");
+    if let Ok(run_dir) = @ENGINE@::recovery::run_dir(&recovery_root) {
+        inner.session.recovery_dir = Some(run_dir);
+        let _ = inner.session.execute("file.recovery.open", &serde_json::json!({}));
     }''',
         "save": '''if let Ok(bytes) = serde_json::to_vec_pretty(&inner.ui) {
         persist_write(dir, "ui.json", &bytes);
     }
     if let Ok(bytes) = serde_json::to_vec_pretty(&inner.session.prefs) {
         persist_write(dir, "prefs.json", &bytes);
+    }
+    if inner.session.recovery_dir.is_some() && inner.session.documents().iter().any(|d| d.is_dirty()) {
+        let _ = inner.session.execute("file.recovery.save", &serde_json::json!({}));
     }''',
     },
     "lightcraft": {

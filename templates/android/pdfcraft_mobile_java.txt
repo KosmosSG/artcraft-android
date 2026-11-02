@@ -8,6 +8,7 @@ private static final int PDF_FONT_SCAN_MAX_FOLDERS = 10000; // recursive SAF tra
 private static final long PDF_FONT_FILE_MAX_BYTES = 16L * 1024 * 1024;
 private static final String PDF_FONT_TREE_PREF = "pdfcraft.font.tree.uri";
 private static final String PDF_STARTUP_UPDATE_PREF = "pdfcraft.updater.startup";
+private static final String PDF_TOOLBAR_VISIBILITY_PREF = "pdfcraft.tools.visible";
 private static final String PDF_RELEASES_API =
         "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100&page=";
 // Cap network requests: other ArtCraft app releases share the same feed.
@@ -24,6 +25,16 @@ public boolean pdfStartupUpdateEnabled() {
 public void pdfSetStartupUpdateEnabled(boolean enabled) {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putBoolean(PDF_STARTUP_UPDATE_PREF, enabled).apply();
+}
+public boolean pdfToolbarVisible() {
+    // Preserve the owner's choice to hide the Android-only toolbar, including
+    // across device restarts; default matches the previously tested Android.3.
+    return getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(PDF_TOOLBAR_VISIBILITY_PREF, true);
+}
+public void pdfSetToolbarVisible(boolean visible) {
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(PDF_TOOLBAR_VISIBILITY_PREF, visible).apply();
 }
 public void pdfRequestFont() {
     runOnUiThread(() -> {

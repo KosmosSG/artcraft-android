@@ -92,6 +92,28 @@ mod android_dcs_regression {
         assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
     }
     #[test]
+    fn ctrl_w_is_detected_during_text_edit_without_stealing_other_shortcuts() {
+        let mut app = app();
+        let mut ctrl = egui::Modifiers::NONE;
+        ctrl.ctrl = true;
+        ctrl.command = true;
+        assert!(SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::W, true, false, ctrl)]));
+        assert!(!SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::W, false, false, ctrl)]));
+        assert!(!SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::W, true, true, ctrl)]));
+        assert!(!SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::W, true, false, egui::Modifiers::NONE)]));
+        assert!(!SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::S, true, false, ctrl)]));
+        let mut modified = ctrl;
+        modified.shift = true;
+        assert!(!SlideApp::android_editing_ctrl_w(&[key_event(egui::Key::W, true, false, modified)]));
+        // The shortcut must use the standard unsaved-change confirmation.
+        // No document is silently closed or saved.
+        assert!(app.session.active().unwrap().is_dirty());
+        app.close_presentation();
+        assert!(app.dialog.as_ref().is_some_and(|d| d.id == "close"));
+        assert!(app.session.active().unwrap().is_dirty());
+    }
+
+    #[test]
     fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
         let mut app = app();
         app.dialog = Some(dialogs::Dialog::new("close"));

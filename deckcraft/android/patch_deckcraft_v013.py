@@ -135,6 +135,55 @@ def apply(root):
     p.write_text(s.replace(old_show, modal_show, 1))
     edit('app.rs', '    pub fn logic(&mut self, ctx: &egui::Context) {',
         '    pub fn logic(&mut self, ctx: &egui::Context) {\n        self.android_capture_unsaved_dcs(ctx);')
+    # Android Ctrl+W must work while slide text/IME has keyboard focus. The
+    # official upstream app/keys.rs exits early if a field owns input, before
+    # reaching menus::ui_shortcut. Route *only* Ctrl+W ahead of that early return
+    # to the existing acknowledged close_presentation() D/C/S dialog, never
+    # to Activity.finish(), and only when a presentation is open.
+    edit('app/keys.rs',
+        '''    /// Keyboard and clipboard for the slide (when no text field has focus).
+    pub(super) fn keyboard(&mut self, ctx: &egui::Context) {''',
+        '''    /// Match the Android hardware keyboard close shortcut even if a text
+    /// field owns focus. Keep all other text shortcuts with their editor.
+    fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {
+        events.iter().any(|event| matches!(
+            event,
+            egui::Event::Key {
+                key: egui::Key::W, pressed: true, repeat: false, modifiers, ..
+            } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
+        ))
+    }
+
+    /// Keyboard and clipboard for the slide (when no text field has focus).
+    pub(super) fn keyboard(&mut self, ctx: &egui::Context) {''')
+    edit('app/keys.rs',
+        '''        if ctx.memory(|m| m.focused().is_some()) || modal {''',
+        '''        #[cfg(target_os = "android")]
+        if !modal
+            && self.session.active().is_some()
+            && (ctx.memory(|m| m.focused().is_some())
+                || self.session.active().is_some_and(|d| d.selection.text.is_some()))
+            && Self::android_editing_ctrl_w(&events)
+        {
+            // Same close path as File > Close and ordinary Ctrl+W. Dirty work
+            // opens the real Save/Don't Save/Cancel modal; no background
+            // activity exit and no silent loss of the committed slide text.
+            self.note_settled_composition(ctx);
+            self.suspend_ime_reset(viewport);
+            self.route_ime_controls_only(ctx, &events);
+            if let Some(id) = ctx.memory(|m| m.focused()) {
+                ctx.memory_mut(|m| m.surrender_focus(id));
+            }
+            self.close_presentation();
+            self.drain_requests();
+            return;
+        }
+        if ctx.memory(|m| m.focused().is_some()) || modal {''')
+    # Expose the shortcut-match helper to host-side Rust regression tests.
+    edit('app/keys.rs',
+        '''    fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {''',
+        '''    pub(crate) fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {''')
+
     # Carry forward the release's render/round-trip/font-style regression, not just menu checks.
     tablet_tree = ast.parse((HERE / 'patch_deckcraft_tablet.py').read_text())
     tests = next(n.value for n in ast.walk(tablet_tree) if isinstance(n, ast.Constant)
@@ -227,7 +276,13 @@ def apply(root):
     }''',
         '''    if (resp.hovered() || on_bar || touch_pan_active) && !zooming {
         if overflow != egui::Vec2::ZERO {
-            offset -= wheel;
+            #[cfg(target_os = "android")]
+            let scroll_gain = if ui.input(|i| i.events.iter().any(|e|
+                matches!(e, egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. })
+            )) { 1.65_f32 } else { 1.0 };
+            #[cfg(not(target_os = "android"))]
+            let scroll_gain = 1.0_f32;
+            offset -= wheel * scroll_gain;
         } else if !touch_pan_active {
             // A two-finger swipe over a fitted slide must not turn pages.
             wheel_navigation(app, ui, carry_id, doc_uid);

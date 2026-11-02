@@ -9,7 +9,7 @@ Pinned official source: Storytold DeckCraft v0.14.1,
 Pinned Android builder: MostafaXS1/artcraft-android
 `fbb4f66fcc868afdd8303d5227aa81db6a21d7fa`.
 Candidate: `DeckCraft v0.14.1-android.3`, package `com.artcraft.deckcraft`,
-versionCode `100000007`. The workflow retains only an **unsigned** ARM64 APK.
+versionCode `100000010`. The workflow retains only an **unsigned** ARM64 APK.
 
 Changes staged:
 - Updated to official v0.14.1 (released 2026-11-01), preserving all compatible improvements from v0.13.1; upstream includes safer print-preview handling, PPTX fidelity, animation and update-dialog improvements.
@@ -89,3 +89,23 @@ on the slide and move them together to pan horizontally/vertically; confirm
 no object selection, no unwanted slide changes, and existing pinch in/out,
 D/C/S and Esc still work. Generate temporary-key test APK from successful
 unsigned build, with no additional production GitHub signing run and no release.
+
+## v0.14.1-android.6 active-editor Ctrl+W + trackpad pan sensitivity (2026-11-02)
+
+On HONOR MagicPad 4 the owner reported Android.5 touchscreen pinch-out, pinch-in,
+two-finger panning, D/C/S, Escape, and dark theme all WORK. Trackpad two-finger
+panning works but has low movement; Ctrl+W DOES NOT open the D/C/S dialog while
+a text box remains in text-edit mode (after Escape, Ctrl+W and D/C/S work).
+Official DeckCraft app/keys.rs returns early when egui focused editor owns keys,
+before menus::ui_shortcut can route W to close_presentation. Android.6 adds
+an Android-only focused-text Ctrl+W pre-route to the EXISTING native
+close_presentation() dirty-document confirmation, without broadening other
+editor shortcuts. Added Rust matching/dirty-modal regression assertions.
+Android-only Point MouseWheel events use 1.65 canvas panning gain when zoomed
+beyond fit; ordinary scroll, wheel-line events and slide content are preserved.
+Retest with active text cursor WITHOUT pressing Esc: Ctrl+W should open the
+existing Save/Don't Save/Cancel dialog; D/C/S must work repeatedly. Confirm
+Esc stays inside app, no unsaved text lost, pinch zoom, two-finger
+touchscreen/trackpad pan, dark theme and import fonts still work. Release
+and permanent signing blocked pending device testing. No new GitHub
+Actions signing job: local temporary-key test-signing only.

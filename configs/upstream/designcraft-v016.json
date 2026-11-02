@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "application": "designcraft",
+  "official_upstream": "storytold/designcraft",
+  "stable_tag": "v0.16.0",
+  "tag_commit": "1fe8885bda7451263879cfbb256b9a3d46c411bf",
+  "upstream_workspace_version": "0.16.0",
+  "published_at_utc": "2026-11-01T19:32:27Z",
+  "android_base_branch": "feature/designcraft-4gib-font-scan-20261030",
+  "integration_status": "source-provenance-only-v016-android-port-pending",
+  "android_source_port_complete": false,
+  "android_build_verified": false,
+  "permanent_signing_authorized": false,
+  "production_release_authorized": false
+}

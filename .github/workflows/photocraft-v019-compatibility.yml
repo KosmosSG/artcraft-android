@@ -101,6 +101,16 @@ jobs:
           grep -Fq 'version = "0.19.0-android.1"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release untouched.'
 
+      - name: Stage owner's blue Pc icon into disposable upstream checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON=source/photocraft/assets/app-icon/hicolor/256x256/apps/ai.storyteller.photocraft.png
+          test -d "$(dirname "$ICON")"
+          base64 --decode tools/photocraft_v019_pc_launcher.png.b64 > "$ICON"
+          echo "addd5c0eec37a85984e53981b811288cbc06ea238ed453e4381cb828b4c4e5a7  $ICON" | sha256sum --check --status
+          echo "Owner-provided Pc icon staged, SHA-256 verified; the stable launcher remains unchanged."
+
       - name: Compile debug-only upstream v0.19 Android compatibility candidate
         shell: bash
         run: |

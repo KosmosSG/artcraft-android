@@ -140,6 +140,17 @@ jobs:
           cp tools/photocraft_ai_v2_candidate_stage.py "$RUNNER_TEMP/pr93-ai/production_stage.py"
           python3 -m py_compile tools/photocraft_ai_v2_candidate_stage.py
           python3 tools/photocraft_ai_v2_candidate_stage.py --self-test
+          # CI #41376843890 failed on a stale android.3 self-test assertion.
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from photocraft_ai_v2_candidate_stage import PROPOSED_VERSION, PROPOSED_CODE
+          from photocraft_ai_v2_upgrade_gate import V2_STABLE_CODE
+          assert (PROPOSED_VERSION, PROPOSED_CODE) == ('0.14.0-android.5', 16790008)
+          assert PROPOSED_CODE > V2_STABLE_CODE
+          print('PASS: staged candidate is newer than installed V2 android.4')
+          PY
           python3 "$RUNNER_TEMP/pr93-ai/window_patch.py" --self-test
           test -s "$RUNNER_TEMP/pr93-ai/stage.py"
 
@@ -275,28 +286,30 @@ jobs:
           package, code, version = match.groups()
           assert package == 'com.artcraft.photocraft', 'Unexpected package ID'
           assert version == '0.14.0-android.5', 'Unexpected versionName'
+          assert int(code) == 16790008, 'STOP: candidate versionCode must be exact android.5 code 16790008'
           assert int(code) > 16790007, 'STOP: candidate versionCode must exceed installed PhotoCraft V2 stable android.4'
           assert re.search(r"^application-label:'PhotoCraft'$", badging, re.M), 'Production label missing'
           assert "launchable-activity: name='com.artcraft.photocraft.PhotoCraftActivity'" in badging, 'Wrong launcher'
           found = set(re.findall(r'certificate SHA-256 digest: ([a-fA-F0-9]{64})', certs.read_text()))
           assert len(found) == 1, 'Missing/ambiguous disposable signing certificate'
           ephemeral = found.pop().lower()
-          production = '45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef'
-          assert ephemeral != production and ephemeral != 'edda8ab30390e383e10450193b8ae5864312a6ff80e9d6c7f3437816524e6936', 'STOP: build unexpectedly accessed original or V2 signing identity'
+          obsolete_original = '45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef'
+          production_v2 = 'edda8ab30390e383e10450193b8ae5864312a6ff80e9d6c7f3437816524e6936'
+          assert ephemeral not in (obsolete_original, production_v2), 'STOP: build unexpectedly accessed original or V2 signing identity'
           print('PASS: ARM64 + regular PhotoCraft package, activity, version, icon and approved AI modules')
           print('PASS: disposable signer differs from production — proof APK is NOT upgradeable')
           output = pathlib.Path('candidate-proof')
           output.mkdir(exist_ok=True)
           report = {
               'package': package, 'version_name': version, 'version_code': int(code),
-              'public_reference_certificate_sha256': production,
+              'v2_stable_reference_certificate_sha256': production_v2,
               'proof_signer_matches_public': False,
               'non_installable_disposable_build': True,
               'source_commit': 'f708fff8a333c2246b6d342570b19db5b95f4be1',
               'android_arm64': True,
               'public_release_created': False,
               'apk_sha256_discarded': hashlib.sha256(apk.read_bytes()).hexdigest(),
-              'warning': 'No APK is distributed. An actual production upgrade requires the ORIGINAL key and device verification.'
+              'warning': 'Only an unsigned signing input is distributed. An in-place android.4 upgrade requires the SAME permanent V2 certificate and owner device verification.'
           }
           (output / 'production-identity-build-proof.json').write_text(json.dumps(report, indent=2) + '\n')
           PY

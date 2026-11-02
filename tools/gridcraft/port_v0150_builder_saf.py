@@ -141,6 +141,40 @@ def transform(builder_script: str) -> str:
     patched = builder_script[:app_start] + recipe + builder_script[app_end:]
     if not patched.startswith(builder_script[:app_start]) or not patched.endswith(builder_script[app_end:]):
         raise RuntimeError("Refusing to change other ArtCraft app recipes")
+    # Official v0.15 pins the complete egui 0.37 + winit source fork. The
+    # builder's older vendored egui-winit/winit (from egui 0.36) cannot be
+    # injected: Cargo will select mismatched types and Android input APIs.
+    # Preserve the official forks ONLY for this test GridCraft build; retain
+    # all other apps' existing builder clipboard/pointer substitutions.
+    pinned_forks = [
+        ("# egui-winit's stock Android build gates", "# Some apps call `rfd` directly",
+         "GRIDCRAFT_V0150_KEEP_EGUI037_FORK"),
+        ("# winit's stock Android backend only translates touch actions",
+         "# Every launcher uses the builder's vendored android-activity",
+         "GRIDCRAFT_V0150_KEEP_WINIT_FORK"),
+    ]
+    for start, end, marker in pinned_forks:
+        begin = patched.find(start)
+        finish = patched.find(end)
+        if begin < 0 or finish <= begin or patched.count(start) != 1 or patched.count(end) != 1:
+            raise RuntimeError(f"Pinned builder Android vendor section changed: {marker}")
+        block = patched[begin:finish]
+        # The banner comments stay outside the shell conditional; only the
+        # actual shell commands are guarded, so branch-targeted bypass is clear.
+        first_cmd = block.find('echo "Vendoring')
+        if first_cmd < 0:
+            raise RuntimeError(f"Vendor step missing: {marker}")
+        preamble, commands = block[:first_cmd], block[first_cmd:]
+        wrapped = (
+            preamble
+            + f'if [[ "$APP" == "gridcraft" ]]; then\n'
+            + f'    echo "{marker}: preserving official GridCraft v0.15.0 fork"\n'
+            + "else\n"
+            + commands.rstrip("\n") + "\nfi\n\n"
+        )
+        patched = patched[:begin] + wrapped + patched[finish:]
+    if patched.count("GRIDCRAFT_V0150_KEEP_EGUI037_FORK") != 1 or patched.count("GRIDCRAFT_V0150_KEEP_WINIT_FORK") != 1:
+        raise RuntimeError("Expected exactly two official-fork preservation guards")
     return patched
 
 

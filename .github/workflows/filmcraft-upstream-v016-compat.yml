@@ -23,6 +23,8 @@ jobs:
       with:
         path: suite
         persist-credentials: false
+    - name: Verify isolated v0.16.0 version staging and baseline preservation
+      run: python3 -m unittest discover -s suite/tools/filmcraft -p 'test_upstream_v016_stage.py' -v
     - name: Validate 4 GiB Java scan boundaries
       run: cd suite && python3 tools/font_scan_budget_regression.py
     - name: Validate app-specific keyboard focus handoff

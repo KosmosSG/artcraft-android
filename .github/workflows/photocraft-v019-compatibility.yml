@@ -1,0 +1,108 @@
+name: PhotoCraft official v0.19 Android compatibility (auto-build, NO RELEASE)
+
+# Independent review branch. Deliberately not on the auto-preview publisher allowlist.
+on:
+  push:
+    branches:
+      - feature/photocraft-v019-android-preservation-20261102
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v019-isolated-compatibility
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: "2"
+      ARTCRAFT_TARGET_SDK: "35"
+      ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
+      UPSTREAM_TAG: "v0.19.0"
+      UPSTREAM_SHA: "2df9f807702a935184041355a86405380bda8274"
+      STABLE_SHA: "3af883c9db9d57d1b1641629707c2927176b484a"
+    steps:
+      - name: Checkout preserved owner-tested Android branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify v0.14.0-android.4 runtime remains identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feature/photocraft-v019-android-preservation-20261102"
+          git fetch --no-tags --depth=1 origin "$STABLE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$STABLE_SHA"
+          python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
+          echo "The published production PhotoCraft app is unchanged."
+
+      - name: Check out exact latest official v0.19.0 source without changing project history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
+          python3 tools/photocraft_v019_preservation_gate.py --upstream source/photocraft
+          echo "Source pin: $UPSTREAM_SHA"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+
+      - name: Configure Android SDK 35 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Compile debug-only upstream v0.19 Android compatibility candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build-system-generated local debug key is NOT the original PhotoCraft certificate.
+          # Never sign with a production key here; never publish any Releases.
+          bash build-debug.sh -photocraft
+
+      - name: Inspect compiled APK identity (candidate is NOT an in-place update)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' apks < <(find output -maxdepth 1 -name '*.apk' -type f -print0)
+          test "${#apks[@]}" -eq 1
+          APK="${apks[0]}"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          "$AAPT" dump badging "$APK" | grep '^package:'
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft'"
+          sha256sum "$APK" | tee SHA256SUMS.txt
+          echo "UNTESTED disposable-key debug APK: DO NOT install over the owner's current PhotoCraft." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain debug test artifact ONLY (never publish)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v019-ARM64-UNTESTED-DISPOSABLE-KEY
+          path: |
+            output/*.apk
+            SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error

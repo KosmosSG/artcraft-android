@@ -106,9 +106,24 @@ def output_location(input_file: Path | None, proposed: Path | None) -> Path:
         raise ValueError("Output must be a .png file to retain transparency")
     if input_file is not None and input_file.expanduser().resolve() == result.resolve():
         raise ValueError("Output cannot overwrite the original input file")
-    if result.exists():
+    # Path.exists() follows links and misses dangling output symlinks. An
+    # attacker-controlled alias must not be treated as an available filename.
+    if os.path.lexists(result):
         raise FileExistsError(f"Refusing to overwrite existing file: {result}")
     return result
+
+
+def write_new_output(destination: Path, payload: bytes) -> None:
+    """Create a new private PNG without following an output symlink.
+
+    The initial path check is advisory: another process could create a
+    dangling symlink before publication. O_CREAT | O_EXCL is the atomic
+    no-overwrite boundary (and refuses symlinks), even under that race.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(destination, flags, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(payload)
 
 
 def print_environment() -> bool:
@@ -208,8 +223,7 @@ def benchmark(input_file: Path | None, output_file: Path | None,
     if payload.tell() > MAX_INPUT_BYTES:
         raise RuntimeError("Output exceeds 24 MiB safe test size")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("xb") as output:
-        output.write(payload.getvalue())
+    write_new_output(destination, payload.getvalue())
 
     rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print(json.dumps({
@@ -287,6 +301,42 @@ def self_test() -> int:
                 pass
             out = output_location(original, Path(root) / "new.png")
             assert out.name == "new.png" and not out.exists()
+            # A dangling symlink bypassed exists() and open("xb") could
+            # create its unrelated target. Both the preflight check and
+            # atomic publication must refuse it, including a link inserted
+            # after preflight and before publication.
+            dangling = Path(root) / "dangling.png"
+            outside = Path(root) / "outside.png"
+            dangling.symlink_to(outside)
+            try:
+                output_location(None, dangling)
+                raise AssertionError("Accepted dangling output symlink")
+            except FileExistsError:
+                pass
+            try:
+                write_new_output(dangling, b"never")
+                raise AssertionError("Followed dangling output symlink")
+            except FileExistsError:
+                pass
+            assert dangling.is_symlink() and not outside.exists()
+            # Simulate an alias created AFTER output_location() accepted it.
+            raced = Path(root) / "raced.png"
+            assert output_location(None, raced) == raced
+            raced.symlink_to(outside)
+            try:
+                write_new_output(raced, b"never")
+                raise AssertionError("Followed raced output symlink")
+            except FileExistsError:
+                pass
+            assert not outside.exists()
+            write_new_output(out, b"new-output")
+            assert out.read_bytes() == b"new-output"
+            try:
+                write_new_output(out, b"overwrite")
+                raise AssertionError("Overwrote an existing output")
+            except FileExistsError:
+                pass
+            assert out.read_bytes() == b"new-output"
     except Exception:
         raise
     print("PASS: no-dependency safety tests (paths, limits, no overwrite, no auto-download)")

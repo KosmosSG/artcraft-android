@@ -116,6 +116,10 @@ if [[ "$DESIGNCRAFT_V016" == true && "$APP" != "designcraft" ]]; then
     echo "The -designcraft-v016 source lock is only available for DesignCraft." >&2
     exit 2
 fi
+if [[ "$DESIGNCRAFT_V016" == true && "$MODE" != "debug" ]]; then
+    echo "The v0.16.0 source integration is review-only; production/release signing is blocked. Use build-debug.sh." >&2
+    exit 2
+fi
 
 SRC="source/$APP"
 REPO="https://github.com/storytold/$APP.git"

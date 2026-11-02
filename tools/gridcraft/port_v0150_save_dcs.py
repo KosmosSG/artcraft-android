@@ -68,12 +68,10 @@ impl SheetApp {
         self.dialog.as_ref().is_some_and(|d| d.name() == "saveChanges")
     }
 
-    pub fn android_capture_unsaved_dcs(&self, ctx: &egui::Context) {
-        if self.android_unsaved_dcs_active() {
-            // The native shell can request focus handling, but the modal consumes
-            // the actual D/C/S key in dialogs/show.rs to avoid stealing cell input.
-            ctx.request_repaint();
-        }
+    pub fn android_capture_unsaved_dcs(&self, _ctx: &egui::Context) {
+        // Compatibility shim: the actual keys are captured inside the modal
+        // dialogs/show.rs pass. Never spin/repaint continuously while waiting
+        // for input; Android/egui already requests a frame on key or touch.
     }
 }
 '''

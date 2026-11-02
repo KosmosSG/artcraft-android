@@ -25,12 +25,55 @@ jobs:
           python3 -m py_compile tools/photocraft_ai_v2_upgrade_gate.py tools/photocraft_ai_candidate_compatibility.py tools/photocraft_ai_reference_signing.py
           python3 tools/photocraft_ai_v2_upgrade_gate.py --self-test
           python3 tools/photocraft_ai_candidate_compatibility.py --self-test
+      - name: Verify actual published stable V2 PhotoCraft android.4 APK (read-only)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reference
+          gh release download photocraft-v0.14.0-android.4 \
+            --repo KosmosSG/artcraft-android \
+            --pattern 'PhotoCraft-v0.14.0-android.4-ARM64-V2-SIGNED.apk' \
+            --dir reference
+          APK=reference/PhotoCraft-v0.14.0-android.4-ARM64-V2-SIGNED.apk
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$AAPT" && test -x "$APKSIGNER"
+          python3 - "$APK" "$AAPT" "$APKSIGNER" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("tools").resolve()))
+          from photocraft_ai_reference_signing import inspect
+          from photocraft_ai_candidate_compatibility import check_arm64_archive
+          from photocraft_ai_v2_upgrade_gate import (
+              PACKAGE, V2_CERT, V2_STABLE_VERSION, V2_STABLE_CODE,
+              V2_STABLE_SHA, V2_STABLE_TAG, PUBLISHED_BASELINES,
+          )
+          apk, aapt, apksigner = map(Path, sys.argv[1:])
+          identity = inspect(apk, aapt, apksigner, V2_STABLE_TAG)
+          if (identity["package"] != PACKAGE or
+              identity["version_name"] != V2_STABLE_VERSION or
+              identity["version_code"] != V2_STABLE_CODE or
+              identity["signer_certificate_sha256"] != V2_CERT or
+              identity["apk_sha256"] != V2_STABLE_SHA or
+              PUBLISHED_BASELINES[V2_STABLE_VERSION] != (V2_STABLE_CODE, V2_STABLE_SHA)):
+              raise SystemExit("STOP: Current stable public PhotoCraft V2 APK identity has drifted")
+          check_arm64_archive(apk)
+          print("PASS: real public PhotoCraft android.4 identity, original V2 signing and ARM64")
+          print("PASS: fixed SHA256:", identity["apk_sha256"])
+          print("No key, model, AI candidate, install, merge or release was used")
+          PY
+      - name: Remove downloaded public reference APK even on failure
+        if: always()
+        run: rm -rf reference
       - name: Record release safety boundaries
         run: |
           {
             echo '### PhotoCraft AI V2 upgrade certificate and versionCode guard'
             echo 'Offline negative tests only; no real signed candidate input was provided.'
-            echo 'A future real candidate requires independent APK-to-APK validation'
+            echo 'Current stable android.4 public APK was independently inspected; a future candidate requires APK-to-APK validation'
             echo 'AND owner-tested in-place data preservation, licensing and stable-release approval.'
             echo 'No APK, keystore, model weights, merge or publication.'
           } >> "$GITHUB_STEP_SUMMARY"

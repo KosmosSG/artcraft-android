@@ -64,7 +64,8 @@ jobs:
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()
-          print("PASS: exact pinned sources, v0.15 Android D/C/S, SAF, fonts and compatible egui runtime staging")
+          assert 'pub(crate) fn alert(&mut self, e: String)' in (src/"crates/ui-egui/src/app/commands.rs").read_text(), "Rust E0624: Android SAF shim cannot call private alert()"
+          print("PASS: exact pinned sources, v0.15 Android D/C/S, SAF, fonts, E0624 visibility and compatible egui runtime staging")
           PY
       - uses: actions/setup-java@v5
         with:

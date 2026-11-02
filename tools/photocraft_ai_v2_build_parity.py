@@ -188,7 +188,7 @@ def self_test() -> None:
         (archived_ai_preview_recipe, ai_preview.replace("cancel-in-progress: false", "cancel-in-progress: true", 1), "preview run cancellation restored"),
         (archived_ai_preview_recipe, ai_preview.replace("icon-verification/verification.json", "icon-verification/", 1), "preview failure upload includes disposable APK"),
         (archived_ai_preview_recipe, ai_preview.replace("rm -f output/*.apk icon-verification/*.apk candidate/*.apk", "", 1), "preview disposable APK copies retained"),
-        (archived_ai_preview_recipe, ai_preview.replace("com.artcraft.photocraft.ai.preview", "com.artcraft.photocraft", 1), "preview production package identity substitution"),
+        (archived_ai_preview_recipe, ai_preview.replace("package: name='com.artcraft.photocraft.ai.preview'", "package: name='com.artcraft.photocraft'", 1), "preview production package identity substitution"),
         (accepted_recipe, stable.replace(FONT_PARITY[0], "", 1), "missing font scanner"),
         (accepted_recipe, stable.replace(FONT_PARITY[1], "", 1), "font scanner not applied"),
         (accepted_recipe, stable.replace(FONT_PARITY[3], "", 1), "font file count missing"),

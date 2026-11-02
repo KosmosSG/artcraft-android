@@ -37,13 +37,13 @@ change(prompts,
         if [(Modifiers::COMMAND, Key::D)""")
 change(prompts,
 """widgets::pill_button_marked(ui, tl!("Save"), true, chosen == PromptButton::Save)""",
-"""widgets::pill_button_marked(ui, if cfg!(target_os = "android") { format!("{} (S)", tl!("Save")) } else { tl!("Save").to_owned() }, true, chosen == PromptButton::Save)""")
+"""widgets::pill_button_marked(ui, &if cfg!(target_os = "android") { format!("{} (S)", tl!("Save")) } else { tl!("Save").to_owned() }, true, chosen == PromptButton::Save)""")
 change(prompts,
 """widgets::pill_button_marked(ui, tl!("Cancel"), false, chosen == PromptButton::Cancel)""",
-"""widgets::pill_button_marked(ui, if cfg!(target_os = "android") { format!("{} (C)", tl!("Cancel")) } else { tl!("Cancel").to_owned() }, false, chosen == PromptButton::Cancel)""")
+"""widgets::pill_button_marked(ui, &if cfg!(target_os = "android") { format!("{} (C)", tl!("Cancel")) } else { tl!("Cancel").to_owned() }, false, chosen == PromptButton::Cancel)""")
 change(prompts,
 """widgets::pill_button_marked(ui, tl!("Don't save"), false, chosen == PromptButton::DontSave)""",
-"""widgets::pill_button_marked(ui, if cfg!(target_os = "android") { format!("{} (D)", tl!("Don't save")) } else { tl!("Don't save").to_owned() }, false, chosen == PromptButton::DontSave)""")
+"""widgets::pill_button_marked(ui, &if cfg!(target_os = "android") { format!("{} (D)", tl!("Don't save")) } else { tl!("Don't save").to_owned() }, false, chosen == PromptButton::DontSave)""")
 keys=src/"crates/ui-egui/src/app/keys.rs"
 change(keys,
 """        let free = self.dialog.is_none() && !self.palette_open && !ctx.egui_wants_keyboard_input() && self.views[i].forms.focus.is_none();""",

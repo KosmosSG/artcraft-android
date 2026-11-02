@@ -33,6 +33,19 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     rust = rust_source.read_text()
     java = java_source.read_text()
     cargo = cargo_manifest.read_text()
+    # GridCraft v0.15.0 upgraded its whole egui family to the pinned
+    # storytold/egui 0.37 fork. The older Android wrapper generator hardcodes
+    # egui-winit = 0.36, which can create a second incompatible egui/winit tree.
+    # Only switch the disposable v0.15.0 candidate; do not touch tested 0.11.
+    workspace = staging_dir.parent.parent / "Cargo.toml"
+    if workspace.is_file():
+        import tomllib
+        upstream_version = tomllib.loads(workspace.read_text())["workspace"]["package"]["version"]
+        if upstream_version == "0.15.0":
+            cargo = replace_exact(cargo, 'egui-winit = "0.36"',
+                                  'egui-winit = "0.37"', )
+        elif upstream_version != "0.11.1":
+            raise RuntimeError(f"GridCraft Android overlay rejects unknown upstream version {upstream_version}")
     if MODULE in rust or JAVA_MARKER in java:
         raise RuntimeError("GridCraft enhancements are already installed; refusing duplicate overlay")
 

@@ -35,7 +35,13 @@ def once(src: str, old: str, new: str, label: str) -> str:
 DCS_HELPER = r'''
 // GRIDCRAFT_ANDROID_V0150_SAVE_PORT_V1: D/C/S only belongs to modal Save Changes.
 fn gridcraft_android_take_dcs(ctx: &egui::Context) -> Option<u8> {
-    ctx.input_mut(|i| {
+    // Java can intercept D/C/S while the hidden Android IME owns focus.
+    // Consume the ONE-SHOT native response first, then look at egui keys.
+    // Native bridge only queues a response while the Save Changes modal is active.
+    let native = ctx.data_mut(|data| data.remove_temp::<u8>(
+        egui::Id::new("gridcraft.unsaved.dcs")
+    ));
+    let from_egui = ctx.input_mut(|i| {
         let mut action = None;
         let mut consumed = false;
         i.events.retain(|e| {
@@ -57,7 +63,8 @@ fn gridcraft_android_take_dcs(ctx: &egui::Context) -> Option<u8> {
             ));
         }
         action
-    })
+    });
+    native.or(from_egui)
 }
 '''
 

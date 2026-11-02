@@ -1,5 +1,27 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Owner device-test decision — 2 November 2026 (latest; supersedes android.5 promotion plans).**
+> The owner tested the privately V2-signed `0.14.0-android.5` candidate on
+> HONOR MagicPad 4 and reported that **Ctrl+W does not respond**. They prefer
+> the already-published, fully working `0.14.0-android.4` and found no
+> meaningful benefit in android.5. **Android.5 is rejected for release**;
+> do not promote, republish, rebuild, re-sign, or silently substitute it for
+> android.4. Leave the public stable android.4 release and PR #93 DRAFT unchanged.
+>
+> **Source parity finding (not a proven Ctrl+W root cause):** the successful
+> android.4 unsigned build at source `3af883c9` ran
+> `tools/photocraft_ai_fontscan_4g_stage.py` in its ephemeral runner, whereas
+> android.5 workflow `.github/workflows/photocraft-ai-v2-candidate-unsigned.yml`
+> does **not** apply that 4 GiB/5,000-file font-scan overlay. Both workflows
+> start from the same immutable keyboard baseline `f708fff8`, so the reported
+> Ctrl+W regression cannot be attributed to a different keyboard-baseline
+> commit without further evidence. GitHub green build/signature checks do not
+> establish hardware-keyboard or feature parity. Any separately authorized
+> future candidate must explicitly preserve android.4 font scanning and pass
+> repeated on-device Ctrl+W / D-C-S checks before release consideration.
+> No new APK or downgrade is requested; **do not uninstall the owner's app**
+> as a downgrade workaround because it can remove app-private data.
+
 > **Current status — 2 November 2026 (supersedes historical signing instructions below).**
 > [PhotoCraft `v0.14.0-android.4`](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.4)
 > is **already published as a stable core editor** (1 November 2026), with

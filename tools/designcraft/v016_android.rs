@@ -29,7 +29,7 @@ pub fn handle_keys(
     let mut escape = false;
     let mut close = false;
     let mut tools = None;
-    let mut modal_action = None;
+    let mut modal_action: Option<u8> = None;
     raw.events.retain_mut(|event| {
         if let egui::Event::Key {
             key, physical_key, pressed, repeat, modifiers, ..

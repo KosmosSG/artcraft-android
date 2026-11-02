@@ -113,7 +113,7 @@ jobs:
           assert 'pub fn android_handle_editor_escape' in main
           assert 'return self.android_save_and_close(quitting);' in close
           assert 'gridcraft_android_take_dcs(ui.ctx());' in modal
-          assert 'Don't Save", "D"' in modal
+          assert "\"Don't Save\", \"D\"" in modal
           assert 'Cancel", "C"' in modal
           assert 'Save", "S"' in modal
           assert '&& app.answer_save_changes(answer, quitting, ui.ctx())' in modal

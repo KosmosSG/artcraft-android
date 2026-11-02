@@ -291,13 +291,19 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: PhotoCraft-AI-PR93-Keyboard-Icon-Failure
+          # Never upload the icon-verification directory: verify_apk.py may
+          # copy a disposable-signed APK there. Failure evidence is JSON only.
           path: |
             logs/
-            icon-verification/
+            icon-verification/verification.json
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Remove disposable local signing key
         if: always()
         shell: bash
-        run: rm -f keys/artcraft-builder.jks keys/.keystore-password
+        run: |
+          rm -f keys/artcraft-builder.jks keys/.keystore-password
+          # Always remove disposable preview APK copies from the ephemeral
+          # runner; only the separate preview-identity artifact may be kept.
+          rm -f output/*.apk icon-verification/*.apk candidate/*.apk

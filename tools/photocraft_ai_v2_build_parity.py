@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ACCEPTED = ROOT / ".github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml"
 REJECTED = ROOT / ".github/workflows/photocraft-ai-v2-candidate-unsigned.yml"
+OBSOLETE_PROOF = ROOT / ".github/workflows/photocraft-ai-production-dryrun.yml"
 BASELINE = "f708fff8a333c2246b6d342570b19db5b95f4be1"
 
 COMMON = (
@@ -58,11 +59,27 @@ def rejected_recipe(text: str) -> None:
         raise ValueError("Unexpected candidate self-test copied into workflow")
 
 
+def obsolete_proof_recipe(text: str) -> None:
+    # Old original-certificate android.2 proof is below published V2 android.4.
+    # verify_apk.py copies a disposable-signed APK into icon-verification;
+    # only JSON may be uploaded, and cleanup must remove that copied APK.
+    require(text, (
+        "if: ${{ false }}",
+        "rm -rf icon-verification/",
+        "rm -f keys/artcraft-builder.jks keys/.keystore-password output/*.apk",
+        "path: candidate-proof/production-identity-build-proof.json",
+    ), "obsolete android.2 proof")
+    if "path: |\\n            logs/\\n            icon-verification/" in text:
+        raise ValueError("obsolete proof would upload disposable APK in failure diagnostics")
+
+
 def self_test() -> None:
     stable = ACCEPTED.read_text(encoding="utf-8")
     rejected = REJECTED.read_text(encoding="utf-8")
+    obsolete = OBSOLETE_PROOF.read_text(encoding="utf-8")
     accepted_recipe(stable)
     rejected_recipe(rejected)
+    obsolete_proof_recipe(obsolete)
 
     mutations = (
         (accepted_recipe, stable.replace(FONT_PARITY[0], "", 1), "missing font scanner"),
@@ -72,6 +89,9 @@ def self_test() -> None:
         (accepted_recipe, stable.replace(COMMON[1], ""), "keyboard focus check missing"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[0], "if: ${{ true }}", 1), "android.5 reenabled"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[2], "", 1), "android.5 rejection missing"),
+        (obsolete_proof_recipe, obsolete.replace("if: ${{ false }}", "if: ${{ true }}", 1), "obsolete proof reenabled"),
+        (obsolete_proof_recipe, obsolete.replace("rm -rf icon-verification/", "", 1), "disposable APK copy not cleaned"),
+        (obsolete_proof_recipe, obsolete.replace("path: candidate-proof/production-identity-build-proof.json", "path: icon-verification/", 1), "unsafe artifact path"),
     )
     for validator, mutated, reason in mutations:
         try:
@@ -81,7 +101,8 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: rejected android.5 workflow remains disabled; seven negative mutations rejected")
+    print("PASS: rejected android.5 workflow remains disabled; ten negative mutations rejected")
+    print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")
 
 

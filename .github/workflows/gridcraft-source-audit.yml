@@ -141,6 +141,39 @@ jobs:
           print('PASS: relocated D/C/S and SAF-acknowledged close patch matches upstream v0.15.0 source')
           print('SOURCE ONLY: launcher, JNI bridge and compiled Android APK remain unverified')
           PY
+      - name: End-to-end GridCraft v0.15 installer rehearsal using local clean clones (no network, no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous steps patch the first disposable workspaces. Make two clean
+          # LOCAL clones from their exact pinned commits, with no additional checkout minutes.
+          git clone --local --quiet builder builder-integrated
+          mkdir -p builder-integrated/source
+          git clone --local --quiet upstream-gridcraft builder-integrated/source/gridcraft
+          test "$(git -C builder-integrated/source/gridcraft rev-parse HEAD)" = 30b210b4ef03b30616923465efa70766cefba379
+          python3 tools/gridcraft/install_overlay.py builder-integrated
+          bash -n builder-integrated/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          b=Path('builder-integrated')
+          source=b/'source/gridcraft/crates/ui-egui/src'
+          builder=(b/'lib/build-common.sh').read_text()
+          title=(source/'ribbon/title_bar.rs').read_text()
+          modal=(source/'dialogs/show.rs').read_text()
+          main=(source/'lib.rs').read_text()
+          assert tomllib.loads((b/'source/gridcraft/Cargo.toml').read_text())['workspace']['package']['version']=='0.15.0'
+          assert builder.count('GRIDCRAFT_OVERLAY_HOOK_V1')==1
+          assert builder.count('GRIDCRAFT_V0150_ACK_SAF_V1')==2
+          assert 'android_save_close: Some(Box::new(' in builder
+          assert 'GRIDCRAFT_ANDROID_NATIVE_MENU_V1' in title
+          assert 'gridcraft_android_take_dcs(ui.ctx())' in modal
+          assert 'native.or(from_egui)' in modal
+          assert 'fn android_poll_save_close' in main
+          assert (b/'tools/gridcraft_android/gridcraft_tools.rs').is_file()
+          print('PASS: both GridCraft v0.15.0 source ports, Android generator hook, and SAF acknowledgement wired through the complete staging installer')
+          print('No APK compiled; production signer and release remain untouched')
+          PY
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
       - name: Setup Java 21 for GridCraft 4 GiB scan-budget boundary regression

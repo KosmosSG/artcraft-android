@@ -176,6 +176,11 @@ def install_icons(root: Path, src: Path, android: Path):
     updated, matches = re.subn(r'^icon\s*=\s*"[^"]+"', 'icon = "@mipmap/ic_launcher"', original, count=1, flags=re.M)
     if matches != 1:
         raise ValueError("Missing generated launcher icon field")
+    # The upstream v0.16 update UI needs Android Internet permission to
+    # resolve GitHub hosts; the generic launcher did not request it.
+    if 'android.permission.INTERNET' not in updated:
+        updated += ('\n[[package.metadata.android.uses_permission]]\n'
+                    'name = "android.permission.INTERNET"\n')
     manifest.write_text(updated)
 
     # About dialog and app header should show the same design instead of cat.

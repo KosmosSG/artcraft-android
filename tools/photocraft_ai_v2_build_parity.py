@@ -158,8 +158,8 @@ def java_hardware_key_passthrough(activity: str) -> None:
     """
     for name in ("onKeyDown", "onKeyUp"):
         pattern = (
-            rf"(?s)@Override\\s+public boolean {name}"
-            rf"\\(int keyCode, KeyEvent event\\)\\s*\\{{(.*?)\\n\\s*\\}}"
+            rf"(?s)@Override\s+public boolean {name}"
+            rf"\(int keyCode, KeyEvent event\)\s*\{{(.*?)\n\s*\}}"
         )
         matches = list(re.finditer(pattern, activity))
         if len(matches) != 1:
@@ -340,7 +340,7 @@ def self_test() -> None:
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
         (java_hardware_key_passthrough, java_activity.replace("return false;", "return true;", 1), "IME host consumes physical key down"),
         (java_hardware_key_passthrough, java_activity.replace("onKeyUp(int keyCode", "onKeyLost(int keyCode", 1), "IME host key-up override removed"),
-        (java_hardware_key_passthrough, java_activity.replace("return false;", "event.getKeyCode();\\n                    return false;", 1), "IME host adds hardware-key side effect"),
+        (java_hardware_key_passthrough, java_activity.replace("return false;", "event.getKeyCode();\n                    return false;", 1), "IME host adds hardware-key side effect"),
     )
     for validator, mutated, reason in mutations:
         try:

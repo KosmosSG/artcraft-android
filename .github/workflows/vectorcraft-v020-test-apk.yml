@@ -148,12 +148,14 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$AAPT" dump badging "$APK" > private-test/badging.txt
+          "$AAPT" dump resources "$APK" > private-test/resources.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" > private-test/signature.txt
           python3 - "$APK" <<'PY'
           import json,os,re,sys,zipfile,hashlib
           from pathlib import Path
           apk=Path(sys.argv[1])
           badging=Path("private-test/badging.txt").read_text()
+          resources=Path("private-test/resources.txt").read_text()
           match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
           assert match and match.groups()==("com.artcraft.vectorcraft",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
           assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
@@ -168,14 +170,17 @@ jobs:
               assert "lib/arm64-v8a/libvectorcraft_android.so" in files
               dex=[z.read(x) for x in files if x.endswith(".dex")]
               assert dex and any(b"VectorCraftActivity" in x for x in dex)
-              assert any("mipmap" in x and "ic_launcher" in x for x in files)
+              # aapt2/Gradle compiles launcher mipmap entries into resources.arsc;
+              # individual ic_launcher files do NOT necessarily appear as ZIP names.
+              assert "resources.arsc" in files, "Android compiled resources missing"
+          assert "mipmap/ic_launcher" in resources or "drawable/ic_launcher" in resources, "Android launcher icon resource missing"
           report={"package":match.group(1),"version_code":int(match.group(2)),"version_name":match.group(3),"test_certificate_sha256":fingerprints[0].lower(),"original_certificate_used":False,"apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),"install_mode":"must uninstall production first; back up documents and SAF access","device_checks":"pending"}
           Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
           print("PASS: temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and monotonic version")
           PY
           cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
-          rm -f private-test/badging.txt private-test/signature.txt
+          rm -f private-test/badging.txt private-test/resources.txt private-test/signature.txt
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:

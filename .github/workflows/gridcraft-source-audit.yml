@@ -51,6 +51,21 @@ jobs:
           assert Path("builder/tools/gridcraft_android/overlay.py").is_file()
           print("Pinned reference checked; GridCraft-only hook installed; source generator syntax valid")
           PY
+      - name: Checkout exact upstream v0.15.0 source for read-only overlay review
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: 30b210b4ef03b30616923465efa70766cefba379
+          path: upstream-gridcraft
+          persist-credentials: false
+      - name: Report changed upstream GridCraft Android patch anchors
+        run: |
+          python3 tools/gridcraft/check_upstream_port_compat.py upstream-gridcraft --output-json gridcraft-port-compat.json
+          echo '### GridCraft v0.15.0 Android compatibility (source only)' >> "$GITHUB_STEP_SUMMARY"
+          echo '<details><summary>Source anchor review</summary><pre>' >> "$GITHUB_STEP_SUMMARY"
+          cat gridcraft-port-compat.json >> "$GITHUB_STEP_SUMMARY"
+          echo '</pre></details>' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Changed anchors require manual porting; this audit never builds or publishes an APK.' >> "$GITHUB_STEP_SUMMARY"
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
       - name: Validate GridCraft source lock and no-release gate

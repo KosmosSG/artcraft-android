@@ -15,6 +15,10 @@ EGUI_END = '# Some apps call `rfd` directly from a crate'
 WINIT_START = 'echo "Vendoring the mouse/scroll-aware winit for $TITLE..."'
 WINIT_END = '# Every launcher uses the builder\'s vendored android-activity:'
 BUILD_ANCHOR = 'echo "  -> building the native library with cargo-ndk (arm64-v8a, API $MIN_SDK)"'
+# The pinned builder generates a direct egui-winit 0.36 dependency.
+# FilmCraft v0.16 needs upstream egui-winit 0.37 for its IME-reset event.
+LAUNCHER_EGUI_OLD = "egui-winit = \"0.36\""
+LAUNCHER_EGUI_NEW = "egui-winit = \"{'0.37' if app == 'filmcraft' else '0.36'}\""
 W_REV = 'a517b3846ee8457d84ee4975110bfda6797c44dc'
 E_REV = '6d518fc799681571963842f95b55a6b68431b15a'
 
@@ -45,7 +49,7 @@ fi
 def patch_text(source: str) -> str:
     if "PYFILMCRAFTDEPS" in source:
         raise ValueError("FilmCraft dependency guard is already staged")
-    for marker in (EGUI_START, EGUI_END, WINIT_START, WINIT_END, BUILD_ANCHOR):
+    for marker in (EGUI_START, EGUI_END, WINIT_START, WINIT_END, BUILD_ANCHOR, LAUNCHER_EGUI_OLD):
         if source.count(marker) != 1:
             raise ValueError(f"STOP: pinned builder anchor changed: {marker!r}")
     if not (source.index(EGUI_START) < source.index(EGUI_END) <
@@ -62,6 +66,9 @@ def patch_text(source: str) -> str:
                             'if [[ "$APP" != "filmcraft" ]]; then\n' + WINIT_START, 1)
     source = source.replace(WINIT_END,
                             'else\n    echo "FilmCraft v0.16: keeping upstream winit IME-reset Git pin"\nfi\n\n' + WINIT_END, 1)
+    # Keep other ArtCraft launchers at 0.36 while FilmCraft uses 0.37.
+    # This source is the pinned builder's generated Python f-string.
+    source = source.replace(LAUNCHER_EGUI_OLD, LAUNCHER_EGUI_NEW, 1)
     return source.replace(BUILD_ANCHOR, MANIFEST_GUARD + BUILD_ANCHOR, 1)
 
 def main() -> None:

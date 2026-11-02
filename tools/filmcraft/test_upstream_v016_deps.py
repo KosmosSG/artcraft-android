@@ -15,7 +15,7 @@ class BuilderDependencyPinTests(unittest.TestCase):
                 "\nmkdir -p \"$SRC/vendor\"\npython3 - \"$SRC/Cargo.toml\" <<'PY'\npass\nPY\n\n" +
                 module.EGUI_END + "\nother vendors\n" +
                 module.WINIT_START + "\npython3 - \"$SRC/Cargo.toml\" <<'PY'\npass\nPY\n\n" +
-                module.WINIT_END + "\n" + module.BUILD_ANCHOR + "\n")
+                module.WINIT_END + "\n" + module.LAUNCHER_EGUI_OLD + "\n" + module.BUILD_ANCHOR + "\n")
 
     def test_only_filmcraft_skips_outdated_vendor_and_checks_pins(self):
         source = self.fixture()
@@ -23,6 +23,10 @@ class BuilderDependencyPinTests(unittest.TestCase):
         self.assertIn('if [[ "$APP" != "filmcraft" ]]; then\n' + module.EGUI_START, output)
         self.assertIn('if [[ "$APP" != "filmcraft" ]]; then\n' + module.WINIT_START, output)
         self.assertIn("PYFILMCRAFTDEPS", output)
+        self.assertIn(module.LAUNCHER_EGUI_NEW, output)
+        self.assertNotIn(module.LAUNCHER_EGUI_OLD, output)
+        # Confirm other ArtCraft apps still use the pinned builder's 0.36.
+        self.assertIn("if app == 'filmcraft' else '0.36'", output)
         self.assertIn(module.W_REV, output)
         self.assertIn(module.E_REV, output)
         self.assertEqual(output.count(module.BUILD_ANCHOR), 1)

@@ -138,6 +138,7 @@ jobs:
           assert 'Save", "S"' in modal
           assert '&& app.answer_save_changes(answer, quitting, ui.ctx())' in modal
           assert 'if !success' in main
+          assert 'pub(crate) fn alert(&mut self, e: String)' in (s / 'app/commands.rs').read_text(), 'Rust E0624 visibility regression'
           print('PASS: relocated D/C/S and SAF-acknowledged close patch matches upstream v0.15.0 source')
           print('SOURCE ONLY: launcher, JNI bridge and compiled Android APK remain unverified')
           PY

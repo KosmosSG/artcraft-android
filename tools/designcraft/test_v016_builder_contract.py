@@ -126,6 +126,33 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertNotIn("native_window()", entry)
         self.assertNotIn("wgpu::Surface", entry)
 
+    def test_v016_device_reported_android_parity_staged(self):
+        # Run only source/contract checks here; no Android build or signing.
+        import ast
+        stage = ROOT / "tools" / "designcraft" / "patch_v016_android.py"
+        source = stage.read_text()
+        ast.parse(source, filename=str(stage))
+        font_ui = (ROOT / "tools" / "designcraft" / "v016_android.rs").read_text()
+        self.assertIn('python3 "$ROOT/tools/designcraft/patch_v016_android.py"', self.shell)
+        self.assertIn('if [[ "$DESIGNCRAFT_V016" == true ]]', self.shell)
+        self.assertIn('ui_brand(src, "designcraft")', source)
+        self.assertIn('approved_branding.check_assets()', source)
+        self.assertIn('icon = "@mipmap/ic_launcher"', source)
+        self.assertIn('android.permission.INTERNET', source)
+        self.assertIn('"ui:app.artcraftImportFont"', source)
+        self.assertIn("take_android_font_import", source)
+        self.assertIn('"closeDocument" && result.is_none()', source)
+        self.assertIn('egui::Key::D', source)
+        self.assertIn('egui::Key::C', source)
+        self.assertIn('egui::Key::S', source)
+        self.assertIn('crates/fonts/src/fontdb/system.rs', source)
+        self.assertIn('v016_android::accept_font(&name, &bytes)', source)
+        self.assertIn('pub fn ui(', font_ui)
+        self.assertIn('fn request_import(', font_ui)
+        self.assertIn('font.reload', font_ui)
+        self.assertIn('TTF/OTF/TTC', font_ui)
+        self.assertIn('std::fs::OpenOptions::new().write(true).create_new(true)', font_ui)
+
     def test_source_review_cannot_claim_publication(self):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))

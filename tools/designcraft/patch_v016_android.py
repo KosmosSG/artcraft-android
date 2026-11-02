@@ -188,10 +188,11 @@ def install_icons(root: Path, src: Path, android: Path):
                              updated, count=1, flags=re.M)
     if named != 1:
         raise ValueError("Generated APK name changed")
+    # cargo-apk2 v1.5 derives versionCode from the package version.
+    # Setting package.metadata.android.version_code panics before compilation.
+    # Keep android.N in versionName; let cargo-apk2 calculate the integer code.
     if updated.count("[package.metadata.android]") != 1:
         raise ValueError("Missing Android package metadata")
-    updated = updated.replace("[package.metadata.android]",
-                              "[package.metadata.android]\nversion_code = 16900001", 1)
     # The upstream v0.16 update UI needs Android Internet permission to
     # resolve GitHub hosts; the generic launcher did not request it.
     if 'android.permission.INTERNET' not in updated:

@@ -1,5 +1,20 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Archived ARM64 job bypass protection — 2 November 2026.**
+> [Commit f0874c04](https://github.com/KosmosSG/artcraft-android/commit/f0874c045d328e5e6114e4141960c57dc1751dac)
+> closes a source-guard gap: checking for a bare `if: false` string did not
+> exclude a second unguarded job, duplicate job-level `if`, or a false
+> condition moved into a step. The guard now requires **exactly one**
+> `arm64-preview` job with **exactly one** job-level `if: ${{ false }}`
+> in each of the archived android.4, rejected android.5 and obsolete
+> android.2 workflows; three new negative mutations raise the total to 17.
+> [Lightweight CI #41436027420](https://github.com/KosmosSG/artcraft-android/actions/runs/41436027420)
+> **PASSED** (job 125245880909), including 19 V2 identity negative cases,
+> 17 parity mutations and inspection of the **actual** public V2 android.4
+> APK signer/hash; **zero artifacts**. No ARM build, key, new APK, merge,
+> installation or publication. This prevents accidental historical builds,
+> **not** the owner's still-unresolved Android.5 Ctrl+W regression.
+
 > **Archived historical android.4 ARM64 rebuild (2 November 2026):** The
 > published, owner-accepted V2 android.4 APK remains the only stable release.
 > The old `.github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml`

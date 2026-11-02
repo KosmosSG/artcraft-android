@@ -92,6 +92,35 @@ jobs:
           print("PASS: GridCraft v0.15.0 title-bar menu, imported font dropdown and live catalog sources staged")
           print("NOTE: Upstream source staging only; Android launcher, SAF/DCS/keyboard port and APK compilation pending")
           PY
+      - name: Validate relocated v0.15.0 D/C/S dialog, editor Esc and acknowledged SAF save (source only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_save_dcs.py
+          python3 tools/gridcraft/port_v0150_save_dcs.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_save_dcs.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('upstream-gridcraft/crates/ui-egui/src')
+          services = (s / 'services.rs').read_text()
+          app = (s / 'app.rs').read_text()
+          main = (s / 'lib.rs').read_text()
+          close = (s / 'app/quit.rs').read_text()
+          modal = (s / 'dialogs/show.rs').read_text()
+          assert 'pub android_save_close:' in services
+          assert 'self.android_poll_save_close(ctx);' in app
+          assert 'fn android_poll_save_close' in main
+          assert 'pub fn android_handle_editor_escape' in main
+          assert 'return self.android_save_and_close(quitting);' in close
+          assert 'gridcraft_android_take_dcs(ui.ctx());' in modal
+          assert 'Don't Save", "D"' in modal
+          assert 'Cancel", "C"' in modal
+          assert 'Save", "S"' in modal
+          assert '&& app.answer_save_changes(answer, quitting, ui.ctx())' in modal
+          assert 'if !success' in main
+          print('PASS: relocated D/C/S and SAF-acknowledged close patch matches upstream v0.15.0 source')
+          print('SOURCE ONLY: launcher, JNI bridge and compiled Android APK remain unverified')
+          PY
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
       - name: Setup Java 21 for GridCraft 4 GiB scan-budget boundary regression

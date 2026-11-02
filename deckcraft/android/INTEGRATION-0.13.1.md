@@ -55,3 +55,18 @@ left-justifies all Android top-menu entries. Esc stays inside the app.
 
 No production signing or release. CI, temporary test signature, and HONOR MagicPad 4
 repeated-dialog / Escape tests remain required before approving the changes.
+
+## v0.14.1-android.4 touchscreen canvas pinch zoom (2026-11-02)
+
+Owner accepts current Android.3 interface and asks to enlarge/shrink the
+slide canvas using two fingers on the HONOR MagicPad 4 touch screen. The pinned
+MostafaXS1 winit backend emits PinchGesture -> egui Event::Zoom but cancels
+touch/pointer hover when the second finger joins; upstream DeckCraft canvas
+requires resp.hovered() and can ignore the zoom. Scope the Android fallback to
+touch gestures originating inside the editing canvas, use the touch origin to
+anchor zoom, retain normal mouse/trackpad hover checks, preserve 10%-400%
+zoom range and existing slide document size/contents. Do not hijack ribbon,
+menus or D/C/S modal. Keep released Android.4 DCS fix, dark theme and Esc
+behaviour. Next APK is a disposable-cert testing build: no permanent signing,
+merge or publication until owner validates pinch inward/outward and all
+previously working behaviours on the tablet.

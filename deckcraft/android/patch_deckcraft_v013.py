@@ -144,6 +144,71 @@ def apply(root):
     original = (HERE / 'patch_deckcraft_tablet.py').read_text()
     alias_patch = original[original.index("p = Path(sys.argv[1]) / 'crates/fonts/src/fontdb.rs'"):original.index('# Reuse the approved Dk artwork')]
     exec(compile(alias_patch, 'legacy_font_aliases', 'exec'), {'Path': Path, 'sys': type('Args', (), {'argv': ['', str(root)]})})
+    # Android's gesture backend suppresses touch/pointer hover after the second
+    # finger joins, and sends a Zoom event instead. Native canvas zoom previously
+    # required resp.hovered(), so the gesture often looked inert. Remember the
+    # first touch origin ONLY while it started inside the canvas and a document
+    # is editable, and use that origin to gate/anchor native pinch events.
+    # Mouse/trackpad wheel zoom remains governed by the original hover check.
+    edit('canvas.rs',
+        '''    let (wheel, zoom_delta, hover) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
+    let zooming = resp.hovered() && (zoom_delta - 1.0).abs() > 1e-3;''',
+        '''    let (wheel, zoom_delta, hover) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
+    #[cfg(target_os = "android")]
+    let touch_zoom_anchor: Option<Pos2> = {
+        let id = scroll_id.with("deckcraft_android_pinch_anchor");
+        let (events, now, multi) = ui.input(|i| (i.events.clone(), i.time, i.multi_touch()));
+        let mut last: Option<(Pos2, f64)> = ui.data_mut(|d| d.get_temp(id));
+        for event in &events {
+            match event {
+                egui::Event::Touch { phase: egui::TouchPhase::Start, pos, .. } => {
+                    // Touches beginning in the ribbon/menu never zoom the slide.
+                    last = avail.contains(*pos).then_some((*pos, now));
+                }
+                egui::Event::Touch { phase: egui::TouchPhase::End, .. } => {
+                    last = None;
+                }
+                // Cancel means winit recognised a two-finger gesture.
+                // Keep its origin; subsequent Zoom events may have no hover.
+                _ => {}
+            }
+        }
+        let mut multi_anchor = None;
+        if let Some(gesture) = multi {
+            if avail.contains(gesture.start_pos) && avail.contains(gesture.center_pos) {
+                multi_anchor = Some(gesture.center_pos);
+                last = Some((gesture.center_pos, now));
+            } else {
+                last = None;
+            }
+        }
+        let native_pinch = events.iter().any(|e| matches!(e, egui::Event::Zoom(_)));
+        let allowed = app.dialog.is_none() && app.palette.is_none() && !app.backstage_open();
+        let anchor = if allowed && (native_pinch || multi_anchor.is_some()) {
+            multi_anchor.or_else(|| {
+                last.filter(|(pos, time)| avail.contains(*pos) && now >= *time && now - *time < 8.0)
+                    .map(|(pos, _)| pos)
+            })
+        } else { None };
+        if let Some(pos) = anchor {
+            last = Some((pos, now));
+        }
+        if !allowed { last = None; }
+        ui.data_mut(|d| {
+            if let Some(origin) = last { d.insert_temp(id, origin); }
+            else { d.remove_temp::<(Pos2, f64)>(id); }
+        });
+        anchor
+    };
+    #[cfg(not(target_os = "android"))]
+    let touch_zoom_anchor: Option<Pos2> = None;
+    // The Android backend can cancel the pointer hover for a pinch. Zoom only
+    // if the original pointer is over the canvas OR a pinch began inside it.
+    let zooming = (resp.hovered() || touch_zoom_anchor.is_some()) && (zoom_delta - 1.0).abs() > 1e-3;''')
+    edit('canvas.rs',
+        '''zooming.then_some(hover).flatten(), avail''',
+        '''zooming.then_some(touch_zoom_anchor.or(hover)).flatten(), avail''')
+
     print('DeckCraft 0.14.1: font persistence, native menus, update routing and D/C/S ported')
 
 if __name__ == '__main__':

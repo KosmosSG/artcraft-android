@@ -70,6 +70,25 @@ def model_integrity(path: Path) -> tuple[bool, str]:
     return True, "checksum matches upstream rembg reference"
 
 
+def require_verified_or_missing_model(path: Path, allow_download: bool) -> None:
+    """Refuse all invalid cache entries, including dangling symlinks.
+
+    Path.exists() follows symlinks and returns False for a dangling link;
+    allowing rembg's opt-in download in that case could follow the link
+    when writing model weights. Never download onto an occupied cache path.
+    """
+    good, status = model_integrity(path)
+    if good:
+        return
+    if os.path.lexists(path):  # lstat semantics: dangling symlinks exist.
+        raise RuntimeError(f"Refusing unverified model: {status}")
+    if not good and not allow_download:
+        raise RuntimeError(
+            "U2NetP model is not present. Nothing downloaded. "
+            "Review licensing, then explicitly rerun with --allow-model-download."
+        )
+
+
 def validate_image_shape(width: int, height: int) -> None:
     if width <= 0 or height <= 0 or width * height > MAX_PIXELS:
         raise ValueError(f"Image dimensions exceed the {MAX_PIXELS:,}-pixel safety limit")
@@ -129,14 +148,7 @@ def benchmark(input_file: Path | None, output_file: Path | None,
     if platform.machine().lower() not in ("aarch64", "arm64", "x86_64"):
         print("WARNING: untested architecture; proceeding in CPU-only mode")
     model_file = model_directory() / MODEL_FILENAME
-    good, status = model_integrity(model_file)
-    if model_file.exists() and not good:
-        raise RuntimeError(f"Refusing unverified model: {status}")
-    if not good and not allow_download:
-        raise RuntimeError(
-            "U2NetP model is not present. Nothing downloaded. "
-            "Review licensing, then explicitly rerun with --allow-model-download."
-        )
+    require_verified_or_missing_model(model_file, allow_download)
     from PIL import Image, ImageDraw, ImageOps
     import onnxruntime as ort
     from rembg import new_session, remove
@@ -226,10 +238,28 @@ def self_test() -> int:
             cache = Path(root) / MODEL_FILENAME
             cache.write_bytes(b"invalid model")
             assert model_integrity(cache)[0] is False
+            try:
+                require_verified_or_missing_model(cache, True)
+                raise AssertionError("Allowed download onto invalid existing cache")
+            except RuntimeError as exc:
+                assert "Refusing unverified model" in str(exc)
             cache.unlink()
+            missing = Path(root) / "absent.onnx"
+            require_verified_or_missing_model(missing, True)
+            try:
+                require_verified_or_missing_model(missing, False)
+                raise AssertionError("Allowed missing model without download opt-in")
+            except RuntimeError as exc:
+                assert "Nothing downloaded" in str(exc)
             alias = Path(root) / "alias.onnx"
             alias.symlink_to(Path(root) / "missing.onnx")
             assert model_integrity(alias)[0] is False
+            assert not alias.exists() and os.path.lexists(alias)
+            try:
+                require_verified_or_missing_model(alias, True)
+                raise AssertionError("Allowed download through dangling model symlink")
+            except RuntimeError as exc:
+                assert "Refusing unverified model" in str(exc)
             alias.unlink()
             cache.touch()
             with cache.open("r+b") as oversized:

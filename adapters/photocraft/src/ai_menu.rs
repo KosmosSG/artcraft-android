@@ -349,7 +349,10 @@ impl AndroidAiMenu {
             Ok(snapshot) => snapshot,
             Err(error) => { self.cpu_status = error; return; }
         };
-        let token = self.cpu_token.clone();
+        // Move the one-use token into the worker. Do not retain a second
+        // bearer-token copy in the visible dialog after processing begins.
+        // The next image requires a fresh token entry and fresh consent.
+        let token = std::mem::take(&mut self.cpu_token);
         self.cpu_next_job = self.cpu_next_job.wrapping_add(1);
         let job_id = JobId(self.cpu_next_job);
         let mut job = Job::new(job_id, origin);

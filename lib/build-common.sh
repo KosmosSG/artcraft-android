@@ -379,7 +379,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "24"
+GENERATOR_VERSION = "25" if app == "designcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2658,7 +2658,54 @@ impl eframe::App for AndroidShell {{
         else "Box::new(move |_cc| Ok(Box::new(shell)))"
     )
 
-    if saf:
+    if saf and app == "designcraft":
+        # Only data services can be prepared before run_native. The actual UI
+        # app and AndroidShell are constructed by eframe::AppCreator on the
+        # first Resumed, after eframe creates the live Android window.
+        # eframe 0.37 owns egui-winit::State and the wgpu surface lifecycle:
+        # do not duplicate its Resumed/Suspended handlers in this app.
+        entry = f'''//! Generated lifecycle-safe Android launcher for DesignCraft.
+//! eframe owns Resumed/Suspended and recreates/destroys the wgpu surface.
+
+{use_block}{platform}{saf_block}{shell}
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(android_app: android_activity::AndroidApp) {{
+    log::info!("{{ARTCRAFT_ANDROID_SHELL_MARKER}} ready ({{}}, {{}})", saf::SAF_MARKER, ime_bridge::ime::IME_MARKER);
+    apply_immersive_fullscreen(&android_app);
+{persist_env_call}    system_fonts::install_font_env(&android_app);
+    // Creating a SAF bridge does NOT acquire ANativeWindow/EGL/wgpu resources.
+    let saf_bridge = saf::Bridge::new(&android_app);
+    saf_bridge.request_storage_permission();
+    let saf_state = saf_new_state();
+    let saf_inbox = SafInbox::default();
+{saf_setup}    let shell_app = android_app.clone();
+    let options = eframe::NativeOptions {{
+        viewport: egui::ViewportBuilder::default()
+            .with_title("{title}")
+            .with_drag_and_drop(true),
+        android_app: Some(android_app),
+        ..Default::default()
+    }};
+    let result = eframe::run_native(
+        "{title}",
+        options,
+        Box::new(move |_cc| {{
+            // Called from eframe's first Resumed. Keep document/session state
+            // alive across later Paused/Resumed; eframe only recreates surfaces.
+            {inner_decl} = {construct_expr};
+{post_construct}            let shell = AndroidShell::new(
+                inner, shell_app, saf_bridge, saf_state, saf_inbox,
+            );
+            Ok(Box::new(shell))
+        }}),
+    );
+    if let Err(error) = result {{
+        log::error!("{title} Android exited with an error: {{error}}");
+    }}
+}}
+'''
+    elif saf:
         entry = f'''//! Generated Android launcher for {title}.
 //! Starts the app's egui UI with Android Storage Access Framework (SAF) file services plus the
 //! shared Android platform shell (immersive fullscreen and the Ctrl/Alt modifier-key fix).
@@ -2855,9 +2902,33 @@ fi
 # longer masquerade as touch) and patch it into the workspace. PDFCraft already ships a
 # forked winit on the same upstream base: only its Android backend directory is
 # overwritten, so its non-Android customizations and its existing patch entry survive.
+# DesignCraft 0.16 pins the Storytold winit fork with IME-reset extensions that
+# egui-winit 0.37 requires. Replacing it with our older 0.30.13 vendored
+# winit removes ImeResetCompleted/reset_ime_with_request and breaks compilation.
+# Base this *review-only* build on the exact upstream fork, then overlay only
+# the suite's Android mouse, touchpad and wheel event conversion.
 echo "Vendoring the mouse/scroll-aware winit for $TITLE..."
 mkdir -p "$SRC/vendor"
-if [[ -d "$SRC/vendor/winit" ]]; then
+if [[ "$DESIGNCRAFT_V016" == true ]]; then
+    DESIGNCRAFT_WINIT_REV="a517b3846ee8457d84ee4975110bfda6797c44dc"
+    rm -rf "$SRC/vendor/winit"
+    git init -q "$SRC/vendor/winit" || fail "Cannot initialize pinned Storytold winit checkout."
+    git -C "$SRC/vendor/winit" fetch --quiet --depth 1 https://github.com/storytold/winit.git "$DESIGNCRAFT_WINIT_REV" \
+        || fail "Cannot fetch the exact DesignCraft v0.16.0 winit fork; refusing to substitute an older crate."
+    git -C "$SRC/vendor/winit" checkout -q --detach FETCH_HEAD \
+        || fail "Cannot checkout DesignCraft's pinned winit fork."
+    [[ "$(git -C "$SRC/vendor/winit" rev-parse HEAD)" == "$DESIGNCRAFT_WINIT_REV" ]] \
+        || fail "Pinned DesignCraft winit commit mismatch."
+    grep -q 'ImeResetCompleted' "$SRC/vendor/winit/src/event.rs" \
+        || fail "Pinned winit fork lacks the egui-winit 0.37 IME event."
+    grep -q 'reset_ime_with_request' "$SRC/vendor/winit/src/window.rs" \
+        || fail "Pinned winit fork lacks the egui-winit 0.37 IME window API."
+    python3 "$ROOT/tools/designcraft/overlay_winit_android_mouse.py" \
+        "$ROOT/vendor/winit/src/platform_impl/android/mod.rs" \
+        "$SRC/vendor/winit/src/platform_impl/android/mod.rs" \
+        || fail "Cannot carry over Android mouse/scroll input onto pinned winit fork."
+    rm -rf "$SRC/vendor/winit/.git"
+elif [[ -d "$SRC/vendor/winit" ]]; then
     rm -rf "$SRC/vendor/winit/src/platform_impl/android"
     cp -a "$ROOT/vendor/winit/src/platform_impl/android" "$SRC/vendor/winit/src/platform_impl/android"
 else

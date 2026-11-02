@@ -9,6 +9,8 @@ on:
       - tools/effectcraft/integrate_updater.py
       - tools/effectcraft/v020_compat.py
       - tools/effectcraft/test_v020_compat.py
+      - tools/effectcraft/v020_winit_compat.py
+      - tools/effectcraft/test_v020_winit_compat.py
   workflow_dispatch:
 
 permissions:
@@ -75,6 +77,29 @@ jobs:
           "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Rebase Android pointer input onto exact upstream winit fork; retain IME reset APIs
+        shell: bash
+        env:
+          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
+        run: |
+          set -euo pipefail
+          # Only the isolated runner's vendor directory is changed: the GitHub branch
+          # still retains the original shared Android winit for other app releases.
+          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
+          git init -q vendor/winit
+          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
+          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
+          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
+          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
+          python3 tools/effectcraft/v020_winit_compat.py \
+            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
+            "vendor/winit/src/platform_impl/android/mod.rs"
+          test "$(git -C vendor/winit diff --name-only)" = 'src/platform_impl/android/mod.rs'
+          grep -Fq 'ImeResetCompleted' vendor/winit/src/event.rs
+          grep -Fq 'reset_ime_with_request' vendor/winit/src/window.rs
+          grep -Fq 'MouseWheel' vendor/winit/src/platform_impl/android/mod.rs
+          grep -Fq 'MouseInput' vendor/winit/src/platform_impl/android/mod.rs
+          echo 'Exact official pinned winit + limited Android motion adaptation, no production-signing job' >> "$GITHUB_STEP_SUMMARY"
       - name: Build temporary-key EffectCraft 0.20.0 Android test package
         shell: bash
         run: |

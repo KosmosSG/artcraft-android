@@ -153,6 +153,19 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn('TTF/OTF/TTC', font_ui)
         self.assertIn('std::fs::OpenOptions::new().write(true).create_new(true)', font_ui)
 
+    def test_device_candidate_version_and_size_controls(self):
+        stage = (ROOT / "tools" / "designcraft" / "patch_v016_android.py").read_text()
+        self.assertIn('candidate_version = "0.16.0-android.1"', stage)
+        self.assertIn('version_code = 16900001', stage)
+        self.assertIn('apk_name = "designcraft-', stage)
+        self.assertIn('APP_VERSION="0.16.0-android.1"', self.shell)
+        self.assertIn('export CARGO_PROFILE_DEV_DEBUG=0', self.shell)
+        self.assertIn('export CARGO_PROFILE_DEV_STRIP=debuginfo', self.shell)
+        self.assertIn('export CARGO_PROFILE_DEV_OPT_LEVEL=s', self.shell)
+        self.assertIn('if [[ "$DESIGNCRAFT_V016" == true ]]; then', self.shell)
+        self.assertIn('approved_branding.check_assets()', stage)
+        self.assertIn('android.permission.INTERNET', stage)
+
     def test_source_review_cannot_claim_publication(self):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))

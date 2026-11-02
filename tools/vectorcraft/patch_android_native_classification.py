@@ -69,14 +69,21 @@ METHOD_REPLACEMENT = '''        let source =
 
 def add_native_motion_classification(source: str) -> str:
     """Fail closed when a different android-activity revision needs re-review."""
-    for anchor, label in (
-        (IMPORT_ANCHOR, "native input imports"),
-        (FUNCTION_ANCHOR, "native action-button runtime lookup"),
-        (METHOD_ANCHOR, "native MotionEvent::source"),
+    for anchor, label, expected in (
+        (IMPORT_ANCHOR, "native input imports", 1),
+        (FUNCTION_ANCHOR, "native action-button runtime lookup", 1),
+        # Both MotionEvent and KeyEvent implement source(), but the first
+        # belongs to the MotionEvent wrapper. Never patch the KeyEvent method.
+        (METHOD_ANCHOR, "native input source accessors", 2),
     ):
         found = source.count(anchor)
-        if found != 1:
-            raise ValueError(f"Unsupported android-activity native backend: {label} appears {found} times")
+        if found != expected:
+            raise ValueError(f"Unsupported android-activity native backend: {label} appears {found} times (expected {expected})")
+    motion = source.find("impl MotionEvent<'_> {")
+    source_method = source.find(METHOD_ANCHOR)
+    key_event = source.find("pub struct KeyEvent")
+    if not (0 <= motion < source_method < key_event):
+        raise ValueError("First source() method is no longer MotionEvent::source")
     if "pub fn classification(&self) -> Classification" in source:
         raise ValueError("Native classification method already present; do not patch twice")
     return (

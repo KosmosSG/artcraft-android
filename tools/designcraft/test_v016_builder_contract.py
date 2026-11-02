@@ -90,6 +90,14 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn("Box::new(move |_cc| {{", self.shell)
         self.assertIn('GENERATOR_VERSION = "25" if app == "designcraft" else "24"', self.shell)
 
+    def test_raw_input_hook_matches_v016_egui_context_signature(self):
+        # DesignCraft v0.16's public raw-input method takes (ctx, raw).
+        # Older apps may still have the one-argument method: do not break
+        # their generated launchers when fixing DesignCraft.
+        self.assertIn('raw_hook_has_ctx = bool(re.search(', self.shell)
+        self.assertIn('"self.inner.raw_input_hook(ctx, raw);"', self.shell)
+        self.assertIn('"let _ = ctx;\\n        self.inner.raw_input_hook(raw);"', self.shell)
+
     def test_debug_ci_compiles_only_on_opt_in_and_never_publishes(self):
         workflow = (ROOT / ".github" / "workflows" / "designcraft-v016-review.yml").read_text()
         self.assertIn("[designcraft-debug]", workflow)

@@ -195,7 +195,17 @@ impl Mobile {
     /// Return true when "Hide panel" was clicked, so the shell can toggle it.
     pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool {
         let mut hide_requested = false;
-        parent.group(|ui| {
+        // The root PDFCraft window is transparent on Android. A plain egui group
+        // draws NO background: dark native surface shows through behind black text
+        // when upstream PDFCraft switches to the light theme. Paint the panel with
+        // the same live palette as the built-in File/View chrome on every frame.
+        let available_width = parent.available_width();
+        egui::Frame::group(parent.style())
+            .fill(parent.visuals().panel_fill)
+            .show(parent, |ui| {
+            // Cover the full width, not just the buttons, so the remaining strip
+            // is also light in light mode and dark in dark mode.
+            ui.set_min_width((available_width - 14.0).max(0.0));
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Fonts:");
                 if ui.button("Import Font…")

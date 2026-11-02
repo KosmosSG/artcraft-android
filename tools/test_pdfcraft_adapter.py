@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.4'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.5'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.17.0-android.4'
+    assert cargo['package']['version'] == '0.17.0-android.5'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
@@ -54,6 +54,12 @@ with tempfile.TemporaryDirectory() as folder:
         assert 'ui.button("' + label + '")' in mobile_toolbar
     assert 'fonts_open' not in mobile_toolbar
     assert 'ui.button("Hide panel")' in mobile_toolbar
+    # PDFCraft light theme sets dark text, so a transparent group drew black
+    # system surface behind it. The panel MUST paint its own dynamic theme fill.
+    assert 'egui::Frame::group(parent.style())' in mobile_toolbar
+    assert '.fill(parent.visuals().panel_fill)' in mobile_toolbar
+    assert 'ui.set_min_width((available_width - 14.0).max(0.0))' in mobile_toolbar
+    assert 'parent.group(|ui|' not in mobile_toolbar
     assert 'pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool' in mobile_toolbar
     assert 'pub fn sync_toolbar_preference(&mut self, visible: bool)' in mobile_toolbar
     assert 'egui::Panel::bottom("pdfcraft_android_tools")' not in mobile_toolbar

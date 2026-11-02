@@ -162,15 +162,15 @@ jobs:
         '
     - name: Verify compiled APK artwork and retain candidate evidence
       shell: bash
-      run: 'set -euo pipefail
-
+      run: |
+        set -euo pipefail
         python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
         python3 suite/tools/filmcraft/verify_android_features_apk.py filmcraft-builder/output/filmcraft-0.10.0-android.3.apk integrated-candidate
-        cp filmcraft-builder/output/filmcraft-0.10.0-android.3.apk integrated-candidate/
-        (cd integrated-candidate && sha256sum filmcraft-0.10.0-android.3.apk > SHA256SUMS.txt)
-        echo "EPHEMERAL TEST SIGNER ONLY - NOT A PRODUCTION UPDATE" > integrated-candidate/NOT-FOR-UPDATE.txt
-
-        '
+        # The approved-branding verifier already retains a uniquely named
+        # ephemeral APK with SHA256SUMS.txt and compiled package metadata.
+        test -s integrated-candidate/SHA256SUMS.txt
+        (cd integrated-candidate && sha256sum --check SHA256SUMS.txt)
+        printf '%s\n' 'EPHEMERAL TEST SIGNER ONLY - NOT A PRODUCTION UPDATE' > integrated-candidate/NOT-FOR-UPDATE.txt
     - name: Record exact keyboard candidate source
       run: |
         mkdir -p integrated-candidate

@@ -167,6 +167,24 @@ def ai_hidden_consent_boundary(menu: str) -> None:
         raise ValueError("Hiding AI Tools must cancel, revoke consent/token and close dialog")
 
 
+
+def ai_one_shot_token_boundary(menu: str) -> None:
+    """A per-image consent token must not linger in the dialog after Start.
+
+    Moving the token into the one background worker preserves local inference
+    while requiring fresh entry for a later image. This source-only check does
+    not claim to erase worker memory before the request completes.
+    """
+    if menu.count("    fn start_cpu_job(") != 1 or menu.count("    fn poll_cpu_result(") != 1:
+        raise ValueError("AI background worker anchors changed")
+    start = menu.split("    fn start_cpu_job(", 1)[1].split("    fn poll_cpu_result(", 1)[0]
+    move = "let token = std::mem::take(&mut self.cpu_token);"
+    if (start.count(move) != 1 or "self.cpu_token.clone()" in start or
+        start.find(move) > start.find("std::thread::spawn(move ||") or
+        "std::thread::spawn(move ||" not in start):
+        raise ValueError("AI token must move from UI to the one-use worker")
+
+
 def self_test() -> None:
     stable = ACCEPTED.read_text(encoding="utf-8")
     rejected = REJECTED.read_text(encoding="utf-8")
@@ -181,6 +199,7 @@ def self_test() -> None:
     archived_ai_preview_recipe(ai_preview)
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
     ai_hidden_consent_boundary(ai_menu)
+    ai_one_shot_token_boundary(ai_menu)
 
     mutations = (
         (archived_ai_preview_recipe, ai_preview.replace("    if: ${{ false }}", "    if: ${{ true }}", 1), "preview ARM64 job reenabled"),
@@ -206,6 +225,7 @@ def self_test() -> None:
         (lambda text: ai_hidden_consent_boundary(text), ai_menu.replace("self.cpu_token.clear();", "", 1), "hidden AI menu retained bearer token"),
         (lambda text: ai_hidden_consent_boundary(text), ai_menu.replace("self.show_background_setup = false;", "", 1), "hidden AI dialog could reopen"),
         (lambda text: ai_hidden_consent_boundary(text), ai_menu.replace("self.cpu_consent = false;", "", 1), "hidden AI menu retained consent"),
+        (ai_one_shot_token_boundary, ai_menu.replace("let token = std::mem::take(&mut self.cpu_token);", "let token = self.cpu_token.clone();", 1), "one-use token retained in dialog after Start"),
         (lambda text: ai_keyboard_boundary(text, ai_stage, window_patch), ai_menu + "\\nconsume_key(", "AI menu key interception"),
         (lambda text: ai_keyboard_boundary(ai_menu, text, window_patch), ai_stage.replace("artcraft_discard_prompt_owns_keyboard", "", 1), "discard keyboard guard missing"),
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
@@ -218,10 +238,11 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-six negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-seven negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
+    print("PASS: starting AI processing consumes the one-use UI token without retaining a dialog copy")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")
 

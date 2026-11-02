@@ -53,7 +53,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'ARTCRAFT_ANDROID_DCS' in prompt
     assert 'ARTCRAFT_ANDROID_REPEAT_TOOL_KEYS' in keys
     assert 'ARTCRAFT_ANDROID_TOUCH_HINT' in canvas
-    assert 'self.android_bare_tool_keys(ctx);' in app
+    # Android.8 deliberately removes the duplicate H/V command consumer.
+    # Native PdfCraftApp::tool_keys remains the sole shortcut dispatcher.
+    assert 'self.android_bare_tool_keys(ctx);' not in app
+    assert 'ARTCRAFT_ANDROID_REPEAT_KEYS' in app
     assert 'QuickTool::Hand' in app and 'Key::H' in app and 'QuickTool::Select' in app
     assert 'ARTCRAFT_ANDROID_TOOLS_VISIBLE' in menu
     assert 'pub fn android_tools_visible(&self) -> bool' in menu

@@ -17,6 +17,7 @@ REJECTED = ROOT / ".github/workflows/photocraft-ai-v2-candidate-unsigned.yml"
 OBSOLETE_PROOF = ROOT / ".github/workflows/photocraft-ai-production-dryrun.yml"
 AI_PREVIEW_WORKFLOW = ROOT / ".github/workflows/photocraft-ai-menu-pr93-test.yml"
 AI_MENU = ROOT / "adapters/photocraft/src/ai_menu.rs"
+JAVA_ACTIVITY = ROOT / "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
 AI_STAGE = ROOT / "tools/photocraft_ai_preview_stage.py"
 STABLE_STAGE = ROOT / "tools/photocraft_ai_v2_fontscan_android4_stage.py"
 REJECTED_STAGE = ROOT / "tools/photocraft_ai_v2_candidate_stage.py"
@@ -148,6 +149,30 @@ def ai_keyboard_boundary(menu: str, stage: str, window_patch: str) -> None:
                 raise ValueError(f"{name} may intercept Ctrl+W/keyboard routing: {token}")
 
 
+def java_hardware_key_passthrough(activity: str) -> None:
+    """Preserve accepted Android.4 physical-key pass-through into native winit.
+
+    The 1-pixel IME host is for soft-keyboard text. Consuming hardware
+    onKeyDown/onKeyUp here would prevent native Ctrl+W and other shortcuts.
+    This checks Java source only; real HONOR keyboard acceptance is separate.
+    """
+    for name in ("onKeyDown", "onKeyUp"):
+        pattern = (
+            rf"(?s)@Override\\s+public boolean {name}"
+            rf"\\(int keyCode, KeyEvent event\\)\\s*\\{{(.*?)\\n\\s*\\}}"
+        )
+        matches = list(re.finditer(pattern, activity))
+        if len(matches) != 1:
+            raise ValueError(f"PhotoCraft IME host: missing/duplicate {name}")
+        body = matches[0].group(1)
+        statements = [
+            line.strip() for line in body.splitlines()
+            if line.strip() and not line.strip().startswith("//")
+        ]
+        if statements != ["return false;"]:
+            raise ValueError(f"PhotoCraft IME host must not consume physical {name}")
+
+
 def ai_hidden_consent_boundary(menu: str) -> None:
     """Hide must revoke the temporary token, consent and pending dialog.
 
@@ -248,6 +273,7 @@ def self_test() -> None:
     obsolete = OBSOLETE_PROOF.read_text(encoding="utf-8")
     ai_preview = AI_PREVIEW_WORKFLOW.read_text(encoding="utf-8")
     ai_menu = AI_MENU.read_text(encoding="utf-8")
+    java_activity = JAVA_ACTIVITY.read_text(encoding="utf-8")
     ai_stage = AI_STAGE.read_text(encoding="utf-8")
     window_patch = WINDOW_PATCH.read_text(encoding="utf-8")
     stable_stage = STABLE_STAGE.read_text(encoding="utf-8")
@@ -257,6 +283,7 @@ def self_test() -> None:
     obsolete_proof_recipe(obsolete)
     archived_ai_preview_recipe(ai_preview)
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
+    java_hardware_key_passthrough(java_activity)
     ai_hidden_consent_boundary(ai_menu)
     ai_one_shot_token_boundary(ai_menu)
     ai_local_backend_disclosure(ai_menu)
@@ -311,6 +338,9 @@ def self_test() -> None:
         (lambda text: ai_keyboard_boundary(text, ai_stage, window_patch), ai_menu + "\\nconsume_key(", "AI menu key interception"),
         (lambda text: ai_keyboard_boundary(ai_menu, text, window_patch), ai_stage.replace("artcraft_discard_prompt_owns_keyboard", "", 1), "discard keyboard guard missing"),
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
+        (java_hardware_key_passthrough, java_activity.replace("return false;", "return true;", 1), "IME host consumes physical key down"),
+        (java_hardware_key_passthrough, java_activity.replace("onKeyUp(int keyCode", "onKeyLost(int keyCode", 1), "IME host key-up override removed"),
+        (java_hardware_key_passthrough, java_activity.replace("return false;", "event.getKeyCode();\\n                    return false;", 1), "IME host adds hardware-key side effect"),
     )
     for validator, mutated, reason in mutations:
         try:
@@ -320,13 +350,13 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; thirty negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; thirty-three negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
     print("PASS: starting AI processing consumes the one-use UI token without retaining a dialog copy")
     print("PASS: ComfyUI and local U2NetP availability/consent disclosures match actual UI wiring")
-    print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
+    print("PASS: PR93 AI overlay and Java IME host preserve physical-key passthrough; owner hardware retest still required")
     print("PASS: accepted .4 and rejected .5 source transforms match apart from version metadata; two mutations rejected")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")
 

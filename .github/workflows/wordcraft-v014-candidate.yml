@@ -1,10 +1,6 @@
 name: WordCraft v0.14.0 upstream ARM64 candidate (ephemeral; NEVER publish)
 
 on:
-  pull_request:
-    paths:
-      - "wordcraft/android/**"
-      - ".github/workflows/wordcraft-v014-candidate.yml"
   push:
     branches:
       - feature/wordcraft-v0.14.0-android1-20261102
@@ -149,6 +145,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile wordcraft/android/patch_builder.py
           python3 wordcraft/android/patch_builder.py builder
+          python3 -m unittest discover -s wordcraft/android -p 'test_workspace_v014.py' -v
           python3 wordcraft/android/workspace_v014.py builder
           bash -n builder/lib/build-common.sh
 

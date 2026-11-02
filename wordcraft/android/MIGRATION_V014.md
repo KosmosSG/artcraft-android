@@ -66,3 +66,9 @@ above all previously published versions before production signing.
 
 This is a targeted upstream port, not a statement that the current stable
 Android application already passes these tests.
+
+## 2026-11-02 compatibility fix and test-only signing policy
+
+- Root cause of upstream v0.14 native build failure: the pinned Android builder overwrites official `storytold/winit` fork (`a517b3846ee8457d84ee4975110bfda6797c44dc`) with older `winit 0.30.13` lacking `ImeResetCompleted` and `reset_ime_with_request`, and vendors `egui-winit 0.36.2` over an official `0.37` fork. The WordCraft-only ephemeral builder shim now guards both vendoring blocks, uses upstream `egui-winit 0.37`, and drops registration of an old 0.36-only JNI API. Android shell ClipboardManager fallback remains. This is a code change, not an assertion of compile/device success.
+- Candidate-only ARM64 CI triggers once per push on the migration branch, not on the same PR event; older WordCraft 0.9 candidate workflow skips this v0.14 migration branch to avoid duplicate large builds. Source compatibility fixtures fail closed on anchor changes.
+- Owner explicitly approves disposable/test-signing and uninstall/reinstall testing; no use of original WordCraft signing key or production signing workflow until final release approval. **Before uninstalling the installed production WordCraft app, export all app-private files, autosave/recovery data, imported fonts, documents and preferences, as uninstall may permanently delete them.** Temporary-signed APK cannot update the existing production-signed installation. No public release/tag/merge without owner approval.

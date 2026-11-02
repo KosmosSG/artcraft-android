@@ -68,6 +68,13 @@ jobs:
           echo 'Changed anchors require manual porting; this audit never builds or publishes an APK.' >> "$GITHUB_STEP_SUMMARY"
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
+      - name: Setup Java 21 for GridCraft 4 GiB scan-budget boundary regression
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test GridCraft Java 4 GiB limit and signed-32-bit overflow cases
+        run: python3 tools/font_scan_budget_regression.py
       - name: Validate GridCraft source lock and no-release gate
         run: python3 tools/gridcraft/verify_source.py
       - name: Verify official release, immutable tag and source version

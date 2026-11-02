@@ -22,6 +22,9 @@ MODEL_FILENAME = "u2netp.onnx"
 # Integrity reference from rembg's U2NetP session. Model licensing must
 # still be reviewed independently before commercial redistribution/use.
 MODEL_MD5 = "8e83ca70e441ab06c318d82300c84806"
+# U2NetP is approximately 4.6 MiB. Never hash an unbounded cache file
+# or follow a model-cache symlink to unrelated owner files/devices.
+MAX_MODEL_BYTES = 16 * 1024 * 1024
 MAX_PIXELS = 4_000_000
 MAX_INPUT_BYTES = 24 * 1024 * 1024
 CPU_THREADS = 2
@@ -41,14 +44,28 @@ def model_directory() -> Path:
 
 
 def model_integrity(path: Path) -> tuple[bool, str]:
-    if not path.is_file():
+    # The model is locally downloaded by explicit opt-in. Refuse symlinks,
+    # devices and oversized files BEFORE hashing: even a local cache can
+    # otherwise cause an unbounded read or block on a special file.
+    import stat
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
         return False, "not installed"
+    except OSError:
+        return False, "model cache must be a readable regular file"
     digest = hashlib.md5(usedforsecurity=False)
-    with path.open("rb") as stream:
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= MAX_MODEL_BYTES):
+            return False, "model cache must be a bounded regular file"
+        total = 0
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            total += len(chunk)
+            if total > MAX_MODEL_BYTES:
+                return False, "model cache exceeds size limit"
             digest.update(chunk)
-    actual = digest.hexdigest()
-    if actual != MODEL_MD5:
+    if digest.hexdigest() != MODEL_MD5:
         return False, "file checksum differs from upstream rembg U2NetP reference"
     return True, "checksum matches upstream rembg reference"
 
@@ -205,6 +222,20 @@ def self_test() -> int:
             assert model_directory() == model_root()
             assert model_directory() / MODEL_FILENAME == model_root() / "u2netp.onnx"
             assert model_integrity(Path(root) / MODEL_FILENAME) == (False, "not installed")
+            # No model download/inference: synthetic cache files only.
+            cache = Path(root) / MODEL_FILENAME
+            cache.write_bytes(b"invalid model")
+            assert model_integrity(cache)[0] is False
+            cache.unlink()
+            alias = Path(root) / "alias.onnx"
+            alias.symlink_to(Path(root) / "missing.onnx")
+            assert model_integrity(alias)[0] is False
+            alias.unlink()
+            cache.touch()
+            with cache.open("r+b") as oversized:
+                oversized.truncate(MAX_MODEL_BYTES + 1)  # sparse, no 16 MiB allocation
+            assert model_integrity(cache)[0] is False
+            cache.unlink()
             for pair in [(0, 20), (5000, 1000), (20, 0)]:
                 try:
                     validate_image_shape(*pair)

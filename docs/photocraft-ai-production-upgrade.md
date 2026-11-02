@@ -1,5 +1,38 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Current status — 2 November 2026 (supersedes historical signing instructions below).**
+> [PhotoCraft `v0.14.0-android.4`](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.4)
+> is **already published as a stable core editor** (1 November 2026), with
+> experimental **opt-in Linux Lab U2NetP AI**, recursive shared-font scanning
+> (4 GiB aggregate/5,000 files), normal PhotoCraft package and the owner-tested
+> keyboard/editor features. Its **permanent V2** certificate SHA-256 is
+> `EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936`;
+> versionCode **16790007**; published APK SHA-256
+> `d50857fe7d563821563d29842299858bbda09ea49e3786c420ec02f21b8e6367`.
+> The former `android.1` certificate **45933A…** is **not** compatible with
+> V2, cannot be used to update an installed V2 release, and must **never**
+> be auto-selected for a new AI build. The owner chose V2 after original-key
+> recovery failed; migration from original signing to V2 can require an
+> explicit backup and reinstall, with loss of app-private files otherwise.
+>
+> **Actual source and checks:** PR #93 is still **draft/unmerged**. The
+> [V2 upgrade self-test #6](https://github.com/KosmosSG/artcraft-android/actions/runs/41375360748)
+> passed after raising the minimum future candidate to **strictly newer
+> than `android.4` and versionCode >16790007**. The
+> [real-public-APK check #7](https://github.com/KosmosSG/artcraft-android/actions/runs/41375457611)
+> verified the actual published stable ARM64 APK's V2 certificate, hash,
+> version and no-bundled-model archive. Earlier draft sections below
+> chronicle the historical `android.1` original-signing plan and do **not**
+> supersede the actual published `android.4` V2 release.
+>
+> **Remaining PR #93 work:** more real-device Linux Lab pause/restart/
+> cancellation lifecycle stress tests, proof of V2-to-V2 in-place upgrade
+> and data preservation for a **future** higher-version candidate, accurate
+> model/dataset-rights notices for public usage, and separate approval before
+> any future AI publication or PR merge. No automatic public release, model
+> weights, dataset, secret signing key, or installer is bundled here.
+
+
 **Owner-device milestone:** PhotoCraft AI Preview ARM64 run #53 compiled successfully;
 the owner tested U2NetP background removal, a new raster layer, Undo/Redo,
 cancellation, dialog close, and existing physical-keyboard behavior on

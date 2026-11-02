@@ -35,7 +35,7 @@ PINNED_WIN = 'winit = { git = "https://github.com/storytold/winit.git", rev = "a
 OLD_EGUI_DEP = 'egui-winit = "0.36"'
 OLD_EGUI_REG = '    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());'
 EGUI_VENDOR_START = 'echo "Vendoring the Android-compatible egui-winit for $TITLE (system clipboard via JNI)..."'
-EGUI_VENDOR_END = '# Some apps call \`rfd\` directly from a crate that ends up in the launcher'
+EGUI_VENDOR_END = '# Some apps call `rfd` directly from a crate that ends up in the launcher'
 WINIT_VENDOR_START = 'echo "Vendoring the mouse/scroll-aware winit for $TITLE..."'
 WINIT_VENDOR_END = "# Every launcher uses the builder's vendored android-activity"
 

@@ -297,7 +297,7 @@ impl AndroidAiMenu {
                     ui.label("No model download or installation occurs. Model counts do not establish CPU compatibility.");
                     ui.label("Keep Linux Lab visible in a floating window during these tests.");
                     ui.separator();
-                    ui.label("Background Removal and Generative Fill remain disabled until non-destructive layer integration is verified.");
+                    ui.label("ComfyUI image generation and Generative Fill are not connected. Local U2NetP Background Removal is available only from AI Tools with per-image consent.");
                 });
             self.show_connection = open;
         }
@@ -436,7 +436,7 @@ mod tests {
         assert_eq!(AiAction::ALL.len(), 5);
         assert!(!AiAction::ALL.iter().any(|a| a.label().is_empty()));
         // Visibility is handled by the Android Window menu, not by any
-        // processing action. The UI still has no working AI backend.
+        // processing action. Local U2NetP is separately opt-in; other actions remain disabled.
         assert!(AiAction::ALL.iter().all(|action| !action.label().is_empty()));
     }
 }

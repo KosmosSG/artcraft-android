@@ -192,6 +192,23 @@ def ai_one_shot_token_boundary(menu: str) -> None:
 
 
 
+
+def ai_local_backend_disclosure(menu: str) -> None:
+    """Do not tell users the separately enabled U2NetP tool is unavailable.
+
+    ComfyUI image generation remains unconnected; the local U2NetP route
+    requires per-image consent. This is a UI-text check, not a device test.
+    """
+    require(menu, (
+        'ui.button("Remove Background · Local CPU Preview…")',
+        'ui.checkbox(&mut self.cpu_consent,',
+        'ui.label("Experimental: only a local Linux Lab server at 127.0.0.1:18793 is accepted.")',
+        'ui.label("ComfyUI image generation and Generative Fill are not connected. Local U2NetP Background Removal is available only from AI Tools with per-image consent.");',
+    ), "AI UI backend disclosure")
+    if "Background Removal and Generative Fill remain disabled" in menu:
+        raise ValueError("AI UI incorrectly says the available local background tool is disabled")
+
+
 def stage_transform_parity(stable: str, rejected: str) -> None:
     """Guard actual staging operations shared by accepted .4 and rejected .5.
 
@@ -242,6 +259,7 @@ def self_test() -> None:
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
     ai_hidden_consent_boundary(ai_menu)
     ai_one_shot_token_boundary(ai_menu)
+    ai_local_backend_disclosure(ai_menu)
     stage_transform_parity(stable_stage, rejected_stage)
 
     mutations = (
@@ -283,6 +301,13 @@ def self_test() -> None:
             "Err(error) => { self.cpu_status = error; return; }\n        };",
             "Err(error) => { self.cpu_status = error; return; }\n        };\n        let token = std::mem::take(&mut self.cpu_token);", 1),
          "snapshot error retains token in editable dialog"),
+        (ai_local_backend_disclosure, ai_menu.replace(
+            'ComfyUI image generation and Generative Fill are not connected. Local U2NetP Background Removal is available only from AI Tools with per-image consent.',
+            'Background Removal and Generative Fill remain disabled until non-destructive layer integration is verified.', 1),
+         "local U2NetP feature incorrectly marked disabled"),
+        (ai_local_backend_disclosure, ai_menu.replace(
+            'ui.checkbox(&mut self.cpu_consent,', 'ui.label("No consent needed");', 1),
+         "local U2NetP consent disclosure removed"),
         (lambda text: ai_keyboard_boundary(text, ai_stage, window_patch), ai_menu + "\\nconsume_key(", "AI menu key interception"),
         (lambda text: ai_keyboard_boundary(ai_menu, text, window_patch), ai_stage.replace("artcraft_discard_prompt_owns_keyboard", "", 1), "discard keyboard guard missing"),
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
@@ -295,11 +320,12 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-eight negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; thirty negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
     print("PASS: starting AI processing consumes the one-use UI token without retaining a dialog copy")
+    print("PASS: ComfyUI and local U2NetP availability/consent disclosures match actual UI wiring")
     print("PASS: PR93 AI overlay does not add Ctrl+W key interception; owner hardware retest still required")
     print("PASS: accepted .4 and rejected .5 source transforms match apart from version metadata; two mutations rejected")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")

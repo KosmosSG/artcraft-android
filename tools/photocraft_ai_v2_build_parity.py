@@ -249,25 +249,7 @@ def stage_transform_parity(stable: str, rejected: str) -> None:
                        'V2_STABLE_CODE = 16790007'), "android.5 stage identity")
 
     def normalized_stage(source: str) -> str:
-        start, end = "def stage(root: Path) -> None:", "def model_rights_release_boundary(rights: str) -> None:
-    """Distinguish the published stable editor from experimental AI licensing.
-
-    This is a notice consistency check, not legal clearance or device testing.
-    """
-    require(rights, (
-        "PhotoCraft v0.14.0-android.4 stable **core editor**",
-        "experimental opt-in U2NetP integration",
-        "**no model weights bundled**",
-        "The owner rejected android.5 on hardware",
-        "**Current decision for public android.4:**",
-        "future AI production-stable/Latest release",
-        "Commercial licensing clearance NOT established",
-    ), "AI model rights and release notice")
-    if "preserve its experimental **Prerelease / Preview** status" in rights:
-        raise ValueError("Published stable editor incorrectly described as a prerelease")
-
-
-def self_test() -> None:"
+        start, end = "def stage(root: Path) -> None:", "def self_test() -> None:"
         if source.count(start) != 1 or source.count(end) != 1:
             raise ValueError("Stage function boundaries changed")
         body = source.split(start, 1)[1].split(end, 1)[0]
@@ -284,6 +266,25 @@ def self_test() -> None:"
 
     if normalized_stage(stable) != normalized_stage(rejected):
         raise ValueError("Android.5 stage transformations diverge from accepted Android.4")
+
+
+def model_rights_release_boundary(rights: str) -> None:
+    """Distinguish the published stable editor from experimental AI licensing.
+
+    This is a notice consistency check, not legal clearance or device testing.
+    """
+    require(rights, (
+        "PhotoCraft v0.14.0-android.4 stable **core editor**",
+        "experimental opt-in U2NetP integration",
+        "**no model weights bundled**",
+        "The owner rejected android.5 on hardware",
+        "**Current decision for public android.4:**",
+        "future AI production-stable/Latest release",
+        "Commercial licensing clearance NOT established",
+    ), "AI model rights and release notice")
+    if "preserve its experimental **Prerelease / Preview** status" in rights:
+        raise ValueError("Published stable editor incorrectly described as a prerelease")
+
 
 
 def self_test() -> None:

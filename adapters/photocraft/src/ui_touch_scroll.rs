@@ -34,7 +34,7 @@ impl UiTouchScroll {
         frame_ui || popup
     }
     pub(crate) fn route(&mut self, ctx: &egui::Context, raw: &mut RawInput) {
-        let area = raw.screen_rect.unwrap_or_else(|| ctx.screen_rect());
+        let area = raw.screen_rect.unwrap_or_else(|| ctx.content_rect());
         let mut wheels: Vec<(Pos2, Vec2)> = Vec::new();
         for event in &raw.events {
             if let Event::Touch { id, phase, pos, .. } = event {

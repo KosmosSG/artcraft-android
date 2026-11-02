@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class StorytoldPanelCompatibility(unittest.TestCase):
     def test_android_panel_uses_pinned_api(self):
         source = (ROOT / "tools/designcraft/v016_android.rs").read_text()
-        self.assertIn('egui::Panel::bottom("artcraft-designcraft-android-tools").show(ui, |ui| {', source)
+        self.assertIn('egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {', source)
         self.assertNotIn("TopBottomPanel", source)
         self.assertNotIn("egui::BottomPanel", source)
 

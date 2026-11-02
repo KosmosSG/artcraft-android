@@ -3006,6 +3006,13 @@ rm -rf "$SRC/vendor"/*/target
 
 
 
+# Only the isolated DesignCraft v0.16 debug path receives the reviewed UI
+# compatibility overlay. Other ArtCraft app builds stay byte-for-byte intact.
+if [[ "$DESIGNCRAFT_V016" == true ]]; then
+    python3 "$ROOT/tools/designcraft/patch_v016_android.py" "$ROOT" "$SRC" "$ANDROID_DIR" \
+        || fail "Could not stage approved DesignCraft v0.16 Android UI and icon parity."
+fi
+
 say 5 "Preparing a builder-owned signing key..."
 KEY="keys/artcraft-builder.jks"
 KEY_PASSWORD_FILE="keys/.keystore-password"

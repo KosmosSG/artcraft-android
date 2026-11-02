@@ -58,6 +58,8 @@ jobs:
           for name in ("vcRequestOpen", "vcRequestSave", "vcCommitIfMapped", "imeShow", "imeHide"):
               assert name in java, name
           for name in ("vcRequestFontImport", "vcRefreshFontFolder", "vcCheckForUpdates"):
+              assert name in java, name
+          for name in ("requestFontImport", "refreshFontFolder", "checkForUpdates"):
               assert name in extras, name
           assert "device_kind::classify" in winit
           print("PASS: main Android adapter bridges and identity present; runtime device checks remain required")

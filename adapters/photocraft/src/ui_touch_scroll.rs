@@ -59,7 +59,7 @@ impl UiTouchScroll {
                         }
                     }
                     TouchPhase::End | TouchPhase::Cancel => {
-                        self.fingers.retain(|(finger, _)| finger != id);
+                        self.fingers.retain(|(finger, _)| *finger != *id);
                         self.last_center = None;
                     }
                 }

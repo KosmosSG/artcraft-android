@@ -1,0 +1,88 @@
+name: DesignCraft v0.16 Android isolated review (debug only)
+
+on:
+  push:
+    branches:
+      - review/designcraft-upstream-v016-source-lock-20261102
+    paths:
+      - lib/build-common.sh
+      - configs/upstream/designcraft-v016.json
+      - tools/designcraft/**
+      - .github/workflows/designcraft-v016-review.yml
+  pull_request:
+    paths:
+      - lib/build-common.sh
+      - configs/upstream/designcraft-v016.json
+      - tools/designcraft/**
+      - .github/workflows/designcraft-v016-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: designcraft-v016-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Safe source and Android feature checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify shell syntax, upstream pin and preserved app features
+        run: |
+          set -euo pipefail
+          bash -n lib/build-common.sh
+          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 tools/suite_feature_parity.py
+          python3 tools/release_gate_audit.py
+
+  debug-arm64:
+    name: Experimental ARM64 compile (NOT a release)
+    needs: source-contract
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Confirm Android SDK/NDK and prepare build dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user pillow
+          test -d "$ANDROID_HOME/platforms/android-35" || { echo "Android SDK 35 is missing"; exit 1; }
+          NDK_PATH="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$NDK_PATH" || { echo "Android NDK 27.2 is missing"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+      - name: Compile pinned DesignCraft v0.16.0 Android debug candidate
+        timeout-minutes: 40
+        run: bash build-debug.sh -designcraft -designcraft-v016
+      - name: Check output and checksum (not production certification)
+        run: |
+          set -euo pipefail
+          find output -maxdepth 1 -type f -name 'designcraft-*-debug.apk' -print
+          find output -maxdepth 1 -type f -name 'designcraft-*-debug.apk' -exec sha256sum {} \;
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: UNVERIFIED-DesignCraft-v016-DEBUG-arm64-not-for-updates
+          path: output/designcraft-*-debug.apk
+          retention-days: 3
+          if-no-files-found: error

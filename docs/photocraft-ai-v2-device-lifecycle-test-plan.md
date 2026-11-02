@@ -1,33 +1,45 @@
-# PhotoCraft AI V2 — device lifecycle acceptance protocol
+# PhotoCraft AI PR #93 — non-destructive V2 device lifecycle acceptance plan
 
-**Target:** HONOR MagicPad 4 ARM64; PhotoCraft AI `0.14.0-android.2` signed with permanent V2 certificate.  
-**Purpose:** extend the owner's already-passed seven feature checks. This is a **manual, non-destructive acceptance plan**, not evidence that tests have been run.
+**Current accepted production baseline (1 November 2026):** PhotoCraft `0.14.0-android.4`, package `com.artcraft.photocraft`, versionCode `16790007`, V2 signer SHA-256 `EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936`. The existing public release is **stable and must remain unchanged**.
 
-## Before testing
+**Rejected test candidate:** `0.14.0-android.5` (code `16790008`) failed the owner's Ctrl+W test on HONOR MagicPad 4. **Do not reinstall, rebuild, re-sign, promote, or distribute android.5** to repeat this test. Its runtime root cause is unproven; passing source parity and CI checks are not device acceptance.
 
-- Save and make a separate backup of an expendable test project and any app-private data. Test with a non-sensitive image only; do not share private photos, API bearer tokens, or project files in CI logs.
-- Work with the **already installed AI V2 preview** and existing Linux Lab U2NetP environment. Do not uninstall PhotoCraft, clear app data, rotate signing keys, reinstall model weights, or downgrade the application merely for these tests.
-- Start the U2NetP sidecar manually from the installed Linux Lab desktop shortcut. The token changes each time the server restarts; keep it private. No ComfyUI/GPU/root changes.
+**Scope:** Manual, non-destructive acceptance for a *future separately authorized* candidate. This document records **procedures only**, not tests performed or release readiness. PR #93 remains DRAFT. The owner must separately approve any new APK/device installation and any eventual publication.
 
-## Safe lifecycle checks
+## Safe preparation
 
-| Scenario | Procedure | Expected result |
+- Back up the current PhotoCraft documents and app-private data using the application's supported export/backup flow. Keep at least one separate copy of a disposable test project and a non-sensitive PNG.
+- For baseline keyboard observations, use the **already installed, working android.4**; do not uninstall, clear data, downgrade, or replace it. Do not install an experimental APK just to follow this plan.
+- Start the local U2NetP CPU sidecar manually from the Linux Lab desktop shortcut when needed. Keep its session token private; do not put it in logs, screenshots, GitHub comments, or test records. No root, ComfyUI/GPU changes, model redistribution, or public network binding.
+- If an owner-approved future update is tested, first independently verify the package `com.artcraft.photocraft`, a versionCode **greater than 16790007**, and the **same V2 signing certificate**. These checks establish install compatibility, **not** data preservation.
+
+## Accepted android.4 Ctrl+W reference (no new APK)
+
+| Observation | Safe procedure on current android.4 | Expected outcome |
 | --- | --- | --- |
-| Restart service | Complete one background-removal operation, close the Linux Lab sidecar, then reopen it and reconnect with its **new** token. | A new request succeeds; an old token is not silently accepted. No unexpected edits to the original document. |
-| Cancel midway | On a duplicated image, begin one removal and cancel/close the AI dialog during processing. | No result layer is inserted after cancellation. The sidecar may continue the already started CPU operation (known limitation); the application must not apply a stale result. |
-| Android focus change | Keep Linux Lab available and switch between PhotoCraft, Android home and back during a test request. | UI remains responsive; a resumed or cancelled job never inserts into a different/closed document. |
-| Suspend and resume | With the test project saved, lock/unlock screen or suspend/resume Linux Lab once, then retry with a new authenticated request if necessary. | Failure or timeout is surfaced clearly without document corruption; a later valid request can succeed. Actual Linux Lab behavior depends on the OS lifecycle. |
-| Repeated usage | Perform several consented test requests sequentially, with Undo/Redo and Save/Open between them. | Each accepted result is one editable new layer; no stale insertion, lockout or persistent temporary images. |
-| Service unavailable | Stop the sidecar, then try the feature using a disposable test image. | Bounded, actionable connection error; no change to the document; app and shortcuts remain usable. |
+| Ordinary document | Open a saved disposable document, ensure no text cell or dialog is editing, press Ctrl+W once | Existing close/save decision flow appears and remains keyboard-responsive |
+| Unsaved document | Change the disposable document, press Ctrl+W, then exercise D / C / S on separate repetitions | Discard, Cancel and Save follow the accepted android.4 behavior; no input leaks to the canvas while the dialog is open |
+| Text editing focus | Enter text on a disposable layer, exit typing with Esc, then press Ctrl+W | Text focus exits before document-close handling; no silent loss of unrelated document edits |
+| Dialog repetition | Cancel the first close dialog, press Ctrl+W again, and test the dialog shortcuts | Repeated invocations remain responsive; no stale modal state |
 
-Record pass/fail with the tested app version, Android version, whether Linux Lab was visible/floating, and any safe reproducible error text. Do **not** include session bearer tokens or screenshots of private project content.
+Record the exact input device (hardware keyboard or external keyboard), keyboard layout, focus state, app version, and result. Do **not** claim android.5's regression is fixed from these android.4 reference observations. For a future explicitly approved candidate, compare the same four cases on the same device, using only expendable data.
 
-## Signing migration versus V2 upgrade
+## Local U2NetP lifecycle scenarios (future owner acceptance)
 
-- An APK signed with the old PhotoCraft production certificate **cannot** be updated in place to V2. Keep that warning in the download page and release notes.
-- GitHub CI verified the **same V2 certificate** and higher versionCode for an update from regular V2 `0.14.1` (code `16780801`) to AI V2 `0.14.0-android.2` (code `16790005`). **This is not proof of a data-preserving device update.**
-- Do NOT downgrade your current AI V2 installation simply to test regular-V2-to-AI-V2 migration; this could require destructive uninstallation. The preferred upgrade acceptance test is on a secondary test device/emulator with expendable data, or in a separately planned, fully backed-up migration.
+| Scenario | Safe procedure | Expected result |
+| --- | --- | --- |
+| Restart sidecar | Complete one consented request, stop Linux Lab sidecar, restart manually, then enter the new token | Old token is rejected; new per-image consent works; original image remains unchanged |
+| Cancel/close | On a duplicated image, start removal and cancel/close its dialog before completion | No late layer is inserted; the CPU subprocess may finish independently |
+| App focus change | Switch PhotoCraft to Android home and back during a test request | No stale result is inserted into a different or closed document |
+| Linux Lab suspend/resume | Save the disposable project, lock/unlock or suspend/resume once, then retry with fresh consent | Failure is bounded and recoverable; no project corruption |
+| Repeated requests | Perform several sequential consented operations, Undo/Redo and Save/Open | Each accepted result is one editable layer, with no stale insertion or persistent image files |
+| Sidecar unavailable | Stop the service, attempt a request on disposable content | Clear connection failure and no document change |
 
-## Release decision
+Capture pass/fail and a short reproduction with Android/MagicOS version, app versionCode, keyboard/focus context and whether Linux Lab was foregrounded. Never include tokens or private images.
 
-Completed test records can support the `real_device_sidecar_lifecycle_stress` checklist entry in `docs/photocraft-ai-v2-stable-checklist.json`. Only update its status after the real-device acceptance evidence is documented and reviewed. Model/dataset rights and explicit stable-release approval remain separate gates; one pass cannot substitute for the other.
+## Signing and data-preservation gates
+
+- **Old signer versus V2:** The historical `45933A88…` certificate cannot update an installed V2 `EDDA8AB3…` app in place. Migration between those signing lines requires separately planned backup/restore and may lose app data. Never describe it as a seamless upgrade.
+- **V2-to-V2:** Matching package, matching V2 signer and increasing versionCode are necessary but insufficient. A future owner-approved candidate must also pass an **in-place install over current V2** with document, custom-font/SAF access, preferences, AI opt-in state, shortcuts and Undo/Redo preserved. No such new candidate is approved now.
+- **Rights:** The local model weights are not bundled. The current personal/noncommercial assessment does not establish commercial clearance; consult `docs/photocraft-ai-model-rights-review.md` and retain accurate notices.
+- **Publication:** Only update `docs/photocraft-ai-v2-stable-checklist.json` after genuine recorded acceptance. Green CI, historical preview tests and this written plan cannot substitute for hardware verification or explicit final publication approval.

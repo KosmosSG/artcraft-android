@@ -18,7 +18,7 @@ jobs:
   build:
     if: github.repository == 'KosmosSG/artcraft-android'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "2"
       ARTCRAFT_TARGET_SDK: "35"
@@ -74,6 +74,14 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Confirm Android winit IME API shim before expensive compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'ImeResetCompleted { request_id: u64 }' vendor/winit/src/event.rs
+          grep -Fq 'pub fn reset_ime_with_request(&self, _request_id: u64)' vendor/winit/src/window.rs
+          echo "Reviewed Android winit IME compatibility APIs present."
+
       - name: Compile debug-only upstream v0.19 Android compatibility candidate
         shell: bash
         run: |
@@ -81,6 +89,28 @@ jobs:
           # Build-system-generated local debug key is NOT the original PhotoCraft certificate.
           # Never sign with a production key here; never publish any Releases.
           bash build-debug.sh -photocraft
+
+      - name: Print compiler failure summary for upstream v0.19 adaptation
+        if: failure()
+        shell: bash
+        run: |
+          echo "Compiler diagnostics; current candidate did not produce a verified APK."
+          if compgen -G 'logs/photocraft-debug*.log' > /dev/null; then
+            sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' logs/photocraft-debug*.log |
+              grep -En 'error(\[E[0-9]+\])?:|failed to|could not compile|no method named|no variant named' |
+              tail -n 80 || true
+          else
+            echo "No debug compiler log was produced."
+          fi
+
+      - name: Retain compiler diagnostics on failure (NO RELEASE)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v019-ARM64-COMPILER-DIAGNOSTICS
+          path: logs/photocraft-debug*.log
+          retention-days: 3
+          if-no-files-found: warn
 
       - name: Inspect compiled APK identity (candidate is NOT an in-place update)
         shell: bash

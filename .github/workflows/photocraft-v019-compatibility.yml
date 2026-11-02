@@ -21,6 +21,10 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "2"
+      # Keep debug instrumentation but avoid shipping large symbol sections.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_DEV_STRIP: "symbols"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.19.0-android.1"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.19.0"
@@ -93,6 +97,8 @@ jobs:
           grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
           grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs
+          grep -Fq 'touch_scroll.route(ctx, raw)' adapters/photocraft/src/lib.rs
+          grep -Fq 'version = "0.19.0-android.1"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release untouched.'
 
       - name: Compile debug-only upstream v0.19 Android compatibility candidate
@@ -102,6 +108,8 @@ jobs:
           # Build-system-generated local debug key is NOT the original PhotoCraft certificate.
           # Never sign with a production key here; never publish any Releases.
           bash build-debug.sh -photocraft
+          test -f output/photocraft-0.19.0-debug.apk
+          mv output/photocraft-0.19.0-debug.apk output/photocraft-0.19.0-android.1-debug.apk
 
       - name: Print compiler failure summary for upstream v0.19 adaptation
         if: failure()
@@ -137,13 +145,15 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
           "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.19.0-android.1'"
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED disposable-key debug APK: DO NOT install over the owner's current PhotoCraft." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.19.0-android.1; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain debug test artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v019-ARM64-UNTESTED-DISPOSABLE-KEY
+          name: PhotoCraft-v0.19.0-android.1-ARM64-UNTESTED-DISPOSABLE-KEY
           path: |
             output/*.apk
             SHA256SUMS.txt

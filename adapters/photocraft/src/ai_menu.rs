@@ -345,14 +345,14 @@ impl AndroidAiMenu {
             self.cpu_status = "Explicit consent required before processing.".into();
             return;
         }
+        // Consume the one-use bearer token before snapshot validation too:
+        // a failed image export must not leave the token in the editable UI.
+        // It moves into the worker only if a valid snapshot is available.
+        let token = std::mem::take(&mut self.cpu_token);
         let (document, origin) = match ai_background_editor::active_snapshot(session) {
             Ok(snapshot) => snapshot,
             Err(error) => { self.cpu_status = error; return; }
         };
-        // Move the one-use token into the worker. Do not retain a second
-        // bearer-token copy in the visible dialog after processing begins.
-        // The next image requires a fresh token entry and fresh consent.
-        let token = std::mem::take(&mut self.cpu_token);
         self.cpu_next_job = self.cpu_next_job.wrapping_add(1);
         let job_id = JobId(self.cpu_next_job);
         let mut job = Job::new(job_id, origin);

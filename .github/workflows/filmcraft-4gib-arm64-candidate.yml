@@ -127,6 +127,11 @@ jobs:
         python3 suite/tools/filmcraft/runtime_patch.py --self-test
         python3 suite/tools/filmcraft/native_menu_patch.py --self-test
         python3 suite/tools/filmcraft/native_menu_patch.py filmcraft-builder/source/filmcraft/crates/ui-egui/src/menus.rs
+        # D/C/S methods called by the Android launcher must exist in pinned UI source.
+        # Patch only the temporary checked-out FilmCraft v0.10.0 source.
+        python3 suite/tools/filmcraft/patch_unsaved_dcs.py filmcraft-builder/source/filmcraft
+        grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
         python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch.py suite/tools/filmcraft/native_menu_patch.py suite/tools/approved-branding/approved_branding.py
         bash -n filmcraft-builder/lib/build-common.sh

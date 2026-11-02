@@ -23,7 +23,7 @@ jobs:
         path: suite
         persist-credentials: false
     - name: Validate 4 GiB Java scan boundaries
-      run: python3 suite/tools/font_scan_budget_regression.py
+      run: cd suite && python3 tools/font_scan_budget_regression.py
     - name: Validate app-specific keyboard focus handoff
       run: python3 suite/tools/keyboard/escape_focus_check.py filmcraft
     - name: Verify approved source, adaptive safe area and monotonic version

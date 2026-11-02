@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.6'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.7'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.17.0-android.6'
+    assert cargo['package']['version'] == '0.17.0-android.7'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
@@ -44,6 +44,12 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'inner.set_android_tools_visible(pdf_mobile.toolbar_shown());' in native
     assert 'self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());' in native
     menu = (dst / 'crates/ui-egui/src/menus.rs').read_text()
+    canvas = (dst / 'crates/ui-egui/src/canvas.rs').read_text()
+    app = (dst / 'crates/ui-egui/src/app.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_SELECT_TOUCH_NOT_SCROLL' in canvas
+    assert 'PDFCRAFT_ANDROID_BARE_TOOL_KEYS' in app
+    assert 'self.android_bare_tool_keys(ctx);' in app
+    assert 'QuickTool::Hand' in app and 'Key::H' in app and 'QuickTool::Select' in app
     assert 'ARTCRAFT_ANDROID_TOOLS_VISIBLE' in menu
     assert 'pub fn android_tools_visible(&self) -> bool' in menu
     assert 'pub fn set_android_tools_visible(&self, visible: bool)' in menu

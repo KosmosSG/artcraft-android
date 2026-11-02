@@ -138,11 +138,26 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                 self.pdfcraft_touch_held = true;
                 self.pdfcraft_touch_origin = centroid_spread();
                 self.pdfcraft_touch_last = self.pdfcraft_touch_origin;
+                if let Some((mid, _)) = self.pdfcraft_touch_origin {
+                    // egui-winit's TouchPhase::Cancelled sends PointerGone;
+                    // restoring a hover point over the PDF is required for
+                    // rect_contains_pointer() in PDFCraft's zoom/scroll path.
+                    callback(event::Event::WindowEvent {
+                        window_id,
+                        event: event::WindowEvent::CursorMoved { device_id, position: mid },
+                    }, self.window_target());
+                }
                 self.pdfcraft_touch_mode = PdfTouchMode::Pending;
                 true
             }
             MotionAction::Move if self.pdfcraft_touch_held => {
                 if let Some((mid, spread)) = centroid_spread() {
+                    // Keep the active pointer over the PDF. Wheel input and
+                    // pinch zoom are ignored by the canvas without a pointer.
+                    callback(event::Event::WindowEvent {
+                        window_id,
+                        event: event::WindowEvent::CursorMoved { device_id, position: mid },
+                    }, self.window_target());
                     if let (Some((origin, original_spread)), Some((last, last_spread))) =
                         (self.pdfcraft_touch_origin, self.pdfcraft_touch_last)
                     {
@@ -219,7 +234,9 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
     swap('                match motion_event.action() {\n',
          '''                // Only physical fingers take the new gesture path. A stylus
                 // still edits/inks, while mouse/trackpad remain untouched.
-                if !pointer_class && tool_type == ToolType::Finger
+                if !pointer_class && (tool_type == ToolType::Finger
+                    || (motion_event.source() == Source::Touchscreen
+                        && tool_type == ToolType::Unknown))
                     && self.pdfcraft_android_gesture(
                         motion_event, window_id, device_id, callback,
                     )

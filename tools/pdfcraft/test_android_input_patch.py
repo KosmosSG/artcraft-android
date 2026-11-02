@@ -17,6 +17,8 @@ class AndroidInputCompatibility(unittest.TestCase):
             "fn pdfcraft_android_gesture",
             "MotionAction::PointerDown if count >= 2",
             "MouseScrollDelta::PixelDelta",
+            "event::WindowEvent::CursorMoved { device_id, position: mid }",
+            "motion_event.source() == Source::Touchscreen",
             "PdfTouchMode::Scroll",
             "TouchPhase::Cancelled",
             "PinchGesture",

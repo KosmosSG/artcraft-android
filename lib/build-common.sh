@@ -328,6 +328,11 @@ if app == "pdfcraft":
         check=True,
     )
     fixed.append("crates/ui-egui/src/menus.rs (Android toolbar View toggle)")
+    subprocess.run(
+        [sys.executable, str(Path.cwd() / "tools/pdfcraft/android_canvas_input_patch.py"), str(src)],
+        check=True,
+    )
+    fixed.append("crates/ui-egui/src/canvas.rs + app.rs (one-finger Select and tool keys)")
 
     # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
     update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]

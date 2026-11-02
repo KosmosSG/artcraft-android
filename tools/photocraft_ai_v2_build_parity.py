@@ -69,7 +69,7 @@ def self_test() -> None:
         (accepted_recipe, stable.replace(FONT_PARITY[1], "", 1), "font scanner not applied"),
         (accepted_recipe, stable.replace(FONT_PARITY[3], "", 1), "font file count missing"),
         (accepted_recipe, stable.replace(COMMON[0], 'BASE="unreviewed"', 1), "keyboard baseline changed"),
-        (accepted_recipe, stable.replace(COMMON[1], "", 1), "keyboard focus check missing"),
+        (accepted_recipe, stable.replace(COMMON[1], ""), "keyboard focus check missing"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[0], "if: ${{ true }}", 1), "android.5 reenabled"),
         (rejected_recipe, rejected.replace(REJECTED_GUARDS[2], "", 1), "android.5 rejection missing"),
     )

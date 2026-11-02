@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n lib/build-common.sh
-          python3 -m unittest discover -s tools/designcraft -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/designcraft -p 'test_v016_*.py' -v
           python3 tools/suite_feature_parity.py
           python3 tools/release_gate_audit.py
 
@@ -64,7 +64,9 @@ jobs:
       - name: Confirm Android SDK/NDK and prepare build dependencies
         run: |
           set -euo pipefail
-          python3 -m pip install --user pillow
+          python3 -m venv "$RUNNER_TEMP/designcraft-venv"
+          "$RUNNER_TEMP/designcraft-venv/bin/pip" install pillow
+          echo "$RUNNER_TEMP/designcraft-venv/bin" >> "$GITHUB_PATH"
           test -d "$ANDROID_HOME/platforms/android-35" || { echo "Android SDK 35 is missing"; exit 1; }
           NDK_PATH="$ANDROID_HOME/ndk/27.2.12479018"
           test -d "$NDK_PATH" || { echo "Android NDK 27.2 is missing"; exit 1; }

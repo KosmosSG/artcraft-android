@@ -49,6 +49,9 @@ def prepare(source: Path, builder_android: Path) -> None:
     if not vendor.is_dir():
         raise ValueError("Missing PDFCraft vendor/winit staging directory")
     overlay = with_ime_api((builder_android / "mod.rs").read_text())
+    # PDFCraft-only: do not replace the shared Android keyboard/mouse backend.
+    from android_input_patch import patch as patch_android_input
+    overlay = patch_android_input(overlay)
     keycodes = (builder_android / "keycodes.rs").read_bytes()
     with tempfile.TemporaryDirectory(prefix=".pdfcraft-winit-", dir=vendor.parent) as temp:
         pinned = Path(temp) / "pinned"
@@ -76,7 +79,7 @@ def prepare(source: Path, builder_android: Path) -> None:
         # Only the disposable candidate's generated source tree is replaced.
         shutil.rmtree(vendor)
         shutil.move(str(pinned), str(vendor))
-    print("Pinned winit IME API restored with Android mouse/scroll/hover overlay")
+    print("Pinned Android mouse/hover overlay, IME API, PDFCraft 2-finger scroll and hardware key metadata restored")
 
 
 if __name__ == "__main__":

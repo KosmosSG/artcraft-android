@@ -64,12 +64,12 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
         key: &android_activity::input::KeyEvent<'_>,
         callback: &mut F,
     ) where F: FnMut(event::Event<T>, &RootAEL) {
-        let meta = key.meta_state().bits() as u32;
+        let meta = key.meta_state();
         let mut mods = ModifiersState::empty();
-        mods.set(ModifiersState::SHIFT, meta & (0x1 | 0x40 | 0x80) != 0);
-        mods.set(ModifiersState::ALT, meta & (0x2 | 0x10 | 0x20) != 0);
-        mods.set(ModifiersState::CONTROL, meta & (0x1000 | 0x2000 | 0x4000) != 0);
-        mods.set(ModifiersState::SUPER, meta & (0x10000 | 0x20000 | 0x40000) != 0);
+        mods.set(ModifiersState::SHIFT, meta.shift_on() || meta.shift_left_on() || meta.shift_right_on());
+        mods.set(ModifiersState::ALT, meta.alt_on() || meta.alt_left_on() || meta.alt_right_on());
+        mods.set(ModifiersState::CONTROL, meta.ctrl_on() || meta.ctrl_left_on() || meta.ctrl_right_on());
+        mods.set(ModifiersState::SUPER, meta.meta_on() || meta.meta_left_on() || meta.meta_right_on());
         // A modifier's own Up event may report the *old* meta bits; the key
         // event's action wins for that modifier alone.
         let down = key.action() == KeyAction::Down;

@@ -152,9 +152,12 @@ pub fn take_android_menu_bits() -> u32 {
     ]''', "Help update controls")
 
     # Validate all replacement targets BEFORE writing any source.
-    for modified in (s, srun, sstate, stree):
-        if "Android" not in modified:
-            raise RuntimeError("Android overlay missing")
+    for modified, marker in ((s, "ANDROID_MENU_BITS"),
+                             (srun, "super::ANDROID_MENU_BITS"),
+                             (sstate, "super::ANDROID_TOUCH_ENABLED"),
+                             (stree, "android.vectorcraft.fontImport")):
+        if marker not in modified:
+            raise RuntimeError(f"Android overlay missing required marker {marker}")
     for path, source in ((menus, s), (run, srun), (state, sstate), (tree, stree)):
         path.write_text(source)
     print("PASS: reviewed v0.20 Type/Help/Window Android controls and one-shot bridge")

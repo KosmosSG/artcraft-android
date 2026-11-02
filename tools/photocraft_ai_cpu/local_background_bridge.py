@@ -7,6 +7,7 @@ No model download is permitted by this bridge.
 """
 from __future__ import annotations
 import argparse
+import io
 import json
 import os
 import stat
@@ -35,41 +36,54 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
     destination = requested_output.resolve()
     if source == destination:
         raise ValueError("Input and output cannot be identical")
-    if not source.is_file() or source.stat().st_size > MAX_INPUT_BYTES:
+    if not source.is_file():
         raise ValueError("Input missing or too large")
     if destination.exists() or destination.suffix.lower() != ".png":
         raise ValueError("Output must be a new PNG path")
     if not destination.parent.is_dir():
         raise ValueError("Output parent directory must already exist")
-    try:
-        with Image.open(source) as image:
-            if image.format != "PNG":
-                raise ValueError("Only PNG input is accepted")
-            width, height = image.size
-            if width < 1 or height < 1 or width * height > MAX_PIXELS:
-                raise ValueError("Input dimensions outside safety limit")
-            image.verify()
-    except Image.DecompressionBombError as exc:
-        # Pillow may reject an oversized IHDR during open(), before our own
-        # 4 MP check. Surface a controlled validation error to the CLI.
-        raise ValueError("Input dimensions outside safety limit") from exc
-    # verify() checks PNG chunk CRCs but does not inflate image pixels.
-    # Reject CRC-valid, corrupt IDAT streams before starting CPU inference.
-    with Image.open(source) as decoded:
-        decoded.load()
-        if decoded.size != (width, height):
-            raise ValueError("Decoded PNG dimensions changed")
-    # Run inference into a private temporary directory on the SAME filesystem
-    # as the requested output. A failed/timeout/invalid inference must not
-    # leave a partial user-visible PNG. Do not pass model-download consent.
-    # Never capture image data or arbitrary subprocess logs in memory.
+    # The worker must consume the exact PNG snapshot validated for this
+    # consenting operation, even if the original pathname changes.
+    # A private input also prevents a surviving worker from reading a
+    # different file after the original was checked.
     with tempfile.TemporaryDirectory(
         prefix="photocraft-ai-stage-", dir=destination.parent
     ) as stage_dir:
+        staged_input = Path(stage_dir) / "input.png"
         staged_output = Path(stage_dir) / "result.png"
+        try:
+            fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as input_file:
+                info = os.fstat(input_file.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_INPUT_BYTES:
+                    raise ValueError("Input missing or too large")
+                input_snapshot = input_file.read(MAX_INPUT_BYTES + 1)
+        except OSError as exc:
+            raise ValueError("Input missing or unreadable") from exc
+        if not input_snapshot or len(input_snapshot) > MAX_INPUT_BYTES:
+            raise ValueError("Input missing or too large")
+        try:
+            with Image.open(io.BytesIO(input_snapshot)) as image:
+                if image.format != "PNG":
+                    raise ValueError("Only PNG input is accepted")
+                width, height = image.size
+                if width < 1 or height < 1 or width * height > MAX_PIXELS:
+                    raise ValueError("Input dimensions outside safety limit")
+                image.verify()
+            # Chunk CRC validation alone does not decode IDAT pixels.
+            with Image.open(io.BytesIO(input_snapshot)) as decoded:
+                decoded.load()
+                if decoded.size != (width, height):
+                    raise ValueError("Decoded PNG dimensions changed")
+        except Image.DecompressionBombError as exc:
+            raise ValueError("Input dimensions outside safety limit") from exc
+        with staged_input.open("xb") as private_input:
+            private_input.write(input_snapshot)
+        # Run inference into the private same-filesystem stage, with no
+        # model-download permission and no captured image/subprocess logs.
         completed = subprocess.run(
             [sys.executable, str(BENCHMARK), "--run",
-             "--input", str(source), "--output", str(staged_output)],
+             "--input", str(staged_input), "--output", str(staged_output)],
             check=False, timeout=180,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )

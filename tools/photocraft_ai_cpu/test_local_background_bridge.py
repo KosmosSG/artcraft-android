@@ -113,6 +113,29 @@ class SidecarTests(unittest.TestCase):
                 self.assertEqual(image.size, (16, 16))
             self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
 
+    def test_worker_uses_validated_input_snapshot_not_mutable_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+            expected = source.read_bytes()
+
+            def inference(argv, **kwargs):
+                private_input = Path(argv[argv.index("--input") + 1])
+                self.assertNotEqual(private_input, source)
+                self.assertEqual(private_input.read_bytes(), expected)
+                source.write_bytes(b"modified during inference startup")
+                self.assertEqual(private_input.read_bytes(), expected)
+                self.make_png(Path(argv[argv.index("--output") + 1]))
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with patch("sys.stdout", new_callable=io.StringIO):
+                    bridge.run(source, output, True)
+            self.assertTrue(output.is_file())
+            self.assertEqual(source.read_bytes(), b"modified during inference startup")
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
     def test_failed_inference_does_not_leave_partial_output(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

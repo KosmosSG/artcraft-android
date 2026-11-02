@@ -1,15 +1,8 @@
 name: VectorCraft v0.20 Android source compatibility (NO RELEASE)
 
+# Development-only check is manual to conserve GitHub Actions monthly minutes.
+# No production signing, automated APK publication, or release trigger.
 on:
-  push:
-    branches:
-      - development/vectorcraft-v020-android14-20261102
-    paths:
-      - adapters/vectorcraft/**
-      - tools/vectorcraft/**
-      - vendor/winit/src/platform_impl/android/**
-      - .github/workflows/vectorcraft-v020-android-compat.yml
-      - docs/VECTORCRAFT_V020_ANDROID_COMPATIBILITY_20261102.md
   workflow_dispatch:
 
 permissions:

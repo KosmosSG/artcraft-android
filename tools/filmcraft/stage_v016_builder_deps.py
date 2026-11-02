@@ -55,7 +55,7 @@ def patch_text(source: str) -> str:
     # Scope the EXISTING blocks rather than editing their heredocs, preserving
     # all mouse/clipboard vendor behavior for non-FilmCraft applications.
     source = source.replace(EGUI_START,
-                            'if [[ "$APP" != "filmcraft" ]]; then\n' + EGUI_START, 1)
+                            'mkdir -p "$SRC/vendor"\nif [[ "$APP" != "filmcraft" ]]; then\n' + EGUI_START, 1)
     source = source.replace(EGUI_END,
                             'else\n    echo "FilmCraft v0.16: keeping upstream egui-winit v0.37 Git pin"\nfi\n\n' + EGUI_END, 1)
     source = source.replace(WINIT_START,

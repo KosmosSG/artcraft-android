@@ -175,6 +175,16 @@ def transform(builder_script: str) -> str:
         patched = patched[:begin] + wrapped + patched[finish:]
     if patched.count("GRIDCRAFT_V0150_KEEP_EGUI037_FORK") != 1 or patched.count("GRIDCRAFT_V0150_KEEP_WINIT_FORK") != 1:
         raise RuntimeError("Expected exactly two official-fork preservation guards")
+    # The older vendor stages created the vendor/ folder as a side effect.
+    # Skipping both for the v0.15 git forks must not remove the destination
+    # needed by the still-required Android Activity SAF/IME glue.
+    glue = 'echo "Vendoring the ANR-safe android-activity glue for $TITLE..."'
+    if patched.count(glue) != 1:
+        raise RuntimeError("Pinned Android Activity glue anchor changed")
+    patched = patched.replace(
+        glue,
+        'mkdir -p "$SRC/vendor"\n' + glue, 1,
+    )
     return patched
 
 

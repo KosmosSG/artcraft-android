@@ -4,14 +4,16 @@ Continues suite PR #84 from the latest DeckCraft D/C/S development source in PR 
 (`42310d8c1699f9f6384ec4be6091664af6dd2781`), preserving that branch rather than
 replacing it. Existing releases and permanently signed APKs are unchanged.
 
-Pinned official source: Storytold DeckCraft v0.13.1,
-`4ce2944630b04188dee8504c14151994d06c416a` (checked 2026-10-31).
+Pinned official source: Storytold DeckCraft v0.14.1,
+`ee39ff67816d0039143ec7c98ea604cefe0cd2e5` (checked 2026-11-02).
 Pinned Android builder: MostafaXS1/artcraft-android
 `fbb4f66fcc868afdd8303d5227aa81db6a21d7fa`.
-Candidate: `DeckCraft v0.13.1-android.1`, package `com.artcraft.deckcraft`,
+Candidate: `DeckCraft v0.14.1-android.1`, package `com.artcraft.deckcraft`,
 versionCode `100000005`. The workflow retains only an **unsigned** ARM64 APK.
 
 Changes staged:
+- Updated to official v0.14.1 (released 2026-11-01), preserving all compatible improvements from v0.13.1; upstream includes safer print-preview handling, PPTX fidelity, animation and update-dialog improvements.
+- Fixed Android arm64 dependency resolution by pinning crates.io android-activity to the available 0.6.1 series (formerly unavailable ^0.6.4). Verify Android API compatibility in CI before candidate use.
 - Adapt existing Android fonts, legacy family aliases, menu controls, approved
   branding and D/C/S acknowledgement to upstream's split UI modules.
 - Enable upstream AutoRecover on Android. Restore saved presentations separately

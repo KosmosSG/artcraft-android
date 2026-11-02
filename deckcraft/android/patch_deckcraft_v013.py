@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Port the released Android font/menu/DCS behavior to official DeckCraft 0.13.1.
+"""Port the released Android font/menu/DCS behavior to official DeckCraft 0.14.1.
 
 Edits only a disposable upstream checkout. Every replacement fails closed on drift.
 """
@@ -99,7 +99,7 @@ def apply(root):
     original = (HERE / 'patch_deckcraft_tablet.py').read_text()
     alias_patch = original[original.index("p = Path(sys.argv[1]) / 'crates/fonts/src/fontdb.rs'"):original.index('# Reuse the approved Dk artwork')]
     exec(compile(alias_patch, 'legacy_font_aliases', 'exec'), {'Path': Path, 'sys': type('Args', (), {'argv': ['', str(root)]})})
-    print('DeckCraft 0.13.1: font persistence, native menus, update routing and D/C/S ported')
+    print('DeckCraft 0.14.1: font persistence, native menus, update routing and D/C/S ported')
 
 if __name__ == '__main__':
     apply(sys.argv[1])

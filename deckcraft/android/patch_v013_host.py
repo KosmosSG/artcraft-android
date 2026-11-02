@@ -1,4 +1,4 @@
-"""Stage DeckCraft 0.13.1 on the latest reviewed Android builder without release signing."""
+"""Stage DeckCraft 0.14.1 on the latest reviewed Android builder without release signing."""
 from pathlib import Path
 import sys, subprocess
 from patch_deckcraft_v013 import apply
@@ -26,7 +26,7 @@ new='''    "deckcraft": {
         "load": ''' + "'''inner.session.recovery_dir = Some(dir.join(\"recovery\"));\n    let _ = inner.session.execute(\"file.recovery.open\", &serde_json::json!({}));\n    let (ui, prefs) = @UI@::settings::load(dir);"
 assert s.count(old)==1;s=s.replace(old,new)
 p.write_text(s)
-print('DeckCraft 0.13.1 host: D/C/S transport, persistent fonts and AutoRecover staged')
+print('DeckCraft 0.14.1 host: D/C/S transport, persistent fonts and AutoRecover staged')
 
 p=root/'source/deckcraft/crates/ui-egui/src/lib.rs'
 p.write_text(p.read_text()+(here/'session.rs').read_text())

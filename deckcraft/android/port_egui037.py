@@ -26,7 +26,7 @@ def normalize(deps):
 for kind in ['dependencies','dev-dependencies','build-dependencies']:normalize(m.get(kind,{}))
 for table in m.get('target',{}).values():
  for kind in ['dependencies','dev-dependencies','build-dependencies']:normalize(table.get(kind,{}))
-m.setdefault('target',{}).setdefault('cfg(target_os = "android")',{}).setdefault('dependencies',{}).update({'jni':'0.22.4','ndk-context':'0.1.1','android-activity':{'version':'0.6.4','features':['game-activity']}})
+m.setdefault('target',{}).setdefault('cfg(target_os = "android")',{}).setdefault('dependencies',{}).update({'jni':'0.22.4','ndk-context':'0.1.1','android-activity':{'version':'0.6.1','features':['game-activity']}})
 (old/'Cargo.toml').write_text(toml.dumps(m))
 for name,content in custom.items():(old/'src'/name).write_text(content)
 subprocess.run(['git','apply','--unsafe-paths',str(Path(__file__).with_name('egui-winit-037-android.patch').resolve())],cwd=old,check=True)

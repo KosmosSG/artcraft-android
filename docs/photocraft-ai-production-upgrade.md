@@ -10,7 +10,11 @@
 > requires this archive state and adds a negative test against reactivation.
 > The rejected android.5 job and obsolete android.2 disposable proof remain
 > disabled. This prevents redundant heavy builds; it is **not** a Ctrl+W
-> runtime fix. CI confirmation is pending. No APK, signing or release action.
+> runtime fix. [Lightweight CI #41424781274](https://github.com/KosmosSG/artcraft-android/actions/runs/41424781274)
+> **passed**, including 14 negative parity mutations and real public V2 android.4
+> certificate/hash verification; [historical android.4 workflow #41424763495](https://github.com/KosmosSG/artcraft-android/actions/runs/41424763495)
+> **skipped** its ARM64 job as intended. Both runs have **zero artifacts**.
+> No APK, signing or release action.
 
 > **Ctrl+W overlay source regression gate (2 November 2026):**
 > [PR93 source guard](../tools/photocraft_ai_v2_build_parity.py) now checks

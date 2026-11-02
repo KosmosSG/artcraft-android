@@ -60,6 +60,7 @@ jobs:
           assert 'egui = "0.37"' in (src/"Cargo.toml").read_text()
           assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in shell
           assert "GRIDCRAFT_V0150_KEEP_WINIT_FORK" in shell
+          assert 'mkdir -p "$SRC/vendor"\necho "Vendoring the ANR-safe android-activity glue' in shell, "v0.15 vendor dir must exist for Android Activity"
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()

@@ -66,6 +66,26 @@ jobs:
           cat gridcraft-port-compat.json >> "$GITHUB_STEP_SUMMARY"
           echo '</pre></details>' >> "$GITHUB_STEP_SUMMARY"
           echo 'Changed anchors require manual porting; this audit never builds or publishes an APK.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify v0.15 GridCraft-specific SAF acknowledgement bridge in isolated builder (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_builder_saf.py
+          python3 tools/gridcraft/port_v0150_builder_saf.py builder/lib/build-common.sh --verify-only
+          python3 - <<'PY'
+          from pathlib import Path
+          import runpy
+          mod = runpy.run_path("tools/gridcraft/port_v0150_builder_saf.py")
+          text = Path("builder/lib/build-common.sh").read_text()
+          patched = mod["transform"](text)
+          marker = "GRIDCRAFT_V0150_ACK_SAF_V1"
+          assert patched.count(marker) == 2
+          assert 'android_save_close: Some(Box::new(' in patched
+          assert 'let _ = reply.send(success);' in patched
+          assert patched.count('let _ = reply.send(false);') >= 3
+          assert patched.startswith(text[:text.index('    "gridcraft": {',text.index('SAF_RECIPES = {'))])
+          print("PASS: GridCraft v0.15 isolated SAF callback covers success, cancelled/error and retains other-app code")
+          PY
       - name: Verify and stage the relocated v0.15.0 GridCraft Tools menu and font port (disposable only)
         shell: bash
         run: |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed FilmCraft Android File/Help menu bridge for official v0.10.0.
+"""Fail-closed FilmCraft Android File/Help bridge adapted to upstream v0.16.0.
 
 Staged only in a disposable FilmCraft builder; upstream repository remains pristine.
 The egui context carries an ephemeral u8 command to the Android wrapper's Java SAF
@@ -12,7 +12,7 @@ from pathlib import Path
 
 COMMAND_ANCHOR = '    uic!("app.about", "About FilmCraft", ["Help"], None),'
 INVOKE_ANCHOR = '    if id == "edit.selectAll" && ('
-MENU_BAR_ANCHOR = '    let items = menu_items(app);'
+MENU_BAR_ANCHOR = '    let items = menu_items_with_focus(app, ui.ctx());'
 COMMAND_INSERT = '''    // FilmCraft Android only: native File and Help commands, not a floating toolbar.
     #[cfg(target_os = "android")]
     uic!("android.filmcraft.importFont", "Import Font…", ["File"], None),
@@ -68,7 +68,7 @@ MENU_BAR_INSERT = '''    #[cfg(target_os = "android")]
 def once(s: str, anchor: str, replacement: str, label: str) -> str:
     n = s.count(anchor)
     if n != 1:
-        raise RuntimeError(f"{label}: expected exactly one official v0.10.0 anchor, saw {n}")
+        raise RuntimeError(f"{label}: expected exactly one official v0.16.0 anchor, saw {n}")
     return s.replace(anchor, replacement, 1)
 
 

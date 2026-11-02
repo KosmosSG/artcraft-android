@@ -18,6 +18,7 @@ OBSOLETE_PROOF = ROOT / ".github/workflows/photocraft-ai-production-dryrun.yml"
 AI_PREVIEW_WORKFLOW = ROOT / ".github/workflows/photocraft-ai-menu-pr93-test.yml"
 AI_MENU = ROOT / "adapters/photocraft/src/ai_menu.rs"
 JAVA_ACTIVITY = ROOT / "adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
+MODEL_RIGHTS = ROOT / "docs/photocraft-ai-model-rights-review.md"
 AI_STAGE = ROOT / "tools/photocraft_ai_preview_stage.py"
 STABLE_STAGE = ROOT / "tools/photocraft_ai_v2_fontscan_android4_stage.py"
 REJECTED_STAGE = ROOT / "tools/photocraft_ai_v2_candidate_stage.py"
@@ -248,7 +249,25 @@ def stage_transform_parity(stable: str, rejected: str) -> None:
                        'V2_STABLE_CODE = 16790007'), "android.5 stage identity")
 
     def normalized_stage(source: str) -> str:
-        start, end = "def stage(root: Path) -> None:", "def self_test() -> None:"
+        start, end = "def stage(root: Path) -> None:", "def model_rights_release_boundary(rights: str) -> None:
+    """Distinguish the published stable editor from experimental AI licensing.
+
+    This is a notice consistency check, not legal clearance or device testing.
+    """
+    require(rights, (
+        "PhotoCraft v0.14.0-android.4 stable **core editor**",
+        "experimental opt-in U2NetP integration",
+        "**no model weights bundled**",
+        "The owner rejected android.5 on hardware",
+        "**Current decision for public android.4:**",
+        "future AI production-stable/Latest release",
+        "Commercial licensing clearance NOT established",
+    ), "AI model rights and release notice")
+    if "preserve its experimental **Prerelease / Preview** status" in rights:
+        raise ValueError("Published stable editor incorrectly described as a prerelease")
+
+
+def self_test() -> None:"
         if source.count(start) != 1 or source.count(end) != 1:
             raise ValueError("Stage function boundaries changed")
         body = source.split(start, 1)[1].split(end, 1)[0]
@@ -274,6 +293,7 @@ def self_test() -> None:
     ai_preview = AI_PREVIEW_WORKFLOW.read_text(encoding="utf-8")
     ai_menu = AI_MENU.read_text(encoding="utf-8")
     java_activity = JAVA_ACTIVITY.read_text(encoding="utf-8")
+    model_rights = MODEL_RIGHTS.read_text(encoding="utf-8")
     ai_stage = AI_STAGE.read_text(encoding="utf-8")
     window_patch = WINDOW_PATCH.read_text(encoding="utf-8")
     stable_stage = STABLE_STAGE.read_text(encoding="utf-8")
@@ -284,12 +304,24 @@ def self_test() -> None:
     archived_ai_preview_recipe(ai_preview)
     ai_keyboard_boundary(ai_menu, ai_stage, window_patch)
     java_hardware_key_passthrough(java_activity)
+    model_rights_release_boundary(model_rights)
     ai_hidden_consent_boundary(ai_menu)
     ai_one_shot_token_boundary(ai_menu)
     ai_local_backend_disclosure(ai_menu)
     stage_transform_parity(stable_stage, rejected_stage)
 
     mutations = (
+        (model_rights_release_boundary, model_rights.replace(
+            "experimental opt-in U2NetP integration",
+            "production-stable U2NetP integration", 1),
+         "published editor notice falsely promotes experimental AI"),
+        (model_rights_release_boundary, model_rights.replace(
+            "**no model weights bundled**", "**model weights bundled**", 1),
+         "public model-exclusion notice removed"),
+        (model_rights_release_boundary, model_rights.replace(
+            "**Current decision for public android.4:**",
+            "**Current decision for a historical preview:**", 1),
+         "current public stable editor misidentified"),
         (lambda text: stage_transform_parity(stable_stage, text),
          rejected_stage.replace("build_text = exactly(build_text, guard, replacement)",
                                 "build_text = build_text.replace(guard, replacement)", 1),
@@ -350,12 +382,13 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; thirty-three negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; thirty-six negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")
     print("PASS: starting AI processing consumes the one-use UI token without retaining a dialog copy")
     print("PASS: ComfyUI and local U2NetP availability/consent disclosures match actual UI wiring")
+    print("PASS: model-rights notice distinguishes stable android.4 editor from experimental U2NetP; three mutations rejected")
     print("PASS: PR93 AI overlay and Java IME host preserve physical-key passthrough; owner hardware retest still required")
     print("PASS: accepted .4 and rejected .5 source transforms match apart from version metadata; two mutations rejected")
     print("NOT PROVEN: Ctrl+W runtime root cause, in-place data preservation, or a future candidate")

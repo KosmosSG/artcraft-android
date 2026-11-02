@@ -122,6 +122,24 @@ def verify_pair(reference: dict, candidate: dict) -> dict:
 
 def self_test() -> None:
     import copy
+    # The owner rejected the actual android.5 APK on device. The historical
+    # ARM64 workflow must remain inert even when manually dispatched. Keep
+    # this source-only assertion alongside the signed-APK rejection cases so
+    # a future refactor cannot accidentally reactivate an expensive build.
+    archived_workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github/workflows/photocraft-ai-v2-candidate-unsigned.yml"
+    )
+    workflow_text = archived_workflow.read_text(encoding="utf-8")
+    for required in (
+        "if: ${{ false }}",
+        "OWNER_REJECTED_VERSION, OWNER_REJECTED_CODE",
+        "STOP: owner rejected android.5 on device",
+    ):
+        if required not in workflow_text:
+            raise AssertionError(
+                "Rejected android.5 workflow no longer fail-closed: " + required
+            )
     good_badging = (
         "package: name='com.artcraft.photocraft' versionCode='16790008' "
         "versionName='0.14.0-android.6'\n"

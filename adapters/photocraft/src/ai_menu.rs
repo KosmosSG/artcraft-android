@@ -92,7 +92,12 @@ impl AndroidAiMenu {
         // Window → Show AI Tools can be toggled at any time.
         if !photocraft_ui_egui::menus::artcraft_ai_tools_visible() {
             self.cancel_cpu_job();
+            // Hiding the AI surface revokes the one-image consent and erases
+            // the ephemeral bearer token. Reopening must require a fresh
+            // explicit consent and token, not resurrect a prior dialog.
             self.cpu_consent = false;
+            self.cpu_token.clear();
+            self.show_background_setup = false;
         }
         let layer_changed = self.poll_cpu_result(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());

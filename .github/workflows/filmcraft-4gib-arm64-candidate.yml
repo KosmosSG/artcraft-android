@@ -138,8 +138,8 @@ jobs:
     - name: Build temporary FilmCraft ARM64 APK with unique disposable signer
       shell: bash
       env:
-        FILMCRAFT_ANDROID_VERSION_NAME: 0.10.0-android.3
-        FILMCRAFT_EPHEMERAL_VERSION_CODE: '1000003'
+        FILMCRAFT_ANDROID_VERSION_NAME: 0.10.0-android.4
+        FILMCRAFT_EPHEMERAL_VERSION_CODE: '1000004'
         ARTCRAFT_TARGET_SDK: '35'
       run: 'set -euo pipefail
 
@@ -157,7 +157,7 @@ jobs:
 
         test -f output/filmcraft-0.10.0.apk
 
-        mv output/filmcraft-0.10.0.apk output/filmcraft-0.10.0-android.3.apk
+        mv output/filmcraft-0.10.0.apk output/filmcraft-0.10.0-android.4.apk
 
         '
     - name: Verify compiled APK artwork and retain candidate evidence
@@ -165,7 +165,7 @@ jobs:
       run: |
         set -euo pipefail
         python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
-        python3 suite/tools/filmcraft/verify_android_features_apk.py filmcraft-builder/output/filmcraft-0.10.0-android.3.apk integrated-candidate
+        python3 suite/tools/filmcraft/verify_android_features_apk.py filmcraft-builder/output/filmcraft-0.10.0-android.4.apk integrated-candidate
         # The approved-branding verifier already retains a uniquely named
         # ephemeral APK with SHA256SUMS.txt and compiled package metadata.
         test -s integrated-candidate/SHA256SUMS.txt
@@ -178,7 +178,7 @@ jobs:
     - name: Retain APK and verification evidence (no release)
       uses: actions/upload-artifact@v5
       with:
-        name: FilmCraft-4GiB-android.3-EPHEMERAL-NOT-FOR-UPDATE
+        name: FilmCraft-4GiB-android.4-EPHEMERAL-NOT-FOR-UPDATE
         path: integrated-candidate/
         retention-days: 30
         if-no-files-found: error

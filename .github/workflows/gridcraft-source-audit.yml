@@ -66,6 +66,32 @@ jobs:
           cat gridcraft-port-compat.json >> "$GITHUB_STEP_SUMMARY"
           echo '</pre></details>' >> "$GITHUB_STEP_SUMMARY"
           echo 'Changed anchors require manual porting; this audit never builds or publishes an APK.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify and stage the relocated v0.15.0 GridCraft Tools menu and font port (disposable only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/gridcraft/port_v0150_ui.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_ui.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          u = Path("upstream-gridcraft/crates/ui-egui/src")
+          title = (u / "ribbon/title_bar.rs").read_text()
+          home = (u / "ribbon/home.rs").read_text()
+          fonts = (u / "fonts.rs").read_text()
+          app = (u / "app.rs").read_text()
+          state = (u / "lib.rs").read_text()
+          binding = (u / "app/fonts.rs").read_text()
+          assert title.count("GRIDCRAFT_ANDROID_NATIVE_MENU_V1") == 1
+          assert 'ui.menu_button("GridCraft Tools"' in title
+          assert home.count("let available = crate::fonts::families();") == 1
+          assert "pub fn reload_catalog()" in fonts
+          assert "android_font_generation: u64" in state
+          assert "android_font_generation: 0" in app
+          assert "if !catalog_changed && seen == self.fonts_seen" in binding
+          assert "if !catalog_changed && used == self.fonts_bound" in binding
+          print("PASS: GridCraft v0.15.0 title-bar menu, imported font dropdown and live catalog sources staged")
+          print("NOTE: Upstream source staging only; Android launcher, SAF/DCS/keyboard port and APK compilation pending")
+          PY
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
       - name: Setup Java 21 for GridCraft 4 GiB scan-budget boundary regression

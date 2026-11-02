@@ -4,6 +4,103 @@ use std::sync::Mutex;
 
 static RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 
+pub fn report_shared(event: Result<String, String>) {
+    *RESULT.lock().unwrap_or_else(|error| error.into_inner()) = Some(event);
+}
+
+/// Handle physical keyboard input before egui text fields and modal widgets
+/// consume it. NativeActivity also forwards hardware keys when its invisible
+/// IME EditText owns Android focus.
+pub fn handle_keys(
+    app: &mut designcraft_ui_egui::DesignApp,
+    ctx: &egui::Context,
+    raw: &mut egui::RawInput,
+    bridge: &saf::Bridge,
+) {
+    let dialog = app.ui.dialog.as_ref().is_some_and(|d| d.id == "closeDocument");
+    if let Ok(action) = bridge.dc_dialog_action(dialog) {
+        if (1..=3).contains(&action) {
+            ctx.data_mut(|data| data.insert_temp(
+                egui::Id::new("designcraft.unsaved.dcs"), action as u8
+            ));
+            ctx.request_repaint();
+        }
+    }
+    let mut escape = false;
+    let mut close = false;
+    let mut tools = None;
+    let mut modal_action = None;
+    raw.events.retain_mut(|event| {
+        if let egui::Event::Key {
+            key, physical_key, pressed, repeat, modifiers, ..
+        } = event {
+            if *key == egui::Key::BrowserBack && !modifiers.any() {
+                *key = egui::Key::Escape;
+                *physical_key = Some(egui::Key::Escape);
+            }
+            if *pressed && !*repeat {
+                if dialog && !modifiers.any() {
+                    modal_action = match key {
+                        egui::Key::D => Some(1),
+                        egui::Key::C => Some(2),
+                        egui::Key::S => Some(3),
+                        _ => None,
+                    };
+                    if modal_action.is_some() { return false; }
+                }
+                if *key == egui::Key::Escape && !modifiers.any() {
+                    escape = true;
+                }
+                if *key == egui::Key::W && (modifiers.ctrl || modifiers.command) {
+                    close = true;
+                    return false;
+                }
+                // Only use the Android fallback if the canvas is not editing.
+                // Otherwise T and V are printable document text.
+                if !dialog && app.ui.palette.is_none()
+                    && !app.session.wants_text()
+                    && !ctx.text_edit_focused()
+                    && !modifiers.any()
+                {
+                    tools = match key {
+                        egui::Key::T => Some("type"),
+                        egui::Key::V => Some("selection"),
+                        _ => None,
+                    };
+                    if tools.is_some() { return false; }
+                }
+            }
+        }
+        true
+    });
+    if let Some(action) = modal_action {
+        ctx.data_mut(|data| data.insert_temp(
+            egui::Id::new("designcraft.unsaved.dcs"), action
+        ));
+        raw.events.retain(|event| !matches!(event, egui::Event::Text(text)
+            if matches!(text.as_str(), "d" | "D" | "c" | "C" | "s" | "S")));
+        ctx.request_repaint();
+    }
+    if escape && !dialog && app.ui.palette.is_none() && app.session.wants_text() {
+        app.select_tool("selection");
+        ctx.memory_mut(|memory| {
+            if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+        });
+    }
+    if close && !dialog {
+        if app.session.wants_text() { app.select_tool("selection"); }
+        designcraft_ui_egui::menus::close_document(app, None);
+        ctx.request_repaint();
+    }
+    if let Some(tool) = tools {
+        app.select_tool(tool);
+        raw.events.retain(|event| !matches!(event, egui::Event::Text(text)
+            if (tool == "type" && text.eq_ignore_ascii_case("t"))
+                || (tool == "selection" && text.eq_ignore_ascii_case("v"))));
+        ctx.request_repaint();
+    }
+}
+
 pub fn accept_font(name: &str, bytes: &[u8]) {
     let outcome = install_font(name, bytes);
     *RESULT.lock().unwrap_or_else(|e| e.into_inner()) = Some(outcome);
@@ -42,6 +139,12 @@ fn install_font(name: &str, bytes: &[u8]) -> Result<String, String> {
     Ok(format!("Imported {} ({} bytes)", path.file_name().unwrap_or_default().to_string_lossy(), bytes.len()))
 }
 
+fn request_shared(bridge: &saf::Bridge, state: &SafState, refresh: bool)
+    -> Result<(), String>
+{
+    bridge.dc_font_action(saf_next_id(state), refresh)
+}
+
 fn request_import(bridge: &saf::Bridge, state: &SafState) -> Result<(), String> {
     let id = saf_next_id(state);
     state.requests.lock().unwrap_or_else(|e| e.into_inner())
@@ -68,30 +171,56 @@ pub fn ui(
             Err(e) => app.status_error("Import Font", e),
         }
     }
+    let shared_actions = designcraft_ui_egui::menus::take_android_shared_actions();
+    if shared_actions & 1 != 0 {
+        if let Err(error) = request_shared(bridge, state, false) {
+            app.status_error("Select Shared Font Folder", error);
+        }
+    }
+    if shared_actions & 2 != 0 {
+        if let Err(error) = request_shared(bridge, state, true) {
+            app.status_error("Refresh Shared Fonts", error);
+        }
+    }
     if designcraft_ui_egui::menus::take_android_font_import() {
         if let Err(e) = request_import(bridge, state) {
             app.status_error("Import Font", e);
         }
     }
-    // Visible even if the user hides the desktop File/Type menu bar.
-    egui::Panel::bottom("artcraft-designcraft-android-tools").show(ui, |ui| {
+    // The Android menu is also in the main top-level menu bar. Keep a
+    // prominent visible control for touch users who collapse the desktop bar.
+    egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.menu_button("Android", |ui| {
-                if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {
+            ui.menu_button("Android Tools ▾", |ui| {
+                if ui.button("Import Font (TTF/OTF/TTC)…").clicked() {
                     if let Err(e) = request_import(bridge, state) {
                         app.status_error("Import Font", e);
                     }
                     ui.close();
                 }
-                if ui.button("Refresh Fonts").clicked() {
+                if ui.button("Select Shared Font Folder…").clicked() {
+                    if let Err(e) = request_shared(bridge, state, false) {
+                        app.status_error("Select Shared Font Folder", e);
+                    }
+                    ui.close();
+                }
+                if ui.button("Refresh Shared Fonts").clicked() {
+                    if let Err(e) = request_shared(bridge, state, true) {
+                        app.status_error("Refresh Shared Fonts", e);
+                    }
+                    ui.close();
+                }
+                if ui.button("Reload Font Catalog").clicked() {
                     if let Err(e) = app.run("font.reload", serde_json::json!({})) {
-                        app.status_error("Refresh Fonts", e);
+                        app.status_error("Reload Font Catalog", e);
                     }
                     ui.close();
                 }
                 ui.separator();
-                ui.label("D / C / S: unsaved-document dialog");
+                ui.label("Ctrl+W → D / C / S; Esc exits typing; V/T tools");
             });
+            ui.separator();
+            ui.label("Shared Fonts • Keyboard");
         });
     });
 }

@@ -42,4 +42,72 @@ def apply(root):
     p.write_text(s)
 
 HELPER = '\n/// Consume only unmodified D/C/S presses; ignore repeats and preserve IME events.\nfn take_dcs(ctx: &egui::Context) -> Option<u8> {\n    ctx.input_mut(|i| {\n        let mut answer = None;\n        let mut consumed = false;\n        i.events.retain(|e| {\n            if let egui::Event::Key { key, pressed, repeat, modifiers, .. } = e {\n                let action = match key { egui::Key::D => 1, egui::Key::C => 2, egui::Key::S => 3, _ => 0 };\n                if action != 0 && !modifiers.any() {\n                    consumed = true;\n                    if *pressed && !*repeat && answer.is_none() { answer = Some(action); }\n                    return false;\n                }\n            }\n            true\n        });\n        if consumed {\n            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if matches!(t.as_str(), "d" | "D" | "c" | "C" | "s" | "S")));\n        }\n        answer\n    })\n}\n\nimpl SlideApp {\n    pub fn android_unsaved_dcs_active(&self) -> bool {\n        self.dialog.as_ref().is_some_and(|d| matches!(d.id.as_str(), "close" | "quit"))\n    }\n\n    pub fn android_capture_unsaved_dcs(&self, ctx: &egui::Context) {\n        if self.android_unsaved_dcs_active() {\n            if let Some(action) = take_dcs(ctx) {\n                ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.unsaved.dcs"), action));\n            }\n        }\n    }\n}\n'
+
+# Android hardware keyboards may bypass Activity.dispatchKeyEvent and arrive only
+# as egui RawInput. Capture D/C/S while the native quit/close dialog is active,
+# before app input dispatch, so the key never leaks through to the slide canvas.
+HELPER += r'''
+impl SlideApp {
+    pub fn android_capture_unsaved_dcs_raw(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if !self.android_unsaved_dcs_active() { return; }
+
+        // A Ctrl+W key-up must not leave the close-dialog shortcut gated behind
+        // stale Control modifiers. Take the modifiers from the actual key event.
+        let modified_key = raw.events.iter().any(|event| {
+            matches!(event, egui::Event::Key { modifiers, .. }
+                if modifiers.ctrl || modifiers.alt || modifiers.command)
+        });
+        let plain_text = !modified_key
+            && !raw.modifiers.ctrl && !raw.modifiers.alt && !raw.modifiers.command;
+        let has_ime = raw.events.iter().any(|e| matches!(e, egui::Event::Ime(_)));
+        let mut action = None;
+        let mut saw_shortcut_key = false;
+
+        raw.events.retain(|event| {
+            if let egui::Event::Key { key, pressed, repeat, modifiers, .. } = event {
+                let which = match key {
+                    egui::Key::D => 1_u8,
+                    egui::Key::C => 2_u8,
+                    egui::Key::S => 3_u8,
+                    _ => 0,
+                };
+                if which != 0 && !modifiers.ctrl && !modifiers.alt && !modifiers.command {
+                    saw_shortcut_key = true;
+                    if *pressed && !*repeat && action.is_none() {
+                        action = Some(which);
+                    }
+                    // Take DOWN and UP so a second D/C/S press works and no
+                    // keystroke escapes the modal into the active presentation.
+                    return false;
+                }
+            }
+            true
+        });
+
+        // Android IMEs can deliver a single printable character without a Key
+        // event. Only take it when no IME composition or modified key is active.
+        if plain_text && !has_ime {
+            raw.events.retain(|event| {
+                if let egui::Event::Text(text) = event {
+                    let which = match text.as_str() {
+                        "d" | "D" => 1_u8,
+                        "c" | "C" => 2_u8,
+                        "s" | "S" => 3_u8,
+                        _ => 0,
+                    };
+                    if which != 0 {
+                        if action.is_none() && !saw_shortcut_key { action = Some(which); }
+                        return false;
+                    }
+                }
+                true
+            });
+        }
+        if let Some(action) = action {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.unsaved.dcs"), action));
+        }
+    }
+}
+'''
+
 if __name__=="__main__":apply(sys.argv[1])

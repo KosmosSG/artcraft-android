@@ -36,4 +36,72 @@ mod android_dcs_regression {
         app.android_save_finished(*request.borrow(),true);
         assert!(app.session.active().is_none());
     }
+
+    fn key_event(key: egui::Key, pressed: bool, repeat: bool, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key { key, physical_key: None, pressed, repeat, modifiers }
+    }
+    #[test]
+    fn dcs_raw_keyboard_repeats_and_does_not_leak_text_into_canvas() {
+        let mut app = app();
+        app.dialog = Some(dialogs::Dialog::new("close"));
+        let ctx = egui::Context::default();
+        for (key, letter, action) in [
+            (egui::Key::D, "d", 1_u8),
+            (egui::Key::C, "C", 2_u8),
+            (egui::Key::S, "s", 3_u8),
+            (egui::Key::D, "D", 1_u8),
+        ] {
+            let mut raw = egui::RawInput::default();
+            raw.events = vec![
+                key_event(key, true, false, egui::Modifiers::NONE),
+                egui::Event::Text(letter.to_owned()),
+                key_event(key, false, false, egui::Modifiers::NONE),
+            ];
+            app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
+            assert!(raw.events.is_empty(), "Modal must consume D/C/S key-down, text and key-up");
+            assert_eq!(
+                ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))),
+                Some(action)
+            );
+        }
+    }
+    #[test]
+    fn dcs_raw_shortcuts_require_modal_and_ignore_ctrl_key_repeats() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::D, true, false, egui::Modifiers::NONE)];
+        app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1, "Non-modal text input must remain untouched");
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
+
+        app.dialog = Some(dialogs::Dialog::new("quit"));
+        let mut ctrl = egui::Modifiers::NONE;
+        ctrl.ctrl = true;
+        ctrl.command = true;
+        let mut raw = egui::RawInput::default();
+        raw.modifiers = ctrl;
+        raw.events = vec![key_event(egui::Key::S, true, false, ctrl), egui::Event::Text("s".into())];
+        app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 2, "Ctrl+S must not become bare Save in dialog");
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
+
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::C, true, true, egui::Modifiers::NONE)];
+        app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
+        assert!(raw.events.is_empty(), "Repeated modal keystrokes must not reach the canvas");
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
+    }
+    #[test]
+    fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
+        let mut app = app();
+        app.dialog = Some(dialogs::Dialog::new("close"));
+        let ctx = egui::Context::default();
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::Escape, true, false, egui::Modifiers::NONE)];
+        app.android_capture_unsaved_dcs_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1, "Esc must reach DeckCraft to exit typing or cancel");
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
+    }
+
 }

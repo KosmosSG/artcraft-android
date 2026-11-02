@@ -35,6 +35,36 @@ old = 'inner_hook = "let _ = ctx;\\n        self.inner.raw_input_hook(raw);"'
 new = 'inner_hook = ("self.inner.raw_input_hook(ctx, raw);" if app == "deckcraft" else "let _ = ctx;\\n        self.inner.raw_input_hook(raw);")'
 assert s.count(old) == 1, 'Raw-input hook adapter changed'
 p.write_text(s.replace(old, new, 1))
+
+# DeckCraft-specific key handling. Run it in the generated raw-input hook
+# BEFORE the UI and its modal keyboard routing; native Android dispatch can
+# bypass the Java Activity's dispatchKeyEvent callback.
+p = root / 'lib/build-common.sh'
+s = p.read_text()
+before = '        self.map_android_back(raw);'
+after = '        self.map_android_back(raw);\n        self.inner.android_capture_unsaved_dcs_raw(ctx, raw);'
+assert s.count(before) == 1, 'Android raw-key hook changed'
+s = s.replace(before, after, 1)
+
+# The reference builder normally exits the Activity when Back becomes Escape
+# and the input is not consumed. DeckCraft must NEVER exit while a document is
+# open: Esc/Back belongs first to text editing, dialogs, and the document UI.
+before = '''        if self.back_pending {{
+            self.back_pending = false;
+            // A back press was mapped onto Escape.'''
+after = '''        if self.back_pending {{
+            self.back_pending = false;
+            // Never close DeckCraft from Esc/Back with an open presentation.
+            // The inner app has already processed Escape (including text exit).
+            if self.inner.session.active().is_some() {{
+                self.close_asked = false;
+                return;
+            }}
+            // A back press was mapped onto Escape.'''
+assert s.count(before) == 1, 'Android Back exit guard changed'
+s = s.replace(before, after, 1)
+p.write_text(s)
+
 print('DeckCraft 0.14.1 host: D/C/S transport, persistent fonts and AutoRecover staged')
 
 p=root/'source/deckcraft/crates/ui-egui/src/lib.rs'

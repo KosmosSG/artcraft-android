@@ -8,8 +8,8 @@ Pinned official source: Storytold DeckCraft v0.14.1,
 `ee39ff67816d0039143ec7c98ea604cefe0cd2e5` (checked 2026-11-02).
 Pinned Android builder: MostafaXS1/artcraft-android
 `fbb4f66fcc868afdd8303d5227aa81db6a21d7fa`.
-Candidate: `DeckCraft v0.14.1-android.1`, package `com.artcraft.deckcraft`,
-versionCode `100000005`. The workflow retains only an **unsigned** ARM64 APK.
+Candidate: `DeckCraft v0.14.1-android.2`, package `com.artcraft.deckcraft`,
+versionCode `100000006`. The workflow retains only an **unsigned** ARM64 APK.
 
 Changes staged:
 - Updated to official v0.14.1 (released 2026-11-01), preserving all compatible improvements from v0.13.1; upstream includes safer print-preview handling, PPTX fidelity, animation and update-dialog improvements.

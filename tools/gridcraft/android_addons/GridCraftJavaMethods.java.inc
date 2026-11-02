@@ -130,6 +130,9 @@
     }
 
     private void gcCopyFont(android.net.Uri uri, java.io.File destination) throws Exception {
+        gcCopyFont(uri, destination, new long[]{0});
+    }
+    private void gcCopyFont(android.net.Uri uri, java.io.File destination, long[] scanBytes) throws Exception {
         java.io.File parent = destination.getParentFile();
         if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) throw new java.io.IOException("Font storage unavailable");
         java.io.File temp = new java.io.File(parent, destination.getName() + ".part");
@@ -145,6 +148,11 @@
                     size += count;
                     if (size > 32L * 1024 * 1024) throw new java.io.IOException("Font exceeds 32 MB");
                     for (int i = 0; i < count && filled < 4; i++) signature[filled++] = buffer[i];
+                    if (scanBytes[0] > 4L * 1024 * 1024 * 1024 - count) {
+                        scanBytes[0] = 4L * 1024 * 1024 * 1024;
+                        throw new java.io.IOException("Font scan reached the 4 GB limit");
+                }
+                    scanBytes[0] += count;
                     out.write(buffer, 0, count);
                 }
                 if (size < 4) throw new java.io.IOException("Font is empty or truncated");
@@ -171,8 +179,9 @@
             if (!staged.mkdirs()) throw new java.io.IOException("Cannot prepare font cache");
             java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
             pending.add(android.provider.DocumentsContract.getTreeDocumentId(tree));
+            long[] scanBytes = {0};
             int dirs = 0, imported = 0;
-            while (!pending.isEmpty() && dirs++ < 200 && imported < 200) {
+            while (!pending.isEmpty() && dirs++ < 200 && imported < 200 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                 String documentId = pending.removeFirst();
                 android.net.Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId);
                 try (android.database.Cursor cursor = getContentResolver().query(children,
@@ -181,7 +190,7 @@
                                        android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE },
                         null, null, null)) {
                     if (cursor == null) continue;
-                    while (cursor.moveToNext() && imported < 200) {
+                    while (cursor.moveToNext() && imported < 200 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                         String id = cursor.getString(0), name = cursor.getString(1), mime = cursor.getString(2);
                         if (id == null || name == null) continue;
                         if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
@@ -190,7 +199,7 @@
                             android.net.Uri child = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id);
                             try {
                                 gcCopyFont(child, new java.io.File(staged, gcHash(id) +
-                                      (name.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")));
+                                      (name.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")), scanBytes);
                                 imported++;
                             } catch (Exception badFont) {
                                 android.util.Log.w(TAG, "Skipping unreadable/unsupported shared font", badFont);
@@ -199,6 +208,8 @@
                     }
                 }
             }
+            if (scanBytes[0] >= 4L * 1024 * 1024 * 1024)
+                throw new java.io.IOException("4 GB font scan limit reached; previous fonts preserved");
             gcDeleteTree(previous);
             boolean hadActive = active.exists();
             if (hadActive && !active.renameTo(previous)) throw new java.io.IOException("Cannot prepare existing shared font cache");

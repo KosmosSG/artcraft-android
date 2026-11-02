@@ -295,7 +295,11 @@ def make_handler(token: str):
                         descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
                         with os.fdopen(descriptor, "rb") as verified_file:
                             current = os.fstat(verified_file.fileno())
+                            # A worker must not publish a hard link to an
+                            # unrelated local file as if it were its output.
+                            # No-follow alone rejects symlinks, not hard links.
                             if (not stat.S_ISREG(current.st_mode)
+                                    or current.st_nlink != 1
                                     or current.st_size > MAX_RESULT):
                                 return self.reply(502, b"Output exceeds safety limit")
                             png = verified_file.read(MAX_RESULT + 1)

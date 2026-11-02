@@ -7,7 +7,7 @@
 - Official Storytold GridCraft stable: `v0.15.0`, released 2026-11-01 19:18 UTC, tag commit `30b210b4ef03b30616923465efa70766cefba379`; workspace version `0.15.0`. Do not follow unpinned `main`.
 - Latest user-tested Android release: `gridcraft-v0.11.1-android.4-ctrlw-dcs-fix`, source `720fab9eaa178da485750009f1a2782026da6286`. Do not replace the tested signing identity or install-over package.
 - Porting reference: `MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af`. It is not a substitute for the latest tested GridCraft-specific overlays.
-- Separate pending GridCraft 4 GiB font scan fix: PR #101. Reconcile it without replacing the tested Ctrl+W and D/C/S source.
+- The 4 GiB shared-font scan-byte budget from pending PR #101 has now been ported into this review branch atop the tested Ctrl+W and D/C/S baseline. It uses long arithmetic, preserves the previous cache when exhausted and has a separate Java boundary regression. Existing 200-file / 200-directory and 32 MiB per-file caps remain; a 4 GiB budget does not imply scanning 5,000 files. Android compilation and SAF device scanning remain unverified.
 
 ## Immediate compatibility findings
 
@@ -41,7 +41,7 @@ The v0.15.0 release updates the spreadsheet UI and shared update handling, and c
 ## Next gates
 
 1. Port new upstream `v0.15.0` APIs into the isolated GridCraft-only Android overlay, preserving exact baseline keyboard, save, and font behavior.
-2. Integrate pending 4 GiB scan fix from PR #101 without losing Ctrl+W fix.
+2. Confirm the ported 4 GiB scan from PR #101 in a real ARM64 build and device SAF refresh; do not claim that existing per-file, per-folder or file-count limits changed.
 3. Produce an isolated disposable-key ARM64 candidate; verify compiled native libraries, package ID, launcher icon and feature tests. Do NOT replace an installed original-key production build with temporary-key test APK.
 4. Tablet regression tests: repeat Ctrl+W then D/C/S, Esc during cell editing, XLSX round-trip, imports, nested fonts, 2-finger gestures, scaling, GPU fallback, long-press, cursor, autosave/recovery if implemented, and duplicate extension handling.
 5. Independently verify production versionCode is greater than the released `16780036` and signer matches the user's existing certificate; request owner approval before any production merge/signing/release.

@@ -133,3 +133,24 @@ outside GitHub. Device test: type with caret active, Ctrl+W opens D/C/S without
 Esc, then D/C/S repeatedly; Ctrl+C, Ctrl+X, Ctrl+V while text selected;
 shape object clipboard; touchscreen pinch/pan, trackpad smoothness, Esc, dark
 mode, and font importer reachable once under Help. CI alone is not proof.
+
+## v0.14.1-android.8 — Ctrl+A/C/X/V hardware clipboard and trackpad refinement (2026-11-02)
+
+HONOR MagicPad 4 owner tested Android.7: Ctrl+W directly while typing WORKED; D/C/S,
+Escape, touchscreen pinch/pan, Dark Theme and Help-only Import Font WORKED.
+Ctrl+C, Ctrl+X, Ctrl+V failed while text editing; the Home Paste tooltip
+incorrectly displayed hard-coded macOS `⌘V` instead of Android `Ctrl+V`.
+Ctrl+A was requested to select all text inside the active shape. Trackpad
+scroll was improved but still weak. Android.8 adds the same one-shot RawInput
+and Java hardware keyboard handling that fixed Ctrl+W, for A/C/X/V, then
+routes it to text.selectAll, publish_clipboard copy/cut, and edit.paste,
+respectively; clipboard strings come from the Android ClipboardManager JNI
+and existing shell synthetic Paste events. Stock text fields and modals retain
+their own normal clipboard shortcuts. Home's Android-specific tooltip now
+reads Paste (Ctrl+V). Trackpad point-wheel gain becomes 1.95 (previous 1.25),
+while working two-finger touchscreen pan stays 1.65. No edits to DCS/Escape,
+theme, font import or published releases. Re-test with active text caret:
+Ctrl+A selects all text, Ctrl+C copies selected text, Ctrl+X cuts and Ctrl+V
+pastes; verify also after multiple edits, other app clipboard integration,
+trackpad pan smoothness, D/C/S, Escape, dark theme and touchscreen gestures.
+No permanent GitHub signing or publication; temporary test signing only.

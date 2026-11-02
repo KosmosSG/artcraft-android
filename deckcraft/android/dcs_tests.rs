@@ -153,6 +153,55 @@ mod android_dcs_regression {
     }
 
     #[test]
+    fn android_clipboard_and_select_all_capture_only_when_canvas_text_is_editing() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let mut mods = egui::Modifiers::NONE;
+        mods.ctrl = true;
+        mods.command = true;
+        let mut plain = egui::RawInput::default();
+        plain.events = vec![key_event(egui::Key::A, true, false, mods)];
+        app.android_capture_editor_clipboard_raw(&ctx, &mut plain);
+        assert_eq!(plain.events.len(), 1, "Ctrl+A outside text must not be swallowed");
+        assert!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.android.clip_action"))).is_none());
+
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[40.0,40.0,240.0,90.0], "text":"Example text"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        assert!(app.session.active().unwrap().selection.text.is_some());
+        for (key, action) in [
+            (egui::Key::A,1_u8), (egui::Key::C,2_u8),
+            (egui::Key::X,3_u8), (egui::Key::V,4_u8)
+        ] {
+            let mut raw = egui::RawInput::default();
+            raw.events = vec![key_event(key, true, false, mods)];
+            if action == 4 { raw.events.push(egui::Event::Paste("Hello".into())); }
+            app.android_capture_editor_clipboard_raw(&ctx, &mut raw);
+            assert!(raw.events.is_empty(), "Shortcut must not leak to custom text editor");
+            assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.android.clip_action"))), Some(action));
+            if action == 4 {
+                assert_eq!(ctx.data_mut(|d| d.remove_temp::<String>(egui::Id::new("deckcraft.android.clip_text"))), Some("Hello".into()));
+            }
+        }
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::A, true, false, egui::Modifiers::NONE)];
+        app.android_capture_editor_clipboard_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1, "Plain typing is not Ctrl+A");
+    }
+
+    #[test]
+    fn editor_select_all_command_targets_text_not_slides() {
+        let mut app = app();
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[30.0,30.0,250.0,75.0], "text":"Select me"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        assert!(app.session.active().unwrap().selection.text.as_ref().unwrap().is_range());
+    }
+
+    #[test]
     fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
         let mut app = app();
         app.dialog = Some(dialogs::Dialog::new("close"));

@@ -179,47 +179,98 @@ def apply(root):
             self.drain_requests();
             return;
         }
-        // The Android shell synthesizes Copy/Cut/Paste for Ctrl+C/X/V, but
-        // the official custom canvas text editor skips those during focus.
-        // Stock text fields and modals retain their normal clipboard routing.
+        // Android hardware Ctrl+A/C/X/V can be intercepted by the IME before
+        // ctx.input(). The early RawInput and Java side channel carry a
+        // one-shot action. Standard egui text fields and modals keep theirs.
         #[cfg(target_os = "android")]
-        if !modal
-            && self.session.active().is_some_and(|d| d.selection.text.is_some())
-            && !ctx.text_edit_focused()
         {
-            let mut handled_clipboard = false;
-            for ev in &events {
-                match ev {
-                    egui::Event::Copy => {
+            let action = ctx.data_mut(|d| d.remove_temp::<u8>(
+                egui::Id::new("deckcraft.android.clip_action")));
+            let mut native_text = ctx.data_mut(|d| d.remove_temp::<String>(
+                egui::Id::new("deckcraft.android.clip_text")));
+            let custom_editing = !modal
+                && self.session.active().is_some_and(|d| d.selection.text.is_some())
+                && !ctx.text_edit_focused();
+            if custom_editing {
+                let mut handled_clipboard = false;
+                match action {
+                    Some(1) => {
+                        if let Err(err) = self.session.execute("text.selectAll", &json!({})) {
+                            self.set_status(err.to_string());
+                        }
+                        handled_clipboard = true;
+                    }
+                    Some(2) => {
                         self.publish_clipboard(ctx, false);
                         handled_clipboard = true;
                     }
-                    egui::Event::Cut => {
-                        self.publish_clipboard(ctx, true);
-                        self.note_application_edit(ctx);
-                        handled_clipboard = true;
-                    }
-                    egui::Event::Paste(text) => {
-                        let pasted = if text == OBJECTS_MARKER { "" } else { text.as_str() };
-                        let mut params = json!({"text": pasted});
-                        if let Some(html) = self.services.clipboard_html.as_mut().and_then(|f| f()) {
-                            if !html.is_empty() { params["html"] = Value::String(html); }
-                        }
+                    Some(3) => {
                         let revision = self.session.active().map(|d| d.revision);
-                        if let Err(err) = self.session.execute("edit.paste", &params) {
-                            self.set_status(err.to_string());
-                        }
+                        self.publish_clipboard(ctx, true);
                         if self.session.active().map(|d| d.revision) != revision {
                             self.note_application_edit(ctx);
                         }
                         handled_clipboard = true;
                     }
+                    Some(4) => {
+                        if native_text.is_none() {
+                            native_text = events.iter().find_map(|ev| match ev {
+                                egui::Event::Paste(text) => Some(text.clone()),
+                                _ => None,
+                            });
+                        }
+                        if let Some(text) = native_text.as_deref() {
+                            let pasted = if text == OBJECTS_MARKER { "" } else { text };
+                            let revision = self.session.active().map(|d| d.revision);
+                            if let Err(err) = self.session.execute("edit.paste", &json!({"text": pasted})) {
+                                self.set_status(err.to_string());
+                            }
+                            if self.session.active().map(|d| d.revision) != revision {
+                                self.note_application_edit(ctx);
+                            }
+                        } else {
+                            self.set_status("Android clipboard is empty");
+                        }
+                        handled_clipboard = true;
+                    }
                     _ => {}
                 }
-            }
-            if handled_clipboard {
-                self.drain_requests();
-                return;
+                // Keep the usual synthetic egui clipboard events as fallback
+                // when the hardware key did not reach either one-shot handler.
+                if !handled_clipboard {
+                    for ev in &events {
+                        match ev {
+                            egui::Event::Copy => {
+                                self.publish_clipboard(ctx, false);
+                                handled_clipboard = true;
+                            }
+                            egui::Event::Cut => {
+                                let revision = self.session.active().map(|d| d.revision);
+                                self.publish_clipboard(ctx, true);
+                                if self.session.active().map(|d| d.revision) != revision {
+                                    self.note_application_edit(ctx);
+                                }
+                                handled_clipboard = true;
+                            }
+                            egui::Event::Paste(text) => {
+                                let pasted = if text == OBJECTS_MARKER { "" } else { text.as_str() };
+                                let revision = self.session.active().map(|d| d.revision);
+                                if let Err(err) = self.session.execute("edit.paste", &json!({"text": pasted})) {
+                                    self.set_status(err.to_string());
+                                }
+                                if self.session.active().map(|d| d.revision) != revision {
+                                    self.note_application_edit(ctx);
+                                }
+                                handled_clipboard = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if handled_clipboard {
+                    self.drain_requests();
+                    return;
+                }
             }
         }
         if ctx.memory(|m| m.focused().is_some()) || modal {''')
@@ -227,6 +278,11 @@ def apply(root):
     edit('app/keys.rs',
         '''    fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {''',
         '''    pub(crate) fn android_editing_ctrl_w(events: &[egui::Event]) -> bool {''')
+
+    # The pinned upstream ribbon hardcodes a Mac-only Paste tooltip.
+    # Android hardware keyboards use Control, not Command.
+    edit('ribbon/home.rs', 'main.on_hover_text("Paste (⌘V)")',
+         'main.on_hover_text(if cfg!(target_os = "android") { "Paste (Ctrl+V)" } else { "Paste (⌘V)" })')
 
     # Carry forward the release's render/round-trip/font-style regression, not just menu checks.
     tablet_tree = ast.parse((HERE / 'patch_deckcraft_tablet.py').read_text())
@@ -323,7 +379,7 @@ def apply(root):
             #[cfg(target_os = "android")]
             let scroll_gain = if ui.input(|i| i.events.iter().any(|e|
                 matches!(e, egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. })
-            )) { if touch_pan_active { 1.65_f32 } else { 1.25_f32 } } else { 1.0 };
+            )) { if touch_pan_active { 1.65_f32 } else { 1.95_f32 } } else { 1.0 };
             #[cfg(not(target_os = "android"))]
             let scroll_gain = 1.0_f32;
             offset -= wheel * scroll_gain;

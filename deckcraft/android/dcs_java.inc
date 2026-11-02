@@ -4,6 +4,18 @@
     // Hardware Ctrl+W can be handled by Android while the slide's text editor
     // owns focus, before egui receives an ordinary Key event.
     public int dkTakeEditorClose() { return dkEditorClose.getAndSet(0); }
+    private final java.util.concurrent.atomic.AtomicInteger dkEditorClipboard = new java.util.concurrent.atomic.AtomicInteger();
+    public int dkTakeEditorClipboard() { return dkEditorClipboard.getAndSet(0); }
+    public String dkEditorClipboardText() {
+        android.content.ClipboardManager manager =
+            (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+        if (manager == null || !manager.hasPrimaryClip()) return "";
+        android.content.ClipData clip = manager.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return "";
+        CharSequence chars = clip.getItemAt(0).coerceToText(this);
+        return chars == null ? "" : chars.toString();
+    }
+
 
     public int dkUnsavedDialog(boolean active) {
         // Only one pending action is stored. No held-key set is retained
@@ -39,6 +51,20 @@
                 // Do not swallow the event. The native raw-input hook may also
                 // see it; either path deduplicates into the same one-shot flag.
                 android.util.Log.i("DeckCraftDCS", "editor_ctrl_w_queued");
+            }
+            // Explicit physical-key fallback for the custom canvas text editor.
+            // The normal Android/egui input route may lose Ctrl+A/C/X/V while
+            // the IME owns focus, just as it previously lost Ctrl+W.
+            if (!dkDialogActive && event.isCtrlPressed() && !event.isAltPressed()
+                    && !event.isShiftPressed() && !event.isMetaPressed()
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                    && event.getRepeatCount() == 0) {
+                int action = code == android.view.KeyEvent.KEYCODE_A ? 1
+                    : code == android.view.KeyEvent.KEYCODE_C ? 2
+                    : code == android.view.KeyEvent.KEYCODE_X ? 3
+                    : code == android.view.KeyEvent.KEYCODE_V ? 4 : 0;
+                if (action != 0) dkEditorClipboard.set(action);
+                // Do not consume: native RawInput also handles regular widgets.
             }
             // A confirmation may close on KEY_DOWN: swallow the matching KEY_UP.
             if (dkDialogKeys.contains(code)) {

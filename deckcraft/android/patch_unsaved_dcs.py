@@ -140,4 +140,55 @@ impl SlideApp {
 }
 '''
 
+
+# Capture hardware clipboard/select-all shortcuts before egui handles (or drops)
+# the input for Android's custom canvas editor. Stock text widgets retain keys.
+HELPER += r'''
+impl SlideApp {
+    pub fn android_capture_editor_clipboard_raw(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if self.session.active().is_none_or(|d| d.selection.text.is_none())
+            || self.dialog.is_some() || self.palette.is_some()
+            || ctx.text_edit_focused() { return; }
+        let action = raw.events.iter().find_map(|e| match e {
+            egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. }
+                if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift =>
+            {
+                match key {
+                    egui::Key::A => Some(1_u8),
+                    egui::Key::C => Some(2_u8),
+                    egui::Key::X => Some(3_u8),
+                    egui::Key::V => Some(4_u8),
+                    _ => None
+                }
+            },
+            _ => None,
+        });
+        let Some(action) = action else { return; };
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.android.clip_action"), action));
+        if action == 4 {
+            // AndroidShell has already appended a real system-clipboard Paste.
+            if let Some(text) = raw.events.iter().find_map(|e| match e {
+                egui::Event::Paste(text) => Some(text.clone()),
+                _ => None
+            }) {
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.android.clip_text"), text));
+            }
+        }
+        raw.events.retain(|e| match e {
+            egui::Event::Key { key, modifiers, .. }
+                if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift =>
+            {
+                !matches!((action, key),
+                    (1, egui::Key::A) | (2, egui::Key::C)
+                    | (3, egui::Key::X) | (4, egui::Key::V))
+            },
+            egui::Event::Copy if action == 2 => false,
+            egui::Event::Cut if action == 3 => false,
+            egui::Event::Paste(_) if action == 4 => false,
+            _ => true,
+        });
+    }
+}
+'''
+
 if __name__=="__main__":apply(sys.argv[1])

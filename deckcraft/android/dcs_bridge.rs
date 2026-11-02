@@ -19,6 +19,31 @@ impl ModalBridge {
         }
     }
 
+    pub fn editor_clipboard(&self, ctx: &egui::Context) {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<(i32, Option<String>)> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let action = env.call_method(&*activity, JNIString::new("dkTakeEditorClipboard"), jni_sig!("()I"), &[])?.i()?;
+            if action != 4 { return Ok((action, None)); }
+            let value = env.call_method(&*activity, JNIString::new("dkEditorClipboardText"), jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok((action, None)); }
+            let string = jni::objects::JString::cast_local(env, value)?;
+            Ok((action, Some(string.try_to_string(env)?)))
+        });
+        if let Ok((action @ 1..=4, text)) = result {
+            ctx.data_mut(|d| {
+                let id = egui::Id::new("deckcraft.android.clip_action");
+                if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action as u8); }
+                if let Some(text) = text {
+                    let id = egui::Id::new("deckcraft.android.clip_text");
+                    if d.get_temp::<String>(id).is_none() { d.insert_temp(id, text); }
+                }
+            });
+            ctx.request_repaint();
+        }
+    }
+
     pub fn unsaved_dialog(&self, active: bool, ctx: &egui::Context) {
         if !active { ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))); }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };

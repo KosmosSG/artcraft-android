@@ -13,7 +13,17 @@
 > ARM64 workflow [#41445396193](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193),
 > which was **still running at evidence capture**; do not start a duplicate,
 > cancel an active build, or treat an isolated preview as a production candidate.
-> This is a privacy/source-only improvement, **not** a fix for the unresolved
+> [Preview-workflow containment 6ac87689](https://github.com/KosmosSG/artcraft-android/commit/6ac8768986b64fedbc67a09b08a79bf0c526c381)
+> removes automatic push-triggered heavy ARM64 builds and archives its one
+> job with a hard false condition; the existing run was **not cancelled**.
+> [Guard 9a4367ae](https://github.com/KosmosSG/artcraft-android/commit/9a4367ae144e6ea58c34275f98e9b95213a8b0ca)
+> adds three negative mutations (23 parity mutations total), requiring the
+> preview to remain manual-only, disabled and non-cancelling.
+> [CI #41445624201](https://github.com/KosmosSG/artcraft-android/actions/runs/41445624201)
+> **PASSED** source tests and actual published android.4 V2 signer/ARM64
+> verification; **zero artifacts**. No further preview build was triggered
+> by the workflow archive or regression guard.
+> This is privacy/build-containment work, **not** a fix for the unresolved
 > android.5 Ctrl+W hardware regression. Android.4 stays stable; android.5
 > remains rejected; no new production signing, merge or release authorized.
 

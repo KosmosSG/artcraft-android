@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "application": "lightcraft",
+  "official_upstream": "storytold/lightcraft",
+  "stable_tag": "v0.17.0",
+  "tag_commit": "5a09d075306291a1522d5e8bb0710774f3733594",
+  "upstream_workspace_version": "0.17.0",
+  "published_at_utc": "2026-11-01T19:27:20Z",
+  "android_base_branch": "review/lightcraft-upstream-v016-source-lock-20261101",
+  "integration_status": "source-provenance-only-v011-android-adapter-not-ported",
+  "android_source_port_complete": false,
+  "android_build_verified": false,
+  "permanent_signing_authorized": false,
+  "production_release_authorized": false
+}

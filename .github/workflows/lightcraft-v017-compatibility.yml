@@ -1,0 +1,72 @@
+name: LightCraft v0.17.0 Android API compatibility (review only)
+
+on:
+  push:
+    branches:
+      - review/lightcraft-upstream-v017-source-lock-20261102
+    paths:
+      - '.github/workflows/lightcraft-v017-compatibility.yml'
+      - 'tools/lightcraft/v017_compatibility.py'
+      - 'tools/lightcraft/test_v017_compatibility.py'
+      - 'tools/lightcraft/verify_v017_source.py'
+      - 'configs/upstream/lightcraft-v017.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightcraft-v017-source-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-compatibility:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout LightCraft Android review (no credentials retained)
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Checkout immutable official v0.17.0 source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: v0.17.0
+          fetch-depth: 0
+          path: source
+          persist-credentials: false
+      - name: Checkout pinned Android reference implementation
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Unit-test fail-closed LightCraft source compatibility checks
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s suite/tools/lightcraft -p 'test_v017_compatibility.py' -v
+      - name: Verify official tag, clean source, builder commit and API contract
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/verify_v017_source.py source
+          test "$(git -C builder rev-parse HEAD)" = fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          python3 suite/tools/lightcraft/v017_compatibility.py source builder \
+            --report lightcraft-v017-compatibility.json
+          {
+            echo '### LightCraft official v0.17.0: source compatibility audit only'
+            echo ''
+            echo 'The Android v0.17.0 port, ARM64 APK, production signing and device tests remain BLOCKED.'
+            echo 'No working Android release is replaced or published by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload non-release compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-v017-source-compatibility-NO-APK
+          path: lightcraft-v017-compatibility.json
+          if-no-files-found: warn
+          retention-days: 14

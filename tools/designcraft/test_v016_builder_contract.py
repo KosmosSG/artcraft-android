@@ -73,6 +73,14 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn("MotionAction::HoverMove", overlay)
         self.assertIn("target = target[:x] + motion + target[y:]", overlay)
 
+    def test_overlay_accepts_official_android_ime_reset_hook(self):
+        # Official Storytold winit deliberately implements this on Android.
+        # The helper must keep it, not reject the pinned source at preparation.
+        overlay = (ROOT / "tools" / "designcraft" / "overlay_winit_android_mouse.py").read_text()
+        self.assertIn('if "pub fn reset_ime_with_request" not in target:', overlay)
+        self.assertNotIn('if "pub fn reset_ime_with_request" in target:', overlay)
+        self.assertIn("Pinned Storytold Android IME reset hook was lost", overlay)
+
     def test_designcraft_shell_is_constructed_by_eframe_app_creator(self):
         # eframe 0.37 manages Resumed/Suspended internally. Its AppCreator
         # runs on the first Resumed; our launcher must not construct UI early.

@@ -1,5 +1,8 @@
 name: PhotoCraft AI V2 unified stable candidate UNSIGNED (NO RELEASE)
 
+# ARCHIVED: owner REJECTED android.5 on HONOR MagicPad 4 (Ctrl+W unresponsive).
+# Historical build definition retained for diagnosis only. Never rebuild, sign or
+# promote this rejected version. The job is deliberately skipped even on dispatch.
 # PR93 android.5 unsigned candidate; V2 signing is a separate trusted private workflow.
 # PR93 regression preview: combine user-tested PhotoCraft ESC/keyboard baseline
 # with the approved blue Pc adaptive/legacy/native icons and the new AI Tools menu.
@@ -19,7 +22,9 @@ concurrency:
 
 jobs:
   arm64-preview:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    # Hard stop: owner rejected this exact version on real hardware. This is
+    # intentionally false, even for manual workflow_dispatch or reruns.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -44,10 +49,13 @@ jobs:
           import sys
           from pathlib import Path
           sys.path.insert(0, str(Path('tools').resolve()))
-          from photocraft_ai_v2_upgrade_gate import V2_STABLE_CODE, V2_STABLE_VERSION
+          from photocraft_ai_v2_upgrade_gate import (V2_STABLE_CODE, V2_STABLE_VERSION,
+              OWNER_REJECTED_VERSION, OWNER_REJECTED_CODE)
           proposed_code = 16790008
           proposed_version = '0.14.0-android.5'
           from photocraft_ai_v2_candidate_stage import PROPOSED_VERSION, PROPOSED_CODE
+          if proposed_version == OWNER_REJECTED_VERSION or proposed_code == OWNER_REJECTED_CODE:
+              raise SystemExit('STOP: owner rejected android.5 on device (Ctrl+W regression); do not rebuild')
           if proposed_code != PROPOSED_CODE or proposed_version != PROPOSED_VERSION or proposed_code <= V2_STABLE_CODE:
               raise SystemExit(f'STOP: candidate {proposed_version} ({proposed_code}) is inconsistent with staged source or not newer than V2 {V2_STABLE_VERSION} ({V2_STABLE_CODE})')
           PY

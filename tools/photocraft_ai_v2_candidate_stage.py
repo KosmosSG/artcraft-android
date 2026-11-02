@@ -18,7 +18,9 @@ import tomllib
 PREVIEW = "com.artcraft.photocraft.ai.preview"
 PRODUCTION = "com.artcraft.photocraft"
 OLD_VERSION = "0.14.0-android.1"
-PROPOSED_VERSION = "0.14.0-android.3"
+PROPOSED_VERSION = "0.14.0-android.5"
+PROPOSED_CODE = 16790008
+V2_STABLE_CODE = 16790007
 ICON_SHA = "1a6495c214ae4536b432a34feff9b7001b612d4df1e79bf784b00d5b393f8a9b"
 
 
@@ -46,7 +48,7 @@ def stage(root: Path) -> None:
     data = exactly(data, f'package = "{PREVIEW}"', f'package = "{PRODUCTION}"')
     data = exactly(data, 'label = "PhotoCraft AI Preview"', 'label = "PhotoCraft"', 2)
     # The template adapter inherits its Cargo workspace version. Its
-    # generated Android crate gets the .2 version only when build.sh runs
+    # generated Android crate gets the candidate version only when build.sh runs
     # prepare.sh with the explicit candidate-review environment override.
     parsed = tomllib.loads(data)
     if parsed["package"].get("version", {}).get("workspace") is not True:
@@ -80,7 +82,7 @@ def stage(root: Path) -> None:
     record["package"] = PRODUCTION
     record["display_name"] = "PhotoCraft"
     record["version_name"] = PROPOSED_VERSION
-    record["version_code"] = 16790006
+    record["version_code"] = PROPOSED_CODE
     record["previous_version_code"] = 16790004
     # Approved pixels, source/master SHA and all resource SHA hashes are
     # retained exactly, not regenerated or swapped.
@@ -88,25 +90,25 @@ def stage(root: Path) -> None:
     branding.write_text(json.dumps(record, indent=2) + "\n")
 
     # The immutable v0.14 adapter's preparation code selects the approved
-    # icon only for android.1; include android.2 in this disposable checkout.
+    # icon only for android.1; include android.5 in this disposable checkout.
     # The production repo's original prepare.sh is not edited or committed.
     setup = prep.read_text()
     selector = '"${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1"'
     setup = exactly(setup, selector,
-        selector + ' || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.3"')
+        selector + ' || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.5"')
     prep.write_text(setup)
 
     # The generic builder recognizes only android.1 as the reviewed v0.14
     # menu port, otherwise it attempts to reapply the incompatible v0.12
-    # patch. Extend this temporary runner's guard for android.2; still run
+    # patch. Extend this temporary runner's guard for android.5; still run
     # photocraft_v014_menu_guard.py on the same immutable upstream commit.
     # Nothing here is committed into the repository's shared builder.
     build_text = builder.read_text()
     guard = 'if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" ]]; then'
-    replacement = 'if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.3" ]]; then'
+    replacement = 'if [[ "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.1" || "${ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME:-}" == "0.14.0-android.5" ]]; then'
     build_text = exactly(build_text, guard, replacement)
     builder.write_text(build_text)
-    print("PASS: temporary v0.14 menus guard covers candidate-review android.2 without legacy patch")
+    print("PASS: temporary v0.14 menus guard covers candidate-review android.5 without legacy patch")
     print("PASS: staging ONLY — regular PhotoCraft name, package, Activity and icon preserved")
     print("PASS: proposed review version", PROPOSED_VERSION)
     print("IMPORTANT: output is signed with a disposable key; NEVER install/publish its APK")
@@ -124,8 +126,9 @@ def self_test() -> None:
     assert PRODUCTION != PREVIEW and OLD_VERSION != PROPOSED_VERSION
     assert "android.3" in PROPOSED_VERSION
     assert OLD_VERSION == "0.14.0-android.1"
-    assert PROPOSED_VERSION == "0.14.0-android.3"
-    assert 16790006 > 16790004
+    assert PROPOSED_VERSION == "0.14.0-android.5"
+    assert PROPOSED_CODE > V2_STABLE_CODE
+    assert PROPOSED_CODE > 16790004
     print("PASS: isolated production identity conversion anchor and version floor tests")
 
 

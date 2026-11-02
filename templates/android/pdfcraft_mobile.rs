@@ -10,7 +10,6 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 pub struct Mobile {
     app: AndroidApp,
     renderer: String,
-    fonts_open: bool,
     updates_open: bool,
     font_status: String,
     update_status: String,
@@ -23,7 +22,7 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), fonts_open: false, updates_open: false,
+            app, renderer: "Renderer not initialized".into(), updates_open: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
@@ -156,35 +155,34 @@ impl Mobile {
         }
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
+    /// Always-visible Android toolbar above the PDF editor. In android.1/.2 the
+    /// import actions were buried in a collapsed *bottom* "Fonts ▾" panel;
+    /// users could not find them. No drawer or second tap is now required.
     pub fn toolbar(&mut self, parent: &mut egui::Ui) {
-        egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
+        parent.group(|ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
-                    self.fonts_open = !self.fonts_open;
+                ui.strong("Fonts:");
+                if ui.button("Import Font…")
+                    .on_hover_text("Choose an individual .ttf or .otf font").clicked() {
+                    self.font_status = "Choose a .ttf or .otf font…".into();
+                    if let Err(error) = self.request(Action::ImportFont) { self.font_status = error; }
                 }
+                if ui.button("Choose Shared Font Folder…")
+                    .on_hover_text("Select ArtCraft-Fonts; nested folders are included").clicked() {
+                    self.font_status = "Choose your shared Android font folder…".into();
+                    if let Err(error) = self.request(Action::SelectFolder) { self.font_status = error; }
+                }
+                if ui.button("Refresh Font Folder")
+                    .on_hover_text("Rescan the previously selected shared folder (4 GiB / 5,000 fonts)").clicked() {
+                    self.font_status = "Refreshing previously selected folder…".into();
+                    if let Err(error) = self.request(Action::RefreshFonts) { self.font_status = error; }
+                }
+                ui.separator();
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
-                ui.separator();
-                ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
             });
-            if self.fonts_open {
-                ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Import TTF/OTF").clicked() {
-                        self.font_status = "Choose a .ttf or .otf font…".into();
-                        if let Err(error) = self.request(Action::ImportFont) { self.font_status = error; }
-                    }
-                    if ui.button("Select shared ArtCraft-Fonts folder").clicked() {
-                        self.font_status = "Choose your shared Android font directory…".into();
-                        if let Err(error) = self.request(Action::SelectFolder) { self.font_status = error; }
-                    }
-                    if ui.button("Refresh shared folder").clicked() {
-                        self.font_status = "Refreshing previously selected folder…".into();
-                        if let Err(error) = self.request(Action::RefreshFonts) { self.font_status = error; }
-                    }
-                });
-                ui.label(&self.font_status);
-                ui.label(egui::RichText::new("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.").small());
-            }
+            // Keep import/scan feedback on screen without hiding the actual actions.
+            ui.label(&self.font_status).on_hover_text(
+                "PDFCraft accepts embeddable TTF/OTF fonts; existing embedded PDF fonts are unchanged.");
             if self.updates_open {
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {
@@ -195,7 +193,7 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
-                    if ui.button("Hide").clicked() { self.updates_open = false; }
+                    if ui.button("Hide update status").clicked() { self.updates_open = false; }
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
                     if let Err(error) = self.save_startup_setting(self.startup_check) {

@@ -52,7 +52,7 @@ def apply(root):
                 updates_ui::request_check(self);''')
     edit('state.rs', '    pub ribbon_collapsed: bool,', '    pub ribbon_collapsed: bool,\n    #[serde(default)]\n    pub tablet_tools: bool,')
     edit('state.rs', '            ribbon_collapsed: false,', '            ribbon_collapsed: false,\n            tablet_tools: false,')
-    edit('menus.rs', '("Open…", "app.openDialog"),', '("Open…", "app.openDialog"),\n                ("Import Font…", "app.importFont"),')
+    # Keep Import Font under Help (and Tablet Tools) only.
     edit('menus.rs', '("Normal", "view.normal"),', '("Dark Theme", "view.dark"),\n                ("Tablet Tools", "view.tabletTools"),\n                ("-", ""),\n                ("Normal", "view.normal"),')
     edit('menus.rs', '("Command Palette", "app.palette")', '("Import Font…", "app.importFont"), ("Command Palette", "app.palette")')
     edit('app.rs', '        ribbon::title_bar(self, ui);', '        self.tablet_controls(ui);\n        ribbon::title_bar(self, ui);')
@@ -161,9 +161,10 @@ def apply(root):
         '''        #[cfg(target_os = "android")]
         if !modal
             && self.session.active().is_some()
-            && (ctx.memory(|m| m.focused().is_some())
-                || self.session.active().is_some_and(|d| d.selection.text.is_some()))
-            && Self::android_editing_ctrl_w(&events)
+            && (ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("deckcraft.android.ctrl_w"))).unwrap_or(false)
+                || ((ctx.memory(|m| m.focused().is_some())
+                    || self.session.active().is_some_and(|d| d.selection.text.is_some()))
+                    && Self::android_editing_ctrl_w(&events)))
         {
             // Same close path as File > Close and ordinary Ctrl+W. Dirty work
             // opens the real Save/Don't Save/Cancel modal; no background
@@ -177,6 +178,49 @@ def apply(root):
             self.close_presentation();
             self.drain_requests();
             return;
+        }
+        // The Android shell synthesizes Copy/Cut/Paste for Ctrl+C/X/V, but
+        // the official custom canvas text editor skips those during focus.
+        // Stock text fields and modals retain their normal clipboard routing.
+        #[cfg(target_os = "android")]
+        if !modal
+            && self.session.active().is_some_and(|d| d.selection.text.is_some())
+            && !ctx.text_edit_focused()
+        {
+            let mut handled_clipboard = false;
+            for ev in &events {
+                match ev {
+                    egui::Event::Copy => {
+                        self.publish_clipboard(ctx, false);
+                        handled_clipboard = true;
+                    }
+                    egui::Event::Cut => {
+                        self.publish_clipboard(ctx, true);
+                        self.note_application_edit(ctx);
+                        handled_clipboard = true;
+                    }
+                    egui::Event::Paste(text) => {
+                        let pasted = if text == OBJECTS_MARKER { "" } else { text.as_str() };
+                        let mut params = json!({"text": pasted});
+                        if let Some(html) = self.services.clipboard_html.as_mut().and_then(|f| f()) {
+                            if !html.is_empty() { params["html"] = Value::String(html); }
+                        }
+                        let revision = self.session.active().map(|d| d.revision);
+                        if let Err(err) = self.session.execute("edit.paste", &params) {
+                            self.set_status(err.to_string());
+                        }
+                        if self.session.active().map(|d| d.revision) != revision {
+                            self.note_application_edit(ctx);
+                        }
+                        handled_clipboard = true;
+                    }
+                    _ => {}
+                }
+            }
+            if handled_clipboard {
+                self.drain_requests();
+                return;
+            }
         }
         if ctx.memory(|m| m.focused().is_some()) || modal {''')
     # Expose the shortcut-match helper to host-side Rust regression tests.
@@ -279,7 +323,7 @@ def apply(root):
             #[cfg(target_os = "android")]
             let scroll_gain = if ui.input(|i| i.events.iter().any(|e|
                 matches!(e, egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. })
-            )) { 1.65_f32 } else { 1.0 };
+            )) { if touch_pan_active { 1.65_f32 } else { 1.25_f32 } } else { 1.0 };
             #[cfg(not(target_os = "android"))]
             let scroll_gain = 1.0_f32;
             offset -= wheel * scroll_gain;

@@ -42,7 +42,7 @@ p.write_text(s.replace(old, new, 1))
 p = root / 'lib/build-common.sh'
 s = p.read_text()
 before = '        self.map_android_back(raw);'
-after = '        self.map_android_back(raw);\n        self.inner.android_capture_unsaved_dcs_raw(ctx, raw);'
+after = '        self.map_android_back(raw);\n        self.inner.android_capture_unsaved_dcs_raw(ctx, raw);\n        self.inner.android_capture_editor_close_raw(ctx, raw);'
 assert s.count(before) == 1, 'Android raw-key hook changed'
 s = s.replace(before, after, 1)
 

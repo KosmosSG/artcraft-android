@@ -111,4 +111,33 @@ impl SlideApp {
 }
 '''
 
+
+# Ctrl+W can be swallowed by Android's focused text editor before app.keyboard
+# sees egui's normalized key list. Capture only the hardware close shortcut at
+# the earliest input boundary and leave all other shortcuts to standard routing.
+HELPER += r'''
+impl SlideApp {
+    pub fn android_capture_editor_close_raw(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if self.session.active().is_none() || self.android_unsaved_dcs_active()
+            || self.dialog.is_some() || self.palette.is_some() { return; }
+        let found = raw.events.iter().any(|e| matches!(
+            e, egui::Event::Key { key: egui::Key::W, pressed: true,
+                  repeat: false, modifiers, .. }
+                if (modifiers.ctrl || modifiers.command)
+                    && !modifiers.shift && !modifiers.alt
+        ));
+        if found {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("deckcraft.android.ctrl_w"), true));
+            // Prevent a literal 'w' leaking into a live text box. Only Ctrl+W
+            // is consumed; Ctrl+C/X/V remain visible to shell clipboard logic.
+            raw.events.retain(|e| !matches!(e,
+                egui::Event::Key { key: egui::Key::W, modifiers, .. }
+                if (modifiers.ctrl || modifiers.command)
+                    && !modifiers.shift && !modifiers.alt
+            ));
+        }
+    }
+}
+'''
+
 if __name__=="__main__":apply(sys.argv[1])

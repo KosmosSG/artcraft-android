@@ -109,3 +109,27 @@ Esc stays inside app, no unsaved text lost, pinch zoom, two-finger
 touchscreen/trackpad pan, dark theme and import fonts still work. Release
 and permanent signing blocked pending device testing. No new GitHub
 Actions signing job: local temporary-key test-signing only.
+
+## v0.14.1-android.7 — reliable focused-editor keyboard + font menu clean-up (2026-11-02)
+
+Owner on Android.6 reported Ctrl+W while typing still fails; D/C/S responds after
+leaving text, Ctrl+C and Ctrl+X also fail while in text editing, asks for Ctrl+V;
+trackpad pan works but is not smooth; File has duplicate Import Font alongside
+Help. Keep Help > Import Font with SAF import intact; remove just File duplicate.
+
+Official egui keyboard shortcut path returns early with editor focus, and raw
+Ctrl+W may be filtered before app.keyboard sees events. Android.7 records
+Ctrl+W at eframe RawInput boundary and in Activity hardware event dispatch,
+then polls the one-shot Java transport to trigger DeckCraft's existing safe
+close_presentation D/C/S dialog even while canvas text has focus. Android
+clipboard events Copy/Cut/Paste use existing builder synthetic events and are
+routed to the custom slide text editor only, preserving stock widgets and
+Android clipboard semantics. Preserve text-selection, IME, and Ctrl+V in
+foreign apps. Trackpad point-wheel non-touch gain changed 1.65 -> 1.25 for
+less jitter; direct touchscreen pan retains 1.65.
+
+No merge, permanent signing or release. Build with disposable test signing
+outside GitHub. Device test: type with caret active, Ctrl+W opens D/C/S without
+Esc, then D/C/S repeatedly; Ctrl+C, Ctrl+X, Ctrl+V while text selected;
+shape object clipboard; touchscreen pinch/pan, trackpad smoothness, Esc, dark
+mode, and font importer reachable once under Help. CI alone is not proof.

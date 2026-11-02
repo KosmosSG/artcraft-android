@@ -114,6 +114,45 @@ mod android_dcs_regression {
     }
 
     #[test]
+    fn ctrl_w_raw_shortcut_survives_editor_focus_and_routes_to_safe_close() {
+        let app = app();
+        let ctx = egui::Context::default();
+        let mut ctrl = egui::Modifiers::NONE;
+        ctrl.ctrl = true;
+        ctrl.command = true;
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::W, true, false, ctrl)];
+        app.android_capture_editor_close_raw(&ctx, &mut raw);
+        assert!(raw.events.is_empty(), "Ctrl+W must not reach active text editor");
+        assert_eq!(
+            ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("deckcraft.android.ctrl_w"))),
+            Some(true),
+        );
+        // Ordinary keys, including clipboard shortcuts, remain untouched.
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::C, true, false, ctrl)];
+        app.android_capture_editor_close_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1);
+        assert_eq!(
+            ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("deckcraft.android.ctrl_w"))),
+            None,
+        );
+    }
+
+    #[test]
+    fn import_font_is_help_only_no_duplicate_file_menu() {
+        let tree = crate::menus::menu_tree();
+        let file = tree.iter().find(|(name, _)| *name == "File").unwrap();
+        let help = tree.iter().find(|(name, _)| *name == "Help").unwrap();
+        assert_eq!(
+            file.1.iter().filter(|(_, id)| *id == "app.importFont").count(), 0
+        );
+        assert_eq!(
+            help.1.iter().filter(|(_, id)| *id == "app.importFont").count(), 1
+        );
+    }
+
+    #[test]
     fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
         let mut app = app();
         app.dialog = Some(dialogs::Dialog::new("close"));

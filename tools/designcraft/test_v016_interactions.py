@@ -54,6 +54,7 @@ class V016InteractionContract(unittest.TestCase):
         self.assertIn('if (!active)', java_stager)
         self.assertIn('ctx.request_repaint();', (ROOT / "tools/designcraft/v016_android.rs").read_text())
         self.assertIn('dc_dialog_action(&self, active: bool)', java_stager)
+        self.assertIn('super.onKeyDown(code, event);', java_stager)
 
     def test_next_candidate_version_is_android_2(self):
         version = (ROOT / "tools/designcraft/patch_v016_android.py").read_text()

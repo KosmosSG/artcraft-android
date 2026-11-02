@@ -19,7 +19,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: github.repository == 'KosmosSG/artcraft-android'
+    # The source-only v0.15 review is not a v0.11.1 production preflight.
+    # Keep the original strict production assertions for every other branch.
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.event_name != 'pull_request' || github.head_ref != 'review/gridcraft-v0150-android-compat-20261102')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

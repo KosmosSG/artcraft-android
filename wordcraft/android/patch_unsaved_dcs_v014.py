@@ -33,8 +33,8 @@ def apply(root) -> None:
     new = old
     new = once(new, 'ui.button(tl!("Cancel"))',
                'ui.button(format!("{} (C)", tl!("Cancel")))', "Cancel button")
-    new = once(new, 'ui.button(tl!("Don\\'t Save"))',
-               'ui.button(format!("{} (D)", tl!("Don\\'t Save")))', "Don't Save button")
+    new = once(new, 'ui.button(tl!("Don\'t Save"))',
+               'ui.button(format!("{} (D)", tl!("Don\'t Save")))', "Don't Save button")
     new = once(new, 'primary_button(ui, tl!("Save"))',
                'primary_button(ui, format!("{} (S)", tl!("Save")))', "Save button")
     replacement = '''    let queued = ui.ctx().data_mut(|data| data.remove_temp::<u8>(egui::Id::new("wordcraft.unsaved.dcs")));

@@ -112,6 +112,7 @@ jobs:
           python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder
           python3 android-port/tools/vectorcraft/patch_android_about_updates.py builder
           python3 android-port/tools/vectorcraft/patch_android_unsaved_shortcuts_v020.py builder/source/vectorcraft
+          python3 android-port/tools/vectorcraft/patch_android_adapter_v020.py builder/source/vectorcraft
           test -s builder/source/vectorcraft/apps/vectorcraft-android/src/lib.rs
       - uses: dtolnay/rust-toolchain@stable
         with:

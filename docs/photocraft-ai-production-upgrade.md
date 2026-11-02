@@ -9,6 +9,19 @@
 > passed the parity test, V2 rejection tests and read-only inspection of the
 > actual published android.4 APK/signature. No new candidate was built or
 > signed, and no new release was approved.
+>
+> **Historical proof containment:** The obsolete original-key
+> `0.14.0-android.2` disposable production-package proof is now job-disabled
+> (including manual dispatch) in
+> [`photocraft-ai-production-dryrun.yml`](../.github/workflows/photocraft-ai-production-dryrun.yml).
+> The existing artifact-safety regression suite and new parity guard verify
+> that the old `icon-verification/` APK copy is not uploaded and is cleaned.
+> [No-build workflow #41401661448](https://github.com/KosmosSG/artcraft-android/actions/runs/41401661448)
+> was **skipped** as intended; [artifact-safety #41401661436](https://github.com/KosmosSG/artcraft-android/actions/runs/41401661436)
+> and [V2/parity #41401681419](https://github.com/KosmosSG/artcraft-android/actions/runs/41401681419)
+> passed. Historical failure artifact `12966638625` was already deleted
+> by the owner and the exact run now reports zero artifacts. Do not rerun
+> historical disposable production-package proofs.
 
 
 > **Owner device-test decision — 2 November 2026 (latest; supersedes android.5 promotion plans).**

@@ -1,5 +1,26 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Isolated preview run completion and artifact containment — 2 November 2026.**
+> The previously in-progress [ARM64 run #41445396193](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193)
+> finished **SUCCESS** (job 125277102896). Its compiled manifest is
+> **`com.artcraft.photocraft.ai.preview`**, version `0.14.0-android.1`,
+> versionCode `16790004`, ARM64, and launcher `PhotoCraft AI Preview`.
+> The four-file artifact [#13142856849](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193/artifacts/13142856849)
+> is an **isolated, disposable-signed preview APK and verification metadata**,
+> NOT a production-package APK, V2 update or approved owner test. Its archive
+> digest is `a332a29825642caac3b200a89670d700a39733f51bf3e823f9b7171a5a134d2d`;
+> GitHub reports expiry 16 November 2026. No new build was started.
+> The obsolete [regular-package disposable proof #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+> remains failed with **zero artifacts**; do not rerun it.
+> [Preview failure-artifact containment 915f3c6e](https://github.com/KosmosSG/artcraft-android/commit/915f3c6e2de2bec63385d297cb8ccd2e26a6fb11)
+> restricts failure diagnostics to logs and JSON (not copied APKs) and
+> removes disposable APK copies during runner cleanup. [Parity guard 9ccc579a](https://github.com/KosmosSG/artcraft-android/commit/9ccc579a6f054d9053356a00b8ede272468fbeee)
+> adds three negative mutations: production package substitution, unsafe
+> failure upload, and missing cleanup. The archived workflow remains job-disabled.
+> Lightweight CI for the latest guard change is **not yet verified**;
+> no release-readiness claim is made. Stable android.4 remains unchanged,
+> android.5 rejected, PR93 DRAFT; no production signing or publication.
+
 > **Local AI consent/token privacy hardening — 2 November 2026.**
 > [PR93 change e4b61a83](https://github.com/KosmosSG/artcraft-android/commit/e4b61a837f7fd4eabfa65f3becefe047ba9f9559)
 > revokes the in-memory per-image consent and temporary Linux Lab bearer token,

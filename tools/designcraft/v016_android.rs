@@ -74,7 +74,7 @@ pub fn ui(
         }
     }
     // Visible even if the user hides the desktop File/Type menu bar.
-    egui::TopBottomPanel::bottom("artcraft-designcraft-android-tools").show(ui.ctx(), |ui| {
+    egui::Panel::bottom("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.menu_button("Android", |ui| {
                 if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {

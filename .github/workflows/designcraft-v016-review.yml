@@ -77,7 +77,12 @@ jobs:
           echo "$RUNNER_TEMP/designcraft-venv/bin" >> "$GITHUB_PATH"
           test -d "$ANDROID_HOME/platforms/android-35" || { echo "Android SDK 35 is missing"; exit 1; }
           NDK_PATH="$ANDROID_HOME/ndk/27.2.12479018"
-          test -d "$NDK_PATH" || { echo "Android NDK 27.2 is missing"; exit 1; }
+          if test ! -d "$NDK_PATH"; then
+            echo "Installing pinned Android NDK 27.2 for the isolated review runner."
+            command -v sdkmanager
+            sdkmanager --install 'ndk;27.2.12479018'
+          fi
+          test -d "$NDK_PATH" || { echo "Android NDK 27.2 installation did not complete"; exit 1; }
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
           echo "NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"

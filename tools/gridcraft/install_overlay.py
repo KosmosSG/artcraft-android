@@ -52,50 +52,66 @@ def install(builder: Path, additions: Path):
     # In that limited audit checkout we still install the safe staging hook.
     # The real candidate build always checks out pinned GridCraft beforehand;
     # fail there if the ribbon is missing or its API changed.
-    if ribbon.is_file():
-        ribbon_source = ribbon.read_text()
-        menu_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
-        if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
-            raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
-        patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
-        # GRIDCRAFT_ANDROID_FONT_COMBO_V1: the official GridCraft font scanner
-        # already exposes families(), but this pinned v0.11.1 ribbon mistakenly
-        # uses just the 17 built-in FONTS strings. Use the discovered catalog.
-        combo_old = '    let items: Vec<(&str, String)> = FONTS.iter().map(|f| (*f, f.to_string())).collect();'
-        combo_new = ('    // GRIDCRAFT_ANDROID_FONT_COMBO_V1: include scanned user-installed fonts.\n'
-                     '    let available = crate::fonts::families();\n'
-                     '    let items: Vec<(&str, String)> = available.iter()\n'
-                     '        .map(|f| (f.as_str(), f.clone())).collect();')
-        if patched_ribbon.count(combo_old) != 1 or "GRIDCRAFT_ANDROID_FONT_COMBO_V1" in patched_ribbon:
-            raise RuntimeError("Pinned GridCraft font dropdown changed; manual review required")
-        patched_ribbon = patched_ribbon.replace(combo_old, combo_new, 1)
-        ribbon.write_text(patched_ribbon)
-    elif (builder / "source/gridcraft").exists():
-        raise RuntimeError("GridCraft checkout exists but the expected ribbon file is missing")
-    # Official GridCraft's catalog scans its HOME fonts before the UI font
-    # dropdown is populated (OnceLock). The system-font directory in HOME
-    # is a symlink, so imported files must use a separate HOME folder.
-    fonts = builder / "source/gridcraft/crates/ui-egui/src/fonts.rs"
-    if fonts.is_file():
-        scanned = fonts.read_text()
-        home_font_anchor = '                dirs.push(h.join(".local/share/fonts"));'
-        if scanned.count(home_font_anchor) != 1 or "GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1" in scanned:
-            raise RuntimeError("GridCraft font catalog changed; manual review required")
-        scanned = scanned.replace(
-            home_font_anchor,
-            home_font_anchor + '\n'
-            + '                // GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1: Android internal HOME is shared with Java SAF.\n'
-            + '                dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"));\n                dirs.push(h.join("ArtCraft-Fonts/artcraft-shared"));',
-            1
-        )
+    # The latest official source split title bar, home fonts and binding state
+    # into independent modules; reusing v0.11 string replacements would corrupt it.
+    upstream_manifest = builder / "source/gridcraft/Cargo.toml"
+    source_version = None
+    if upstream_manifest.is_file():
+        import tomllib
+        source_version = tomllib.loads(upstream_manifest.read_text())["workspace"]["package"]["version"]
+        if source_version not in ("0.11.1", "0.15.0"):
+            raise RuntimeError(f"Unreviewed GridCraft upstream source version: {source_version}")
+    if source_version == "0.15.0":
         import runpy
-        patch = runpy.run_path(str(additions / "font_catalog_patch.py"))
-        scanned = patch["patch_catalog"](scanned)
-        fonts.write_text(scanned)
-        lib = fonts.with_name("lib.rs")
-        lib.write_text(patch["patch_app"](lib.read_text()))
-    elif (builder / "source/gridcraft").exists():
-        raise RuntimeError("Pinned GridCraft font catalog missing")
+        port_script = Path(__file__).with_name("port_v0150_ui.py")
+        port = runpy.run_path(str(port_script))
+        port["stage"](builder / "source/gridcraft")
+        print("v0.15.0 relocated menu/font UI port staged; host launcher and D/C/S still require porting")
+    else:
+        if ribbon.is_file():
+            ribbon_source = ribbon.read_text()
+            menu_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
+            if ribbon_source.count(menu_anchor) != 1 or menu_marker in ribbon_source:
+                raise RuntimeError("Pinned GridCraft title bar changed or menu already inserted; manual review needed")
+            patched_ribbon = ribbon_source.replace(menu_anchor, native_menu + menu_anchor, 1)
+            # GRIDCRAFT_ANDROID_FONT_COMBO_V1: the official GridCraft font scanner
+            # already exposes families(), but this pinned v0.11.1 ribbon mistakenly
+            # uses just the 17 built-in FONTS strings. Use the discovered catalog.
+            combo_old = '    let items: Vec<(&str, String)> = FONTS.iter().map(|f| (*f, f.to_string())).collect();'
+            combo_new = ('    // GRIDCRAFT_ANDROID_FONT_COMBO_V1: include scanned user-installed fonts.\n'
+                         '    let available = crate::fonts::families();\n'
+                         '    let items: Vec<(&str, String)> = available.iter()\n'
+                         '        .map(|f| (f.as_str(), f.clone())).collect();')
+            if patched_ribbon.count(combo_old) != 1 or "GRIDCRAFT_ANDROID_FONT_COMBO_V1" in patched_ribbon:
+                raise RuntimeError("Pinned GridCraft font dropdown changed; manual review required")
+            patched_ribbon = patched_ribbon.replace(combo_old, combo_new, 1)
+            ribbon.write_text(patched_ribbon)
+        elif (builder / "source/gridcraft").exists():
+            raise RuntimeError("GridCraft checkout exists but the expected ribbon file is missing")
+        # Official GridCraft's catalog scans its HOME fonts before the UI font
+        # dropdown is populated (OnceLock). The system-font directory in HOME
+        # is a symlink, so imported files must use a separate HOME folder.
+        fonts = builder / "source/gridcraft/crates/ui-egui/src/fonts.rs"
+        if fonts.is_file():
+            scanned = fonts.read_text()
+            home_font_anchor = '                dirs.push(h.join(".local/share/fonts"));'
+            if scanned.count(home_font_anchor) != 1 or "GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1" in scanned:
+                raise RuntimeError("GridCraft font catalog changed; manual review required")
+            scanned = scanned.replace(
+                home_font_anchor,
+                home_font_anchor + '\n'
+                + '                // GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1: Android internal HOME is shared with Java SAF.\n'
+                + '                dirs.push(h.join("ArtCraft-Fonts/artcraft-imported"));\n                dirs.push(h.join("ArtCraft-Fonts/artcraft-shared"));',
+                1
+            )
+            import runpy
+            patch = runpy.run_path(str(additions / "font_catalog_patch.py"))
+            scanned = patch["patch_catalog"](scanned)
+            fonts.write_text(scanned)
+            lib = fonts.with_name("lib.rs")
+            lib.write_text(patch["patch_app"](lib.read_text()))
+        elif (builder / "source/gridcraft").exists():
+            raise RuntimeError("Pinned GridCraft font catalog missing")
 
     # GridCraft uses extracted lettering, not a scaled green square. The same
     # 66.56/108 foreground geometry as the pinned suite builder is retained.

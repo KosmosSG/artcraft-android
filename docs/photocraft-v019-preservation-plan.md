@@ -43,3 +43,17 @@ The branch-specific GitHub Action has **contents: read** permissions and its nam
 
 ## Automation operation
 The PhotoCraft v0.19 compatibility build automatically runs on commits to the working branch. No signing secrets are accessed. CI passes/fails are available in GitHub Actions. The review PR remains draft, and unresolved incompatibilities should be documented there rather than bypassed. When device testing or release approval is needed, stop and ask the owner.
+
+## Additive `egui-winit 0.37` / `winit` API compatibility shim (Stage 2)
+
+The existing Android mouse/scroll-aware `vendor/winit` is retained. Only the missing
+`WindowEvent::ImeResetCompleted { request_id }` enum variant and the Android-only
+`Window::reset_ime_with_request(u64)` method are added, matching the **unsupported
+Android** semantics of upstream Storytold winit fork `a517b3846ee8457d84ee4975110bfda6797c44dc`:
+no completion fence is fabricated and no Java IME events are consumed. This addresses
+the four initial compile errors without replacing Android mouse/scroll/ESC hooks.
+
+This is a **source compatibility attempt**, not a verified fix. The branch-only
+GitHub Actions debug build and device keyboard/IME tests must still pass. Additional
+v0.19 adapter/API errors may surface once dependency compilation advances. Keep
+release `photocraft-v0.14.0-android.4` untouched; no public publish or production signing.

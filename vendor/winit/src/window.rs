@@ -1300,6 +1300,20 @@ impl Window {
         self.window.maybe_queue_on_main(move |w| w.set_ime_purpose(purpose))
     }
 
+    /// Compatibility with Storytold egui-winit 0.37's request-bound IME cancellation.
+    ///
+    /// The owner-tested Android NativeActivity frontend manages IME through its Java
+    /// text input view. Its platform backend cannot provide a native ordered reset
+    /// completion fence, so this is deliberately a no-op on Android, matching the
+    /// upstream Storytold winit Android implementation (a517b384). We must never
+    /// forge `ImeResetCompleted`, which would falsely release egui's input guard.
+    ///
+    /// This Android-only surface keeps the existing keyboard/ESC, mouse, scroll,
+    /// clipboard and SAF integrations untouched. Validate IME behavior on device.
+    #[cfg(target_os = "android")]
+    #[inline]
+    pub fn reset_ime_with_request(&self, _request_id: u64) {}
+
     /// Brings the window to the front and sets input focus. Has no effect if the window is
     /// already in focus, minimized, or not visible.
     ///

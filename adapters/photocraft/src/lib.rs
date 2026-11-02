@@ -34,7 +34,6 @@ mod ime_bridge;
 mod ai_tools;
 mod ai_models;
 mod ai_menu;
-mod ui_touch_scroll;
 mod ai_u2netp_transport;
 mod ai_background_job;
 mod ai_output_validation;
@@ -538,7 +537,6 @@ struct PhotoCraftAndroidApp {
     picker: Arc<PickerState>,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
-    touch_scroll: ui_touch_scroll::UiTouchScroll,
     ai_menu: ai_menu::AndroidAiMenu,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
@@ -687,9 +685,6 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
-        // First-stage fork port: scroll open menus/panels with two fingers;
-        // do not intercept pen, mouse or the canvas's native gestures.
-        self.touch_scroll.route(ctx, raw);
         self.inner.raw_input_hook(ctx, raw);
     }
 }
@@ -795,7 +790,6 @@ fn android_main(android_app: AndroidApp) {
                 picker: app_picker.clone(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
-                touch_scroll: ui_touch_scroll::UiTouchScroll::default(),
                 ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,

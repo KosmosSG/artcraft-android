@@ -41,11 +41,15 @@ fn motion_classification_fn() -> Option<ClassificationFn> {
 }
 
 /// A motion event'''
-METHOD_ANCHOR = '''        source.into()
+METHOD_ANCHOR = '''        let source =
+            unsafe { ndk_sys::AInputEvent_getSource(self.ndk_event.ptr().as_ptr()) as u32 };
+        source.into()
     }
 
     /// Get the device id associated with the event.'''
-METHOD_REPLACEMENT = '''        source.into()
+METHOD_REPLACEMENT = '''        let source =
+            unsafe { ndk_sys::AInputEvent_getSource(self.ndk_event.ptr().as_ptr()) as u32 };
+        source.into()
     }
 
     /// Get the system-provided gesture classification for a native motion event.

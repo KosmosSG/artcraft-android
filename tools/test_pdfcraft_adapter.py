@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.2'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.3'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -32,12 +32,20 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.17.0-android.2'
+    assert cargo['package']['version'] == '0.17.0-android.3'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
     assert 'shell.pdf_mobile.set_renderer(description)' in native
     assert native.index('self.pdf_mobile.toolbar(ui)') < native.index('self.inner.ui(ui, frame)')
+    mobile_toolbar = (root / 'templates/android/pdfcraft_mobile.rs').read_text()
+    # Regression: the font picker and shared-folder controls must be visible
+    # without expanding a nested panel on HONOR Android tablet screens.
+    for label in ('Import Font…', 'Choose Shared Font Folder…', 'Refresh Font Folder'):
+        assert 'ui.button("' + label + '")' in mobile_toolbar
+    assert 'fonts_open' not in mobile_toolbar
+    assert 'egui::Panel::bottom("pdfcraft_android_tools")' not in mobile_toolbar
+    assert mobile_toolbar.index('ui.button("Import Font…")') < mobile_toolbar.index('ui.button("Check updates")')
     assert 'take_android_update_request()' in native
     assert 'self.pdf_mobile.do_update_check()' in native
     assert 'ANDROID_UPDATE_REQUEST' in (dst / 'crates/ui-egui/src/platform/updates.rs').read_text()

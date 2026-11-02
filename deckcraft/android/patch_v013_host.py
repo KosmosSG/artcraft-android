@@ -26,6 +26,15 @@ new='''    "deckcraft": {
         "load": ''' + "'''inner.session.recovery_dir = Some(dir.join(\"recovery\"));\n    let _ = inner.session.execute(\"file.recovery.open\", &serde_json::json!({}));\n    let (ui, prefs) = @UI@::settings::load(dir);"
 assert s.count(old)==1;s=s.replace(old,new)
 p.write_text(s)
+# The pinned builder uses the one-argument raw_input_hook for older UI apps.
+# Official DeckCraft v0.14.1 requires (ctx, raw); keep this app-specific
+# adaptation inside the disposable builder and leave other apps untouched.
+p = root / 'lib/build-common.sh'
+s = p.read_text()
+old = 'inner_hook = "let _ = ctx;\\n        self.inner.raw_input_hook(raw);"'
+new = 'inner_hook = ("self.inner.raw_input_hook(ctx, raw);" if app == "deckcraft" else "let _ = ctx;\\n        self.inner.raw_input_hook(raw);")'
+assert s.count(old) == 1, 'Raw-input hook adapter changed'
+p.write_text(s.replace(old, new, 1))
 print('DeckCraft 0.14.1 host: D/C/S transport, persistent fonts and AutoRecover staged')
 
 p=root/'source/deckcraft/crates/ui-egui/src/lib.rs'

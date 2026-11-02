@@ -31,12 +31,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      PDFCRAFT_ANDROID_VERSION_NAME: 0.17.0-android.2
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.17.0-android.3
       PDFCRAFT_REF: v0.17.0
       PDFCRAFT_SHA: 7d78f3e14474b978be014715e0cc64895d77025a
       PDFCRAFT_ICON_SHA256: 4c0ec54b8d0b85eb05a42c8f1e092199063aa786b2e333d8b50b2a826c342bab
       # Expected cargo-apk2 code for pinned v0.17.0, NOT reserved for published updates.
-      EXPECTED_EPHEMERAL_VERSION_CODE: '16781569'
+      EXPECTED_EPHEMERAL_VERSION_CODE: '16781570'
 
     steps:
       - name: Checkout isolated candidate only
@@ -156,7 +156,7 @@ jobs:
           # otherwise reuses -android.1's code. Patch only the checked binary manifest
           # integer and re-sign with a NEW disposable builder key from this CI runner.
           python3 tools/pdfcraft/bump_version_code.py \
-            output/pdfcraft-0.17.0.apk output/pdfcraft-patched-unsigned.apk 16781568 16781569
+            output/pdfcraft-0.17.0.apk output/pdfcraft-patched-unsigned.apk 16781568 16781570
           sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           build_tools="$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           "$build_tools/zipalign" -P 16 -f 4 output/pdfcraft-patched-unsigned.apk output/pdfcraft-aligned.apk
@@ -165,23 +165,23 @@ jobs:
           "$build_tools/apksigner" sign --ks keys/artcraft-builder.jks --ks-type JKS \
             --ks-key-alias artcraftbuilder --ks-pass env:EPHEMERAL_PASS \
             --key-pass env:EPHEMERAL_PASS --v4-signing-enabled false \
-            --out output/pdfcraft-0.17.0-android.2.apk output/pdfcraft-aligned.apk
-          "$build_tools/apksigner" verify --verbose output/pdfcraft-0.17.0-android.2.apk
-          "$build_tools/zipalign" -c -P 16 4 output/pdfcraft-0.17.0-android.2.apk
+            --out output/pdfcraft-0.17.0-android.3.apk output/pdfcraft-aligned.apk
+          "$build_tools/apksigner" verify --verbose output/pdfcraft-0.17.0-android.3.apk
+          "$build_tools/zipalign" -c -P 16 4 output/pdfcraft-0.17.0-android.3.apk
           rm -f output/pdfcraft-patched-unsigned.apk output/pdfcraft-aligned.apk
 
       - name: Verify packaged ABI, identity, version, icon and ephemeral signature
         shell: bash
         run: |
           set -euo pipefail
-          APK="output/pdfcraft-0.17.0-android.2.apk"
+          APK="output/pdfcraft-0.17.0-android.3.apk"
           SDK_ROOT="${ANDROID_HOME}"
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
           AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
           APKSIGNER="$SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner"
           "$AAPT2" dump badging "$APK" | tee output/pdfcraft-badging.txt
           grep -q "package: name='com.artcraft.pdfcraft'" output/pdfcraft-badging.txt
-          grep -q "versionName='0.17.0-android.2'" output/pdfcraft-badging.txt
+          grep -q "versionName='0.17.0-android.3'" output/pdfcraft-badging.txt
           grep -q "versionCode='$EXPECTED_EPHEMERAL_VERSION_CODE'" output/pdfcraft-badging.txt
           unzip -Z1 "$APK" | tee output/pdfcraft-archive.txt
           grep -q '^lib/arm64-v8a/.*\.so$' output/pdfcraft-archive.txt
@@ -200,9 +200,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: PDFCraft-0.17.0-android.2-EPHEMERAL-NOT-UPDATE
+          name: PDFCraft-0.17.0-android.3-EPHEMERAL-NOT-UPDATE
           path: |
-            output/pdfcraft-0.17.0-android.2.apk
+            output/pdfcraft-0.17.0-android.3.apk
             output/pdfcraft-badging.txt
             output/pdfcraft-archive.txt
             output/pdfcraft-ephemeral-certificate.txt

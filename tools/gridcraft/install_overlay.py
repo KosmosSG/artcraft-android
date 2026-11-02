@@ -66,7 +66,9 @@ def install(builder: Path, additions: Path):
         port_script = Path(__file__).with_name("port_v0150_ui.py")
         port = runpy.run_path(str(port_script))
         port["stage"](builder / "source/gridcraft")
-        print("v0.15.0 relocated menu/font UI port staged; host launcher and D/C/S still require porting")
+        save_port = runpy.run_path(str(Path(__file__).with_name("port_v0150_save_dcs.py")))
+        save_port["port"](builder / "source/gridcraft")
+        print("v0.15.0 relocated menu/font, modal D/C/S, Esc and SAF-acknowledged close sources staged; generated launcher still requires compatibility work")
     else:
         if ribbon.is_file():
             ribbon_source = ribbon.read_text()

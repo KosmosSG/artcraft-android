@@ -160,8 +160,8 @@ jobs:
           assert 'handled_clipboard' in keys
           assert 'self.publish_clipboard(ctx, false);' in keys
           assert 'self.publish_clipboard(ctx, true);' in keys
-          assert 'self.session.execute("edit.paste", &params)' in keys
-          assert 'if touch_pan_active { 1.65_f32 } else { 1.25_f32 }' in canvas
+          assert 'self.session.execute("edit.paste", &json!({"text": pasted}))' in keys
+          assert 'if touch_pan_active { 1.65_f32 } else { 1.95_f32 }' in canvas
           assert 'android_capture_editor_close_raw' in ui
           assert 'self.inner.android_capture_editor_close_raw(ctx, raw);' in shell
           assert 'dkTakeEditorClose' in java

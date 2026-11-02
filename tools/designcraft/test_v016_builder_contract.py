@@ -156,7 +156,8 @@ class DesignCraftV016SourceContract(unittest.TestCase):
     def test_device_candidate_version_and_size_controls(self):
         stage = (ROOT / "tools" / "designcraft" / "patch_v016_android.py").read_text()
         self.assertIn('candidate_version = "0.16.0-android.1"', stage)
-        self.assertIn('version_code = 16900001', stage)
+        self.assertIn('let cargo-apk2 calculate the integer code', stage)
+        self.assertNotIn('version_code = 16900001', stage)
         self.assertIn('apk_name = "designcraft-', stage)
         self.assertIn('APP_VERSION="0.16.0-android.1"', self.shell)
         self.assertIn('export CARGO_PROFILE_DEV_DEBUG=0', self.shell)

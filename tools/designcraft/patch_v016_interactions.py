@@ -117,7 +117,12 @@ def java_source(root,android):
 
     public int dcUnsavedDialog(boolean active) {
         dcDialogActive = active;
-        return active ? dcDialogAction.getAndSet(0) : 0;
+        if (!active) {
+            // Never carry a pending D/C/S letter to the next unsaved dialog.
+            dcDialogAction.set(0);
+            return 0;
+        }
+        return dcDialogAction.getAndSet(0);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

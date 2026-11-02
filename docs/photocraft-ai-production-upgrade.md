@@ -1,5 +1,16 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Read-only build-parity regression check (2 November 2026):** New
+> [source-only guard](../tools/photocraft_ai_v2_build_parity.py) checks the
+> exact accepted android.4 recipe for pinned keyboard/AI integration and its
+> 4 GiB/5,000-font overlay, and refuses reactivation of the rejected android.5
+> workflow. Seven negative source mutations are exercised; this does **not**
+> establish the cause of Ctrl+W failing on hardware. [CI run #41401513433](https://github.com/KosmosSG/artcraft-android/actions/runs/41401513433)
+> passed the parity test, V2 rejection tests and read-only inspection of the
+> actual published android.4 APK/signature. No new candidate was built or
+> signed, and no new release was approved.
+
+
 > **Owner device-test decision — 2 November 2026 (latest; supersedes android.5 promotion plans).**
 > The owner tested the privately V2-signed `0.14.0-android.5` candidate on
 > HONOR MagicPad 4 and reported that **Ctrl+W does not respond**. They prefer

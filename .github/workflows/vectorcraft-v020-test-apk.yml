@@ -107,6 +107,11 @@ jobs:
           # Its native-activity 0.6.1 lacked classification() despite winit calling it.
           # Safely resolve the Android API-29+ symbol at runtime; on API 28 return None.
           python3 android-port/tools/vectorcraft/patch_android_native_classification.py builder
+          # VectorCraft v0.20's official egui-winit expects Storytold winit's
+          # ImeResetCompleted and reset_ime_with_request APIs; this builder's
+          # older vendored winit has neither. Preserve all custom touch/mouse
+          # code while adding exactly the upstream public IME interface.
+          python3 android-port/tools/vectorcraft/patch_android_winit_ime_v020.py builder
           # The reference builder copies adapters/vectorcraft again during packaging.
           # Patch THAT source, not only the compatibility check's temporary apps crate.
           python3 - <<'PY'

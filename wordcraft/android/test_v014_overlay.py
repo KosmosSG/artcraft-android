@@ -28,7 +28,7 @@ class WordcraftV014OverlayTest(unittest.TestCase):
             dispatch = (target / "dispatch.rs").read_text()
             chrome = (target / "chrome.rs").read_text()
             self.assertIn('format!("{} (C)", tl!("Cancel"))', dispatch)
-            self.assertIn('format!("{} (D)", tl!("Don\\'t Save"))', dispatch)
+            self.assertIn('format!("{} (D)", tl!("Don\'t Save"))', dispatch)
             self.assertIn('format!("{} (S)", tl!("Save"))', dispatch)
             self.assertIn('app.run("ui.saveChanges", json!({"answer": answer}))', dispatch)
             self.assertIn("android_unsaved_dcs_active", dispatch)

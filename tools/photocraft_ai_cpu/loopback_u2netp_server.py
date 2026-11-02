@@ -248,10 +248,20 @@ def make_handler(token: str):
                     # before our explicit 4 MP limit is evaluated. Treat that
                     # as malformed input, never an unhandled handler failure.
                     return self.reply(400, b"Invalid image")
-                with tempfile.TemporaryDirectory(prefix="photocraft-u2netp-") as folder:
+                # Disk exhaustion or a missing/unwritable Linux Lab temp
+                # directory must return a private, bounded HTTP error rather
+                # than a handler traceback with local paths or a dropped socket.
+                try:
+                    scratch = tempfile.TemporaryDirectory(prefix="photocraft-u2netp-")
+                except OSError:
+                    return self.reply(507, b"Local temporary storage unavailable")
+                with scratch as folder:
                     source = Path(folder) / "input.png"
                     output = Path(folder) / "output.png"
-                    source.write_bytes(payload)
+                    try:
+                        source.write_bytes(payload)
+                    except OSError:
+                        return self.reply(507, b"Local temporary storage unavailable")
                     try:
                         completed = subprocess.run(
                             [sys.executable, str(BRIDGE), "--input", str(source),

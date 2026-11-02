@@ -575,6 +575,44 @@ class LoopbackHTTPTests(unittest.TestCase):
                     self.fail("Disconnected client left local inference unavailable")
             unexpected.assert_not_called()
 
+    def test_temporary_storage_errors_are_private_and_release_inference_lock(self):
+        # A full/unwritable Linux Lab temporary filesystem can fail before
+        # the inference subprocess starts. The HTTP handler must not leak a
+        # local path or token, crash, or keep the single-worker lock.
+        def request_after_backpressure():
+            for _ in range(40):
+                response = self.request()
+                if response[0] != 429:
+                    return response
+                threading.Event().wait(0.03)
+            self.fail("Temporary-storage failure leaked the inference lock")
+
+        failures = (
+            (server.tempfile, "TemporaryDirectory", OSError("/home/honor/private/tmp")),
+            (server.Path, "write_bytes", OSError("/home/honor/private/input.png")),
+        )
+        with patch.object(self.httpd, "handle_error") as unexpected:
+            for owner, method, failure in failures:
+                with self.subTest(stage=method):
+                    with patch.object(owner, method, side_effect=failure):
+                        with patch.object(server.subprocess, "run") as inference:
+                            code, headers, body = request_after_backpressure()
+                            self.assertEqual(code, 507)
+                            self.assertEqual(headers["Content-Type"], "text/plain")
+                            self.assertEqual(headers["Cache-Control"], "no-store")
+                            self.assertNotIn(b"/home/honor", body)
+                            self.assertNotIn(TOKEN.encode(), body)
+                            inference.assert_not_called()
+                    # A subsequent independently consented request still works.
+                    with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                        code, headers, payload = request_after_backpressure()
+                        self.assertEqual(code, 200)
+                        self.assertEqual(headers["Content-Type"], "image/png")
+                        with Image.open(io.BytesIO(payload)) as image:
+                            image.load()
+                            self.assertEqual(image.size, (16, 16))
+            unexpected.assert_not_called()
+
     def test_cpu_worker_launch_oserror_returns_private_502_and_recovers(self):
         # A missing/unlaunchable Linux Lab Python or bridge raises OSError
         # before subprocess.run returns. Previously this escaped do_POST,

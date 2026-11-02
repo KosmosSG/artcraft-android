@@ -82,6 +82,16 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn("Box::new(move |_cc| {{", self.shell)
         self.assertIn('GENERATOR_VERSION = "25" if app == "designcraft" else "24"', self.shell)
 
+    def test_debug_ci_compiles_only_on_opt_in_and_never_publishes(self):
+        workflow = (ROOT / ".github" / "workflows" / "designcraft-v016-review.yml").read_text()
+        self.assertIn("[designcraft-debug]", workflow)
+        self.assertIn("bash build-debug.sh -designcraft -designcraft-v016", workflow)
+        self.assertIn("UNVERIFIED-DesignCraft-v016-DEBUG-arm64-not-for-updates", workflow)
+        self.assertIn("retention-days: 3", workflow)
+        self.assertNotIn("actions/create-release", workflow)
+        self.assertNotIn("softprops/action-gh-release", workflow)
+        self.assertNotIn("secrets.", workflow)
+
     def test_source_review_cannot_claim_publication(self):
         self.assertFalse(self.lock.get("production_release_authorized", False))
         self.assertFalse(self.lock.get("permanent_signing_authorized", False))

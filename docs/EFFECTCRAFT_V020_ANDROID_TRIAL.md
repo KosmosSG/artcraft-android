@@ -2,7 +2,7 @@
 
 **Draft only — NOT approved for publishing or production signing.**
 
-This is a stacked follow-up to EffectCraft draft PR #82. It starts at PR #82's head, **not** the outdated shared `main` tree, so it keeps the existing EffectCraft v0.16.0-android.8 source modifications. The existing public v0.16.0-android.5 release and previous signed APK are untouched.
+This is a stacked follow-up to EffectCraft draft PR #82. It starts at PR #82's head, **not** the outdated shared `main` tree, so it keeps the existing EffectCraft v0.16.0-android.8 source modifications. The current public v0.16.0-android.8 release and its original-signed APK are untouched.
 
 ## Source versions
 
@@ -40,6 +40,16 @@ The v0.20 trial runs the existing conditional patches against the new source and
 4. If source checks or compilation fail, inspect the workflow failure and patch the isolated v0.20 branch, preserving v0.16 compatibility. Repeat until all CI checks pass.
 5. Only then deliver the test APK for HONOR MagicPad 4 verification, including reopening prior projects, crash/session restore, nested 4 GiB font scan and input behavior.
 6. For a **production** candidate, confirm the separate original EffectCraft signing certificate SHA-256 `10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577`; select a code higher than all installed/published codes; verify exact APK contents and checksum. No release without explicit owner approval.
+
+## Owner-approved low-quota device-testing policy (2 November 2026)
+
+For this EffectCraft v0.20.0 trial and subsequent **development testing APKs**, the owner requests **no production/permanent-key signing before device testing**. The owner accepts uninstalling a previously installed app if a trial with the same Android package identity ever requires it. Do **not** run, create or trigger an original-key signing job in the private signing repository, or use stored production signing secrets, simply to provide a development APK. Permanent signing and release are deferred until the owner separately requests them after testing.
+
+Android **cannot install an unsigned APK**. The current public-repository compatibility workflow is already designed to use the disposable builder keystore and verify it locally in that one build job; the `apksigner verify` step is a **read-only check**, not a second signing job. Do not confuse the disposable test certificate with the permanent production certificate. Discard test keys after the build and do not claim test APKs are eligible for in-place production updates.
+
+The existing **`com.artcraft.effectcraft.v020test` test package is intentionally separate** from `com.artcraft.effectcraft`: it can install side by side, so **uninstallation is NOT required** for the currently configured test APK. This is safer for preserving existing app data. If a later test deliberately uses the original `com.artcraft.effectcraft` package with a different temporary certificate, the user must uninstall the old app first. **Warn before uninstall** that app-private projects, unsaved changes, local recovery data, preferences, font imports, and persistent SAF grants may be irretrievably deleted. Ask the owner to back up/export anything important.
+
+To conserve resources, avoid repeated failed heavy builds while the known Rust `winit` compatibility blocker remains. Prefer code reviews, structural unit tests and a single guarded public ARM64 compile once a meaningful fix is ready. The public repository currently uses standard `ubuntu-24.04` runners, which GitHub documents as free of Actions compute charges for public repositories; private signing builds can use private-repo allowances. Keep any test artifact short-lived (currently 3 days) and publish no GitHub Release.
 
 ## Publication gate
 

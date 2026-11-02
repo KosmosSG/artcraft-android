@@ -1,6 +1,9 @@
 // FilmCraft-only feature bridge. Never share SAF picker result queues with media imports.
     private static final int FC_FONT_PICK = 0x4651;
     private static final int FC_FONT_TREE = 0x4652;
+    // Bound scans by files, folders and bytes independently. 4 GiB is not a file-count limit.
+    private static final int FC_SCAN_MAX_FONT_FILES = 5000;
+    private static final int FC_SCAN_MAX_FOLDERS = 2048;
     private static final String FC_PREFS = "filmcraft_android_features";
     private static final String FC_TREE_PREF = "shared_font_tree_uri";
     private static final String FC_RELEASES_API =
@@ -200,7 +203,7 @@
                 queue.add(DocumentsContract.getTreeDocumentId(tree));
                 int folders = 0;
                 long[] scanBytes = {0};
-                while (!queue.isEmpty() && folders < 128 && accepted + skipped < 256 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
+                while (!queue.isEmpty() && folders < FC_SCAN_MAX_FOLDERS && accepted + skipped < FC_SCAN_MAX_FONT_FILES && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                     String parent = queue.removeFirst();
                     if (!visited.add(parent)) continue;
                     folders++;
@@ -211,12 +214,12 @@
                                     DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                                     DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
                         if (cursor == null) continue;
-                        while (cursor.moveToNext() && accepted + skipped < 256 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
+                        while (cursor.moveToNext() && accepted + skipped < FC_SCAN_MAX_FONT_FILES && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                             String child = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
                             if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                                if (queue.size() < 128) queue.addLast(child);
+                                if (queue.size() < FC_SCAN_MAX_FOLDERS) queue.addLast(child);
                                 continue;
                             }
                             String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
@@ -234,8 +237,15 @@
                         }
                     }
                 }
+                String limit = accepted + skipped >= FC_SCAN_MAX_FONT_FILES
+                        ? " (5,000-file limit reached; some fonts remain)"
+                        : folders >= FC_SCAN_MAX_FOLDERS && !queue.isEmpty()
+                            ? " (2,048-folder limit reached; some folders remain)"
+                            : scanBytes[0] >= 4L * 1024 * 1024 * 1024
+                                ? " (4 GiB scan budget reached; some fonts remain)" : "";
                 fcAnswer("font_folder", "ok",
-                        "Shared fonts loaded: " + accepted + "; skipped: " + skipped, paths);
+                        "Font files found: " + accepted + "; skipped: " + skipped
+                                + "; folders scanned: " + folders + limit, paths);
             } catch (Exception error) {
                 fcAnswer("font_folder", "error", error.toString(), null);
             }

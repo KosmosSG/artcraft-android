@@ -63,7 +63,7 @@ def validate(apk: Path) -> dict:
     identity = re.search(
         r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",
         badging, re.M)
-    expected = ("com.artcraft.filmcraft", "1000004", "0.10.0-android.4")
+    expected = ("com.artcraft.filmcraft", "1000005", "0.10.0-android.5")
     if identity is None or identity.groups() != expected:
         raise ValueError("FilmCraft compiled APK package/version mismatch")
     missing_native = [x.decode() for x in NATIVE_COMMANDS if x not in lib]

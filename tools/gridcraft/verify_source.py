@@ -17,7 +17,12 @@ def validate(data):
     assert data["app"] == "gridcraft"
     assert data["product_name"] == "GridCraft"
     assert data["upstream_repository"] == UPSTREAM
-    assert data["official_version"] == "0.11.1"
+    assert data["official_version"] == "0.15.0"
+    # The upstream metadata is a review target, not a certified Android APK.
+    assert data["upstream_review_only"] is True
+    assert data["baseline_android_release_tag"] == "gridcraft-v0.11.1-android.4-ctrlw-dcs-fix"
+    assert data["baseline_android_source_commit"] == "720fab9eaa178da485750009f1a2782026da6286"
+    assert data["build_approved"] is False and data["publish_approved"] is False
     assert data["official_release_tag"] == "v" + data["official_version"]
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1

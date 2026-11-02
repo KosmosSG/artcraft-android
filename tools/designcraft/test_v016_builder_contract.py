@@ -104,7 +104,7 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "designcraft-v016-review.yml").read_text()
         self.assertIn("[designcraft-debug]", workflow)
         self.assertIn("bash build-debug.sh -designcraft -designcraft-v016", workflow)
-        self.assertIn("UNVERIFIED-DesignCraft-v016-DEBUG-arm64-not-for-updates", workflow)
+        self.assertIn("UNVERIFIED-DesignCraft-v0.16.0-android.1-DEBUG-arm64-not-for-updates", workflow)
         self.assertIn("retention-days: 3", workflow)
         self.assertNotIn("actions/create-release", workflow)
         self.assertNotIn("softprops/action-gh-release", workflow)

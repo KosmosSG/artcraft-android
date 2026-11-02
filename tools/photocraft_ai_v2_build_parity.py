@@ -179,10 +179,14 @@ def ai_one_shot_token_boundary(menu: str) -> None:
         raise ValueError("AI background worker anchors changed")
     start = menu.split("    fn start_cpu_job(", 1)[1].split("    fn poll_cpu_result(", 1)[0]
     move = "let token = std::mem::take(&mut self.cpu_token);"
+    # Snapshot validation can fail before any worker starts. A token must
+    # already have left the editable UI on that early-error path as well.
+    anchors = (move, "ai_background_editor::active_snapshot(session)",
+               "std::thread::spawn(move ||")
+    positions = [start.find(anchor) for anchor in anchors]
     if (start.count(move) != 1 or "self.cpu_token.clone()" in start or
-        start.find(move) > start.find("std::thread::spawn(move ||") or
-        "std::thread::spawn(move ||" not in start):
-        raise ValueError("AI token must move from UI to the one-use worker")
+        -1 in positions or positions != sorted(positions)):
+        raise ValueError("AI token must be consumed before snapshot and worker start")
 
 
 def self_test() -> None:
@@ -226,6 +230,12 @@ def self_test() -> None:
         (lambda text: ai_hidden_consent_boundary(text), ai_menu.replace("self.show_background_setup = false;", "", 1), "hidden AI dialog could reopen"),
         (lambda text: ai_hidden_consent_boundary(text), ai_menu.replace("self.cpu_consent = false;", "", 1), "hidden AI menu retained consent"),
         (ai_one_shot_token_boundary, ai_menu.replace("let token = std::mem::take(&mut self.cpu_token);", "let token = self.cpu_token.clone();", 1), "one-use token retained in dialog after Start"),
+        (ai_one_shot_token_boundary, ai_menu.replace(
+            "let token = std::mem::take(&mut self.cpu_token);\n        let (document, origin)",
+            "let (document, origin)", 1).replace(
+            "Err(error) => { self.cpu_status = error; return; }\n        };",
+            "Err(error) => { self.cpu_status = error; return; }\n        };\n        let token = std::mem::take(&mut self.cpu_token);", 1),
+         "snapshot error retains token in editable dialog"),
         (lambda text: ai_keyboard_boundary(text, ai_stage, window_patch), ai_menu + "\\nconsume_key(", "AI menu key interception"),
         (lambda text: ai_keyboard_boundary(ai_menu, text, window_patch), ai_stage.replace("artcraft_discard_prompt_owns_keyboard", "", 1), "discard keyboard guard missing"),
         (lambda text: ai_keyboard_boundary(ai_menu, ai_stage, text), window_patch + "\\nKey::W", "Window menu W interception"),
@@ -238,7 +248,7 @@ def self_test() -> None:
         raise AssertionError("Fail-open source parity regression: " + reason)
 
     print("PASS: accepted android.4 recipe retains pinned keyboard, AI and 4 GiB/5000-font overlay")
-    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-seven negative mutations rejected")
+    print("PASS: historical android.4 and rejected android.5 workflows remain disabled; twenty-eight negative mutations rejected")
     print("PASS: owner-tested isolated AI Preview ARM64 workflow is archived, no automatic builds")
     print("PASS: obsolete android.2 proof is disabled and cannot upload its disposable APK copy")
     print("PASS: hiding AI Tools revokes ephemeral token, consent and pending dialog (source-only)")

@@ -22,7 +22,7 @@ MANIFEST_GUARD = """
 # Keep FilmCraft v0.16's coordinated upstream IME reset and egui-winit API.
 # This must run AFTER every builder vendor operation and BEFORE cargo-ndk.
 if [[ "$APP" == "filmcraft" ]]; then
-    python3 - "$SRC/Cargo.toml" <<'PYFILMCRAFTDEPS'
+    python3 - "$ROOT/$SRC/Cargo.toml" <<'PYFILMCRAFTDEPS'
 from pathlib import Path
 import sys
 import tomllib

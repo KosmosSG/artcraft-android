@@ -21,6 +21,17 @@
 > repeated on-device Ctrl+W / D-C-S checks before release consideration.
 > No new APK or downgrade is requested; **do not uninstall the owner's app**
 > as a downgrade workaround because it can remove app-private data.
+>
+> **Rejected-build containment (2 November 2026):** the historical
+> `.github/workflows/photocraft-ai-v2-candidate-unsigned.yml` is now
+> deliberately **job-disabled** (`if: ${{ false }}`), and its earliest
+> preflight also rejects the owner-rejected `android.5` name/code using the
+> V2 upgrade-gate constants. This prevents an accidental heavy rebuild or
+> manual re-dispatch of the rejected candidate from producing an APK.
+> Commit [`fac02a57`](https://github.com/KosmosSG/artcraft-android/commit/fac02a577c0512430e1734648098623c72615598).
+> This is source/workflow containment, **not** a fix for Ctrl+W. The
+> exact keyboard regression still requires investigation against android.4
+> before any separately authorized new candidate.
 
 > **Current status — 2 November 2026 (supersedes historical signing instructions below).**
 > [PhotoCraft `v0.14.0-android.4`](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.4)

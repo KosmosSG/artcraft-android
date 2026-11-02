@@ -163,7 +163,7 @@ jobs:
         python3 suite/tools/filmcraft/verify_android_features_apk.py filmcraft-builder/output/filmcraft-0.10.0-android.3.apk integrated-candidate
         cp filmcraft-builder/output/filmcraft-0.10.0-android.3.apk integrated-candidate/
         (cd integrated-candidate && sha256sum filmcraft-0.10.0-android.3.apk > SHA256SUMS.txt)
-        echo 'EPHEMERAL TEST SIGNER ONLY — NOT A PRODUCTION UPDATE' > integrated-candidate/NOT-FOR-UPDATE.txt
+        echo "EPHEMERAL TEST SIGNER ONLY - NOT A PRODUCTION UPDATE" > integrated-candidate/NOT-FOR-UPDATE.txt
 
         '
     - name: Record exact keyboard candidate source

@@ -186,7 +186,7 @@ def self_test() -> None:
         (archived_ai_preview_recipe, ai_preview.replace("    if: ${{ false }}", "    if: ${{ true }}", 1), "preview ARM64 job reenabled"),
         (archived_ai_preview_recipe, ai_preview.replace("  workflow_dispatch:", "  push:\\n  workflow_dispatch:", 1), "preview push trigger restored"),
         (archived_ai_preview_recipe, ai_preview.replace("cancel-in-progress: false", "cancel-in-progress: true", 1), "preview run cancellation restored"),
-        (archived_ai_preview_recipe, ai_preview.replace("icon-verification/verification.json", "icon-verification/", 1), "preview failure upload includes disposable APK"),
+        (archived_ai_preview_recipe, ai_preview.replace("            icon-verification/verification.json\n          if-no-files-found: ignore", "            icon-verification/\n          if-no-files-found: ignore", 1), "preview failure upload includes disposable APK"),
         (archived_ai_preview_recipe, ai_preview.replace("rm -f output/*.apk icon-verification/*.apk candidate/*.apk", "", 1), "preview disposable APK copies retained"),
         (archived_ai_preview_recipe, ai_preview.replace("package: name='com.artcraft.photocraft.ai.preview'", "package: name='com.artcraft.photocraft'", 1), "preview production package identity substitution"),
         (accepted_recipe, stable.replace(FONT_PARITY[0], "", 1), "missing font scanner"),

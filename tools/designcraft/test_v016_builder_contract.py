@@ -97,6 +97,8 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn('raw_hook_has_ctx = bool(re.search(', self.shell)
         self.assertIn('"self.inner.raw_input_hook(ctx, raw);"', self.shell)
         self.assertIn('"let _ = ctx;\\n        self.inner.raw_input_hook(raw);"', self.shell)
+        # This conditional is the exact v0.16 ARM64 compile regression fix.
+        self.assertIn("if raw_hook_has_ctx", self.shell)
 
     def test_debug_ci_compiles_only_on_opt_in_and_never_publishes(self):
         workflow = (ROOT / ".github" / "workflows" / "designcraft-v016-review.yml").read_text()

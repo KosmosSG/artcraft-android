@@ -8,8 +8,8 @@ Pinned official source: Storytold DeckCraft v0.14.1,
 `ee39ff67816d0039143ec7c98ea604cefe0cd2e5` (checked 2026-11-02).
 Pinned Android builder: MostafaXS1/artcraft-android
 `fbb4f66fcc868afdd8303d5227aa81db6a21d7fa`.
-Candidate: `DeckCraft v0.14.1-android.2`, package `com.artcraft.deckcraft`,
-versionCode `100000006`. The workflow retains only an **unsigned** ARM64 APK.
+Candidate: `DeckCraft v0.14.1-android.3`, package `com.artcraft.deckcraft`,
+versionCode `100000007`. The workflow retains only an **unsigned** ARM64 APK.
 
 Changes staged:
 - Updated to official v0.14.1 (released 2026-11-01), preserving all compatible improvements from v0.13.1; upstream includes safer print-preview handling, PPTX fidelity, animation and update-dialog improvements.
@@ -43,3 +43,15 @@ Validation gates:
 Scope still open: suite-wide app-by-app ports in PR #84, Android device acceptance,
 and signing/publication. PhotoCraft remains last; LightCraft is excluded from the
 font-scanner work. This DeckCraft branch does not change those applications.
+
+## v0.14.1-android.3 UI / modal regression fix (2026-11-02)
+
+The owner device-tested Android.2: Escape now stays inside DeckCraft, but D/C/S
+shortcuts failed; the Format dropdown centered its items and no theme choice was visible.
+Android.3 restores the published Android.4 Java keyboard focus/physical key transport,
+eagerly drains egui shortcut events, uses egui::Modal to block the canvas behind the
+unsaved dialog, exposes the existing persistent View > Dark Theme preference, and
+left-justifies all Android top-menu entries. Esc stays inside the app.
+
+No production signing or release. CI, temporary test signature, and HONOR MagicPad 4
+repeated-dialog / Escape tests remain required before approving the changes.

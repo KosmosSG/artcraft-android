@@ -53,7 +53,7 @@ def apply(root):
     edit('state.rs', '    pub ribbon_collapsed: bool,', '    pub ribbon_collapsed: bool,\n    #[serde(default)]\n    pub tablet_tools: bool,')
     edit('state.rs', '            ribbon_collapsed: false,', '            ribbon_collapsed: false,\n            tablet_tools: false,')
     edit('menus.rs', '("Open…", "app.openDialog"),', '("Open…", "app.openDialog"),\n                ("Import Font…", "app.importFont"),')
-    edit('menus.rs', '("Normal", "view.normal"),', '("Tablet Tools", "view.tabletTools"),\n                ("Normal", "view.normal"),')
+    edit('menus.rs', '("Normal", "view.normal"),', '("Dark Theme", "view.dark"),\n                ("Tablet Tools", "view.tabletTools"),\n                ("-", ""),\n                ("Normal", "view.normal"),')
     edit('menus.rs', '("Command Palette", "app.palette")', '("Import Font…", "app.importFont"), ("Command Palette", "app.palette")')
     edit('app.rs', '        ribbon::title_bar(self, ui);', '        self.tablet_controls(ui);\n        ribbon::title_bar(self, ui);')
     tree = ast.parse((HERE / 'patch_deckcraft_tablet.py').read_text())
@@ -61,6 +61,11 @@ def apply(root):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'change'
         and len(n.args) == 2 and isinstance(n.args[1], ast.BinOp))
     tablet = tablet.replace('fn tablet_controls(', 'pub(crate) fn tablet_controls(')
+    # Left align popover entries while retaining 190x32 touch hit zones.
+    tablet = tablet.replace('egui::Button::new(label)', 'egui::Button::new("").left_text(label)')
+    # Persistent light/dark toggle is provided by official DeckCraft view.dark.
+    tablet = tablet.replace('if command == "view.tabletTools" && self.ui.tablet_tools {',
+        'if command == "view.dark" && self.ui.brightness == theme::Brightness::Dark { "✓ Dark Theme" } else if command == "view.tabletTools" && self.ui.tablet_tools {')
     p = src / 'lib.rs'; p.write_text(p.read_text() + '\nimpl SlideApp {\n' + tablet + '\n}\n')
 
     # D/C/S remains confined to the unsaved dialog, with asynchronous save acknowledgement.
@@ -78,7 +83,9 @@ def apply(root):
     body = text[start:end]
     for label, key in [("Don't Save", 'D'), ('Cancel', 'C'), ('Save', 'S')]:
         body = body.replace(f'new("{label}")', f'new("{label} ({key})")')
-    body = body.replace('    let mut done = false;', '    let shortcut = ui.ctx().data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))).or_else(|| crate::take_dcs(ui.ctx()));\n    let mut done = false;')
+    # Unlike a lazy or_else, always drain the modal's egui key/text events.
+    # Match the device-tested Android.4 D/C/S behaviour.
+    body = body.replace('    let mut done = false;', '    let java_action = ui.ctx().data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs")));\n    let egui_action = crate::take_dcs(ui.ctx());\n    let shortcut = java_action.or(egui_action);\n    let mut done = false;')
     body = body.replace('24.0))).clicked() {', '24.0))).clicked() || shortcut == Some(1) {', 1)
     close = body.index('fn dlg_close(')
     body = body[:close] + body[close:].replace('24.0))).clicked() {', '24.0))).clicked() || shortcut == Some(1) {', 1)
@@ -88,6 +95,44 @@ def apply(root):
     body = body.replace('                app.save();', '                if app.services.android_save_close.is_some() {\n                    app.android_save_and_close(false);\n                } else {\n                app.save();')
     body = body.replace('                    run(app, "file.close", json!({}));\n                }\n                done = true;', '                    run(app, "file.close", json!({}));\n                }\n                }\n                done = true;')
     p.write_text(text[:start] + body + text[end:])
+    # Restore actual modal layering from device-tested Android.4.
+    p = src / 'dialogs.rs'; s = p.read_text()
+    old_show = '''    window.show(ctx, |ui| {
+        ui.set_min_width(match d.id.as_str() {
+            "themeColors" => 700.0,
+            "themeFonts" => 400.0,
+            _ => 340.0,
+        });
+        if d.id == "themeColors" {
+            ui.set_min_height(360.0);
+        } else if d.id == "themeFonts" {
+            ui.set_min_height(280.0);
+        }
+        close = body(app, ui, &mut d);
+    });'''
+    assert s.count(old_show) == 1, 'Official modal shell changed'
+    assert s.count('.open(&mut open);') == 1
+    s = s.replace('.open(&mut open);', ';', 1)
+    modal_show = '''    if matches!(d.id.as_str(), "close" | "quit") {
+        egui::Modal::new(egui::Id::new(("deckcraft.confirm.modal", d.id.clone()))).show(ctx, |ui| {
+            ui.set_min_width(340.0);
+            ui.set_max_width(380.0);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("×").clicked() { close = true; }
+                        ui.add_space(94.0);
+                        ui.heading("DeckCraft");
+                    });
+                });
+                ui.separator();
+                close |= body(app, ui, &mut d);
+            });
+        });
+    } else {
+''' + old_show.replace('    window.show(ctx,', '    window.open(&mut open).show(ctx,') + '''
+    }'''
+    p.write_text(s.replace(old_show, modal_show, 1))
     edit('app.rs', '    pub fn logic(&mut self, ctx: &egui::Context) {',
         '    pub fn logic(&mut self, ctx: &egui::Context) {\n        self.android_capture_unsaved_dcs(ctx);')
     # Carry forward the release's render/round-trip/font-style regression, not just menu checks.

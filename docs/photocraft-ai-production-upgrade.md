@@ -1,5 +1,22 @@
 # PhotoCraft AI PR #93 — production update readiness (not a release)
 
+> **Local AI consent/token privacy hardening — 2 November 2026.**
+> [PR93 change e4b61a83](https://github.com/KosmosSG/artcraft-android/commit/e4b61a837f7fd4eabfa65f3becefe047ba9f9559)
+> revokes the in-memory per-image consent and temporary Linux Lab bearer token,
+> closes the pending background-removal dialog and cancels any client-side job
+> when Window → Show AI Tools is hidden. It does not persist tokens or change
+> the local 127.0.0.1-only architecture. [Source regression 55f4edc1](https://github.com/KosmosSG/artcraft-android/commit/55f4edc10272a4b83792301f4f2c2c9a29c6b4a2)
+> adds three fail-closed negative mutations. [Lightweight V2 CI #41445423510](https://github.com/KosmosSG/artcraft-android/actions/runs/41445423510)
+> **PASSED**: 20 parity mutations, 19 V2 identity regressions, actual
+> published android.4 APK signer/hash/ARM64 checks, **zero artifacts**.
+> The AI-menu source edit also auto-triggered the existing *isolated-preview*
+> ARM64 workflow [#41445396193](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193),
+> which was **still running at evidence capture**; do not start a duplicate,
+> cancel an active build, or treat an isolated preview as a production candidate.
+> This is a privacy/source-only improvement, **not** a fix for the unresolved
+> android.5 Ctrl+W hardware regression. Android.4 stays stable; android.5
+> remains rejected; no new production signing, merge or release authorized.
+
 > **Archived ARM64 job bypass protection — 2 November 2026.**
 > [Commit f0874c04](https://github.com/KosmosSG/artcraft-android/commit/f0874c045d328e5e6114e4141960c57dc1751dac)
 > closes a source-guard gap: checking for a bare `if: false` string did not

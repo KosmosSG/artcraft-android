@@ -3057,6 +3057,14 @@ PY
 fi
 
 say 6 "Building $TITLE ($MODE)..."
+if [[ "$DESIGNCRAFT_V016" == true ]]; then
+    # Quota-conscious experimental arm64: keep the debuggable APK format and
+    # disposable signing key while removing most of the native debug bloat.
+    # No functionality, asset, or architecture is removed.
+    export CARGO_PROFILE_DEV_DEBUG=0
+    export CARGO_PROFILE_DEV_STRIP=debuginfo
+    export CARGO_PROFILE_DEV_OPT_LEVEL=s
+fi
 mkdir -p "build/$APP/target" output logs
 export CARGO_TARGET_DIR="$ROOT/build/$APP/target"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -3092,6 +3100,11 @@ else:
     print("0.0.0")
 PY
 )"
+if [[ "$DESIGNCRAFT_V016" == true ]]; then
+    # The source workspace remains v0.16.0; this is the separate ArtCraft
+    # Android testing revision shown in filenames and Android app settings.
+    APP_VERSION="0.16.0-android.1"
+fi
 
 # FigCraft and DeckCraft set `CRAFT_FONTS_DIR = "../craft-fonts"` (relative) in .cargo/config.toml.
 # cargo-subcommand, which cargo-apk uses to locate the workspace, canonicalizes that path and aborts

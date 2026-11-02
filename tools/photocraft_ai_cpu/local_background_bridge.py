@@ -52,7 +52,9 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         staged_input = Path(stage_dir) / "input.png"
         staged_output = Path(stage_dir) / "result.png"
         try:
-            fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+            # The source may be replaced with a FIFO after is_file().
+            # Nonblocking open lets fstat reject it without hanging.
+            fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as input_file:
                 info = os.fstat(input_file.fileno())
                 if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_INPUT_BYTES:
@@ -100,7 +102,9 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         # race: a worker's surviving child could replace the staged file
         # after validation and before the link, publishing different bytes.
         try:
-            fd = os.open(staged_output, os.O_RDONLY | os.O_NOFOLLOW)
+            # A surviving worker can swap the checked output for a FIFO.
+            # Never block on that path before fstat rejects non-regular files.
+            fd = os.open(staged_output, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as staged_file:
                 info = os.fstat(staged_file.fileno())
                 if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1

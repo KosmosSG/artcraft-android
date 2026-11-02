@@ -168,6 +168,67 @@ class SidecarTests(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
 
+
+    def test_worker_fifo_swap_after_file_check_never_blocks_or_publishes(self):
+        # A child can replace its staged PNG with a FIFO after is_file()
+        # succeeds. The descriptor must open nonblocking so fstat can reject.
+        if not hasattr(bridge.os, "mkfifo") or not hasattr(bridge.os, "O_NONBLOCK"):
+            self.skipTest("POSIX named pipes required")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+            original_is_file = Path.is_file
+            swapped = []
+
+            def swap_after_check(path):
+                regular = original_is_file(path)
+                if path.name == "result.png" and regular and not swapped:
+                    path.unlink()
+                    bridge.os.mkfifo(path)
+                    swapped.append(True)
+                return regular
+
+            def inference(argv, **_kwargs):
+                self.make_png(Path(argv[argv.index("--output") + 1]))
+                return subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(bridge.subprocess, "run", side_effect=inference):
+                with patch.object(Path, "is_file", autospec=True, side_effect=swap_after_check):
+                    with self.assertRaisesRegex(RuntimeError, "bounded regular PNG"):
+                        bridge.run(source, output, True)
+            self.assertTrue(swapped, "FIFO race was not exercised")
+            self.assertFalse(output.exists())
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
+    def test_input_fifo_swap_after_file_check_never_starts_inference(self):
+        # The validated source pathname may also be swapped before os.open().
+        if not hasattr(bridge.os, "mkfifo") or not hasattr(bridge.os, "O_NONBLOCK"):
+            self.skipTest("POSIX named pipes required")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, output = root / "input.png", root / "output.png"
+            self.make_png(source)
+            original_is_file = Path.is_file
+            swapped = []
+
+            def swap_after_check(path):
+                regular = original_is_file(path)
+                if path == source and regular and not swapped:
+                    path.unlink()
+                    bridge.os.mkfifo(path)
+                    swapped.append(True)
+                return regular
+
+            with patch.object(bridge.subprocess, "run") as inference:
+                with patch.object(Path, "is_file", autospec=True, side_effect=swap_after_check):
+                    with self.assertRaisesRegex(ValueError, "Input missing or too large"):
+                        bridge.run(source, output, True)
+                inference.assert_not_called()
+            self.assertTrue(swapped, "FIFO input race was not exercised")
+            self.assertFalse(output.exists())
+            self.assertEqual(list(root.glob("photocraft-ai-stage-*")), [])
+
     def test_child_symlink_output_never_exposes_unrelated_local_png(self):
         # A successful child could write a symlink instead of a PNG.
         # inspect() follows links, so validation alone is insufficient.

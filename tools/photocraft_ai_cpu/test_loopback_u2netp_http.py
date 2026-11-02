@@ -273,6 +273,43 @@ class LoopbackHTTPTests(unittest.TestCase):
                     self.assertIn(f" {expected} ".encode(), response.split(b"\r\n", 1)[0])
             run.assert_not_called()
 
+
+    def test_worker_fifo_swap_after_file_check_fails_closed_and_recovers(self):
+        # A surviving worker can swap the PNG for a named pipe between
+        # is_file() and os.open(). O_RDONLY without O_NONBLOCK hangs waiting
+        # for a writer before fstat can reject the non-regular output.
+        if not hasattr(server.os, "mkfifo") or not hasattr(server.os, "O_NONBLOCK"):
+            self.skipTest("POSIX named pipes required")
+        original_is_file = Path.is_file
+        swapped = threading.Event()
+
+        def swap_after_check(path):
+            regular = original_is_file(path)
+            if path.name == "output.png" and regular and not swapped.is_set():
+                path.unlink()
+                server.os.mkfifo(path)
+                swapped.set()
+            return regular
+
+        with patch.object(self.httpd, "handle_error") as unexpected:
+            with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                with patch.object(Path, "is_file", autospec=True, side_effect=swap_after_check):
+                    code, headers, body = self.request()
+            self.assertTrue(swapped.is_set(), "FIFO race was not exercised")
+            self.assertEqual(code, 502)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertNotIn(TOKEN.encode(), body)
+            with patch.object(server.subprocess, "run", side_effect=mock_inference):
+                for _ in range(40):
+                    code, _, _ = self.request()
+                    if code == 200:
+                        break
+                    self.assertEqual(code, 429)
+                    threading.Event().wait(0.03)
+                else:
+                    self.fail("FIFO output race left the inference lock unavailable")
+            unexpected.assert_not_called()
+
     def test_inference_symlink_output_is_rejected_without_disclosing_local_file(self):
         # Regression: a successful child could create an output symlink to a
         # pre-existing local PNG. is_file(), stat() and PNG validation follow

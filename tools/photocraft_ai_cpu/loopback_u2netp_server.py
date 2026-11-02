@@ -292,7 +292,10 @@ def make_handler(token: str):
                     # validating a path then reopening it permits a file swap
                     # (even inode reuse) to expose unrelated local PNG bytes.
                     try:
-                        descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
+                        # A surviving worker may replace the checked PNG with a FIFO
+                        # before open(). Nonblocking open prevents an indefinite
+                        # read-only FIFO wait; fstat below then rejects the FIFO.
+                        descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
                         with os.fdopen(descriptor, "rb") as verified_file:
                             current = os.fstat(verified_file.fileno())
                             # A worker must not publish a hard link to an

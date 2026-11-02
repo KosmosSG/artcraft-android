@@ -168,8 +168,9 @@ jobs:
           bridge=Path('builder/templates/android/dcs_bridge.rs').read_text()
           assert 'pub fn editor_close(' in bridge
           menu=Path('builder/source/deckcraft/crates/ui-egui/src/menus.rs').read_text()
-          assert '("Import Font…", "app.importFont"), ("Command Palette"' in menu
-          assert '("Open…", "app.openDialog"),\\n                ("Import Font…", "app.importFont"),' not in menu
+          assert 'app.importFont' in menu, 'Font import command missing from menu'
+          # Rust menu_tree regression test checks the actual Help/File split.
+          assert 'fn import_font_is_help_only_no_duplicate_file_menu()' in ui
           print('PASS: Android.7 raw+Java Ctrl+W capture, text clipboard C/X/V, Help-only font import and scoped trackpad smoothing')
           print('PASS: Android two-finger pan reaches canvas after hover cancellation and does not navigate on fitted page')
           print('PASS: Android canvas pinch fallback scoped by touch origin; existing wheel zoom retained')

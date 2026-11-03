@@ -34,7 +34,7 @@ def port(root: Path, verify_only=False):
     if MARKER in show or MARKER in interact:
         raise RuntimeError("Android touch-selection port already applied")
     touch_pan_old = """    // A one-finger touch drag pans the sheet, the content following the finger; it doesn't select.
-    // (Two fingers pinch-zoom through \`zoom_delta\` above.)
+    // (Two fingers pinch-zoom through `zoom_delta` above.)
     if resp.drag_started() && ui.input(|i| i.any_touches()) {
         app.grid.touch_pan = true;
     }"""

@@ -24,7 +24,7 @@ class DeviceRetestGate(unittest.TestCase):
         self.assertIn("dispatchKeyEvent(KeyEvent event)", stage)
         self.assertIn("dcUnsavedDialog", stage)
         self.assertIn('v016_android::handle_keys(&mut self.inner, ctx, raw, &self.saf_bridge);', stage)
-        self.assertIn('candidate_version = "0.16.0-android.3"', launcher)
+        self.assertIn('candidate_version = "0.16.0-android.4"', launcher)
 
 if __name__ == "__main__":
     unittest.main()

@@ -130,13 +130,15 @@ def java_source(root,android):
     keys='''    private final java.util.concurrent.atomic.AtomicInteger dcDialogAction =
         new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean dcDialogActive;
-    private final java.util.HashSet<Integer> dcDialogHeld = new java.util.HashSet<>();
+    private final java.util.Set<Integer> dcDialogHeld =
+        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     public int dcUnsavedDialog(boolean active) {
         dcDialogActive = active;
         if (!active) {
             // Never carry a pending D/C/S letter to the next unsaved dialog.
             dcDialogAction.set(0);
+            dcDialogHeld.clear();
             return 0;
         }
         return dcDialogAction.getAndSet(0);
@@ -150,7 +152,9 @@ def java_source(root,android):
         int state = event.getAction();
         if (dcDialogHeld.contains(code)) {
             if (state == KeyEvent.ACTION_UP) dcDialogHeld.remove(code);
-            return true;
+            // Keep the native input queue running, so Rust can process and
+            // repaint the dialog immediately after a hardware shortcut.
+            return super.dispatchKeyEvent(event);
         }
         int action = code == KeyEvent.KEYCODE_D ? 1 :
             (code == KeyEvent.KEYCODE_C ? 2 : (code == KeyEvent.KEYCODE_S ? 3 : 0));
@@ -159,19 +163,20 @@ def java_source(root,android):
                 dcDialogHeld.add(code);
                 if (event.getRepeatCount() == 0)
                     dcDialogAction.compareAndSet(0, action);
-                super.onKeyDown(code, event);
             }
-            return true;
+            // Android's ordinary dispatch wakes winit; the Rust modal handler
+            // consumes the matching letter before it can reach document text.
+            return super.dispatchKeyEvent(event);
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
         boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
-        boolean tool = !imeWanted && event.hasNoModifiers() &&
-            (code == KeyEvent.KEYCODE_T || code == KeyEvent.KEYCODE_V);
+        // T/V and other tool shortcuts must follow native dispatch; an
+        // Activity-level onKeyDown call cannot reliably reach winit.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
             imeWanted = false;
             if (imeView != null) imeView.clearFocus();
         }
-        if (escape || close || tool) {
+        if (escape || close) {
             if (state == KeyEvent.ACTION_DOWN) {
                 super.onKeyDown(code, event);
                 return true;

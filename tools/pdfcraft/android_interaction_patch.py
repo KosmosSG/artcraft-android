@@ -30,9 +30,29 @@ change(prompts,
         // They must never operate when editing PDF text or another dialog.
         #[cfg(target_os = "android")]
         {
-            if i.consume_key(Modifiers::NONE, Key::D) { return Some(Some(false)); }
-            if i.consume_key(Modifiers::NONE, Key::C) { return Some(None); }
-            if i.consume_key(Modifiers::NONE, Key::S) { return Some(Some(true)); }
+            // Android keyboard covers may send a key event with stale Ctrl
+            // metadata after Ctrl+W, or deliver printable D/C/S as Text.
+            // The save prompt is already modal (app/keys.rs); consume exactly
+            // the first matching event here, independent of stale modifiers.
+            let answer = i.events.iter().enumerate().find_map(|(index, event)| {
+                let key = match event {
+                    egui::Event::Key { key, pressed: true, .. } => Some(*key),
+                    egui::Event::Text(text) if text.eq_ignore_ascii_case("d") => Some(Key::D),
+                    egui::Event::Text(text) if text.eq_ignore_ascii_case("c") => Some(Key::C),
+                    egui::Event::Text(text) if text.eq_ignore_ascii_case("s") => Some(Key::S),
+                    _ => None,
+                }?;
+                match key {
+                    Key::D => Some((index, Some(false))),
+                    Key::C => Some((index, None)),
+                    Key::S => Some((index, Some(true))),
+                    _ => None,
+                }
+            });
+            if let Some((index, decision)) = answer {
+                i.events.remove(index);
+                return Some(decision);
+            }
         }
         if [(Modifiers::COMMAND, Key::D)""")
 change(prompts,

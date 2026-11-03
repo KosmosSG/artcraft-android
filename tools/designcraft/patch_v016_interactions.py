@@ -133,6 +133,14 @@ def java_source(root,android):
     private final java.util.Set<Integer> dcDialogHeld =
         java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
+    private final java.util.concurrent.atomic.AtomicInteger dcToolAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+
+    /** Take a physical T/V key that was intercepted before Android's IME. */
+    public int dcTakeToolAction() {
+        return dcToolAction.getAndSet(0);
+    }
+
     public int dcUnsavedDialog(boolean active) {
         dcDialogActive = active;
         if (!active) {
@@ -159,19 +167,23 @@ def java_source(root,android):
         int action = code == KeyEvent.KEYCODE_D ? 1 :
             (code == KeyEvent.KEYCODE_C ? 2 : (code == KeyEvent.KEYCODE_S ? 3 : 0));
         if (dcDialogActive && action != 0 && event.hasNoModifiers()) {
-            if (state == KeyEvent.ACTION_DOWN) {
+            if (state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 dcDialogHeld.add(code);
-                if (event.getRepeatCount() == 0)
-                    dcDialogAction.compareAndSet(0, action);
+                dcDialogAction.compareAndSet(0, action);
             }
-            // Android's ordinary dispatch wakes winit; the Rust modal handler
-            // consumes the matching letter before it can reach document text.
-            return super.dispatchKeyEvent(event);
+            // Let the Rust modal poll take the action. Never forward D/C/S
+            // into the document or focused EditText while the dialog is open.
+            return true;
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
         boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
-        // T/V and other tool shortcuts must follow native dispatch; an
-        // Activity-level onKeyDown call cannot reliably reach winit.
+        if (!dcDialogActive && !imeWanted && event.hasNoModifiers()
+                && state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            if (code == KeyEvent.KEYCODE_T) dcToolAction.set(1);
+            else if (code == KeyEvent.KEYCODE_V) dcToolAction.set(2);
+        }
+        // Deliver normal key events as well, so the upstream keymap keeps
+        // other shortcuts working. Rust deduplicates the T/V fallback.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
             imeWanted = false;
             if (imeView != null) imeView.clearFocus();
@@ -237,6 +249,15 @@ def launcher(android):
                         jni_sig!("(J)V"), &[JValue::Long(id as i64)])?;
                 }
                 Ok(())
+            }).map_err(|e| e.to_string())
+        }
+
+        pub fn dc_tool_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeToolAction"),
+                    jni_sig!("()I"), &[])?.i()
             }).map_err(|e| e.to_string())
         }
 

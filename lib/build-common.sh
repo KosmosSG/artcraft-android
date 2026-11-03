@@ -181,7 +181,7 @@ verify_android_bridge() {
     local manifest="$ROOT/adapters/$app/Cargo.toml"
     [[ -f "$manifest" ]] || manifest="$ROOT/source/$app/apps/$app-android/Cargo.toml"
     [[ -f "$manifest" ]] || { echo "WARNING: no manifest found for '$app'; skipping file-bridge verification." >&2; return 0; }
-    local pkg activity launcher
+    local pkg activity launcher activity_class
     read -r pkg activity launcher < <(python3 - "$manifest" <<'PY'
 import sys, tomllib
 from pathlib import Path
@@ -205,17 +205,26 @@ PY
     if [[ "$launcher" != "1" ]]; then
         fail "$manifest declares activity '$activity' without a MAIN intent-filter, so the built APK would have no launcher icon. Add [[package.metadata.android.application.activity.intent_filter]]."
     fi
+    # Android resolves a relative Activity against the APK package, while a fully
+    # qualified Java class retains its original package. Isolated candidate APKs
+    # use the latter so the verified stable Java bridge can remain byte-identical.
+    activity_class="$pkg.$activity"
+    if [[ "$activity" == *.* ]]; then
+        activity_class="$activity"
+    fi
     if command -v aapt2 >/dev/null 2>&1; then
         local badging
         badging="$(aapt2 dump badging "$apk" 2>/dev/null || true)"
-        if ! grep -q "launchable-activity: name='$pkg.$activity'" <<<"$badging"; then
-            fail "The built APK has no launcher activity '$pkg.$activity' (its manifest is missing the MAIN/LAUNCHER intent-filter), so it could not be started from the home screen."
+        if ! grep -Fq "launchable-activity: name='$activity_class'" <<<"$badging"; then
+            fail "The built APK has no launcher activity '$activity_class' (its manifest is missing the MAIN/LAUNCHER intent-filter), so it could not be started from the home screen."
         fi
     fi
     if ! python3 - "$apk" "$activity" <<'PY'
 import sys, zipfile
 apk, activity = sys.argv[1], sys.argv[2]
-needle = activity.encode()
+# DEX strings contain the simple Java Activity name (including when the
+# Android manifest uses a fully qualified class name across package IDs).
+needle = activity.rsplit(".", 1)[-1].encode()
 with zipfile.ZipFile(apk) as z:
     names = z.namelist()
     in_dex = any(n.endswith(".dex") and needle in z.read(n) for n in names)
@@ -225,7 +234,7 @@ PY
     then
         fail "The built APK is missing the compiled Activity '$activity' or its native library, so the Java SAF file picker is not in the APK."
     fi
-    echo "Verified the Android file bridge: $pkg.$activity launches the app and is compiled into the APK."
+    echo "Verified the Android file bridge: $activity_class launches the app and is compiled into the APK."
 }
 
 say 2 "Finding Android SDK and NDK (read-only; project files stay under $ROOT)..."

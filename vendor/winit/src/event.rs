@@ -230,6 +230,13 @@ pub enum WindowEvent {
     /// - **iOS / Android / Web / Orbital:** Unsupported.
     Ime(Ime),
 
+    /// Ordered IME cancellation completion fence (required by Storytold egui-winit 0.37).
+    ///
+    /// Android's native-activity backend currently has no native reset acknowledgement,
+    /// so it never emits this event; do not fabricate an acknowledgement. The variant
+    /// must exist so the newer egui-winit event bridge can compile and distinguish it.
+    ImeResetCompleted { request_id: u64 },
+
     /// The cursor has moved on the window.
     ///
     /// ## Platform-specific

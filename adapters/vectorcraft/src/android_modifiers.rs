@@ -153,6 +153,27 @@ pub fn consume_canvas_hardware_command(raw: &mut egui::RawInput, cmd: CanvasHard
     });
 }
 
+/// Intercept Close Document while the custom Type tool is editing. Ordinary
+/// egui text fields, dialog shortcuts, and live IME composition are untouched.
+/// The caller must first finish editing through the same Escape tool transition
+/// the device has already tested, *then* invoke the normal file.close command.
+pub fn consume_type_close_chord(
+    raw: &mut egui::RawInput, type_editing: bool, composing: bool, modal_open: bool,
+) -> bool {
+    if !type_editing || composing || modal_open { return false; }
+    let close = raw.events.iter().any(|event| matches!(event,
+        egui::Event::Key { key: egui::Key::W, pressed: true, repeat: false, modifiers, .. }
+        if modifiers.command && !modifiers.alt
+    ));
+    if close {
+        raw.events.retain(|event| !matches!(event,
+            egui::Event::Key { key: egui::Key::W, pressed: true, modifiers, .. }
+            if modifiers.command && !modifiers.alt
+        ));
+    }
+    close
+}
+
 /// Minimal event counters for tablet debugging; never retain actual typed text.
 #[derive(Default)]
 pub struct KeyboardDiagnostics {
@@ -255,6 +276,22 @@ mod tests {
         apply_android_modifiers(state, &mut raw);
         raw.events
     }
+    #[test]
+    fn ctrl_w_in_type_editing_closes_without_losing_dialog_shortcuts() {
+        let chord = Event::Key { key: Key::W, physical_key: Some(Key::W),
+            pressed: true, repeat: false,
+            modifiers: Modifiers { ctrl: true, command: true, ..Modifiers::NONE } };
+        let normal = key(Key::D, true);
+        let mut raw = RawInput { events: vec![chord.clone(), normal.clone()], ..Default::default() };
+        assert!(consume_type_close_chord(&mut raw, true, false, false));
+        assert_eq!(raw.events, vec![normal]);
+        for (editing, composing, dialog) in [(false,false,false),(true,true,false),(true,false,true)] {
+            let mut raw = RawInput { events: vec![chord.clone()], ..Default::default() };
+            assert!(!consume_type_close_chord(&mut raw, editing, composing, dialog));
+            assert_eq!(raw.events, vec![chord.clone()]);
+        }
+    }
+
     #[test]
     fn escape_preserves_context_bar_and_tool_shortcuts() {
         let esc = RawInput { events: vec![key(Key::Escape, true)], ..Default::default() };

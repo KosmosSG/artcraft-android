@@ -58,6 +58,14 @@
                 let has_release = ui.ctx().data(|d|
                     d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.has_release"))
                 ).unwrap_or(false);
+                let install_available = ui.ctx().data(|d|
+                    d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.can_install"))
+                ).unwrap_or(false);
+                if install_available && ui.button("Download & Install Verified Update...").clicked() {
+                    ui.ctx().data_mut(|d| d.insert_temp(command_id, "download_install".to_owned()));
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
                 if has_release && ui.button("View verified GitHub Release...").clicked() {
                     ui.ctx().data_mut(|d| d.insert_temp(command_id, "open_release".to_owned()));
                     ui.ctx().request_repaint();

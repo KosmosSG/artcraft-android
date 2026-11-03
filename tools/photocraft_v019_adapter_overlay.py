@@ -450,6 +450,7 @@ pub fn artcraft_take_font_request() -> u8 {
         return Some(Ok(json!({"android": "importFont", "folder": kind == 2})));
     }
     if id == "help.checkForUpdates" {
+        return Some(crate::updates_ui::check(app, ctx, params.clone()));
 ''',
     )
 

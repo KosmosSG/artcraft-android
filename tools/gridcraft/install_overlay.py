@@ -138,6 +138,15 @@ def install(builder: Path, additions: Path):
         if not bounds:
             raise RuntimeError("GridCraft user Gc lettering is missing")
         foreground = _foreground(Image, lettering.crop(bounds))
+        # GRIDCRAFT_GC_SAFE_PADDING_V1: reserve more visible breathing room
+        # inside HONOR adaptive circle/squircle masks; original lettering was
+        # almost touching the launcher edge on device.
+        inset_px = round(CANVAS_PX * 0.78)
+        inset_layer = foreground.resize((inset_px, inset_px), Image.Resampling.LANCZOS)
+        foreground = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
+        foreground.alpha_composite(
+            inset_layer, ((CANVAS_PX - inset_px) // 2, (CANVAS_PX - inset_px) // 2)
+        )
         color = "#006818"
     else:
         foreground = _foreground(Image, stripped)'''
@@ -147,8 +156,17 @@ def install(builder: Path, additions: Path):
     # Legacy density surfaces use the uploaded PNG, not a second padded and
     # masked raster. The Gc logo is already rounded exactly as the user wants.
     legacy_hook = '    _write_legacy(source, pristine, res_dir)'
-    legacy = '''    # GRIDCRAFT_USER_LEGACY_ICON_V2: keep uploaded PNG exactly on Android
-    _write_legacy(source, pristine, res_dir)'''
+    legacy = '''    # GRIDCRAFT_USER_LEGACY_ICON_V2: preserve user's Gc lettering with extra
+    # spacing, instead of the old edge-to-edge source PNG.
+    _write_legacy(source, pristine, res_dir)
+    if app == "gridcraft":
+        for density, size in DENSITIES.items():
+            inset = max(1, round(size * 0.82))
+            # Transparent margins avoid a second rounded-square mask.
+            tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            art = pristine.resize((inset, inset), Image.Resampling.LANCZOS)
+            tile.alpha_composite(art, ((size - inset) // 2, (size - inset) // 2))
+            tile.save(res_dir / f"mipmap-{density}" / "ic_launcher.png")'''
     if icon_source.count(legacy_hook) != 1:
         raise RuntimeError("Pinned legacy icon generator changed")
     icon_script.write_text(icon_source.replace(legacy_hook, legacy, 1))

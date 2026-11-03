@@ -74,6 +74,9 @@ jobs:
           assert 'egui::Popup::menu(&gc_button).show(' in title
           assert 'ui.menu_button("GridCraft Tools"' not in title
           assert 'image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))' in title
+          assert 'egui::Button::new(' in title, "Pinned egui 0.37 button API required (E0433)"
+          assert 'egui::Image::from_texture(' in title
+          assert 'egui::ImageButton::new(' not in title, "egui 0.37 removed ImageButton"
           assert 'ui.checkbox(&mut dark, "Dark mode")' in title
           assert "view.darkMode" in title
           assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in title

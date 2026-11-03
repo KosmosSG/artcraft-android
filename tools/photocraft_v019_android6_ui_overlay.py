@@ -375,6 +375,39 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
     private long artcraftLastKeyTime = -1L;
 ''')
 
+    # The slim Shortcut Pad's held keys are emitted as balanced egui events,
+    # and its keyboard button opens the existing NativeActivity IME host.
+    replace(host,
+'''        self.touch_scroll.route(ctx, raw);
+''',
+'''        self.touch_scroll.route(ctx, raw);
+        self.shortcut_pad.inject_controls(raw);
+''')
+    replace(host,
+'''            13..=16 => {
+''',
+'''            17 => {
+                if let Err(e) = self.bridge.show_native_keyboard() {
+                    log::warn!("Shortcut Pad keyboard: {e}");
+                }
+            }
+            13..=16 => {
+''')
+    replace(host,
+'''    fn toggle_startup_updates(&self) -> Result<(), String> {
+''',
+'''    fn show_native_keyboard(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("imeShow"), jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn toggle_startup_updates(&self) -> Result<(), String> {
+''')
+
     print("Prepared PhotoCraft Android.6 icon menu, font refresh and canvas view gestures.")
 
 if __name__ == "__main__":

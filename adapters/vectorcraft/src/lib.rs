@@ -426,7 +426,11 @@ impl FontUiState {
             self.pending_shared = None;
             self.shared_status = message.into();
         }
-        Some(success)
+        // A refresh that only found existing fonts must NOT rescan the entire
+        // native text catalog again. The previous unconditional rescan could
+        // freeze or kill large shared-library sessions on the first picker return.
+        let added = value.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        Some(success && added > 0)
     }
 }
 

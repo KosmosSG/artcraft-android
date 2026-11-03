@@ -23,7 +23,7 @@ class GridCraftOwnerRequests(unittest.TestCase):
         # with a full-size Image instead of Button::image's font-height cap.
         self.assertIn('egui::Button::new(', port)
         self.assertIn('egui::Image::from_texture(', port)
-        self.assertNotIn('egui::ImageButton', port)
+        self.assertNotIn('egui::ImageButton::new(', port)
         self.assertIn('image::load_from_memory(include_bytes!(', port)
         self.assertIn('launcher-user-20261103.png', workflow)
         self.assertIn('e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2', workflow)

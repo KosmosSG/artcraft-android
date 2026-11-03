@@ -3,7 +3,7 @@ name: GridCraft v0.15.0 ARM64 disposable testing candidate (ONE build, no releas
 on:
   # One owner-approved push trigger on THIS workflow file only.
   # The job is further gated to one exact commit message; ordinary edits cannot rebuild.
-  # Owner-approved retry after validation gate correction (source audit: passed).
+  # Owner-approved isolated GridCraft trackpad drag/no-scroll test after source audit success.
   push:
     branches:
       - review/gridcraft-v0150-android-compat-20261102
@@ -186,13 +186,13 @@ jobs:
           print("PASS: disposable-signed native arm64 APK, separate candidate package, Activity and icon resources")
           PY
           mkdir -p candidate
-          cp "$APK" candidate/GridCraft-v0.15.0-android.1-ARM64-TEST-EPHEMERAL.apk
+          cp "$APK" candidate/GridCraft-v0.15.0-android.1-TRACKPAD-NO-SCROLL-ARM64-TEST-EPHEMERAL.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp apk-badging.txt apk-signing.txt candidate/
       - name: Upload test APK only — no public release, no permanent signing
         uses: actions/upload-artifact@v5
         with:
-          name: GridCraft-v0.15.0-android.1-arm64-DISPOSABLE-TEST-NOT-PRODUCTION
+          name: GridCraft-v0.15.0-android.1-TRACKPAD-NO-SCROLL-arm64-DISPOSABLE-TEST-NOT-PRODUCTION
           path: candidate/
           retention-days: 7
           if-no-files-found: error

@@ -56,8 +56,8 @@ class TestV014Compatibility(unittest.TestCase):
                           WINIT_VENDOR_START, result)
             self.assertIn("egui-winit = \"{'0.37' if app == 'wordcraft' else '0.36'}\"", result)
             self.assertIn("{egui_android_registration}", result)
-            self.assertIn('mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START, result)
-            self.assertEqual(result.count('mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START), 1)
+            self.assertIn('mkdir -p "$SRC/vendor"\n' + ANR_ACTIVITY_START, result)
+            self.assertEqual(result.count('mkdir -p "$SRC/vendor"\n' + ANR_ACTIVITY_START), 1)
             self.assertIn(PINNED_WIN, manifest.read_text())
             self.assertEqual(result.count("set_activity(android_app.activity_as_ptr())"), 1)
 

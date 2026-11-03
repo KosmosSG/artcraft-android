@@ -151,6 +151,17 @@ pub fn take_android_menu_bits() -> u32 {
         ),
     ]''', "Help update controls")
 
+    # Match the reviewed PhotoCraft Android menu's input policy:
+    # allow touch dragging and two-finger wheel gestures within menu ScrollAreas.
+    # Keep upstream scrolling inertia and nested popups; do not hijack Android
+    # system gestures or rewrite motion events globally.
+    dropdowns = root / "widgets/dropdowns.rs"
+    dropdowns_src = dropdowns.read_text()
+    dropdowns_src = insert_once(dropdowns_src,
+        'egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner',
+        'egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room).show(ui, add_contents).inner',
+        "menu scroll source (touch drag + wheel)")
+
     # Validate all replacement targets BEFORE writing any source.
     for modified, marker in ((s, "ANDROID_MENU_BITS"),
                              (srun, "super::ANDROID_MENU_BITS"),
@@ -158,7 +169,7 @@ pub fn take_android_menu_bits() -> u32 {
                              (stree, "android.vectorcraft.fontImport")):
         if marker not in modified:
             raise RuntimeError(f"Android overlay missing required marker {marker}")
-    for path, source in ((menus, s), (run, srun), (state, sstate), (tree, stree)):
+    for path, source in ((menus, s), (run, srun), (state, sstate), (tree, stree), (dropdowns, dropdowns_src)):
         path.write_text(source)
     print("PASS: reviewed v0.20 Type/Help/Window Android controls and one-shot bridge")
 

@@ -35,6 +35,22 @@ impl ModalBridge {
         }
     }
 
+    pub fn editor_delete(&self, ctx: &egui::Context) {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, JNIString::new("dkTakeEditorDelete"), jni_sig!("()I"), &[])?.i()
+        });
+        if let Ok(action @ 1..=2) = result {
+            ctx.data_mut(|d| {
+                let id = egui::Id::new("deckcraft.android.editor_delete");
+                if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action as u8); }
+            });
+            ctx.request_repaint();
+        }
+    }
+
     pub fn editor_clipboard(&self, ctx: &egui::Context) {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         let result = vm.attach_current_thread(|env| -> jni::errors::Result<(i32, Option<String>)> {

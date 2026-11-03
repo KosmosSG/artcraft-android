@@ -185,6 +185,33 @@ def apply(root):
             self.drain_requests();
             return;
         }
+        // Android IME may swallow Backspace with a selected canvas-text range.
+        // Route ONLY selected deletion through DeckCraft's official engine.
+        #[cfg(target_os = "android")]
+        {
+            let selected_delete = ctx.data_mut(|d| d.remove_temp::<u8>(
+                egui::Id::new("deckcraft.android.editor_delete")));
+            if !modal && !ctx.text_edit_focused() && !ctx.any_popup_open()
+                && self.session.active().is_some_and(|d|
+                    d.selection.text.as_ref().is_some_and(|t| t.is_range()))
+            {
+                if let Some(action @ 1..=2) = selected_delete {
+                    self.note_settled_composition(ctx);
+                    let revision = self.session.active().map(|d| d.revision);
+                    let key = if action == 1 { "Backspace" } else { "Delete" };
+                    if let Err(err) = self.session.key(key,
+                        Mods { shift: false, alt: false, cmd: false }) {
+                        self.set_status(err.to_string());
+                    }
+                    if self.session.active().map(|d| d.revision) != revision {
+                        self.note_application_edit(ctx);
+                    }
+                    ctx.request_repaint();
+                    self.drain_requests();
+                    return;
+                }
+            }
+        }
         // Route hardware arrows to the official engine text.move command
         // before egui's focused-widget guard. The engine interprets Shift as
         // "extend selection" and plain arrows as caret movement. Do not move
@@ -449,20 +476,17 @@ def apply(root):
             #[cfg(not(target_os = "android"))]
             let scroll_gain = 1.0_f32;
             #[cfg(target_os = "android")]
-            let frame_scroll = if !touch_pan_active && scroll_gain > 1.0 {
-                // egui::smooth_scroll_delta already performs event-aware
-                // smoothing (trackpads are pass-through, wheel bursts eased).
-                // Android.11 layered another low-pass + synthetic momentum
-                // on top, adding visible input latency and repeated frames.
-                // Keep egui as the only smoothing stage, and cap anomalous
-                // trackpad spikes without injecting movement after lift-off.
-                let delta = wheel * scroll_gain;
-                egui::vec2(delta.x.clamp(-72.0, 72.0),
-                           delta.y.clamp(-72.0, 72.0))
-            } else { wheel * scroll_gain };
+            // egui native smoothing is enough. The old +/-72px cap
+            // discarded large trackpad deltas, causing lag and under-travel.
+            // Do not add a second low-pass filter or synthetic inertia.
+            let frame_scroll = wheel * scroll_gain;
             #[cfg(not(target_os = "android"))]
             let frame_scroll = wheel * scroll_gain;
             offset -= frame_scroll;
+            #[cfg(target_os = "android")]
+            if frame_scroll != egui::Vec2::ZERO && !touch_pan_active {
+                ui.ctx().request_repaint();
+            }
         } else if !touch_pan_active {
             // A two-finger swipe over a fitted slide must not turn pages.
             wheel_navigation(app, ui, carry_id, doc_uid);

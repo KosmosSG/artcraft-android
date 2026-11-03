@@ -299,4 +299,42 @@ mod android_dcs_regression {
         assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(egui::Id::new("deckcraft.unsaved.dcs"))), None);
     }
 
+    #[test]
+    fn android_selected_all_backspace_deletes_range_and_keeps_editor() {
+        let mut app = app();
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[20.0,30.0,280.0,90.0], "text":"CLEAR THIS"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        assert!(app.session.active().unwrap().selection.text.as_ref().unwrap().is_range());
+        let ctx = egui::Context::default();
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::Backspace, true, false, egui::Modifiers::NONE)];
+        app.android_capture_editor_delete_raw(&ctx, &mut raw);
+        assert!(raw.events.is_empty(), "Selection Backspace must be captured only once");
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(
+            egui::Id::new("deckcraft.android.editor_delete"))), Some(1));
+        app.session.key("Backspace", Mods { shift:false, alt:false, cmd:false }).unwrap();
+        assert!(!app.session.active().unwrap().selection.text.as_ref().unwrap().is_range());
+        app.session.execute("text.insert", &json!({"text":"OK"})).unwrap();
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        assert_eq!(app.session.execute("edit.copy", &json!({})).unwrap()["text"], "OK");
+    }
+    #[test]
+    fn android_plain_backspace_retains_normal_caret_editing() {
+        let mut app = app();
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[20.0,30.0,280.0,90.0], "text":"ABCDEF"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        let ctx = egui::Context::default();
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::Backspace, true, false, egui::Modifiers::NONE)];
+        app.android_capture_editor_delete_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1);
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(
+            egui::Id::new("deckcraft.android.editor_delete"))), None);
+    }
+
 }

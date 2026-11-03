@@ -7,6 +7,9 @@
     private final java.util.concurrent.atomic.AtomicInteger dkEditorArrow = new java.util.concurrent.atomic.AtomicInteger();
     public int dkTakeEditorArrow() { return dkEditorArrow.getAndSet(0); }
 
+    private final java.util.concurrent.atomic.AtomicInteger dkEditorDelete = new java.util.concurrent.atomic.AtomicInteger();
+    public int dkTakeEditorDelete() { return dkEditorDelete.getAndSet(0); }
+
     private final java.util.concurrent.atomic.AtomicInteger dkEditorClipboard = new java.util.concurrent.atomic.AtomicInteger();
     public int dkTakeEditorClipboard() { return dkEditorClipboard.getAndSet(0); }
 
@@ -94,6 +97,15 @@
                     : code == android.view.KeyEvent.KEYCODE_DPAD_DOWN ? 4 : 0;
                 if (dir != 0) dkEditorArrow.set(dir | (event.isShiftPressed() ? 16 : 0));
                 // No event consumption: original Activity widgets retain arrows.
+            }
+            // Queue physical delete when the IME may swallow it. Rust only
+            // applies to custom canvas selected text, not ordinary caret edits.
+            if (!dkDialogActive && !event.isCtrlPressed() && !event.isAltPressed()
+                    && !event.isMetaPressed() && !event.isShiftPressed()
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                int action = code == android.view.KeyEvent.KEYCODE_DEL ? 1
+                    : code == android.view.KeyEvent.KEYCODE_FORWARD_DEL ? 2 : 0;
+                if (action != 0) dkEditorDelete.set(action);
             }
             // A confirmation may close on KEY_DOWN: swallow the matching KEY_UP.
             if (dkDialogKeys.contains(code)) {

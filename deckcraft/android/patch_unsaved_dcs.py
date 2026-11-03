@@ -231,4 +231,41 @@ impl SlideApp {
 }
 '''
 
+# Backspace/Delete on selected canvas text must reach the engine once.
+HELPER += r'''
+impl SlideApp {
+    pub fn android_capture_editor_delete_raw(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if self.session.active().is_none_or(|d|
+                d.selection.text.as_ref().is_none_or(|t| !t.is_range()))
+            || self.dialog.is_some() || self.palette.is_some()
+            || self.backstage.is_some() || ctx.text_edit_focused()
+            || ctx.any_popup_open() { return; }
+        let action = raw.events.iter().find_map(|event| match event {
+            egui::Event::Key { key, pressed: true, modifiers, .. }
+                if !modifiers.ctrl && !modifiers.command && !modifiers.alt && !modifiers.shift =>
+            {
+                match key {
+                    egui::Key::Backspace => Some(1_u8),
+                    egui::Key::Delete => Some(2_u8),
+                    _ => None
+                }
+            },
+            _ => None,
+        });
+        if let Some(action) = action {
+            ctx.data_mut(|d| d.insert_temp(
+                egui::Id::new("deckcraft.android.editor_delete"), action));
+            raw.events.retain(|event| !matches!(
+                event, egui::Event::Key {
+                    key: egui::Key::Backspace | egui::Key::Delete,
+                    modifiers, ..
+                } if !modifiers.ctrl && !modifiers.command
+                    && !modifiers.alt && !modifiers.shift
+            ));
+            ctx.request_repaint();
+        }
+    }
+}
+'''
+
 if __name__=="__main__":apply(sys.argv[1])

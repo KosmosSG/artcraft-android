@@ -27,8 +27,10 @@ def validate(data):
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1
     assert data["version_name"] == data["official_version"] + "-android." + str(data["android_revision"])
-    assert data["intended_release_tag"] == data["app"] + "-v" + data["version_name"]
-    assert data["intended_release_apk"] == "GridCraft-v" + data["version_name"] + "-arm64-v8a.apk"
+    # Keep the owner-tested GridCraft descriptive suffix on public releases.
+    assert data["intended_release_tag"] == data["app"] + "-v" + data["version_name"] + "-ctrlw-dcs-fix"
+    assert data["intended_release_title"] == "GridCraft v" + data["version_name"] + " — Upstream Update + Ctrl+W / D/C/S Fix Preserved"
+    assert data["intended_release_apk"] == "GridCraft-v" + data["version_name"] + "-CTRL-W-DCS-FIX-arm64-v8a-SIGNED.apk"
     assert data["production_package"] == "com.artcraft.gridcraft"
     assert data["target_abi"] == "arm64-v8a"
     parity = data.get("feature_requirements", {})

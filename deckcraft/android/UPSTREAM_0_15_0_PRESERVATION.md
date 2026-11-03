@@ -1,6 +1,6 @@
 # DeckCraft Android: protected upstream v0.15.0 staging
 
-**Status:** Phase 2 owner-approved test run `41675943962` started; source patch application completed successfully; **not** device-tested, permanently signed, or published.
+**Status:** Phase 2 first run `41675943962` failed only at APK version verification after passing build/tests. Corrected disposable branding metadata; second test run `41682410373` underway. **Not yet device-tested, permanently signed, or published.**
 **Baseline:** published `deckcraft-v0.14.1-android.17`, source `54fbdd4088d0e835c7642fafe039a72c3993be72`.
 **Rollback:** the published Android.17 release and original release certificate must remain intact.
 **Upstream target:** official `storytold/deckcraft` v0.15.0, pinned at `3e178d8f5a59c787a6a53a7ed0f052b3e4a1489f`.
@@ -49,7 +49,11 @@ Retain all approved Android.17 behavior and patches; do not replace these with v
 - [x] Phase 1 verified zero Actions runs; Phase 2 triggered **one** approved run: `41675943962`.
 - [x] One-time Phase 2 push trigger removed after kickoff; new builds require explicit `workflow_dispatch` approval input.
 - [x] Full patch application against v0.15.0 — passed during run `41675943962` (step 11).
-- [ ] Cargo regression suite and Android packaging — run `41675943962` in progress; results pending.
+- [x] Cargo and Android ARM64 compiler tests passed on run `41675943962`.
+- [ ] Postbuild APK verification: run `41675943962` failed because approved-branding overrode candidate version metadata back to Android.17; no artifact uploaded.
+- [x] Repaired only disposable build workspace metadata (`builder/tools/approved-branding/assets/manifest.json` and `builder/lib/android_project.py`) to candidate `0.15.0-android.18-test` / code `100000022`. Published Android.17 manifest and Dk icon assets untouched.
+- [ ] Repaired one-time testing rebuild `41682410373` running; candidate APK integrity, temporary signing and artifact availability pending.
+- [x] One-time rebuild push trigger removed after accepted queue event; workflow is again manual/approval-gated.
 - [ ] On-device testing — pending owner's test confirmation.
 - [ ] Permanent signing — prohibited until explicit approval.
 - [ ] Public release — prohibited until explicit approval.

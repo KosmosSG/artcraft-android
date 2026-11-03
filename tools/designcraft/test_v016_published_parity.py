@@ -55,10 +55,10 @@ class DesignCraftPublishedFeatureParity(unittest.TestCase):
 
     def test_review_isolated_from_published_release(self):
         self.assertIn('if [[ "$DESIGNCRAFT_V016" == true ]]', self.builder)
-        self.assertIn('candidate_version = "0.16.0-android.3"', self.base)
+        self.assertIn('candidate_version = "0.16.0-android.4"', self.base)
         self.assertIn('approved_branding.check_assets()', self.base)
         self.assertIn('android.permission.INTERNET', self.base)
-        self.assertIn("0.16.0-android.3", self.builder)
+        self.assertIn("0.16.0-android.4", self.builder)
         workflow = (ROOT / ".github/workflows/designcraft-v016-review.yml").read_text()
         self.assertIn("NOT a release", workflow)
         self.assertNotIn("action-gh-release", workflow)

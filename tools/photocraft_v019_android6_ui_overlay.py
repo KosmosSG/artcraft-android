@@ -271,6 +271,110 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
 
     public void pcCheckUpdates() {
 ''')
+    # Repair Escape and single-key shortcuts independently of the upstream
+    # v0.19 IME reset handshake (NativeActivity's custom winit has no reset ACK).
+    # This fallback only runs for physical egui::Key events and never consumes
+    # arbitrary characters or reads sensitive token text.
+    replace(host,
+'''    canvas_gesture: canvas_gesture::CanvasTouchGestures,
+''',
+'''    canvas_gesture: canvas_gesture::CanvasTouchGestures,
+    artcraft_esc_pending: bool,
+    artcraft_tool_pending: Option<&'static str>,
+''')
+    replace(host,
+'''                canvas_gesture: canvas_gesture::CanvasTouchGestures::default(),
+''',
+'''                canvas_gesture: canvas_gesture::CanvasTouchGestures::default(),
+                artcraft_esc_pending: false,
+                artcraft_tool_pending: None,
+''')
+    replace(host, "        self.canvas_gesture.route(ctx, raw);\n",
+'''        // Store commands before the upstream IME editor filters raw events.
+        for event in &raw.events {
+            if let egui::Event::Key { key, pressed: true, modifiers, .. } = event {
+                if *key == egui::Key::Escape && self.inner.ui.text_edit.is_some() {
+                    self.artcraft_esc_pending = true;
+                }
+                if !modifiers.ctrl && !modifiers.alt && !modifiers.shift
+                    && self.inner.ui.text_edit.is_none() {
+                    self.artcraft_tool_pending = match key {
+                        egui::Key::V => Some("tools.select.move"),
+                        egui::Key::T => Some("tools.select.type"),
+                        egui::Key::B => Some("tools.select.brush"),
+                        _ => self.artcraft_tool_pending,
+                    };
+                }
+            }
+        }
+        self.canvas_gesture.route(ctx, raw);
+''')
+    replace(host,
+'''        self.canvas_gesture.apply(&mut self.inner);
+''',
+'''        self.canvas_gesture.apply(&mut self.inner);
+        // On some Android NativeActivity builds the 0.19 IME reset ACK never
+        // arrives. Let the editor have first chance; commit explicitly only
+        // if Escape is still pending and the text layer is still being edited.
+        if self.artcraft_esc_pending && self.inner.ui.text_edit.is_some() {
+            photocraft_ui_egui::type_tool::commit(&mut self.inner);
+        }
+        self.artcraft_esc_pending = false;
+        if let Some(command) = self.artcraft_tool_pending.take() {
+            if self.inner.ui.text_edit.is_none() {
+                if let Err(error) = photocraft_ui_egui::menus::invoke(
+                    &mut self.inner, ctx, command, serde_json::json!({})
+                ) {
+                    log::warn!("Tool shortcut: {error}");
+                }
+            }
+        }
+''')
+    # A physical touchpad often routes two-finger drags as pointer MOVE,
+    # not AXIS_VSCROLL. NativeActivity must convert that gesture before
+    # pointer emulation can select menu rows (do not intercept touchscreen).
+    replace(activity,
+'''    private long artcraftLastKeyTime = -1L;
+''',
+'''    private boolean artcraftTrackpadMoving;
+    private float artcraftTrackpadX;
+    private float artcraftTrackpadY;
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        int source = event.getSource();
+        boolean touchpad = (source & android.view.InputDevice.SOURCE_TOUCHPAD)
+            == android.view.InputDevice.SOURCE_TOUCHPAD;
+        boolean mouse = (source & android.view.InputDevice.SOURCE_MOUSE)
+            == android.view.InputDevice.SOURCE_MOUSE;
+        if ((touchpad || mouse) && event.getPointerCount() >= 2) {
+            float cx = (event.getX(0) + event.getX(1)) / 2.0f;
+            float cy = (event.getY(0) + event.getY(1)) / 2.0f;
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE
+                    && artcraftTrackpadMoving) {
+                float dx = cx - artcraftTrackpadX;
+                float dy = cy - artcraftTrackpadY;
+                if ((Math.abs(dx) > .1f || Math.abs(dy) > .1f)
+                    && artcraftTrackpadScroll.size() < 32) {
+                    android.view.View decor = getWindow().getDecorView();
+                    // Rust's standard wheel conversion multiplies by 42.
+                    artcraftTrackpadScroll.offer(dx / 42.0f + "," + dy / 42.0f
+                        + "," + cx + "," + cy
+                        + "," + decor.getWidth() + "," + decor.getHeight());
+                }
+            }
+            artcraftTrackpadX = cx;
+            artcraftTrackpadY = cy;
+            artcraftTrackpadMoving = true;
+        } else {
+            artcraftTrackpadMoving = false;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private long artcraftLastKeyTime = -1L;
+''')
+
     print("Prepared PhotoCraft Android.6 icon menu, font refresh and canvas view gestures.")
 
 if __name__ == "__main__":

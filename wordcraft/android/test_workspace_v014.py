@@ -5,7 +5,7 @@ from pathlib import Path
 from workspace_v014 import (
     OFFICIAL, PINNED_WIN, BUILDER_ANCHOR, SAFE_GUARD,
     EGUI_VENDOR_START, EGUI_VENDOR_END,
-    WINIT_VENDOR_START, WINIT_VENDOR_END,
+    WINIT_VENDOR_START, WINIT_VENDOR_END, ANR_ACTIVITY_START,
     OLD_EGUI_DEP, preserve_egui_winit_and_winit, apply,
 )
 
@@ -24,7 +24,7 @@ SHELL = (
     EGUI_VENDOR_START + "\n    echo old-egui\n" +
     EGUI_VENDOR_END + "\n" +
     WINIT_VENDOR_START + "\n    echo old-winit\n" +
-    WINIT_VENDOR_END + "\n" +
+    WINIT_VENDOR_END + "\n" + ANR_ACTIVITY_START + "\n" +
     OLD_EGUI_DEP + "\n" + LAUNCHER
 )
 MANIFEST = (
@@ -56,6 +56,8 @@ class TestV014Compatibility(unittest.TestCase):
                           WINIT_VENDOR_START, result)
             self.assertIn("egui-winit = \"{'0.37' if app == 'wordcraft' else '0.36'}\"", result)
             self.assertIn("{egui_android_registration}", result)
+            self.assertIn('mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START, result)
+            self.assertEqual(result.count('mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START), 1)
             self.assertIn(PINNED_WIN, manifest.read_text())
             self.assertEqual(result.count("set_activity(android_app.activity_as_ptr())"), 1)
 

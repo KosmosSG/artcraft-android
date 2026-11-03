@@ -38,6 +38,7 @@ EGUI_VENDOR_START = 'echo "Vendoring the Android-compatible egui-winit for $TITL
 EGUI_VENDOR_END = '# Some apps call `rfd` directly from a crate that ends up in the launcher'
 WINIT_VENDOR_START = 'echo "Vendoring the mouse/scroll-aware winit for $TITLE..."'
 WINIT_VENDOR_END = "# Every launcher uses the builder's vendored android-activity"
+ANR_ACTIVITY_START = "echo \"Vendoring the ANR-safe android-activity glue for $TITLE...\""
 
 
 def exactly_one(haystack: str, needle: str, description: str) -> None:
@@ -63,6 +64,12 @@ def preserve_egui_winit_and_winit(code: str, upstream_manifest: str) -> str:
     # Do not shadow the 0.37 source fork with the older 0.36 vendored crate.
     code = guard_vendor_block(code, EGUI_VENDOR_START, EGUI_VENDOR_END, "egui-winit vendoring")
     code = guard_vendor_block(code, WINIT_VENDOR_START, WINIT_VENDOR_END, "winit vendoring")
+    # Both old vendor blocks used to create SRC/vendor. Their WordCraft-only
+    # guards intentionally skip this side effect, so create it explicitly before
+    # the unguarded AndroidActivity vendoring to avoid cp ENOENT.
+    exactly_one(code, ANR_ACTIVITY_START, "android-activity vendor start")
+    code = code.replace(ANR_ACTIVITY_START,
+                        'mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START, 1)
     # The generated launcher must resolve egui-winit 0.37 from the pinned fork.
     exactly_one(code, OLD_EGUI_DEP, "launcher egui-winit 0.36 dependency")
     code = code.replace(OLD_EGUI_DEP,

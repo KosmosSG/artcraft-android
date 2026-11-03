@@ -27,6 +27,7 @@ def validate(data):
     assert re.fullmatch(r"[a-f0-9]{40}", data["official_release_commit"])
     assert type(data["android_revision"]) is int and data["android_revision"] >= 1
     assert data["version_name"] == data["official_version"] + "-android." + str(data["android_revision"])
+    assert data["intended_release_tag"] == data["app"] + "-v" + data["version_name"]
     assert data["intended_release_apk"] == "GridCraft-v" + data["version_name"] + "-arm64-v8a.apk"
     assert data["production_package"] == "com.artcraft.gridcraft"
     assert data["target_abi"] == "arm64-v8a"

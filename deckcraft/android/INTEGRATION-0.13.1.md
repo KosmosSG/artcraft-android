@@ -321,3 +321,44 @@ Save expensive full GPU slide rasterization until representative presentations
 show CPU time as bottleneck and visual parity is tested. Keep existing draft
 PR #106, unsigned ARM64 test CI, local disposable-key signing only for test,
 no production keys, merge or publication without user approval.
+
+## v0.14.1-android.15 — top-left Dk app tools + shared font/update menu (2026-11-03)
+
+Owner authorized Android.15 implementation then, ONLY AFTER on-device confirmation,
+replicate compatible feature set across remaining KosmosSG ArtCraft Android apps.
+Original Android.14 tester APK initially failed to install due LOCAL v2 signing
+framing (not source); a corrected disposable-key APK was supplied. Owner has
+not yet reported Android.14 installed. Preserve Android.13 known-working
+GPU diagnostics, Android.12 input/trackpad and all cumulative features.
+
+Top-left approved Dk logo now paints on clickable egui menu button (no second
+launcher icon or extra floating widget). Offers Import Fonts (TTF/OTF), Select
+Font Folder, Refresh Fonts, Check for Updates, Startup Update Settings,
+GPU Diagnostics and About. Reuses already-integrated Android SAF font picker,
+recursive shared font scanner/private cache, manual GitHub release checker,
+and Android SharedPreferences; does not duplicate font stores or remove Help
+or existing direct commands. Limits successful scan count to 5,000 font files
+and cumulative 4 GiB, with streaming cache, persistence and user feedback.
+
+Update checks are opt-in at startup, throttled to at most once per 24 hours,
+manual checks unrestricted. Stable releases only by default; preview requires
+explicit opt-in. App-scoped remote release tag, exact ARM64 asset, HTTPS,
+GitHub-provided sha256 asset digest, app package, signing certificate equality,
+and monotonic version must all be verified prior to installation offer.
+After user chose to download, verify and save the APK using SAF, show optional
+'Open Android installer' (ACTION_VIEW on granted content:// URI); never silently
+install, bypass Android permissions/signature checks, uninstall the old app,
+or use temporary-key builds as in-place updates to permanently signed apps.
+Explain Android installer confirmation and possible 'install unknown apps'
+permission. Selecting 'Later' retains saved verified APK for user to open
+from Files manually. D/C/S, clipboard, arrow selection, texture cache,
+original Dk icon, import font in Help and GPU renderer remain untouched.
+
+CI must validate app/menu anchors, update security checks, font limits and all
+prior regression tests. Build unsigned ARM64 only; local disposable-key signing
+of candidate for tablet verification (do not trust custom v2 signature checks
+alone, use an official apksigner if available). Keep PR #106 DRAFT, no merge,
+production signing/tag or public release until owner explicitly approves.
+Other ArtCraft apps rollout must WAIT for owner to confirm device tests of
+Android.15. Apply per-app compatibility/signing independently; no bulk build
+or publication yet.

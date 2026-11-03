@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py
+          python3 -m py_compile deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
           test -s deckcraft/android/dcs_bridge.rs
           test -s deckcraft/android/dcs_java.inc
           test -s deckcraft/android/dcs_tests.rs
@@ -40,11 +40,11 @@ jobs:
           from pathlib import Path
           manifest=json.loads(Path('tools/approved-branding/assets/manifest.json').read_text())
           assert manifest['app']=='deckcraft'
-          assert manifest['version_name']=='0.14.1-android.14'
-          assert manifest['version_code']==100000018
-          assert manifest['previous_version_code']==100000017
+          assert manifest['version_name']=='0.14.1-android.15'
+          assert manifest['version_code']==100000019
+          assert manifest['previous_version_code']==100000018
           assert manifest['package']=='com.artcraft.deckcraft'
-          print('PASS: D/C/S sources and 0.14.1-android.14 metadata present')
+          print('PASS: D/C/S sources and 0.14.1-android.15 metadata present')
           PY
       - name: Checkout pinned Android builder
         uses: actions/checkout@v4
@@ -107,12 +107,12 @@ jobs:
           s=source.read_text()
           old='version = "0.14.1"'
           assert s.count(old)==1, 'Official v0.14.1 source changed; stop'
-          source.write_text(s.replace(old,'version = "0.14.1-android.14"',1))
+          source.write_text(s.replace(old,'version = "0.14.1-android.15"',1))
           project=Path('builder/lib/android_project.py')
           s=project.read_text()
           formula='return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert s.count(formula)==1, 'Pinned version generator changed; stop'
-          project.write_text(s.replace(formula,'return 100000018',1))
+          project.write_text(s.replace(formula,'return 100000019',1))
           PY
           python3 deckcraft/android/patch_v013_host.py builder
           python3 deckcraft/android/patch_shared_fonts.py builder
@@ -120,6 +120,7 @@ jobs:
           python3 deckcraft/android/port_egui037.py builder egui-source winit-source
           python3 deckcraft/android/patch_gpu_diagnostics.py builder
           python3 deckcraft/android/patch_gpu_cache.py builder
+          python3 deckcraft/android/patch_app_menu_updater.py builder
           git -C builder/source/deckcraft diff --check
           python3 deckcraft/android/adaptive_safe.py builder deckcraft
           python3 tools/approved-branding/approved_branding.py check
@@ -164,6 +165,23 @@ jobs:
           body_src=Path('builder/source/deckcraft/crates/ui-egui/src/dialogs/body.rs').read_text()
           assert 'GPU texture cache hits' in body_src
           assert 'app-pass estimate, not the tablet refresh rate' in body_src
+          # The Dk icon must remain the original artwork, but be clickable.
+          assert 'let launcher = ui.menu_button(' in ui
+          assert 'dialogs::paint_logo(ui.painter(), launcher.response.rect.shrink(2.0))' in ui
+          for name in ('"app.importFont"', '"app.fontFolder"', '"app.refreshFonts"',
+                       '"app.checkUpdates"', '"app.updateSettings"',
+                       '"app.gpuDiagnostics"', '"app.about"'):
+              assert name in ui
+          assert 'getLong("last_startup_check", 0L)' in java
+          assert '24L * 60L * 60L * 1000L' in java
+          assert 'getBoolean("preview", false)' in java
+          assert 'Open Android installer' in java
+          assert 'Intent.ACTION_VIEW' in java
+          assert 'Intent.FLAG_GRANT_READ_URI_PERMISSION' in java
+          assert 'deckCertificates(installed).equals(deckCertificates(next))' in java
+          assert 'accepted < 5000' in java
+          assert 'DK_SCAN_LIMIT = 4L * 1024 * 1024 * 1024' in java
+
 
           assert 'renderer: eframe::Renderer::Wgpu' in shell
           assert 'Backends::VULKAN | eframe::wgpu::Backends::GL' in shell
@@ -251,17 +269,17 @@ jobs:
         run: |
           set -euo pipefail
           bash builder/build.sh -deckcraft -packagename=com.artcraft.deckcraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DeckCraft.png"
-          test -s builder/output/deckcraft-0.14.1-android.14.apk
+          test -s builder/output/deckcraft-0.14.1-android.15.apk
       - name: Strip disposable signature, validate unsigned APK and record SHA256
         shell: bash
         run: |
           set -euo pipefail
-          APK=builder/output/deckcraft-0.14.1-android.14.apk
+          APK=builder/output/deckcraft-0.14.1-android.15.apk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/deckcraft-android4-badging.txt
           grep -F "name='com.artcraft.deckcraft'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionName='0.14.1-android.14'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionCode='100000018'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionName='0.14.1-android.15'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionCode='100000019'" /tmp/deckcraft-android4-badging.txt
           mkdir -p unsigned
           python3 - "$APK" <<'PY'
           from zipfile import ZipFile
@@ -291,9 +309,9 @@ jobs:
                   unsigned.writestr(entry,contents)
           assert saw_native,'Refusing APK without DeckCraft ARM64 native library'
           PY
-          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.14.1-android.14-arm64-v8a-UNSIGNED.apk
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.14.1-android.15-arm64-v8a-UNSIGNED.apk
           rm unsigned/unsigned-before-align.apk
-          FINAL=unsigned/DeckCraft-v0.14.1-android.14-arm64-v8a-UNSIGNED.apk
+          FINAL=unsigned/DeckCraft-v0.14.1-android.15-arm64-v8a-UNSIGNED.apk
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$FINAL"
           if "$BUILD_TOOLS/apksigner" verify "$FINAL" >/dev/null 2>&1; then
               echo "::error::Temporary signing certificate still valid; refusing unsigned artifact"
@@ -301,8 +319,8 @@ jobs:
           fi
           "$BUILD_TOOLS/aapt" dump badging "$FINAL" > /tmp/deckcraft-unsigned-badging.txt
           grep -F "name='com.artcraft.deckcraft'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionName='0.14.1-android.14'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionCode='100000018'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionName='0.14.1-android.15'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionCode='100000019'" /tmp/deckcraft-unsigned-badging.txt
           python3 - "$FINAL" <<'PY'
           import sys,zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
@@ -313,11 +331,11 @@ jobs:
               assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
               assert 'classes.dex' in names
               assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
-          print('PASS: 0.14.1-android.14, production package, ARM64, DEX, valid unsigned payload')
+          print('PASS: 0.14.1-android.15, production package, ARM64, DEX, valid unsigned payload')
           PY
           (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
           cat > unsigned/README.txt <<'TXT'
-          DeckCraft 0.14.1-android.14 ARM64 unsigned integration candidate.
+          DeckCraft 0.14.1-android.15 ARM64 unsigned integration candidate.
           This artifact is unsigned. For device testing, use a disposable test key
           and uninstall the previous APK after backing up documents. Reserve the
           original DeckCraft production key for approved release candidates.
@@ -328,13 +346,13 @@ jobs:
           Source tests and compilation are not physical-device verification.
           Physical tablet testing and public release still require owner approval.
           TXT
-          echo "### DeckCraft 0.14.1-android.14 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
+          echo "### DeckCraft 0.14.1-android.15 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload verified unsigned APK for Linux Lab signing
         uses: actions/upload-artifact@v4
         with:
-          name: DeckCraft-v0.14.1-android.14-ARM64-UNSIGNED-LinuxLab
+          name: DeckCraft-v0.14.1-android.15-ARM64-UNSIGNED-LinuxLab
           path: unsigned/
           retention-days: 7
           if-no-files-found: error

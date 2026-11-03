@@ -126,6 +126,18 @@ jobs:
           # VectorCraft NativeActivity needs no AppCompat, Kotlin or
           # GameActivity. Do not pull them into the final DEX/resources.
           python3 android-port/tools/vectorcraft/patch_compact_apk_v020.py builder android-port
+          # Fail *before* expensive ARM64 Rust compilation if the generated
+          # Gradle theme still points to AppCompat after its dependency removal.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("builder/lib/android_project.py").read_text()
+          assert 'parent="android:style/Theme.Material.NoActionBar"' in source
+          assert 'parent="Theme.AppCompat.NoActionBar"' not in source
+          assert "implementation 'androidx.appcompat:" not in source
+          assert "implementation 'androidx.games:" not in source
+          assert 'android:windowFullscreen' in source
+          print("PASS: no native launcher AppCompat theme mismatch before compile")
+          PY
           # Reuse unchanged system-font symlink layout across cold launches
           # without affecting native font fallbacks or SAF imported fonts.
           python3 android-port/tools/vectorcraft/patch_cached_system_fonts_v020.py builder

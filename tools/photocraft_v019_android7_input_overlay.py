@@ -36,8 +36,7 @@ def main():
     patch(host,
 '''        self.inner.ui(ui, _frame);
 ''',
-'''        self.inner.edge_strip = photocraft_ui_egui::menus::artcraft_pad_visible()
-            .then(|| (!photocraft_ui_egui::menus::artcraft_pad_left(), 72.0));
+'''        self.shortcut_pad.reserve(ui.ctx());
         self.inner.ui(ui, _frame);
 ''')
 

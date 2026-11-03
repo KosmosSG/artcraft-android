@@ -263,3 +263,32 @@ with no unexpected extra momentum/slide changes, compare MagicOS overlay,
 pinch/pan, keyboard shortcuts, theme, APK size. MagicOS can claim reserved
 gestures; owners may optionally adjust HONOR Connect/MagicRing and Multi-Window
 dock settings with awareness of cross-device side effects.
+
+## v0.14.1-android.13 — GPU adapter diagnostics, preservation of existing GPU path (2026-11-03)
+
+Owner confirmed Android.12 nearly perfect on HONOR MagicPad 4 and authorized
+GPU acceleration integration. Current pinned builder ALREADY uses
+`eframe::Renderer::Wgpu`, with `wgpu::Backends::VULKAN | GL` and device
+adapter texture limits; DeckCraft UI uploads and caches rendered slide
+textures in GPU memory. Official DeckCraft `deckcraft-render` still rasterizes
+complex slides using `vello_cpu`. Forcing a different backend or silently
+replacing the CPU rasterizer risks fidelity, rendering freezes and regression.
+
+Phase 1 Android.13 adds non-invasive Help -> GPU Diagnostics UI and logs exact
+selected runtime WGPU adapter (name, actual backend, device type and max
+texture size) from `CreationContext.wgpu_render_state.adapter.get_info()`.
+Dialog also displays current built-in frame_ms/render_ms/fps diagnostic values,
+with explicit CPU rasterizer versus GPU compositor wording. Do NOT report
+Adreno/Vulkan or actual GPU usage on a tablet solely from source flags;
+the adapter must be checked on physical device. No new renderer, GPU compute,
+texture format, asset removal, or power-management override. No changes to
+existing input, D/C/S, font scan, recovery, APK size optimization and icons.
+
+Follow-on gated engineering after owner validates diagnostics: measure
+real render and frame timings with complex slides versus blank slides,
+then evaluate GPU-native render passes only where fidelity can be matched.
+Keep official CPU rasterizer as fallback; do not claim full GPU slide render.
+
+Unsigned ARM64 CI only. Any test APK must be temporary-key signed locally
+(no separate GitHub signing workflow) and verified before user install.
+Keep PR #106 draft and do not merge, production-sign, tag or publish.

@@ -127,7 +127,7 @@ jobs:
           grep -Fq 'pub(crate) fn refresh' adapters/photocraft/src/android_fonts.rs
           grep -Fq 'pcToggleStartupUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'artcraft_android_edge_pad' adapters/photocraft/src/shortcut_pad.rs
-          grep -Fq 'app.edge_strip_rect' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'self.reserved' adapters/photocraft/src/shortcut_pad.rs
           grep -Fq 'artcraft_queue_dialog_key' source/photocraft/crates/ui-egui/src/menus.rs
           grep -Fq 'artcraft_take_dialog_key' source/photocraft/crates/ui-egui/src/dialogs/discard_ui.rs
           grep -Fq 'AXIS_GESTURE_SCROLL_Y_DISTANCE' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java

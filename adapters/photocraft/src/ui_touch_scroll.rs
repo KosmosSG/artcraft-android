@@ -65,8 +65,14 @@ impl UiTouchScroll {
                 }
             }
         }
-        for (pos, delta) in wheels {
-            raw.events.push(Event::PointerMoved(pos));
+        // While a two-finger menu/list scroll is active, the touch backend
+        // also emits pointer-motion. Those events select/highlight a menu row
+        // instead of moving the scroll area. Suppress only those synthesized
+        // pointer events during UI scrolling; canvas input is left untouched.
+        if !wheels.is_empty() {
+            raw.events.retain(|event| !matches!(event, Event::PointerMoved(_) | Event::PointerButton { .. }));
+        }
+        for (_pos, delta) in wheels {
             raw.events.push(Event::MouseWheel {
                 unit: MouseWheelUnit::Point,
                 delta,

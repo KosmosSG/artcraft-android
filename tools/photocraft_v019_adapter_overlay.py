@@ -154,7 +154,7 @@ pub fn artcraft_ai_tools_visible() -> bool {
     replace_once(
         adapter / "Cargo.toml",
         "version.workspace = true\n",
-        'version = "0.19.0-android.2"\n',
+        'version = "0.19.0-android.3"\n',
     )
 
     # New ArtCraft-owned overlay only; do not replace our shipped NativeActivity.
@@ -345,7 +345,287 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
 ''',
     )
 
-    print("PhotoCraft v0.19.0-android.2: owner updater, show/hide Shortcut Pad, UI scroll staged (runner only).")
+
+    # === Android.3 owner-tested feature parity: no edits to published Android sources ===
+    fonts = upstream / "crates/text/src/fonts.rs"
+    replace_once(
+        fonts,
+        '    /// Registers font data (TTF/OTF, or every face of a TTC/OTC). Returns the family names added.',
+        '''    /// Register Android SAF font files lazily from validated app-private paths.
+    /// A 4 GiB library is indexed on disk rather than loaded entirely into RAM.
+    pub fn register_font_paths(&mut self, paths: &[std::path::PathBuf]) -> usize {
+        use std::io::Read as _;
+        let mut accepted = Vec::new();
+        let mut bytes = 0u64;
+        for path in paths.iter().take(5000) {
+            let Ok(metadata) = std::fs::metadata(path) else { continue };
+            if !metadata.is_file() || metadata.len() < 4 || metadata.len() > 32 * 1024 * 1024 {
+                continue;
+            }
+            if metadata.len() > 4u64 * 1024 * 1024 * 1024 - bytes { break; }
+            let Ok(mut file) = std::fs::File::open(path) else { continue };
+            let mut magic = [0; 4];
+            if file.read_exact(&mut magic).is_err() { continue; }
+            if !matches!(magic,
+                [0, 1, 0, 0] | [b'O', b'T', b'T', b'O'] |
+                [b't', b'r', b'u', b'e'] | [b't', b't', b'c', b'f']) {
+                continue;
+            }
+            accepted.push(path.as_path());
+            bytes += metadata.len();
+        }
+        if accepted.is_empty() { return 0; }
+        self.fcx.collection.load_fonts_from_paths(accepted.iter().copied());
+        self.ps_cache.clear();
+        self.face_cache.clear();
+        self.traits_cache.clear();
+        self.refresh_generics();
+        GENERATION.fetch_add(1, Ordering::Relaxed);
+        if self.shared { SHARED_GENERATION.fetch_add(1, Ordering::Relaxed); }
+        accepted.len()
+    }
+
+    /// Registers font data (TTF/OTF, or every face of a TTC/OTC). Returns the family names added.''',
+    )
+
+    # Explicit Android menu rows: the earlier .2 UI had no Import Font and
+    # the upstream generic update row did not communicate with our Activity.
+    replace_once(
+        menus,
+        'pub fn artcraft_take_update_request() -> bool {\n    ARTCRAFT_UPDATE_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)\n}\n',
+        '''pub fn artcraft_take_update_request() -> bool {
+    ARTCRAFT_UPDATE_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
+#[cfg(target_os = "android")]
+static ARTCRAFT_FONT_REQUEST: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+#[cfg(target_os = "android")]
+pub fn artcraft_take_font_request() -> u8 {
+    ARTCRAFT_FONT_REQUEST.swap(0, std::sync::atomic::Ordering::Relaxed)
+}
+''',
+    )
+    replace_once(
+        items,
+        'id.starts_with("window.artcraft.shortcutPad.")))\n',
+        'id.starts_with("window.artcraft.shortcutPad.") || id.starts_with("file.artcraftImportFont") || id == "help.artcraftCheckUpdates"))\n',
+    )
+    replace_once(
+        items,
+        '    if let Some(mask) = app.session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).and_then(|l| l.mask.as_ref())\n',
+        '''    #[cfg(target_os = "android")]
+    {
+        for (id, label, top) in [
+            ("file.artcraftImportFonts", "Import Font…", "File"),
+            ("file.artcraftImportFontFolder", "Import Font Folder…", "File"),
+            ("help.artcraftCheckUpdates", "Check for Updates…", "Help"),
+        ] {
+            if !items.iter().any(|i| i.id == id) {
+                let at = items.iter().rposition(|i| i.path.first().map(String::as_str) == Some(top))
+                    .map_or(items.len(), |pos| pos + 1);
+                items.insert(at, MenuItem {
+                    id: id.into(), label: label.into(), path: vec![top.into()],
+                    shortcut: None, enabled: true, checked: None, color: None,
+                });
+            }
+        }
+    }
+    if let Some(mask) = app.session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).and_then(|l| l.mask.as_ref())
+''',
+    )
+    replace_once(
+        invoke,
+        '    if id == "help.checkForUpdates" {\n',
+        '''    #[cfg(target_os = "android")]
+    if id == "help.artcraftCheckUpdates" {
+        super::ARTCRAFT_UPDATE_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+        ctx.request_repaint();
+        return Some(Ok(json!({"android": "checkUpdate"})));
+    }
+    #[cfg(target_os = "android")]
+    if id == "file.artcraftImportFonts" || id == "file.artcraftImportFontFolder" {
+        let kind = if id == "file.artcraftImportFontFolder" { 2 } else { 1 };
+        super::ARTCRAFT_FONT_REQUEST.store(kind, std::sync::atomic::Ordering::Relaxed);
+        ctx.request_repaint();
+        return Some(Ok(json!({"android": "importFont", "folder": kind == 2})));
+    }
+    if id == "help.checkForUpdates" {
+''',
+    )
+
+    replace_once(host, 'mod shortcut_pad;\n', 'mod shortcut_pad;\nmod android_fonts;\n')
+    replace_once(
+        host, '    shortcut_pad: shortcut_pad::ShortcutPad,\n',
+        '    shortcut_pad: shortcut_pad::ShortcutPad,\n    android_fonts: android_fonts::AndroidFonts,\n',
+    )
+    replace_once(
+        host,
+        '                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft")),\n',
+        '                shortcut_pad: shortcut_pad::ShortcutPad::new(files_dir.join("PhotoCraft")),\n                android_fonts: android_fonts::AndroidFonts::new(&files_dir),\n',
+    )
+    replace_once(
+        host,
+        '        self.picker.poll(&self.bridge, ctx);\n',
+        '''        self.picker.poll(&self.bridge, ctx);
+        self.android_fonts.poll(&self.bridge);
+        match photocraft_ui_egui::menus::artcraft_take_font_request() {
+            1 => { if let Err(e) = self.bridge.request_font_import(false) { log::warn!("Import Font: {e}"); } },
+            2 => { if let Err(e) = self.bridge.request_font_import(true) { log::warn!("Import Font Folder: {e}"); } },
+            _ => {},
+        }
+''',
+    )
+    replace_once(
+        host,
+        '        self.shortcut_pad.show(ui.ctx(), &mut self.inner);\n',
+        '        self.shortcut_pad.show(ui.ctx(), &mut self.inner);\n        self.android_fonts.show(ui.ctx());\n',
+    )
+    replace_once(
+        host,
+        '        if self.ai_menu.show(ui, &mut self.inner.session) {\n',
+        '''        let clipboard_bridge = self.bridge.clone_for_services();
+        if self.ai_menu.show(ui, &mut self.inner.session, || clipboard_bridge.clipboard_text().ok().flatten()) {
+''',
+    )
+    replace_once(
+        host,
+        '        self.inner.raw_input_hook(ctx, raw);\n',
+        '''        // Native Android clipboard is not automatically connected to egui on
+        // NativeActivity. Only read it on explicit Ctrl+V, never poll or log it.
+        let paste_pressed = raw.events.iter().any(|e| matches!(e,
+            egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. }
+                if modifiers.ctrl || modifiers.command));
+        if paste_pressed {
+            if let Ok(Some(text)) = self.bridge.clipboard_text() {
+                raw.events.push(egui::Event::Paste(text));
+            }
+        }
+        self.inner.raw_input_hook(ctx, raw);
+''',
+    )
+    replace_once(
+        host,
+        '    fn request_update_check(&self) -> Result<(), String> {\n',
+        '''    fn request_font_import(&self, folder: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pcRequestFontImport"), jni_sig!("(Z)V"),
+                &[JValue::Bool(folder)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn poll_font_import(&self) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("pcPollFontImport"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, result)?;
+            let value: String = value.try_to_string(env)?;
+            Ok(Some(value))
+        }).map_err(|e| e.to_string())
+    }
+
+    fn clipboard_text(&self) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("pcClipboardText"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, result)?;
+            let value: String = value.try_to_string(env)?;
+            Ok(Some(value))
+        }).map_err(|e| e.to_string())
+    }
+
+    fn request_update_check(&self) -> Result<(), String> {
+''',
+    )
+
+    replace_once(
+        adapter / "Cargo.toml",
+        'photocraft-engine = { path = "../../crates/engine" }\n',
+        'photocraft-engine = { path = "../../crates/engine" }\nphotocraft-text = { path = "../../crates/text" }\n',
+    )
+
+    replace_once(
+        activity,
+        'import android.content.ClipData;\n',
+        'import android.content.ClipData;\nimport android.content.ClipboardManager;\n',
+    )
+    replace_once(
+        activity,
+        '    private Updater updater;\n',
+        '''    private Updater updater;
+    private PhotoCraftFontImport fontImport;
+
+    public void pcRequestFontImport(boolean folder) {
+        if (fontImport != null) fontImport.request(folder);
+    }
+    public String pcPollFontImport() {
+        return fontImport == null ? null : fontImport.poll();
+    }
+    // Sensitive token text is read only on explicit paste and never persisted.
+    public String pcClipboardText() {
+        try {
+            ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null || clip.getItemCount() < 1) return null;
+            CharSequence value = clip.getItemAt(0).coerceToText(this);
+            if (value == null) return null;
+            String text = value.toString();
+            return text.length() > 8192 ? text.substring(0, 8192) : text;
+        } catch (Exception e) {
+            Log.w(TAG, "Android clipboard is not currently accessible");
+            return null;
+        }
+    }
+''',
+    )
+    replace_once(
+        activity,
+        '        updater = new Updater(this);\n',
+        '        fontImport = new PhotoCraftFontImport(this);\n        updater = new Updater(this);\n',
+    )
+    replace_once(
+        activity,
+        '        super.onActivityResult(requestCode, resultCode, data);\n        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) return;\n',
+        '''        super.onActivityResult(requestCode, resultCode, data);
+        if (fontImport != null && fontImport.result(requestCode, resultCode, data)) return;
+        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) return;
+''',
+    )
+
+    ai_menu = adapter / "src/ai_menu.rs"
+    replace_once(
+        ai_menu,
+        '    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {\n',
+        '    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, clipboard: impl Fn() -> Option<String>) -> bool {\n',
+    )
+    replace_once(
+        ai_menu,
+        '''                    ui.add(egui::TextEdit::singleline(&mut self.cpu_token)
+                        .password(true).hint_text("Temporary session token"));
+''',
+        '''                    ui.add(egui::TextEdit::singleline(&mut self.cpu_token)
+                        .password(true).hint_text("Temporary session token"));
+                    if ui.button("Paste token from Android clipboard").clicked() {
+                        if let Some(value) = clipboard().filter(|text| !text.trim().is_empty()) {
+                            self.cpu_token = value.trim().to_owned();
+                            self.cpu_status = "Token pasted from Android clipboard (not stored).".into();
+                        } else {
+                            self.cpu_status = "Android clipboard is empty or unavailable. Copy the token on this device.".into();
+                        }
+                    }
+''',
+    )
+
+    print("PhotoCraft v0.19.0-android.3: SAF fonts, native clipboard, update menu and icon fix staged (runner only).")
 
 
 if __name__ == "__main__":

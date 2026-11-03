@@ -40,7 +40,7 @@ NEW = """        let root = home.join(".fonts");
             key.push_str(&format!("|{folder}:{modified}:{len}"));
         }
         let marker = home.join(".vectorcraft-font-links-cache-v1");
-        let cache_hit = std::fs::read_to_string(&marker).ok().as_deref() == Some(&key)
+        let cache_hit = std::fs::read_to_string(&marker).ok().as_deref() == Some(key.as_str())
             && root.is_dir()
             && std::fs::read_dir(&root).ok().and_then(|mut entries| entries.next()).is_some();
         if !cache_hit {

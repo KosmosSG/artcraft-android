@@ -10,7 +10,18 @@ class RecursiveWalk(unittest.TestCase):
     def test_nested_folders_file_limit_folder_limit_and_expired_permission(self):
         src = Path(__file__).with_name('FontsBridge.java.inc').read_text()
         constants = src[src.index('    private static final long EC_FONT_MAX'):src.index('    private static final int EC_FONT_PICK')]
-        scan = src[src.index('    private void ecRefreshSharedFonts(boolean manual)'):]
+        scan = src[src.index('    public void ecRefreshFonts()'):]
+        # Enumeration tests intentionally have no native-frame consumer; replace only the
+        # backpressure helper in the JVM fake while guarding its real presence below.
+        self.assertIn("while (ecFontPaths.size() >= 48)", scan)
+        scan = scan.replace(
+            '    private void ecFontQueueRoom() throws InterruptedException {\\n'
+            '        while (ecFontPaths.size() >= 48) {\\n'
+            '            Thread.sleep(40);\\n'
+            '        }\\n'
+            '    }',
+            '    private void ecFontQueueRoom() throws InterruptedException { }'
+        )
         harness = r'''
 import java.io.*;
 import java.util.*;

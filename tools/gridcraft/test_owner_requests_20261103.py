@@ -23,6 +23,11 @@ class GridCraftOwnerRequests(unittest.TestCase):
         # with a full-size Image instead of Button::image's font-height cap.
         self.assertIn('egui::Button::new(', port)
         self.assertIn('egui::Image::from_texture(', port)
+        self.assertIn('GRIDCRAFT_GC_SAFE_PADDING_V1', port)
+        installer=(ROOT / "tools/gridcraft/install_overlay.py").read_text()
+        self.assertIn('GRIDCRAFT_GC_SAFE_PADDING_V1', installer)
+        self.assertIn('inset_px = round(CANVAS_PX * 0.78)', installer)
+        self.assertIn('inset = max(1, round(size * 0.82))', installer)
         self.assertNotIn('egui::ImageButton::new(', port)
         self.assertIn('image::load_from_memory(include_bytes!(', port)
         self.assertIn('launcher-user-20261103.png', workflow)
@@ -55,6 +60,20 @@ class GridCraftOwnerRequests(unittest.TestCase):
         self.assertIn('gcDialogKeys.add(code)', block)
         self.assertNotIn('if (gcEditorActive && !gcDialogActive', block)
         self.assertIn('return super.dispatchKeyEvent(event);', java)
+
+    def test_touch_cell_selection_and_fill_handle_are_version_locked(self):
+        port = (ROOT / "tools/gridcraft/port_v0150_touch_selection.py").read_text()
+        installer = (ROOT / "tools/gridcraft/install_overlay.py").read_text()
+        menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
+        self.assertIn('GRIDCRAFT_ANDROID_TOUCH_SELECT_V1', port)
+        self.assertIn('long_hold', port)
+        self.assertIn('on_fill_handle', port)
+        self.assertIn('app.grid.touch_pan = multi_touch ||', port)
+        self.assertIn('Drag::Select', port)
+        self.assertIn('Drag::Fill', port)
+        self.assertIn('port_v0150_touch_selection.py', installer)
+        self.assertIn('Touch drag selects cells', menu)
+        self.assertIn('gridcraft.android.touch_select', menu)
 
     def test_gpu_renderer_and_touch_gestures_remain_upstream_owned(self):
         # Native wgpu is configured by the pinned builder; our staging overlay

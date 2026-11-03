@@ -177,7 +177,10 @@ def java_source(root,android):
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
         boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
-        if (!dcDialogActive && !imeWanted && event.hasNoModifiers()
+        // Queue physical T/V even if Android's IME state is stale after
+        // Escape. Rust checks whether the document is actually still typing
+        // before using this fallback, so printable text remains intact.
+        if (!dcDialogActive && event.hasNoModifiers()
                 && state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
             if (code == KeyEvent.KEYCODE_T) dcToolAction.set(1);
             else if (code == KeyEvent.KEYCODE_V) dcToolAction.set(2);

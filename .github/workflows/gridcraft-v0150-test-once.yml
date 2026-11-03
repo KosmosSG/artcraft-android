@@ -65,7 +65,11 @@ jobs:
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()
           assert 'pub(crate) fn alert(&mut self, e: String)' in (src/"crates/ui-egui/src/app/commands.rs").read_text(), "Rust E0624: Android SAF shim cannot call private alert()"
-          print("PASS: exact pinned sources, v0.15 Android D/C/S, SAF, fonts, E0624 visibility and compatible egui runtime staging")
+          overlay=Path("builder/tools/gridcraft_android/overlay.py").read_text()
+          assert 'self.inner.raw_input_hook(ctx, raw);' in overlay, "Rust E0061: v0.15 requires Context in raw input hook"
+          assert 'egui_winit::android_activity::set_activity(android_app.activity_as_ptr());' in overlay, "Rust E0433: v0.15 stale Activity call must be replaced"
+          assert 'NativeOptions.android_app already owns the activity' in overlay, "Missing v0.15 stale Activity call replacement"
+          print("PASS: source-pin, SAF, E0624 alert, E0061 input context, E0433 egui Activity and icon staging verified")
           PY
       - uses: actions/setup-java@v5
         with:

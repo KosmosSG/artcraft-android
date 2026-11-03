@@ -168,11 +168,13 @@ public final class GridCraftActivity extends NativeActivity {
 
     def test_gridcraft_only_icon_has_separate_padded_lettering(self):
         installer = (FOLDER / "install_overlay.py").read_text()
-        self.assertIn('GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3', installer)
-        self.assertIn('foreground = _foreground(Image, lettering)', installer)
-        self.assertIn('launcher-lettering.png', installer)
+        self.assertIn('GRIDCRAFT_USER_ADAPTIVE_ICON_V2', installer)
+        self.assertIn('foreground = _foreground(Image, lettering.crop(bounds))', installer)
+        self.assertIn('color = "#006818"', installer)
+        self.assertIn('GRIDCRAFT_USER_LEGACY_ICON_V2', installer)
+        self.assertNotIn('launcher-lettering.png', installer)
         self.assertNotIn('FULL_BLEED', installer)
-        self.assertIn('flat.alpha_composite(foreground)', installer)
+        self.assertIn('GridCraftSafeUpdater.java.inc', installer)
 
     def test_font_reload_invalidates_worksheet_binding(self):
         patch = (SOURCE / "font_catalog_patch.py").read_text()

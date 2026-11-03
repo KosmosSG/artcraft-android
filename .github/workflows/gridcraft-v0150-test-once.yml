@@ -64,17 +64,19 @@ jobs:
           assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in shell
           assert "GRIDCRAFT_V0150_KEEP_WINIT_FORK" in shell
           assert 'mkdir -p "$SRC/vendor"\necho "Vendoring the ANR-safe android-activity glue' in shell, "v0.15 vendor dir must exist for Android Activity"
-          approved_icon=Path("assets/gridcraft/launcher-approved-20261103.png")
+          approved_icon=Path("assets/gridcraft/launcher-user-20261103.png")
           assert approved_icon.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a"))
           from hashlib import sha256
-          assert sha256(approved_icon.read_bytes()).hexdigest()=="49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3"
+          assert sha256(approved_icon.read_bytes()).hexdigest()=="0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6"
           assert (src/"crates/ui-egui/src/ribbon/gridcraft-approved-mark.png").read_bytes()==approved_icon.read_bytes()
-          assert "GRIDCRAFT_ANDROID_USER_ICON_V1" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
           title=(src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
-          assert "GridCraft Tools" in title
+          assert 'egui::Popup::menu(&gc_button).show(' in title
+          assert 'ui.menu_button("GridCraft Tools"' not in title
+          assert 'image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))' in title
           assert 'ui.checkbox(&mut dark, "Dark mode")' in title
           assert "view.darkMode" in title
-          assert "GRIDCRAFT_ANDROID_USER_ICON_V1" in title
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in title
           java=Path("builder/tools/gridcraft_android/GridCraftJavaMethods.java.inc").read_text()
           assert "GC_MAX_SHARED_FONTS = 5000" in java
           assert "GC_MAX_SHARED_DIRS = 5000" in java
@@ -117,9 +119,9 @@ jobs:
           # The builder generates a NEW local disposable JKS internally; never
           # reads repo Actions secrets or the original GridCraft signer.
           # Debug compilation is faster and consumes fewer minutes than release LTO.
-          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-approved-20261103.png"
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
           if [ -s "$ICON" ]; then
-            echo "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3  $ICON" | sha256sum -c -
+            echo "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6  $ICON" | sha256sum -c -
             bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
           else
             echo "::warning::Approved glossy Gc source absent in branch; candidate is DEVELOPMENT ONLY, requires icon verification before production"

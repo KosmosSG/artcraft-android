@@ -1,84 +1,110 @@
-//! A conservative first-stage port of PhotoCraft Android's menu/panel touch scroll.
-//!
-//! Reference: morte2437/photocraft-android, apps/photocraft-android/src/pad/router.rs
-//! (two-finger UI scrolling, mouse-wheel-style event routing).
-//!
-//! Its full router depends on GameActivity pen JNI, Shortcut Pad and UI layer
-//! snapshots; do not replace our owner-tested NativeActivity touch/SAF input.
-//! This module adds UI-region scrolling only; canvas gestures are unchanged.
-use egui::{Event, MouseWheelSource, MouseWheelUnit, Pos2, RawInput, TouchId, TouchPhase, Vec2};
+//! UI-only Android touch scrolling for menus, lists and side panels.
+//! Adapts the gesture distinction in morte2437/photocraft-android
+//! apps/photocraft-android/src/pad/router.rs without replacing NativeActivity.
+//! Canvas strokes, pinch gestures, stylus, and keyboard input remain untouched.
+use egui::{Event, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, RawInput, TouchId, TouchPhase, Vec2};
+
+struct Finger {
+    id: TouchId,
+    pos: Pos2,
+    start: Pos2,
+    ui_only: bool,
+}
 
 #[derive(Default)]
 pub(crate) struct UiTouchScroll {
-    fingers: Vec<(TouchId, Pos2)>,
+    fingers: Vec<Finger>,
     last_center: Option<Pos2>,
+    single_scroll: bool,
 }
 impl UiTouchScroll {
-    fn update_touch(&mut self, id: TouchId, pos: Pos2) {
-        if let Some((_, at)) = self.fingers.iter_mut().find(|(finger, _)| *finger == id) {
-            *at = pos;
-        } else if self.fingers.len() < 4 {
-            self.fingers.push((id, pos));
-        }
+    fn popup_at(ctx: &egui::Context, at: Pos2) -> bool {
+        ctx.layer_id_at(at)
+            .is_some_and(|layer| layer.order >= egui::Order::Foreground)
     }
-    fn ui_target(ctx: &egui::Context, area: egui::Rect, at: Pos2) -> bool {
-        // Tool palette, upper menus/options, and document side panels.
-        // A popup menu/dialog drawn over the canvas has a foreground layer.
-        // Do not translate canvas pinch/rotate into a scroll (user preservation).
+    fn ui_at(ctx: &egui::Context, area: egui::Rect, at: Pos2) -> bool {
         let margin = (area.width() * 0.235).clamp(120.0, 380.0);
-        let frame_ui = at.y < area.top() + 135.0
-            || at.x < area.left() + 95.0
-            || at.x > area.right() - margin;
-        let popup = ctx.layer_id_at(at)
-            .is_some_and(|layer| layer.order >= egui::Order::Foreground);
-        frame_ui || popup
+        at.y < area.top() + 135.0 || at.x < area.left() + 95.0
+            || at.x > area.right() - margin || Self::popup_at(ctx, at)
     }
     pub(crate) fn route(&mut self, ctx: &egui::Context, raw: &mut RawInput) {
         let area = raw.screen_rect.unwrap_or_else(|| ctx.content_rect());
         let mut wheels: Vec<(Pos2, Vec2)> = Vec::new();
+        let mut consume_pointer = false;
+        let mut cancel_drag: Option<Pos2> = None;
         for event in &raw.events {
             if let Event::Touch { id, phase, pos, .. } = event {
                 match phase {
                     TouchPhase::Start => {
-                        self.update_touch(*id, *pos);
+                        if self.fingers.len() < 4 && !self.fingers.iter().any(|f| f.id == *id) {
+                            self.fingers.push(Finger {
+                                id: *id, pos: *pos, start: *pos,
+                                // One-finger scroll is restricted to a popup/list overlay:
+                                // dragging ordinary sliders/tools or the canvas is unchanged.
+                                ui_only: Self::popup_at(ctx, *pos),
+                            });
+                        }
                         self.last_center = None;
+                        self.single_scroll = false;
                     }
                     TouchPhase::Move => {
-                        self.update_touch(*id, *pos);
+                        if let Some(f) = self.fingers.iter_mut().find(|f| f.id == *id) {
+                            let delta = *pos - f.pos;
+                            f.pos = *pos;
+                            if self.fingers.len() == 1 && f.ui_only {
+                                let moved = *pos - f.start;
+                                if self.single_scroll || moved.y.abs() > 8.0 && moved.y.abs() > moved.x.abs() * 1.2 {
+                                    if !self.single_scroll {
+                                        cancel_drag = Some(f.start);
+                                        self.single_scroll = true;
+                                    }
+                                    if delta.length_sq() > 0.25 {
+                                        wheels.push((*pos, delta));
+                                    }
+                                    consume_pointer = true;
+                                }
+                            }
+                        }
                         if self.fingers.len() == 2 {
-                            let center = self.fingers[0].1 + (self.fingers[1].1 - self.fingers[0].1) * 0.5;
+                            let center = self.fingers[0].pos + (self.fingers[1].pos - self.fingers[0].pos) * 0.5;
                             if let Some(last) = self.last_center {
                                 let delta = center - last;
-                                if delta.length_sq() > 0.25 && Self::ui_target(ctx, area, center) {
+                                if delta.length_sq() > 0.25 && Self::ui_at(ctx, area, center) {
                                     wheels.push((center, delta));
+                                    consume_pointer = true;
                                 }
                             }
                             self.last_center = Some(center);
-                        } else {
-                            self.last_center = None;
                         }
                     }
                     TouchPhase::End | TouchPhase::Cancel => {
-                        self.fingers.retain(|(finger, _)| *finger != *id);
+                        if self.single_scroll {
+                            consume_pointer = true; // prevent release from selecting a row
+                        }
+                        self.fingers.retain(|finger| finger.id != *id);
                         self.last_center = None;
+                        self.single_scroll = false;
                     }
                 }
             }
         }
-        // While a two-finger menu/list scroll is active, the touch backend
-        // also emits pointer-motion. Those events select/highlight a menu row
-        // instead of moving the scroll area. Suppress only those synthesized
-        // pointer events during UI scrolling; canvas input is left untouched.
-        if !wheels.is_empty() {
+        if consume_pointer {
+            // Android's winit touch emulation moves/drags the mouse on a swipe,
+            // which selects a menu row instead of scrolling. Suppress that emulated
+            // drag ONLY in frames we recognized a UI swipe.
             raw.events.retain(|event| !matches!(event, Event::PointerMoved(_) | Event::PointerButton { .. }));
         }
-        for (_pos, delta) in wheels {
-            raw.events.push(Event::MouseWheel {
-                unit: MouseWheelUnit::Point,
-                delta,
-                phase: TouchPhase::Move,
+        if let Some(pos) = cancel_drag {
+            raw.events.push(Event::PointerButton {
+                pos, button: PointerButton::Primary, pressed: false,
                 modifiers: egui::Modifiers::NONE,
-                source: MouseWheelSource::Trackpad,
+            });
+        }
+        for (pos, delta) in wheels {
+            raw.events.push(Event::PointerMoved(pos));
+            raw.events.push(Event::MouseWheel {
+                unit: MouseWheelUnit::Point, delta, phase: TouchPhase::Move,
+                modifiers: egui::Modifiers::NONE, source: MouseWheelSource::Trackpad,
             });
         }
     }

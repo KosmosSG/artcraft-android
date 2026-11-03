@@ -105,22 +105,16 @@ impl ShortcutPad {
                                 .on_disabled_hover_text("Held modifier integration pending");
                             ui.add_enabled(false, egui::Button::new("Pan"))
                                 .on_disabled_hover_text("Pan integration pending");
-                            ui.separator();
-                            if ui.add_sized([66.0, 34.0], egui::Button::new("V  Move")).clicked() {
-                                Self::action(app, ctx, "tools.select.move");
-                            }
-                            if ui.add_sized([66.0, 34.0], egui::Button::new("B Brush")).clicked() {
-                                Self::action(app, ctx, "tools.select.brush");
-                            }
-                            if ui.add_sized([66.0, 34.0], egui::Button::new("T  Type")).clicked() {
-                                Self::action(app, ctx, "tools.select.type");
-                            }
-                            ui.separator();
-                            // Never interfere with Android system keyboard/IME
-                            // until the existing IME bridge is fully validated.
-                            if ui.small_button("Hide Pad").clicked() {
-                                menus::artcraft_pad_set_visible(false);
-                            }
+                            // The reference port places screen mode and keyboard at
+                            // the bottom of a full-height, 72px edge strip.
+                            let content_height = ctx.content_rect().height();
+                            ui.add_space((content_height - 560.0).max(20.0));
+                            ui.add_enabled(false, egui::Button::new("⛶  Screen"))
+                                .on_disabled_hover_text("Full-screen pad action pending NativeActivity verification");
+                            ui.add_enabled(false, egui::Button::new("⌨  Keyboard"))
+                                .on_disabled_hover_text("On-screen keyboard pad action pending IME verification");
+                            // Hide/Show remains under Window → Shortcut Pad; no
+                            // extra buttons should widen the reference-style strip.
                         });
                     });
                 });

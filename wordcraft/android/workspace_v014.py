@@ -69,7 +69,7 @@ def preserve_egui_winit_and_winit(code: str, upstream_manifest: str) -> str:
     # the unguarded AndroidActivity vendoring to avoid cp ENOENT.
     exactly_one(code, ANR_ACTIVITY_START, "android-activity vendor start")
     code = code.replace(ANR_ACTIVITY_START,
-                        'mkdir -p "$SRC/vendor"\\n' + ANR_ACTIVITY_START, 1)
+                        'mkdir -p "$SRC/vendor"\n' + ANR_ACTIVITY_START, 1)
     # The generated launcher must resolve egui-winit 0.37 from the pinned fork.
     exactly_one(code, OLD_EGUI_DEP, "launcher egui-winit 0.36 dependency")
     code = code.replace(OLD_EGUI_DEP,

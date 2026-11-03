@@ -67,7 +67,16 @@ jobs:
           assert sha256(approved_icon.read_bytes()).hexdigest()=="49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3"
           assert (src/"crates/ui-egui/src/ribbon/gridcraft-approved-mark.png").read_bytes()==approved_icon.read_bytes()
           assert "GRIDCRAFT_ANDROID_USER_ICON_V1" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
-          assert "Dark mode" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
+          title=(src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
+          assert "GridCraft Tools" in title
+          assert 'ui.checkbox(&mut dark, "Dark mode")' in title
+          assert "view.darkMode" in title
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V1" in title
+          java=Path("builder/tools/gridcraft_android/GridCraftJavaMethods.java.inc").read_text()
+          assert "GC_MAX_SHARED_FONTS = 5000" in java
+          assert "GC_MAX_SHARED_DIRS = 5000" in java
+          assert "4L * 1024 * 1024 * 1024" in java
+          assert "gcEscapePending.set(true)" in java
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()

@@ -104,7 +104,7 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "designcraft-v016-review.yml").read_text()
         self.assertIn("[designcraft-debug]", workflow)
         self.assertIn("bash build-debug.sh -designcraft -designcraft-v016", workflow)
-        self.assertIn("UNVERIFIED-DesignCraft-v0.16.0-android.3-DEBUG-arm64-not-for-updates", workflow)
+        self.assertIn("UNVERIFIED-DesignCraft-v0.16.0-android.4-DEBUG-arm64-not-for-updates", workflow)
         self.assertIn("retention-days: 3", workflow)
         self.assertNotIn("actions/create-release", workflow)
         self.assertNotIn("softprops/action-gh-release", workflow)
@@ -155,11 +155,11 @@ class DesignCraftV016SourceContract(unittest.TestCase):
 
     def test_device_candidate_version_and_size_controls(self):
         stage = (ROOT / "tools" / "designcraft" / "patch_v016_android.py").read_text()
-        self.assertIn('candidate_version = "0.16.0-android.3"', stage)
+        self.assertIn('candidate_version = "0.16.0-android.4"', stage)
         self.assertIn('let cargo-apk2 calculate the integer code', stage)
         self.assertNotIn('version_code = 16900001', stage)
         self.assertIn('apk_name = "designcraft-', stage)
-        self.assertIn('APP_VERSION="0.16.0-android.3"', self.shell)
+        self.assertIn('APP_VERSION="0.16.0-android.4"', self.shell)
         self.assertIn('export CARGO_PROFILE_DEV_DEBUG=0', self.shell)
         self.assertIn('export CARGO_PROFILE_DEV_STRIP=debuginfo', self.shell)
         self.assertIn('export CARGO_PROFILE_DEV_OPT_LEVEL=s', self.shell)

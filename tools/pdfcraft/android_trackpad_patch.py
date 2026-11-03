@@ -17,25 +17,66 @@ def patch(source: str) -> str:
     swap("    pdfcraft_touch_held: bool,",
          """    pdfcraft_touch_held: bool,
     // PDFCRAFT_ANDROID_TRACKPAD_SCROLL
-    pdfcraft_trackpad_last: Option<PhysicalPosition<f64>>,""")
+    pdfcraft_trackpad_last: Option<PhysicalPosition<f64>>,
+    pdfcraft_trackpad_cursor: Option<PhysicalPosition<f64>>,""")
     swap("            pdfcraft_touch_held: false,",
          """            pdfcraft_touch_held: false,
-            pdfcraft_trackpad_last: None,""")
+            pdfcraft_trackpad_last: None,
+            pdfcraft_trackpad_cursor: None,""")
     swap("""                match motion_event.action() {
                     // Hover: the cursor moves without any button held.""",
-         """                // On an Android trackpad, two fingers can arrive as normal
-                // Move events with two pointers instead of AXIS_VSCROLL.
-                // Handle those before the general mouse-class hover branch.
-                if motion_event.source() == Source::Touchpad {
-                    let pointers: Vec<_> = motion_event.pointers().map(|p| pointer_position(&p)).collect();
-                    if pointers.len() >= 2 {
-                        let a = pointers[0]; let b = pointers[1];
+         """                // Android SOURCE_TOUCHPAD is POSITION-class, not POINTER-class.
+                // Therefore the shared "Scroll if pointer_class" branch silently
+                // drops ACTION_SCROLL from a real trackpad. HONOR can also report
+                // trackpads as SOURCE_MOUSE (pointer-class) with two pointers.
+                let touchpad_source = motion_event.source() == Source::Touchpad;
+                let mouse_source = motion_event.source() == Source::Mouse;
+                if touchpad_source || mouse_source {
+                    let points: Vec<_> = motion_event.pointers().map(|p| pointer_position(&p)).collect();
+                    if motion_event.action() == MotionAction::HoverMove && points.len() == 1 {
+                        self.pdfcraft_trackpad_cursor = points.first().copied();
+                    }
+                    let axes = motion_event.pointers().next().map(|pointer| {
+                        (pointer.axis_value(Axis::Vscroll), pointer.axis_value(Axis::Hscroll))
+                    }).unwrap_or((0.0, 0.0));
+                    // Position-class SOURCE_TOUCHPAD ACTION_SCROLL would never reach
+                    // the pointer-class wheel arm; handle it explicitly.
+                    if touchpad_source && (motion_event.action() == MotionAction::Scroll
+                        || (motion_event.action() == MotionAction::Move && points.len() == 1
+                            && (axes.0 != 0.0 || axes.1 != 0.0)))
+                    {
+                        let pos = self.pdfcraft_trackpad_cursor.or_else(|| points.first().copied());
+                        if let Some(position) = pos {
+                            callback(event::Event::WindowEvent {
+                                window_id,
+                                event: event::WindowEvent::CursorMoved { device_id, position },
+                            }, self.window_target());
+                        }
+                        if axes.0 != 0.0 || axes.1 != 0.0 {
+                            callback(event::Event::WindowEvent {
+                                window_id,
+                                event: event::WindowEvent::MouseWheel {
+                                    device_id,
+                                    delta: event::MouseScrollDelta::PixelDelta(PhysicalPosition {
+                                        x: f64::from(axes.1)*POINTS_PER_LINE as f64,
+                                        y: f64::from(axes.0)*POINTS_PER_LINE as f64,
+                                    }),
+                                    phase: event::TouchPhase::Moved,
+                                },
+                            }, self.window_target());
+                        }
+                        return input_status;
+                    }
+                    if points.len() >= 2 {
+                        let a = points[0]; let b = points[1];
                         let mid = PhysicalPosition { x: (a.x+b.x)/2.0, y: (a.y+b.y)/2.0 };
                         let old = self.pdfcraft_trackpad_last.replace(mid);
-                        callback(event::Event::WindowEvent {
-                            window_id,
-                            event: event::WindowEvent::CursorMoved { device_id, position: mid },
-                        }, self.window_target());
+                        if let Some(position) = self.pdfcraft_trackpad_cursor.or(Some(mid)) {
+                            callback(event::Event::WindowEvent {
+                                window_id,
+                                event: event::WindowEvent::CursorMoved { device_id, position },
+                            }, self.window_target());
+                        }
                         if motion_event.action() == MotionAction::Move {
                             if let Some(last) = old {
                                 let delta = PhysicalPosition {
@@ -52,9 +93,7 @@ def patch(source: str) -> str:
                                 }
                             }
                         }
-                        // Suppress pointer-class down/up: two-finger touchpad
-                        // movement must NEVER start emulated text selection.
-                        return input_status;
+                        return input_status; // Never select PDF text while trackpad scrolling.
                     } else {
                         self.pdfcraft_trackpad_last = None;
                     }
@@ -67,9 +106,9 @@ def patch(source: str) -> str:
          """                    MotionAction::Scroll if pointer_class => {
                         // Wheel events often arrive without a preceding HoverMove.
                         // PDFCraft ignores a wheel if the pointer is absent or outside canvas.
-                        if let Some(position) = motion_event.pointers().next()
-                            .map(|pointer| pointer_position(&pointer))
-                        {
+                        if let Some(position) = self.pdfcraft_trackpad_cursor.or_else(|| {
+                            motion_event.pointers().next().map(|pointer| pointer_position(&pointer))
+                        }) {
                             callback(event::Event::WindowEvent {
                                 window_id,
                                 event: event::WindowEvent::CursorMoved { device_id, position },

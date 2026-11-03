@@ -61,6 +61,13 @@ jobs:
           assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in shell
           assert "GRIDCRAFT_V0150_KEEP_WINIT_FORK" in shell
           assert 'mkdir -p "$SRC/vendor"\necho "Vendoring the ANR-safe android-activity glue' in shell, "v0.15 vendor dir must exist for Android Activity"
+          approved_icon=Path("assets/gridcraft/launcher-approved-20261103.png")
+          assert approved_icon.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a"))
+          from hashlib import sha256
+          assert sha256(approved_icon.read_bytes()).hexdigest()=="49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3"
+          assert (src/"crates/ui-egui/src/ribbon/gridcraft-approved-mark.png").read_bytes()==approved_icon.read_bytes()
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V1" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
+          assert "Dark mode" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()
@@ -98,9 +105,9 @@ jobs:
           # The builder generates a NEW local disposable JKS internally; never
           # reads repo Actions secrets or the original GridCraft signer.
           # Debug compilation is faster and consumes fewer minutes than release LTO.
-          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-source.png"
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-approved-20261103.png"
           if [ -s "$ICON" ]; then
-            echo "ca4afce46b4a4d239c901697a13823b8333f92fddae8c0d1ce43de1965d870ca  $ICON" | sha256sum -c -
+            echo "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3  $ICON" | sha256sum -c -
             bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
           else
             echo "::warning::Approved glossy Gc source absent in branch; candidate is DEVELOPMENT ONLY, requires icon verification before production"

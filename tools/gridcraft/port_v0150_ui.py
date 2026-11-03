@@ -54,7 +54,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     # The same source PNG is used by the APK's adaptive icon pipeline.
     approved_icon = Path(__file__).resolve().parents[2] / "assets/gridcraft/launcher-approved-20261103.png"
     icon_bytes = approved_icon.read_bytes()
-    if not icon_bytes.startswith(b"\x5cx89PNG\x5cr\x5cn\x5cx1a\x5cn"):
+    if not icon_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         raise RuntimeError("Approved Gc icon isn't a valid PNG")
     if hashlib.sha256(icon_bytes).hexdigest() != "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3":
         raise RuntimeError("Approved GridCraft Gc PNG changed: re-review launcher asset")
@@ -67,10 +67,10 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     sources["title"] = once(
         sources["title"],
         "            ui.add_space(TITLE_LEFT_PAD);",
-        '            ui.add_space(TITLE_LEFT_PAD);\\n'
-        '            // GRIDCRAFT_ANDROID_USER_ICON_V1: owner-approved Gc logo.\\n'
-        '            ui.add(egui::Image::new(egui::include_image!("gridcraft-approved-mark.png"))\\n'
-        '                .fit_to_exact_size(vec2(22.0, 22.0)));\\n'
+        '            ui.add_space(TITLE_LEFT_PAD);\n'
+        '            // GRIDCRAFT_ANDROID_USER_ICON_V1: owner-approved Gc logo.\n'
+        '            ui.add(egui::Image::new(egui::include_image!("gridcraft-approved-mark.png"))\n'
+        '                .fit_to_exact_size(vec2(22.0, 22.0)));\n'
         '            ui.add_space(5.0);',
         FILES["title"],
     )

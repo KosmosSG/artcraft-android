@@ -47,6 +47,9 @@ jobs:
           w=Path(".github/workflows/vectorcraft-v020-test-apk.yml").read_text()
           assert "workflow_dispatch:" in w
           assert "\n  push:" not in w
-          assert "0.20.0-android.2" in w
+          assert "0.20.0-android.3" in w
+          assert "CARGO_PROFILE_RELEASE_STRIP" in w
+          assert "patch_compact_apk_v020.py" in w
+          assert "patch_cached_system_fonts_v020.py" in w
           print("PASS: latest user icon, nonmasked corners, manual full build")
           PY

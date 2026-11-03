@@ -22,7 +22,7 @@ class GridCraftV0150ReviewTests(unittest.TestCase):
         installer = (FOLDER / "install_overlay.py").read_text()
         java = (FOLDER / "android_addons" / "GridCraftJavaMethods.java.inc").read_text()
         modal = (FOLDER / "patch_unsaved_dcs.py").read_text()
-        for marker in ("GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1", "GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3"):
+        for marker in ("GRIDCRAFT_ANDROID_IMPORTED_FONTS_V1", "GRIDCRAFT_USER_ADAPTIVE_ICON_V2"):
             self.assertIn(marker, installer)
         for marker in ("gcImportFont()", "gcSelectSharedFolder()", "gcRefreshSharedFolder()", "gcCheckForUpdates()"):
             self.assertIn(marker, java)

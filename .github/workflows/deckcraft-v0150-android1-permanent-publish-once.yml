@@ -73,13 +73,14 @@ jobs:
           gh run download "$SOURCE_RUN_ID" -R "$GITHUB_REPOSITORY" \
              -n "$SOURCE_ARTIFACT" -D "$RUNNER_TEMP/deckcraft-source"
           cd "$RUNNER_TEMP/deckcraft-source"
-          test -s "$SOURCE_APK" && test -s SHA256SUMS.txt
+          test -s "$SOURCE_TEST_APK" && test -s "$SOURCE_UNSIGNED_BACKUP"
+          test -s SHA256SUMS.txt && test -s TEMP-SIGNATURE-VERIFICATION.txt
           sha256sum --check SHA256SUMS.txt
-          mapfile -d '' apks < <(find . -type f -name '*.apk' -print0)
-          test "${#apks[@]}" -eq 1
-          echo "PASS: immutable reviewed source APK and SHA256"
+          mapfile -d '' apks < <(find . -maxdepth 1 -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 2
+          echo "PASS: immutable device-tested temporary-signed and companion source APKs, SHA256 verified"
 
-      - name: Validate unsigned APK identity and Android ABI
+      - name: Verify owner-tested TEMP-SIGNED APK and validate identical unsigned payload
         shell: bash
         run: |
           set -euo pipefail

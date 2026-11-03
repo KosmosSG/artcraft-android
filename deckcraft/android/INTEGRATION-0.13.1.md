@@ -362,3 +362,33 @@ production signing/tag or public release until owner explicitly approves.
 Other ArtCraft apps rollout must WAIT for owner to confirm device tests of
 Android.15. Apply per-app compatibility/signing independently; no bulk build
 or publication yet.
+
+## v0.14.1-android.16 — owner-requested Dk menu layout polish (2026-11-03)
+
+Owner installed and demonstrated Android.15 on HONOR MagicPad 4: the top-left
+Dk icon opens the standalone app menu; the ordinary Help menu also shows
+font actions, GPU Diagnostics and About. Owner requests and approved exact
+mockup with (1) ALL Dk popup action buttons LEFT ALIGNED, and (2) removal
+of duplicate Help actions from the Dk popup while retaining the existing
+ordinary Help menu at the top toolbar.
+
+This revision modifies only the existing DeckCraft app menu patch to use
+egui::Button::new("").left_text(label) in the Dk popup, matching an already
+compiled/owner-tested left-aligned button style used elsewhere in Android
+DeckCraft, and removes the trailing separator and GPU Diagnostics / About
+from the Dk dropdown. Still present in Dk popup: Import Fonts, Select
+Font Folder, Refresh Fonts; separator; Check for Updates; Startup Update
+Settings. GPU Diagnostics and About remain in the top Help menu. The original
+approved glossy red Dk icon, dark theme, input shortcuts, Vulkan and cache,
+SAF folder scanning, updater security, and startup preferences are unchanged.
+
+CI adds a regression check that the Dk popup uses left_text, contains the
+five specified actions exactly once, and does not contain Help-only actions.
+The Help menu must continue to expose GPU Diagnostics and About. The owner
+requested no changes to all other ArtCraft Android apps until DeckCraft
+Android.15 features have been fully tested/confirmed. The visual screenshot
+shows Android.15 menu working, but does NOT confirm all font and update
+behaviors. Keep cross-suite rollout gated until the owner confirms functional
+regression testing. For this design-only fix, build unsigned ARM64 candidate,
+then locally test sign with official apksigner if available; verify APK before
+sending. No production signing, PR merge or public release.

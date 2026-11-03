@@ -1,4 +1,4 @@
-"""DeckCraft Android.15: accessible Dk launcher menu and safe updater handoff.
+"""DeckCraft Android.16: left-aligned Dk launcher menu and safe updater handoff.
 
 Applied AFTER all existing port, fonts, update settings, egui and GPU patches.
 Preserves the branded Dk logo, individual font import, 4 GiB SAF folder cache,
@@ -18,7 +18,8 @@ def edit(path, old, new):
     path.write_text(s.replace(old,new,1))
 
 # The top-left Dk icon used to be painted into an inert allocated rectangle.
-# Give that same branded icon a real button and a compact click-to-open menu.
+# Give that same branded icon a real button and a compact left-aligned menu.
+# GPU Diagnostics and About remain available from the regular Help menu only.
 edit(ui/"lib.rs",
     '''                    let (_, rect) = ui.allocate_space(egui::vec2(24.0, 24.0));
                     dialogs::paint_logo(ui.painter(), rect);''',
@@ -33,12 +34,9 @@ edit(ui/"lib.rs",
                             ("", ""),
                             ("Check for Updates…", "app.checkUpdates"),
                             ("Startup Update Settings…", "app.updateSettings"),
-                            ("", ""),
-                            ("GPU Diagnostics…", "app.gpuDiagnostics"),
-                            ("About DeckCraft", "app.about"),
                         ] {
                             if command.is_empty() { ui.separator(); continue; }
-                            if ui.add_sized([230.0, 32.0], egui::Button::new(label)).clicked() {
+                            if ui.add_sized([230.0, 32.0], egui::Button::new("").left_text(label)).clicked() {
                                 let _ = self.run(command, serde_json::json!({}));
                                 ui.close();
                             }
@@ -103,4 +101,4 @@ edit(java,
     '''limited |= !pending.isEmpty() || budget.used() >= DK_SCAN_LIMIT || entries >= 50000;''',
     '''limited |= !pending.isEmpty() || budget.used() >= DK_SCAN_LIMIT || entries >= 50000 || accepted >= 5000;''')
 
-print("PASS: Dk launcher controls, preserved SAF fonts, opt-in daily updates, verified OS installer handoff")
+print("PASS: Dk menu left-aligned, no duplicate Help items, preserved fonts, updater and GPU Help menu")

@@ -967,7 +967,7 @@ impl eframe::App for VectorCraftAndroidApp {
         // On Ctrl+W, finish Type via the device-tested Escape transition first,
         // then invoke the regular upstream close command so the ORIGINAL Save
         // Changes modal opens with D/C/S focused (without discarding typed text).
-        if consume_type_close_chord(raw, editing, composing, modal) {
+        if consume_type_close_chord(raw, editing, field_focused, composing, modal) {
             let view = self.inner.view_info();
             let mut exited = false;
             match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {

@@ -40,6 +40,8 @@ class DesignCraftPublishedFeatureParity(unittest.TestCase):
         self.assertIn("USER_MESSAGE.lock()", self.ui)
         self.assertIn("font catalog refreshed", self.ui)
         self.assertIn("Shared fonts: {e}", self.ui)
+        self.assertIn('status == "cancel"', self.java)
+        self.assertIn("Shared font folder selection cancelled", self.java)
 
     def test_modal_keys_and_tool_keys_do_not_break_text_editing(self):
         self.assertIn("dcDialogHeld.clear();", self.java)

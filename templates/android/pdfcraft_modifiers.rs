@@ -24,6 +24,14 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
             egui::Event::ModifiersChanged(mods) => {
                 let before = state.modifiers();
                 state.reported = *mods;
+                // Android's KeyEvent.meta_state is authoritative: if the OS
+                // reports Ctrl released after Ctrl+W, clear any physical-side
+                // keydown that was never paired with a winit KeyUp. Otherwise
+                // later touch/trackpad wheel events zoom instead of scrolling
+                // and modal D/C/S may be incorrectly tagged as Ctrl chords.
+                if !mods.ctrl { state.held[2] = false; state.held[3] = false; }
+                if !mods.shift { state.held[0] = false; state.held[1] = false; }
+                if !mods.alt { state.held[4] = false; state.held[5] = false; }
                 let current = state.modifiers();
                 if current != before { kept.push(egui::Event::ModifiersChanged(current)); }
             }
@@ -132,6 +140,21 @@ mod tests {
         }
         let released = apply(&mut state, vec![Event::ModifiersChanged(Modifiers::NONE), key(Key::A, true)]);
         assert!(matches!(released.last(), Some(Event::Key { modifiers, .. }) if !modifiers.ctrl));
+    }
+
+    #[test]
+    fn authoritative_meta_release_clears_stale_control_side_and_wheel_zoom() {
+        let mut state = AndroidModifiers::default();
+        apply(&mut state, vec![key(Key::ControlLeft, true), key(Key::W, true)]);
+        assert!(state.modifiers().ctrl);
+        // A physical CtrlUp can be swallowed by Android's input method;
+        // the next native modifiers event is authoritative.
+        let out = apply(&mut state, vec![
+            Event::ModifiersChanged(Modifiers::NONE),
+            key(Key::D, true),
+        ]);
+        assert!(!state.modifiers().ctrl);
+        assert!(matches!(out.last(), Some(Event::Key { key: Key::D, modifiers, .. }) if !modifiers.ctrl));
     }
 
     #[test]

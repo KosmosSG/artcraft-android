@@ -111,6 +111,19 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
         match motion.action() {
             MotionAction::Down => {
                 if count == 1 {
+                    // A prior hardware Ctrl+W sometimes leaves egui's scroll
+                    // modifiers latched on Android. Touch scrolling is not
+                    // Ctrl+Wheel zoom: explicitly clear keyboard-only mods
+                    // at the start of a NEW finger interaction.
+                    if !self.pdfcraft_key_mods.is_empty() {
+                        self.pdfcraft_key_mods = ModifiersState::empty();
+                        callback(event::Event::WindowEvent {
+                            window_id,
+                            event: event::WindowEvent::ModifiersChanged(
+                                ModifiersState::empty().into()
+                            ),
+                        }, self.window_target());
+                    }
                     let p = motion.pointer_at_index(0);
                     self.pdfcraft_touch_first = Some((p.pointer_id() as u64, pointer_position(&p)));
                     self.pdfcraft_touch_held = false;
@@ -164,7 +177,13 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                         let travelled = ((mid.x-origin.x).powi(2) + (mid.y-origin.y).powi(2)).sqrt();
                         let expansion = (spread-original_spread).abs();
                         if self.pdfcraft_touch_mode == PdfTouchMode::Pending {
-                            if expansion > 36.0 && expansion > 1.5 * travelled {
+                            // Prefer stable two-finger navigation. A shaky
+                            // uneven swipe can alter finger spread: pinch only
+                            // after substantial relative separation change and
+                            // distinctly opposing movement (not minor jitter).
+                            if expansion > (original_spread * 0.20).max(52.0)
+                                && expansion > 2.5 * travelled
+                            {
                                 self.pdfcraft_touch_mode = PdfTouchMode::Pinch;
                             } else if travelled > 12.0 {
                                 self.pdfcraft_touch_mode = PdfTouchMode::Scroll;

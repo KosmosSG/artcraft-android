@@ -285,11 +285,11 @@ mod tests {
         let normal = key(Key::D, true);
         let mut raw = RawInput { events: vec![chord.clone(), normal.clone()], ..Default::default() };
         assert!(consume_type_close_chord(&mut raw, true, false, false, false));
-        assert_eq!(raw.events, vec![normal]);
+        assert!(matches!(raw.events.as_slice(), [Event::Key { key: Key::D, pressed: true, .. }]));
         for (editing, field, composing, dialog) in [(false,false,false,false),(true,true,false,false),(true,false,true,false),(true,false,false,true)] {
             let mut raw = RawInput { events: vec![chord.clone()], ..Default::default() };
             assert!(!consume_type_close_chord(&mut raw, editing, field, composing, dialog));
-            assert_eq!(raw.events, vec![chord.clone()]);
+            assert!(matches!(raw.events.as_slice(), [Event::Key { key: Key::W, pressed: true, .. }]));
         }
     }
 

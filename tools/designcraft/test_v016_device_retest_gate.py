@@ -5,7 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class DeviceRetestGate(unittest.TestCase):
-    def test_android2_has_shared_fonts_and_keyboard_bridge(self):
+    def test_android3_has_shared_fonts_and_keyboard_bridge(self):
         ui = (ROOT / "tools/designcraft/v016_android.rs").read_text()
         stage = (ROOT / "tools/designcraft/patch_v016_interactions.py").read_text()
         launcher = (ROOT / "tools/designcraft/patch_v016_android.py").read_text()
@@ -14,7 +14,7 @@ class DeviceRetestGate(unittest.TestCase):
         self.assertIn("dispatchKeyEvent(KeyEvent event)", stage)
         self.assertIn("dcUnsavedDialog", stage)
         self.assertIn('v016_android::handle_keys(&mut self.inner, ctx, raw, &self.saf_bridge);', stage)
-        self.assertIn('candidate_version = "0.16.0-android.2"', launcher)
+        self.assertIn('candidate_version = "0.16.0-android.3"', launcher)
 
 if __name__ == "__main__":
     unittest.main()

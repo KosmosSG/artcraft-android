@@ -28,9 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 public class VectorScanTest {
- static final long MAX_FONT=64L*1024*1024,MAX_SCAN_BYTES=2L*1024*1024*1024;
- static final int MAX_FONTS=5000,MAX_FOLDERS=5000;
- static final String TAG="test";
+ static final long MAX_FONT=64L*1024*1024,MAX_SCAN_BYTES=4L*1024*1024*1024,MAX_SCAN_BATCH_BYTES=256L*1024*1024;
+ static final int MAX_FONTS=5000,MAX_FOLDERS=5000,MAX_FONTS_PER_PASS=256;
+ static final String TAG="test", PREFS="font_prefs", TREE_SCAN_OFFSET="font_scan_offset";
  static class Log { static void w(String tag,String text) {} static void w(String tag,String text,Exception e) {} }
  static class Uri {
    String id; Uri(String id){this.id=id;}
@@ -59,7 +59,21 @@ public class VectorScanTest {
    Cursor query(Uri uri,String[] fields,Object a,Object b,Object c){return new Cursor(nodes.getOrDefault(uri.id,List.of()));}
    InputStream openInputStream(Uri uri){return new ByteArrayInputStream(data.get(uri.id));}
  }
- class Activity {Resolver getContentResolver(){return new Resolver();}}
+ class Prefs {
+   final Map<String,Integer> ints = new HashMap<>();
+   int getInt(String key, int fallback){return ints.getOrDefault(key,fallback);}
+   Editor edit(){return new Editor();}
+   class Editor {
+     Editor putInt(String key,int n){ints.put(key,n);return this;}
+     void apply(){}
+   }
+ }
+ class Activity {
+   static final int MODE_PRIVATE = 0;
+   final Prefs preferences = new Prefs();
+   Resolver getContentResolver(){return new Resolver();}
+   Prefs getSharedPreferences(String key,int mode){return preferences;}
+ }
  final Activity activity=new Activity();
  final java.util.concurrent.Executor fontIo=Runnable::run;
  final File root;

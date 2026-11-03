@@ -22,8 +22,8 @@ jobs:
     env:
       UPSTREAM_SHA: 5628de96f866185d8eb289b167b89691f213c0c3
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.20.0-android.2
-      VERSION_CODE: '16782338'
+      VERSION_NAME: 0.20.0-android.3
+      VERSION_CODE: '16782339'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -31,6 +31,9 @@ jobs:
       ARTCRAFT_NDK_VERSION: 27.2.12479018
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
+      # Strip native symbol tables but retain Release opt-level 3 / thin-LTO
+      # to avoid slowing startup, painting, font import or trackpad gestures.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
     steps:
       - name: Check out owner Android changes (no write credentials)
         uses: actions/checkout@v5
@@ -121,6 +124,12 @@ jobs:
           print("PASS: v0.20 MIME filters and input hook fixed in builder-owned Android adapter")
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          # VectorCraft NativeActivity needs no AppCompat, Kotlin or
+          # GameActivity. Do not pull them into the final DEX/resources.
+          python3 android-port/tools/vectorcraft/patch_compact_apk_v020.py builder android-port
+          # Reuse unchanged system-font symlink layout across cold launches
+          # without affecting native font fallbacks or SAF imported fonts.
+          python3 android-port/tools/vectorcraft/patch_cached_system_fonts_v020.py builder
           python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
           # Owner supplied a NEW flat Vc artwork; the previous glossy approved
           # icon is preserved for older releases but must not enter this candidate.
@@ -188,11 +197,30 @@ jobs:
           PY
           cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
+          # Record sizes inside the APK for subsequent APK.3 vs APK.2
+          # comparisons; JNI libraries must remain uncompressed for
+          # Android's direct page-aligned loading and faster startup.
+          python3 - "$APK" <<'PY'
+          import json,sys,zipfile
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          with zipfile.ZipFile(path) as z:
+              entries=sorted(z.infolist(),key=lambda e:e.file_size,reverse=True)
+              total_lib=sum(e.file_size for e in entries if e.filename.startswith("lib/") and e.filename.endswith(".so"))
+              details=[{"path":e.filename,"raw_bytes":e.file_size,"compressed_bytes":e.compress_size}
+                       for e in entries[:12]]
+              report={"apk_bytes":path.stat().st_size,"native_library_raw_bytes":total_lib,
+                      "largest_entries":details,"release_symbols_stripped":True,
+                      "unused_androidx_gameactivity_removed":True,
+                      "native_library_direct_loading_retained":True}
+          Path("private-test/size-report.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("PASS: APK size report recorded",report["apk_bytes"],"bytes")
+          PY
           rm -f private-test/badging.txt private-test/resources.txt private-test/signature.txt
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.20.0-android.2-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.20.0-android.3-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 3

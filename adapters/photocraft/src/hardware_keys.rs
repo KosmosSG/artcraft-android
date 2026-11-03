@@ -49,3 +49,36 @@ pub(crate) fn inject(bridge: &AndroidFileBridge, raw: &mut egui::RawInput) {
         }
     }
 }
+
+
+/// Recover tool and discard-dialog hotkeys when a hardware/soft keyboard only
+/// produces egui::Text instead of an egui::Key. Never do this while the Type
+/// tool or a text field owns input: it would hijack typed characters and tokens.
+pub(crate) fn recover_text_keys(
+    raw: &mut egui::RawInput, ctx: &egui::Context, inline_text_edit: bool,
+) {
+    if inline_text_edit || ctx.text_edit_focused() { return; }
+    let mut recovered = Vec::new();
+    for event in &raw.events {
+        let egui::Event::Text(text) = event else { continue };
+        let key = match text.as_str().to_ascii_lowercase().as_str() {
+            "v" => egui::Key::V, "t" => egui::Key::T,
+            "b" => egui::Key::B, "y" => egui::Key::Y,
+            "n" => egui::Key::N, "c" => egui::Key::C,
+            "d" => egui::Key::D, "s" => egui::Key::S,
+            _ => continue,
+        };
+        if raw.events.iter().any(|e| matches!(e,
+            egui::Event::Key { key: present, pressed: true, .. } if *present == key
+        )) { continue; }
+        recovered.push(key);
+    }
+    for key in recovered {
+        for pressed in [true, false] {
+            raw.events.push(egui::Event::Key {
+                key, physical_key: None, pressed, repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+    }
+}

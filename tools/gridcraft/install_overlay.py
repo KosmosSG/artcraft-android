@@ -18,6 +18,24 @@ SNIPPET = '''    # GRIDCRAFT_OVERLAY_HOOK_V1: GridCraft only, never other apps.
                        init_globals={"staging_dir": staging_dir, "package_name": package_name, "root": root})
 '''
 
+def stage_candidate_android_version(builder: Path):
+    """Set GridCraft candidate's Android versionName without changing upstream or versionCode."""
+    generator = builder / "lib/android_project.py"
+    source = generator.read_text()
+    anchor = '        build_gradle(android_meta["package"], min_sdk, target_sdk, code, version)'
+    if source.count(anchor) != 1 or "GRIDCRAFT_ANDROID_VERSION_NAME_V1" in source:
+        raise RuntimeError("Pinned Android Gradle generator changed; versionName needs review")
+    revised = source.replace(anchor,
+        '        # GRIDCRAFT_ANDROID_VERSION_NAME_V1: app-info display only; keep upstream semver.\n'
+        '        build_gradle(android_meta["package"], min_sdk, target_sdk, code,\n'
+        '                     "0.15.0-android.1" if app == "gridcraft"\n'
+        '                     and version == "0.15.0"\n'
+        '                     and android_meta["package"] == "com.artcraft.gridcraft.candidate"\n'
+        '                     else version)', 1)
+    compile(revised, str(generator), "exec")
+    generator.write_text(revised)
+
+
 def install(builder: Path, additions: Path):
     builder = builder.resolve()
     additions = additions.resolve()
@@ -186,6 +204,8 @@ def install(builder: Path, additions: Path):
     # All generated files (Cargo.toml, Java Activity, Rust lib.rs) must exist first.
     # Inject immediately AFTER the generator writes lib.rs, before its
     # atomic staging-directory rename publishes the Android launcher.
+    if source_version == "0.15.0":
+        stage_candidate_android_version(builder)
     source.write_text(text.replace(TRIGGER, TRIGGER + "\n" + SNIPPET, 1))
     print("Installed isolated GridCraft native top Tools menu and Android source overlay.")
 

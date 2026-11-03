@@ -85,9 +85,22 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
                          "super.onCreate(savedInstanceState);\n        gcStartIfEnabled();")
     if not java.rstrip().endswith("}"):
         raise RuntimeError("Unexpected GridCraft Java Activity ending")
-    java = java.rstrip()[:-1] + "\n" + addon_java.read_text() + "\n}\n"
+    # User-controlled, one-shot APK downloader is GridCraft v0.15-only.
+    # Keep the production signature/package verification in the Java Activity;
+    # test builds have .candidate package and cannot self-update to production.
+    updater_java = source_dir / "GridCraftSafeUpdater.java.inc"
+    android_updater = (
+        updater_java.read_text()
+        if workspace.is_file() and upstream_version == "0.15.0"
+        else ""
+    )
+    java = java.rstrip()[:-1] + "\n" + addon_java.read_text() + "\n" + android_updater + "\n}\n"
     if "android.permission.INTERNET" not in cargo:
         cargo += '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n'
+    if android_updater and "android.permission.REQUEST_INSTALL_PACKAGES" not in cargo:
+        # Needed to show Android's user-confirmed package installer, never to
+        # silently grant install permission.
+        cargo += '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.REQUEST_INSTALL_PACKAGES"\n'
 
     # Validate every source transformation before writing any files.
     if workspace.is_file() and upstream_version == "0.15.0":

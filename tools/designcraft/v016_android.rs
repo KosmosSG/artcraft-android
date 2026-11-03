@@ -186,12 +186,69 @@ fn request_import(bridge: &saf::Bridge, state: &SafState) -> Result<(), String> 
     Ok(())
 }
 
+/// Fallback when the Android IME or embedded winit path delivers a text
+/// event but not the physical Key event. Never consume printable characters
+/// inside an active text editor. Raw-input and JNI handling remain primary.
+fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::DesignApp) {
+    let ctx = ui.ctx();
+    let unsaved = app.ui.dialog.as_ref().is_some_and(|d| d.id == "closeDocument");
+    if unsaved {
+        let choice = ui.input(|input| {
+            if input.modifiers.any() { return None; }
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Key { key, pressed: true, repeat: false, .. } =>
+                    match key {
+                        egui::Key::D => Some(1_u8),
+                        egui::Key::C => Some(2_u8),
+                        egui::Key::S => Some(3_u8),
+                        _ => None,
+                    },
+                egui::Event::Text(value) =>
+                    match value.as_str() {
+                        "d" | "D" => Some(1),
+                        "c" | "C" => Some(2),
+                        "s" | "S" => Some(3),
+                        _ => None,
+                    },
+                _ => None,
+            })
+        });
+        if let Some(choice) = choice {
+            ctx.data_mut(|data| data.insert_temp(
+                egui::Id::new("designcraft.unsaved.dcs"), choice
+            ));
+            ctx.request_repaint();
+        }
+        return;
+    }
+    if app.ui.dialog.is_some() || app.ui.palette.is_some()
+        || app.session.wants_text() || ctx.text_edit_focused()
+    {
+        return;
+    }
+    let tool = ui.input(|input| {
+        if input.modifiers.any() { return None; }
+        input.events.iter().find_map(|event| match event {
+            egui::Event::Key { key: egui::Key::T, pressed: true, repeat: false, .. } => Some("type"),
+            egui::Event::Key { key: egui::Key::V, pressed: true, repeat: false, .. } => Some("selection"),
+            egui::Event::Text(text) if text.eq_ignore_ascii_case("t") => Some("type"),
+            egui::Event::Text(text) if text.eq_ignore_ascii_case("v") => Some("selection"),
+            _ => None,
+        })
+    });
+    if let Some(tool) = tool {
+        app.select_tool(tool);
+        ctx.request_repaint();
+    }
+}
+
 pub fn ui(
     ui: &mut egui::Ui,
     app: &mut designcraft_ui_egui::DesignApp,
     bridge: &saf::Bridge,
     state: &SafState,
 ) {
+    forward_ui_shortcuts(ui, app);
     if let Some(event) = RESULT.lock().unwrap_or_else(|e| e.into_inner()).take() {
         match event {
             Ok(message) => match app.run("font.reload", serde_json::json!({})) {

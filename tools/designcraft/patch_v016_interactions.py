@@ -19,11 +19,16 @@ def ui_source(src):
     #[cfg(target_os = "android")]
     ("app.artcraftSelectSharedFonts", "Select Shared Font Folder…", None, "{}"),
     #[cfg(target_os = "android")]
-    ("app.artcraftRefreshSharedFonts", "Refresh Shared Fonts", None, "{}"),''',"UI command registry")
+    ("app.artcraftRefreshSharedFonts", "Refresh Shared Fonts", None, "{}"),
+    #[cfg(target_os = "android")]
+    ("app.artcraftToggleAndroidTools", "Show / Hide Android Tools", None, "{}"),''',"UI command registry")
     p=base/"menus/run.rs"
     a='pub fn take_android_font_import() -> bool {'
     edit(p,a,'''static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(0);
+#[cfg(target_os = "android")]
+static ANDROID_TOOLS_TOGGLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "android")]
 pub fn take_android_shared_actions() -> u8 {
@@ -31,9 +36,19 @@ pub fn take_android_shared_actions() -> u8 {
 }
 
 #[cfg(target_os = "android")]
+pub fn take_android_tools_toggle() -> bool {
+    ANDROID_TOOLS_TOGGLE.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(target_os = "android")]
 '''+a,"UI action flags")
     a='    if id == "app.artcraftImportFont" {'
-    edit(p,a,'''    if id == "app.artcraftSelectSharedFonts" {
+    edit(p,a,'''    if id == "app.artcraftToggleAndroidTools" {
+        ANDROID_TOOLS_TOGGLE.store(true, std::sync::atomic::Ordering::Relaxed);
+        return Some(Ok(Value::Null));
+    }
+    #[cfg(target_os = "android")]
+    if id == "app.artcraftSelectSharedFonts" {
         ANDROID_SHARED_ACTIONS.fetch_or(1, std::sync::atomic::Ordering::Relaxed);
         return Some(Ok(Value::Null));
     }
@@ -46,7 +61,7 @@ pub fn take_android_shared_actions() -> u8 {
 '''+a,"UI action dispatch")
     p=base/"menus.rs"
     edit(p,'pub use run::take_android_font_import;',
-         'pub use run::{take_android_font_import, take_android_shared_actions};',"UI action exports")
+         'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',"UI action exports")
     p=base/"menus/tables.rs"
     a='            "ui:app.artcraftImportFont",\n            "-",'
     edit(p,a,'            "ui:app.artcraftImportFont",\n            "ui:app.artcraftSelectSharedFonts",\n            "ui:app.artcraftRefreshSharedFonts",\n            "-",',"Type actions")
@@ -56,6 +71,8 @@ pub fn take_android_shared_actions() -> u8 {
             "ui:app.artcraftImportFont",
             "ui:app.artcraftSelectSharedFonts",
             "ui:app.artcraftRefreshSharedFonts",
+            "-",
+            "ui:app.artcraftToggleAndroidTools",
         ],
     ),
     (

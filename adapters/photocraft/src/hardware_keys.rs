@@ -29,9 +29,10 @@ pub(crate) fn inject(bridge: &AndroidFileBridge, raw: &mut egui::RawInput) {
             Err(_) => break, // a Java activity without the bridge is still usable
         };
         let mut bits = event.split(',');
-        let (Some(code), Some(flags)) = (bits.next(), bits.next()) else { continue };
+        let (Some(code), Some(flags), Some(down)) = (bits.next(), bits.next(), bits.next()) else { continue };
         let (Ok(code), Ok(flags)) = (code.parse::<u32>(), flags.parse::<u32>()) else { continue };
         let Some(key) = mapped_key(code) else { continue };
+        let pressed = down == "1";
         let mods = egui::Modifiers {
             alt: flags & 1 != 0,
             ctrl: flags & 2 != 0,
@@ -40,9 +41,10 @@ pub(crate) fn inject(bridge: &AndroidFileBridge, raw: &mut egui::RawInput) {
             command: flags & 2 != 0,
         };
         if !raw.events.iter().any(|e| matches!(e,
-            egui::Event::Key { key: existing, pressed: true, .. } if *existing == key)) {
+            egui::Event::Key { key: existing, pressed: already_pressed, .. }
+                if *existing == key && *already_pressed == pressed)) {
             raw.events.push(egui::Event::Key {
-                key, physical_key: None, pressed: true, repeat: false, modifiers: mods,
+                key, physical_key: None, pressed, repeat: false, modifiers: mods,
             });
         }
     }

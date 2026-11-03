@@ -292,3 +292,32 @@ Keep official CPU rasterizer as fallback; do not claim full GPU slide render.
 Unsigned ARM64 CI only. Any test APK must be temporary-key signed locally
 (no separate GitHub signing workflow) and verified before user install.
 Keep PR #106 draft and do not merge, production-sign, tag or publish.
+
+## v0.14.1-android.14 — measured GPU texture reuse without replacing the rasterizer (2026-11-03)
+
+Owner physically tested Help > GPU Diagnostics on HONOR MagicPad 4 Android.13:
+Adreno (TM) 829; Vulkan selected runtime backend; IntegratedGpu;
+max texture side 16,384px; app UI pass 2.7ms, CPU slide raster last 3.7ms,
+frame-pass frequency approximately 155.3 FPS (not screen refresh rate).
+Confirmed existing WGPU/Vulkan acceleration; full GPU drawing of slide shapes is
+not implemented because official renderer uses vello_cpu.
+
+Android.14 is a conservative and reversible optimization of the GPU-resident
+slide texture cache. If an unmodified slide, master, zoom, edit/text state,
+GIF/grayscale/animation matches and its already-uploaded GPU texture contains
+all requested pasteboard pixels after trackpad/touch panning, reuse it
+instead of running CPU rasterization and uploading a new texture. Never reuse
+on edit, different content or zoom; maintain original texture region and UVs.
+Add a named Rust regression test for reused contained region and rejection
+for out-of-region and changed slide/master/zoom/style/animation. Keep existing
+canvas_renders and a new GPU texture reuse hit counter; show both in
+Help > GPU Diagnostics, distinguish UI-pass rate from device refresh and
+last raster cost from GPU compute timing. Remove redundant Cancel button
+from diagnostics. Do NOT change Vulkan/GL device selection, CPU rasterizer,
+font rendering, canvas coordinate mapping or the known working Android.12
+keyboard, clipboard, DCS, dark theme, native touchscreen and trackpad behavior.
+
+Save expensive full GPU slide rasterization until representative presentations
+show CPU time as bottleneck and visual parity is tested. Keep existing draft
+PR #106, unsigned ARM64 test CI, local disposable-key signing only for test,
+no production keys, merge or publication without user approval.

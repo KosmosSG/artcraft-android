@@ -90,7 +90,53 @@ jobs:
           "$manager" --sdk_root="$sdk" --install 'build-tools;35.0.0'
           echo "BUILD_TOOLS=$sdk/build-tools/35.0.0" >> "$GITHUB_ENV"
           input="$RUNNER_TEMP/deckcraft-source/$SOURCE_APK"
+          tested="$RUNNER_TEMP/deckcraft-source/$SOURCE_TEST_APK"
+          "$sdk/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$tested" > "$RUNNER_TEMP/test-signer.txt"
+          python3 - "$RUNNER_TEMP/test-signer.txt" <<'PY'
+          import os,re,sys
+          report=open(sys.argv[1]).read()
+          assert any(f'Verified using v{x} scheme (APK Signature Scheme v{x}): true' in report for x in (2,3))
+          found=re.findall(r'^Signer #([0-9]+) certificate SHA-256 digest: ([a-fA-F0-9:]+)',report,re.M)
+          assert len(found)==1 and found[0][0]=='1'
+          assert found[0][1].replace(':','').lower()!=os.environ['ORIGINAL_CERT_SHA256']
+          print("PASS: tested APK is signed with a disposable test certificate, not original signer")
+          PY
+          python3 - "$tested" "$RUNNER_TEMP/deckcraft-source/source-unsealed.apk" <<'PY'
+          import hashlib,sys,zipfile
+          tested,target=sys.argv[1:]
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  assert z.testzip() is None,"APK corrupt"
+                  ns=z.namelist()
+                  assert len(ns)==len(set(ns)),"Duplicate ZIP entry"
+                  assert 'classes.dex' in ns
+                  libs=[n for n in ns if n.startswith('lib/') and n.endswith('.so')]
+                  assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
+                  assert not any(n.lower().endswith(('.p12','.jks','.keystore')) for n in ns)
+                  return {n:hashlib.sha256(z.read(n)).hexdigest() for n in ns
+                          if not n.upper().startswith('META-INF/') and not n.endswith('/')}
+          verified=payload(tested)
+          with zipfile.ZipFile(tested) as src, zipfile.ZipFile(target,'w') as dst:
+              for entry in src.infolist():
+                  up=entry.filename.upper()
+                  if up.startswith('META-INF/') and (up.endswith(('.RSA','.DSA','.EC','.SF','.MF')) or up.startswith('META-INF/SIG-')):
+                      continue
+                  dst.writestr(entry,src.read(entry.filename))
+          assert payload(target)==verified,'Unsealing modified tested APK payload'
+          print('PASS: compiled app payload from device-tested APK copied without modification')
+          PY
+          "$sdk/build-tools/35.0.0/zipalign" -P 16 -f 4 "$RUNNER_TEMP/deckcraft-source/source-unsealed.apk" "$input"
+          rm "$RUNNER_TEMP/deckcraft-source/source-unsealed.apk"
           "$sdk/build-tools/35.0.0/zipalign" -c -P 16 4 "$input"
+          python3 - "$tested" "$input" <<'PY'
+          import hashlib,sys,zipfile
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  return {n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()
+                          if not n.upper().startswith('META-INF/') and not n.endswith('/')}
+          assert payload(sys.argv[1])==payload(sys.argv[2]),'Original tested and production-sign input payload differ'
+          print('PASS: byte-for-byte identical application files from owner-tested APK; no recompile')
+          PY
           if "$sdk/build-tools/35.0.0/apksigner" verify "$input" >/dev/null 2>&1; then
             echo "::error::Refusing to re-sign unexpected signed source APK"
             exit 1

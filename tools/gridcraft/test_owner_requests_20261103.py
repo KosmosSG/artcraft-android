@@ -75,6 +75,27 @@ class GridCraftOwnerRequests(unittest.TestCase):
         self.assertIn('Touch drag selects cells', menu)
         self.assertIn('gridcraft.android.touch_select', menu)
 
+    def test_trackpad_primary_button_routes_android_down_up_not_touch_swipe(self):
+        import runpy
+        import tempfile
+        stage = runpy.run_path(str(ROOT / "tools/gridcraft/install_overlay.py"))["stage_trackpad_primary_button"]
+        # The pinned builder checks action_button() on DOWN/UP, although
+        # Android only defines it on BUTTON_PRESS/RELEASE. Regression-test
+        # that the isolated adapter always forwards ordinary primary clicks.
+        with tempfile.TemporaryDirectory() as tmp:
+            vendor = Path(tmp) / "vendor/winit/src/platform_impl/android/mod.rs"
+            vendor.parent.mkdir(parents=True)
+            vendor.write_text("                                    if motion_event.action_button() != Button::Primary {\n                                        button_sent = true;\n                                    } else {\n                                        button_sent = true;\n                                        callback(" + " callback_body;\\n")
+            stage(Path(tmp))
+            patched = vendor.read_text()
+            self.assertIn("GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1", patched)
+            self.assertIn("MotionAction::Down | MotionAction::Up | MotionAction::Cancel", patched)
+            self.assertIn("motion_event.action_button() == Button::Primary", patched)
+            self.assertIn("if primary {", patched)
+            self.assertNotIn("if motion_event.action_button() != Button::Primary", patched)
+            with self.assertRaises(RuntimeError):
+                stage(Path(tmp))
+
     def test_gpu_renderer_and_touch_gestures_remain_upstream_owned(self):
         # Native wgpu is configured by the pinned builder; our staging overlay
         # must not replace normal Android touch event translation.

@@ -29,7 +29,11 @@ class GridCraftV0150ReviewTests(unittest.TestCase):
         self.assertIn('"0.15.0-android.1" if app == "gridcraft"', installer)
         self.assertIn("versionName=\'0.15.0-android.1\'", workflow)
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("\n  push:", workflow)
+        # The owner-authorized push path is restricted to one exact commit message.
+        self.assertIn("gridcraft-disposable-arm64-once-20261104", workflow)
+        self.assertIn("github.event.head_commit.message", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn(".github/workflows/gridcraft-v0150-test-once.yml", workflow)
 
     def test_version_patch_scoped_to_candidate_and_preserves_numeric_code(self):
         import runpy

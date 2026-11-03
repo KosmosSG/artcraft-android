@@ -27,7 +27,39 @@ class GridCraftV0150ReviewTests(unittest.TestCase):
         self.assertIn('"0.15.0-android.1" if app == "gridcraft"', installer)
         self.assertIn("versionName=\'0.15.0-android.1\'", workflow)
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("\\n  push:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+
+    def test_version_patch_scoped_to_candidate_and_preserves_numeric_code(self):
+        import runpy
+        stage = runpy.run_path(str(FOLDER / "install_overlay.py"))["stage_candidate_android_version"]
+        with tempfile.TemporaryDirectory() as tmp:
+            generator = Path(tmp) / "lib/android_project.py"
+            generator.parent.mkdir(parents=True)
+            generator.write_text(
+                "def build_gradle(namespace, min_sdk, target_sdk, code, version):\n"
+                "    return (namespace, code, version)\n"
+                "def generate(app, version, android_meta, code):\n"
+                "    min_sdk, target_sdk = 28, 35\n"
+                "    result = (\n"
+                '        build_gradle(android_meta["package"], min_sdk, target_sdk, code, version)\n'
+                "    )\n"
+                "    return result\n"
+            )
+            stage(Path(tmp))
+            namespace = {}
+            exec(compile(generator.read_text(), str(generator), "exec"), namespace)
+            generate = namespace["generate"]
+            self.assertEqual(
+                generate("gridcraft", "0.15.0", {"package": "com.artcraft.gridcraft.candidate"}, 16781056),
+                ("com.artcraft.gridcraft.candidate", 16781056, "0.15.0-android.1"))
+            self.assertEqual(
+                generate("gridcraft", "0.15.0", {"package": "com.artcraft.gridcraft"}, 16781056),
+                ("com.artcraft.gridcraft", 16781056, "0.15.0"))
+            self.assertEqual(
+                generate("photocraft", "0.15.0", {"package": "com.artcraft.gridcraft.candidate"}, 16781056),
+                ("com.artcraft.gridcraft.candidate", 16781056, "0.15.0"))
+            with self.assertRaises(RuntimeError):
+                stage(Path(tmp))
 
     def test_tested_android_overlay_still_exists(self):
         installer = (FOLDER / "install_overlay.py").read_text()

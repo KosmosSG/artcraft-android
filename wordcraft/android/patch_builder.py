@@ -128,7 +128,8 @@ def main() -> None:
         "    wc_fields = '\\n    wc: wordcraft_android::Tools,' if app == 'wordcraft' else ''\n"
         "    wc_new_setup = '        let wc_tools = wordcraft_android::Tools::new(&app);\\n' if app == 'wordcraft' else ''\n"
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
-        "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"        "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
         "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui);\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",

@@ -95,6 +95,17 @@ jobs:
           assert 'getPackageName().endsWith(".candidate")' in updater
           assert 'android.content.Intent.ACTION_VIEW' in updater
           assert "GridCraftSafeUpdater.java.inc" in Path("builder/tools/gridcraft_android/overlay.py").read_text()
+          show=(src/"crates/ui-egui/src/grid/show.rs").read_text()
+          interaction=(src/"crates/ui-egui/src/grid/interact.rs").read_text()
+          title=(src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in show
+          assert 'long_hold' in show and 'on_fill_handle' in show
+          assert 'app.grid.touch_pan = multi_touch ||' in show
+          assert 'let handle_size = if ctx.input(|i| i.any_touches()) { 44.0 } else { 9.0 };' in interaction
+          assert 'GRIDCRAFT_GC_SAFE_PADDING_V1' in title
+          assert 'GRIDCRAFT_GC_SAFE_PADDING_V1' in icon_generator
+          assert 'inset_px = round(CANVAS_PX * 0.78)' in icon_generator
+          assert 'inset = max(1, round(size * 0.82))' in icon_generator
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()

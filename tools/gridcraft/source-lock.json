@@ -7,6 +7,7 @@
   "official_version": "0.15.0",
   "android_revision": 1,
   "version_name": "0.15.0-android.1",
+  "intended_release_tag": "gridcraft-v0.15.0-android.1",
   "intended_release_apk": "GridCraft-v0.15.0-android.1-arm64-v8a.apk",
   "production_package": "com.artcraft.gridcraft",
   "target_abi": "arm64-v8a",

@@ -10,6 +10,7 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 pub struct Mobile {
     app: AndroidApp,
     renderer: String,
+    gpu_details_open: bool,
     updates_open: bool,
     toolbar_shown: bool,
     font_status: String,
@@ -23,7 +24,7 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), updates_open: false, toolbar_shown: true,
+            app, renderer: "Renderer not initialized".into(), gpu_details_open: false, updates_open: false, toolbar_shown: true,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
@@ -225,6 +226,9 @@ impl Mobile {
                 }
                 ui.separator();
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
+                if ui.button("GPU info").on_hover_text("Show actual Android wgpu adapter and graphics backend").clicked() {
+                    self.gpu_details_open = !self.gpu_details_open;
+                }
                 ui.separator();
                 if ui.button("Hide panel").on_hover_text(
                     "Reopen from View > Android tools panel").clicked() {
@@ -234,6 +238,11 @@ impl Mobile {
             // Keep import/scan feedback on screen without hiding the actual actions.
             ui.label(&self.font_status).on_hover_text(
                 "PDFCraft accepts embeddable TTF/OTF fonts; existing embedded PDF fonts are unchanged.");
+            if self.gpu_details_open {
+                ui.separator();
+                ui.label(&self.renderer).on_hover_text(
+                    "Android GPU adapter information from wgpu at startup. PDF page rasterization is performed by hayro on CPU; the page textures and interface are composited by wgpu. Software/unknown adapters do not prove hardware acceleration.");
+            }
             if self.updates_open {
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {

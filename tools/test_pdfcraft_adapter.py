@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.9'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.10'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -32,13 +32,22 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.17.0-android.9'
+    assert cargo['package']['version'] == '0.17.0-android.10'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
     assert 'android_input_patch' in (root/'tools/pdfcraft/winit_v015_compat.py').read_text()
     assert 'ctrl_shortcuts_without_separate_modifier_key_event' in (root/'templates/android/pdfcraft_modifiers.rs').read_text()
     assert 'shell.pdf_mobile.set_renderer(description)' in native
+    assert 'renderer: eframe::Renderer::Wgpu' in native
+    assert 'Hardware GPU reported' in native
+    assert 'Software CPU adapter reported' in native
+    assert 'PDF pages: hayro CPU rasterization' in native
+    mobile = (root / 'templates/android/pdfcraft_mobile.rs').read_text()
+    assert 'GPU info' in mobile
+    assert 'gpu_details_open' in mobile
+    assert 'self.gpu_details_open = !self.gpu_details_open' in mobile
+    assert 'ui.label(&self.renderer)' in mobile
     assert 'if self.inner.android_tools_visible() {' in native
     assert native.index('self.pdf_mobile.toolbar(ui)') < native.index('self.inner.ui(ui, frame)')
     assert 'inner.set_android_tools_visible(pdf_mobile.toolbar_shown());' in native

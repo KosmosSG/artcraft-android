@@ -395,7 +395,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "27-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "28-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2741,18 +2741,33 @@ impl eframe::App for AndroidShell {{
     if app == "pdfcraft":
         creator = """Box::new(move |cc| {
             let mut shell = shell;
+            // GPU info is the actual adapter selected by eframe/wgpu, not
+            // a hard-coded Adreno claim. The upstream hayro page rasterizer is
+            // CPU-based; wgpu composites the page textures and application UI.
             let description = match cc.wgpu_render_state.as_ref() {
                 Some(rs) => {
                     let info = rs.adapter.get_info();
-                    format!("UI: {} ({:?}, {:?}). PDF page rendering uses the upstream renderer.", info.name, info.backend, info.device_type)
+                    let adapter_kind = match info.device_type {
+                        eframe::wgpu::DeviceType::DiscreteGpu
+                        | eframe::wgpu::DeviceType::IntegratedGpu => "Hardware GPU reported",
+                        eframe::wgpu::DeviceType::Cpu => "Software CPU adapter reported",
+                        _ => "Adapter hardware status unverified",
+                    };
+                    format!("UI: wgpu {:?}, adapter: {} ({:?}). {}. PDF pages: hayro CPU rasterization, then wgpu texture compositing.",
+                        info.backend, info.name, info.device_type, adapter_kind)
                 }
-                None => "UI adapter information unavailable. PDF page rendering uses the upstream renderer.".to_owned(),
+                None => "wgpu adapter information unavailable; GPU hardware not verified. PDF pages: hayro CPU rasterization.".to_owned(),
             };
             log::info!("PDFCraft Android renderer: {}", description);
             shell.pdf_mobile.set_renderer(description);
             Ok(Box::new(shell))
         })"""
 
+    # PDFCraft already has only wgpu compiled into its Android launcher;
+    # make that GPU compositor explicit, retaining egui-wgpu's default
+    # high-performance preference and supported-backend fallback selection.
+    # Do not force Vulkan: an unsupported driver must be allowed to use GLES.
+    gpu_renderer_option = '        renderer: eframe::Renderer::Wgpu,\n' if app == "pdfcraft" else ''
     if saf:
         entry = f'''//! Generated Android launcher for {title}.
 //! Starts the app's egui UI with Android Storage Access Framework (SAF) file services plus the
@@ -2775,7 +2790,7 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         viewport: egui::ViewportBuilder::default()
             .with_title("{title}")
             .with_drag_and_drop(true),
-        android_app: Some(android_app),
+{gpu_renderer_option}        android_app: Some(android_app),
         ..Default::default()
     }};
     let result = eframe::run_native(
@@ -2805,7 +2820,7 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         viewport: egui::ViewportBuilder::default()
             .with_title("{title}")
             .with_drag_and_drop(true),
-        android_app: Some(android_app),
+{gpu_renderer_option}        android_app: Some(android_app),
         ..Default::default()
     }};
     let result = eframe::run_native(

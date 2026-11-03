@@ -94,6 +94,16 @@
                 ui.menu_button("Theme preferences (System / Light / Dark)", |ui| {
                     theme_choices(app, ui);
                 });
+                // Touch drag defaults to scrolling; users can opt into
+                // one-finger drag-selection without affecting mouse or
+                // two-finger trackpad scrolling.
+                let selection_id = egui::Id::new("gridcraft.android.touch_select");
+                let mut touch_select = ui.ctx().data(|d| d.get_temp::<bool>(selection_id)).unwrap_or(false);
+                if ui.checkbox(&mut touch_select, "Touch drag selects cells").changed() {
+                    ui.ctx().data_mut(|d| d.insert_temp(selection_id, touch_select));
+                    ui.ctx().request_repaint();
+                }
+                ui.label(egui::RichText::new("Hold a cell, then drag to select; drag the green fill handle to extend.").small());
                 ui.label(egui::RichText::new("Graphics: wgpu GPU • Vulkan preferred, OpenGL fallback").small());
                 ui.separator();
                 ui.label(egui::RichText::new("Spreadsheet shortcuts").strong());

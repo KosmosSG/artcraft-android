@@ -102,7 +102,10 @@ jobs:
           state = (u / "lib.rs").read_text()
           binding = (u / "app/fonts.rs").read_text()
           assert title.count("GRIDCRAFT_ANDROID_NATIVE_MENU_V1") == 1
-          assert 'ui.menu_button("GridCraft Tools"' in title
+          assert 'egui::Popup::menu(&gc_button).show(' in title
+          assert 'ui.menu_button("GridCraft Tools"' not in title
+          assert 'image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))' in title
+          assert 'GRIDCRAFT_ANDROID_USER_ICON_V2' in title
           assert home.count("let available = crate::fonts::families();") == 1
           assert "pub fn reload_catalog()" in fonts
           assert "android_font_generation: u64" in state

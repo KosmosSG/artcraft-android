@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+UPSTREAM_UPDATE_ENTRY = '    uic!("app.checkForUpdates", "Check for Updates…", ["Help"], None),'
 COMMAND_ANCHOR = '    uic!("app.about", "About FilmCraft", ["Help"], None),'
 INVOKE_ANCHOR = '    if id == "edit.selectAll" && ('
 MENU_BAR_ANCHOR = '    let items = menu_items_with_focus(app, ui.ctx());'
@@ -21,7 +22,7 @@ COMMAND_INSERT = '''    // FilmCraft Android only: native File and Help commands
     #[cfg(target_os = "android")]
     uic!("android.filmcraft.refreshFonts", "Refresh Imported Fonts", ["File"], None),
     #[cfg(target_os = "android")]
-    uic!("android.filmcraft.checkUpdates", "Check for Updates…", ["Help"], None),
+
     #[cfg(target_os = "android")]
     uic!("android.filmcraft.startupUpdates", "Toggle Startup Update Checks", ["Help"], None),
     #[cfg(target_os = "android")]
@@ -35,7 +36,7 @@ INVOKE_INSERT = '''    #[cfg(target_os = "android")]
             "android.filmcraft.importFont" => Some(1),
             "android.filmcraft.sharedFonts" => Some(2),
             "android.filmcraft.refreshFonts" => Some(3),
-            "android.filmcraft.checkUpdates" => Some(4),
+            "app.checkForUpdates" => Some(4),
             "android.filmcraft.startupUpdates" => Some(5),
             "android.filmcraft.openRelease" => Some(6),
             "android.filmcraft.buildInfo" => Some(7),
@@ -75,6 +76,13 @@ def once(s: str, anchor: str, replacement: str, label: str) -> str:
 def patch(s: str) -> str:
     if '"android.filmcraft.importFont"' in s:
         raise RuntimeError("Native Android commands already staged; refuse double patch")
+    # FilmCraft v0.16 already registers this one Help entry upstream.
+    # Keep its label/position and redirect its action to the Android
+    # release checker (action 4). Never add a visually duplicated entry.
+    if s.count(UPSTREAM_UPDATE_ENTRY) != 1:
+        raise RuntimeError("upstream Help > Check for Updates: expected exactly one entry")
+    if 'uic!("android.filmcraft.checkUpdates"' in s:
+        raise RuntimeError("obsolete duplicate Android Check for Updates entry")
     s = once(s, COMMAND_ANCHOR, COMMAND_INSERT + COMMAND_ANCHOR, "menu registration")
     s = once(s, INVOKE_ANCHOR, INVOKE_INSERT + INVOKE_ANCHOR, "menu dispatch")
     s = once(s, MENU_BAR_ANCHOR, MENU_BAR_INSERT + MENU_BAR_ANCHOR, "menu status")
@@ -82,11 +90,16 @@ def patch(s: str) -> str:
 
 
 def self_test() -> None:
-    src = COMMAND_ANCHOR + "\n" + INVOKE_ANCHOR + "\n" + MENU_BAR_ANCHOR + "\n"
+    src = UPSTREAM_UPDATE_ENTRY + "\n" + COMMAND_ANCHOR + "\n" + INVOKE_ANCHOR + "\n" + MENU_BAR_ANCHOR + "\n"
     out = patch(src)
     assert all(f'android.filmcraft.{k}' in out for k in
-               ("importFont", "sharedFonts", "refreshFonts", "checkUpdates",
+               ("importFont", "sharedFonts", "refreshFonts",
                 "startupUpdates", "openRelease", "buildInfo"))
+    # Exactly one Help item, using the original upstream menu label/id.
+    assert out.count(UPSTREAM_UPDATE_ENTRY) == 1
+    assert out.count('"Check for Updates…"') == 1
+    assert '"app.checkForUpdates" => Some(4),' in out
+    assert '"android.filmcraft.checkUpdates"' not in out
     assert all(f'Some({i})' in out for i in range(1, 8))
     assert "filmcraft.android.menu.action" in out
     assert "filmcraft.android.menu.status" in out
@@ -102,7 +115,20 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("Missing drift guard")
-    print("PASS: FilmCraft native menu dispatch, status, idempotency and drift tests")
+    try:
+        patch(src.replace(UPSTREAM_UPDATE_ENTRY, ""))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("Missing upstream Check for Updates drift guard")
+    try:
+        patch(src.replace(UPSTREAM_UPDATE_ENTRY, UPSTREAM_UPDATE_ENTRY * 2))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("Duplicated upstream Check for Updates must be rejected")
+    print("PASS: FilmCraft one Help update entry; Android routes app.checkForUpdates to native action 4")
+
 
 
 def main() -> None:

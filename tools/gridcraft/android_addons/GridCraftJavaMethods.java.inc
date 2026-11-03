@@ -265,6 +265,8 @@
 
     public void gcCheckForUpdates() {
         if (!gcChecking.compareAndSet(false, true)) return;
+        gcEligibleUpdateApkUrl = null;
+        gcEligibleUpdateDigest = null;
         gcWorker.execute(() -> {
             java.net.HttpURLConnection connection = null;
             try {
@@ -284,7 +286,7 @@
                     }
                 }
                 org.json.JSONArray releases = new org.json.JSONArray(bytes.toString("UTF-8"));
-                String bestVersion = null, bestUrl = null;
+                String bestVersion = null, bestUrl = null, bestApk = null, bestDigest = null;
                 for (int i = 0; i < releases.length(); i++) {
                     org.json.JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft") || release.optBoolean("prerelease")) continue;
@@ -294,23 +296,30 @@
                     // Only real, published and downloadable GridCraft APKs are updates.
                     // A draft, a tag-only release, or another app's APK is not.
                     org.json.JSONArray assets = release.optJSONArray("assets");
-                    boolean downloadable = false;
+                    String releaseApk = null, releaseDigest = null;
                     if (assets != null) for (int ai = 0; ai < assets.length(); ai++) {
                         org.json.JSONObject asset = assets.optJSONObject(ai);
-                        if (asset != null &&
-                            ("GridCraft-v" + version + "-arm64-v8a.apk").equals(asset.optString("name")) &&
-                            "uploaded".equals(asset.optString("state")) &&
-                            asset.optLong("size", 0) > 0) {
-                            downloadable = true;
-                            break;
-                        }
+                        if (asset == null) continue;
+                        String name = asset.optString("name");
+                        // Only version-matching signed ARM64 assets, not other app assets.
+                        if (!name.matches("GridCraft-v" + java.util.regex.Pattern.quote(version) + "-.*arm64-v8a.*\\.apk") ||
+                                name.toUpperCase(java.util.Locale.ROOT).contains("UNSIGNED") ||
+                                !"uploaded".equals(asset.optString("state")) ||
+                                asset.optLong("size", 0) < 1024 * 1024) continue;
+                        String apk = asset.optString("browser_download_url");
+                        if (!apk.matches("https://github\\.com/KosmosSG/artcraft-android/releases/download/gridcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+/[A-Za-z0-9._%-]+\\.apk")) continue;
+                        releaseApk = apk;
+                        releaseDigest = asset.optString("digest");
+                        break;
                     }
-                    if (!downloadable) continue;
+                    if (releaseApk == null) continue;
                     String page = release.optString("html_url");
                     if (!page.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v")) continue;
                     if (bestVersion == null || gcCompareVersion(version, bestVersion) > 0) {
                         bestVersion = version;
                         bestUrl = page;
+                        bestApk = releaseApk;
+                        bestDigest = releaseDigest;
                     }
                 }
                 String installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
@@ -325,8 +334,16 @@
                     result.put("latest", bestVersion);
                     result.put("url", bestUrl);
                     boolean newer = gcCompareVersion(bestVersion, installed) > 0;
-                    result.put("state", newer ? "update_available" : "up_to_date");
-                    result.put("message", newer ? "GridCraft Android " + bestVersion + " is available."
+                    boolean compatiblePackage = !getPackageName().endsWith(".candidate");
+                    if (newer && compatiblePackage) {
+                        gcEligibleUpdateApkUrl = bestApk;
+                        gcEligibleUpdateDigest = bestDigest;
+                    }
+                    result.put("can_install", newer && compatiblePackage);
+                    result.put("state", newer ? (compatiblePackage ? "update_available" : "candidate_only") : "up_to_date");
+                    result.put("message", newer
+                            ? (compatiblePackage ? "GridCraft " + bestVersion + " ready to download and install."
+                                 : "New production release found; this separate test app cannot replace the production package.")
                             : "GridCraft Android is up to date (" + installed + ").");
                 }
                 gcEvents.offer(result.toString());

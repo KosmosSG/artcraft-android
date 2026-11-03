@@ -14,14 +14,9 @@ class RecursiveWalk(unittest.TestCase):
         # Enumeration tests intentionally have no native-frame consumer; replace only the
         # backpressure helper in the JVM fake while guarding its real presence below.
         self.assertIn("while (ecFontPaths.size() >= 48)", scan)
-        scan = scan.replace(
-            '    private void ecFontQueueRoom() throws InterruptedException {\\n'
-            '        while (ecFontPaths.size() >= 48) {\\n'
-            '            Thread.sleep(40);\\n'
-            '        }\\n'
-            '    }',
-            '    private void ecFontQueueRoom() throws InterruptedException { }'
-        )
+        start = scan.index("    private void ecFontQueueRoom()")
+        end = scan.index("    private void ecRefreshSharedFonts(", start)
+        scan = scan[:start] + "    private void ecFontQueueRoom() throws InterruptedException { }\\n" + scan[end:]
         harness = r'''
 import java.io.*;
 import java.util.*;

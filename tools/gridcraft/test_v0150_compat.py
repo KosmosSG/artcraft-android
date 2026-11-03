@@ -11,12 +11,23 @@ class GridCraftV0150ReviewTests(unittest.TestCase):
     def test_source_pin_does_not_authorize_production(self):
         lock = json.loads((FOLDER / "source-lock.json").read_text())
         self.assertEqual(lock["official_release_tag"], "v0.15.0")
+        self.assertEqual(lock["version_name"], "0.15.0-android.1")
+        self.assertEqual(lock["intended_release_tag"], "gridcraft-v0.15.0-android.1")
         self.assertEqual(lock["official_release_commit"], "30b210b4ef03b30616923465efa70766cefba379")
         self.assertEqual(lock["baseline_android_source_commit"], "720fab9eaa178da485750009f1a2782026da6286")
         self.assertTrue(lock["upstream_review_only"])
         self.assertIsNone(lock["version_code_reserved"])
         self.assertFalse(lock["build_approved"])
         self.assertFalse(lock["publish_approved"])
+
+    def test_android_candidate_version_and_manual_only_build(self):
+        installer = (FOLDER / "install_overlay.py").read_text()
+        workflow = (FOLDER.parent.parent / ".github/workflows/gridcraft-v0150-test-once.yml").read_text()
+        self.assertIn("GRIDCRAFT_ANDROID_VERSION_NAME_V1", installer)
+        self.assertIn('"0.15.0-android.1" if app == "gridcraft"', installer)
+        self.assertIn("versionName=\'0.15.0-android.1\'", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\\n  push:", workflow)
 
     def test_tested_android_overlay_still_exists(self):
         installer = (FOLDER / "install_overlay.py").read_text()

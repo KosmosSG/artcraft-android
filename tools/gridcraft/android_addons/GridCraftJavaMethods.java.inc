@@ -171,7 +171,11 @@
         }
     }
 
-    // Shared-font SAF scan: up to 5,000 files in up to 5,000 directories, while\n    // retaining the independent 4 GiB aggregate byte budget. Never load font blobs into RAM.\n    private static final int GC_MAX_SHARED_FONTS = 5000;\n    private static final int GC_MAX_SHARED_DIRS = 5000;\n    private void gcScanShared(android.net.Uri tree) {
+    // Shared-font SAF scan: up to 5,000 files in up to 5,000 directories, while
+    // retaining the independent 4 GiB aggregate byte budget. Never load font blobs into RAM.
+    private static final int GC_MAX_SHARED_FONTS = 5000;
+    private static final int GC_MAX_SHARED_DIRS = 5000;
+    private void gcScanShared(android.net.Uri tree) {
         java.io.File root = gcFontRoot();
         java.io.File active = new java.io.File(root, "artcraft-shared");
         java.io.File staged = new java.io.File(root, "artcraft-shared-staging");

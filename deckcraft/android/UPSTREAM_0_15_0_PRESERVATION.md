@@ -5,7 +5,8 @@
 **Rollback:** the published Android.17 release and original release certificate must remain intact.
 **Upstream target:** official `storytold/deckcraft` v0.15.0, pinned at `3e178d8f5a59c787a6a53a7ed0f052b3e4a1489f`.
 **Staging branch:** `integration/deckcraft-upstream-v0150-20261104`.
-**Test identifier (not a release):** `0.15.0-android.18-test`, versionCode `100000022`.
+**Correct new-upstream Android revision:** `0.15.0-android.1` (APK `versionName`), provisional versionCode `100000022` (must be greater than previously published Android.17 code `100000021`). **Separate TEST/production status by certificate and artifact filename, not an extra suffix inside versionName.** Future app-only changes become `0.15.0-android.2`; the next upstream stable `0.16.0` starts `0.16.0-android.1`.
+**Reserved future release tag pattern:** `deckcraft-v0.15.0-android.1` (do not create or publish yet).
 
 ## Non-negotiable feature preservation gates
 
@@ -39,6 +40,12 @@ Retain all approved Android.17 behavior and patches; do not replace these with v
 - `crates/ui-egui/src/backstage.rs`: Account becomes About; keep existing appearance options and normal Help menu.
 - `crates/ui-egui/src/show/*`: browser presenter improvements; ensure Android slideshow and input behavior do not regress.
 - Other upstream improvements include PPTX tag limits, text inset layout, multi-shape resizing, alpha operations, and rendering effects. Regression testing remains required.
+
+## Build naming and work-in-progress safeguard
+
+- Previous already-started run `41682410373` was checked out with immutable workflow source version `0.15.0-android.18-test`; it must not be relabeled or represented as `0.15.0-android.1` unless the actual APK manifest is corrected, validated and signed with a disposable test key.
+- The current branch workflow now uses `0.15.0-android.1` consistently in the workspace, APK version verification, and temporary-signed/unsigned artifact names. Editing branch workflows does **not** retroactively modify an in-flight run.
+- Avoid unnecessary duplicate full builds. Inspect the in-flight artifact/result before deciding how to produce a correctly-versioned test candidate. Never count a renamed file as changed package metadata.
 
 ## Current check results
 

@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      GH_TOKEN: \${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
       TAG: deckcraft-v0.14.1-android.16
       SOURCE_RUN_ID: '41615107745'
       SOURCE_ARTIFACT_ID: '13221688265'
@@ -74,14 +74,14 @@ jobs:
           test -s "$SOURCE_APK" && test -s SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           mapfile -d '' apks < <(find . -type f -name '*.apk' -print0)
-          test "\${#apks[@]}" -eq 1
+          test "${#apks[@]}" -eq 1
           echo "PASS: immutable reviewed source APK and SHA256"
 
       - name: Validate unsigned APK identity and Android ABI
         shell: bash
         run: |
           set -euo pipefail
-          sdk="\${ANDROID_HOME:-\${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
           test -x "$manager" || { echo "::error::Android SDK manager missing"; exit 1; }
           "$manager" --sdk_root="$sdk" --install 'build-tools;35.0.0'
@@ -112,15 +112,15 @@ jobs:
       - name: Sign with ORIGINAL DeckCraft certificate, not testing key
         shell: bash
         env:
-          KEYSTORE_B64: \${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
-          STOREPASS: \${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
-          KEYALIAS: \${{ secrets.DECKCRAFT_KEY_ALIAS }}
-          KEYPASS: \${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          KEYPASS: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           umask 077
           for required in KEYSTORE_B64 STOREPASS KEYALIAS KEYPASS; do
-              if [[ -z "\${!required}" ]]; then
+              if [[ -z "${!required}" ]]; then
                   echo "::error::Original DeckCraft signing secret $required unavailable"
                   exit 1
               fi

@@ -40,7 +40,7 @@ mod ime_bridge;
 
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
+use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -959,6 +959,37 @@ impl eframe::App for VectorCraftAndroidApp {
         let field_focused = ctx.text_edit_focused();
         let composing = self.inner.session.tool_composing();
         let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // Native Type editing owns the input before egui's generic shortcut router.
+        // On Ctrl+W, finish Type via the device-tested Escape transition first,
+        // then invoke the regular upstream close command so the ORIGINAL Save
+        // Changes modal opens with D/C/S focused (without discarding typed text).
+        if consume_type_close_chord(raw, editing, composing, modal) {
+            let view = self.inner.view_info();
+            let mut exited = false;
+            match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                Ok(requests) => {
+                    for request in requests {
+                        if let UiRequest::SwitchTool(tool) = request {
+                            self.inner.select_tool(&tool);
+                            exited = true;
+                        }
+                    }
+                }
+                Err(error) => log::warn!("Type Ctrl+W editor finish failed: {error}"),
+            }
+            if exited {
+                ctx.memory_mut(|memory| {
+                    if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                });
+                if let Err(error) = self.bridge.end_type_editing() {
+                    log::warn!("Type Ctrl+W focus handoff failed: {error}");
+                }
+                if let Err(error) = self.inner.run("file.close", serde_json::json!({})) {
+                    log::warn!("Type Ctrl+W close dialog failed: {error}");
+                }
+                ctx.request_repaint();
+            }
+        }
         let selection_idle = matches!(self.inner.session.tool_id(), "selection" | "directSelection")
             && !self.inner.session.tool_busy();
         let context_bar_with_selection = self.inner.ui.task_bar && selection_idle &&
@@ -1308,8 +1339,13 @@ fn android_main(android_app: AndroidApp) {
     }
     let picks = Arc::new(PickState::default());
     let mut initial_fonts = FontUiState::default();
-    // Restore a previously authorized shared library on startup; missing access is nonfatal.
-    initial_fonts.shared(&picks, &bridge, true);
+    // Do NOT automatically copy/re-hash 5000 shared fonts at every cold start.
+    // This used to start a potentially 4 GiB folder scan before first drawing,
+    // delaying startup and racing native font-catalog initialization.
+    // Cached app-private Fonts/Shared remains available immediately. The user
+    // can explicitly select/refresh the SAF folder from Type > Fonts.
+    initial_fonts.shared_status =
+        "Shared fonts cached. Select Refresh Shared Fonts to scan again.".into();
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

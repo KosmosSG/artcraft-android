@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 JAVA = Path(__file__).resolve().parent / "android_addons" / "GridCraftJavaMethods.java.inc"
+UPDATER = Path(__file__).resolve().parent / "android_addons" / "GridCraftSafeUpdater.java.inc"
 PARSER = r"""
 import com.sun.source.util.JavacTask;
 import javax.tools.*;
@@ -49,6 +50,17 @@ class GridCraftJavaSyntaxTests(unittest.TestCase):
         self.assertIn("private void gcScanShared(android.net.Uri tree) {\n", java)
         self.assertIn("    }\n\n    private static void gcDeleteTree", java)
 
+    def test_download_and_install_has_candidate_and_signature_safety_checks(self):
+        src = UPDATER.read_text()
+        self.assertIn('getPackageName().endsWith(".candidate")', src)
+        self.assertIn("getPackageArchiveInfo(", src)
+        self.assertIn("getApkContentsSigners()", src)
+        self.assertIn("gcDigestHex(sha.digest())", src)
+        self.assertIn("android.content.Intent.ACTION_VIEW", src)
+        self.assertIn("FLAG_GRANT_READ_URI_PERMISSION", src)
+        self.assertNotIn("SessionParams", src)  # Never silent installation
+        self.assertIn("512L * 1024 * 1024", src)
+
     def test_java_fragment_is_valid_java_syntax_before_full_android_build(self):
         java_bin, javac_bin = shutil.which("java"), shutil.which("javac")
         self.assertIsNotNone(java_bin, "JDK must be present for build-source preflight")
@@ -58,7 +70,7 @@ class GridCraftJavaSyntaxTests(unittest.TestCase):
             activity = folder / "GridCraftActivity.java"
             activity.write_text("package com.artcraft.gridcraft.candidate;\n"
                                 "public class GridCraftActivity {\n"
-                                + JAVA.read_text() + "\n}\n")
+                                + JAVA.read_text() + "\n" + UPDATER.read_text() + "\n}\n")
             parser = folder / "GridCraftJavaParseOnly.java"
             parser.write_text(PARSER)
             compile = subprocess.run([javac_bin, "-d", tmp, str(parser)],

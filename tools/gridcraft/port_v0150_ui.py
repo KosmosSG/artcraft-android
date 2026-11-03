@@ -52,26 +52,51 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
 
     # Owner-provided Gc mark, downsampled for Android native UI and launcher.
     # The same source PNG is used by the APK's adaptive icon pipeline.
-    approved_icon = Path(__file__).resolve().parents[2] / "assets/gridcraft/launcher-approved-20261103.png"
+    approved_icon = Path(__file__).resolve().parents[2] / "assets/gridcraft/launcher-user-20261103.png"
     icon_bytes = approved_icon.read_bytes()
     if not icon_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         raise RuntimeError("Approved Gc icon isn't a valid PNG")
-    if hashlib.sha256(icon_bytes).hexdigest() != "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3":
+    if hashlib.sha256(icon_bytes).hexdigest() != "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6":
         raise RuntimeError("Approved GridCraft Gc PNG changed: re-review launcher asset")
     menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
     if menu.count(MENU_MARKER) != 1 or 'ui.menu_button("GridCraft Tools"' not in menu:
         raise RuntimeError("Approved GridCraft native Tools menu changed unexpectedly")
+    # Same menu contents, but anchored directly BELOW the top-left clickable Gc
+    # ImageButton. Do not add a second button or toolbar row.
+    menu = menu.replace(
+        'ui.menu_button("GridCraft Tools", |ui| {',
+        'egui::Popup::menu(&gc_button).show(|ui| {', 1,
+    )
     title_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
-    # Put the same approved mark at the top-left of the native ribbon.
-    # This is an inline 22 px icon, not a new dock or overlay window.
+    # Decode once via the already-present 'image' crate, then cache a real GPU
+    # texture. egui::include_image! requires a loader that Android doesn't
+    # register; that produced the user's red broken-image warning triangle.
+    icon_ui = """            ui.add_space(TITLE_LEFT_PAD);
+            // GRIDCRAFT_ANDROID_USER_ICON_V2: exact supplied Gc design; no broken-image loader.
+            let gc_texture_key = egui::Id::new("gridcraft.android.gc.texture");
+            let gc_texture = match ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(gc_texture_key)) {
+                Some(texture) => texture,
+                None => {
+                    let image = image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))
+                        .expect("approved Gc icon PNG").into_rgba8();
+                    let [width, height] = [image.width() as usize, image.height() as usize];
+                    let pixels = egui::ColorImage::from_rgba_unmultiplied([width, height], image.as_raw());
+                    let texture = ui.ctx().load_texture(
+                        "gridcraft-gc-icon", pixels, egui::TextureOptions::LINEAR,
+                    );
+                    ui.ctx().data_mut(|d| d.insert_temp(gc_texture_key, texture.clone()));
+                    texture
+                }
+            };
+            let gc_button = ui.add(egui::ImageButton::new(
+                (gc_texture.id(), vec2(26.0, ch))
+            ).frame(false)).on_hover_text("GridCraft Tools");
+            ui.add_space(5.0);
+"""
     sources["title"] = once(
         sources["title"],
         "            ui.add_space(TITLE_LEFT_PAD);",
-        '            ui.add_space(TITLE_LEFT_PAD);\n'
-        '            // GRIDCRAFT_ANDROID_USER_ICON_V1: owner-approved Gc logo.\n'
-        '            ui.add(egui::Image::new(egui::include_image!("gridcraft-approved-mark.png"))\n'
-        '                .fit_to_exact_size(vec2(22.0, 22.0)));\n'
-        '            ui.add_space(5.0);',
+        icon_ui.rstrip(),
         FILES["title"],
     )
     sources["title"] = once(
@@ -133,7 +158,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
         "app": "android_font_generation: 0",
         "app_fonts": "catalog_changed",
     }
-    if sources["title"].count("GRIDCRAFT_ANDROID_USER_ICON_V1") != 1 or "gridcraft-approved-mark.png" not in sources["title"]:
+    if sources["title"].count("GRIDCRAFT_ANDROID_USER_ICON_V2") != 1 or "gridcraft-approved-mark.png" not in sources["title"] or 'egui::Popup::menu(&gc_button)' not in sources["title"] or 'ui.menu_button("GridCraft Tools"' in sources["title"]:
         raise RuntimeError("Owner approved GridCraft title-bar icon was not included")
     for key, value in expected.items():
         if value not in sources[key]:

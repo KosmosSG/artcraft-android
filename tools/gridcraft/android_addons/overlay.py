@@ -88,12 +88,10 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     # User-controlled, one-shot APK downloader is GridCraft v0.15-only.
     # Keep the production signature/package verification in the Java Activity;
     # test builds have .candidate package and cannot self-update to production.
-    updater_java = source_dir / "GridCraftSafeUpdater.java.inc"
-    android_updater = (
-        updater_java.read_text()
-        if workspace.is_file() and upstream_version == "0.15.0"
-        else ""
-    )
+    updater_java = addon_dir / "GridCraftSafeUpdater.java.inc"
+    if not updater_java.is_file():
+        raise RuntimeError("GridCraft safe Android updater source absent")
+    android_updater = updater_java.read_text()
     java = java.rstrip()[:-1] + "\n" + addon_java.read_text() + "\n" + android_updater + "\n}\n"
     if "android.permission.INTERNET" not in cargo:
         cargo += '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.INTERNET"\n'

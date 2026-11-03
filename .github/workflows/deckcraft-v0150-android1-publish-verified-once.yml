@@ -1,0 +1,142 @@
+name: DeckCraft v0.15.0-android.1 publish verified original-signed artifact (manual ONLY)
+# The owner explicitly approved publish 2026-11-04. No signing, compilation or
+# original key access. GitHub workflow/credential release-write permission
+# currently blocked (403), so this remains manual until access is fixed.
+on:
+  workflow_dispatch:
+    inputs:
+      owner_approved_publish:
+        description: 'Owner-approved: publish verified DeckCraft v0.15.0-android.1 stable APK now'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: deckcraft-v0150-android1-publish-verified-once
+  cancel-in-progress: false
+
+jobs:
+  publish-verified:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/main' && inputs.owner_approved_publish == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.DECKCRAFT_RELEASE_TOKEN || github.token }}
+      TAG: deckcraft-v0.15.0-android.1
+      SOURCE_RUN: '41742872619'
+      SOURCE_SHA: '6d6935753f07cedb557206c0c641d3250971c69e'
+      SOURCE_SIGN_RUN_SHA: '7461f3948cc9f8c18bb3727851c9d87c93b52ff3'
+      SOURCE_ARTIFACT_ID: '13283005530'
+      ARTIFACT: DeckCraft-v0.15.0-android.1-ARM64-ORIGINAL-SIGNED-RELEASE-READY
+      APK: deckcraft-v0.15.0-android.1-arm64-v8a.apk
+      PACKAGE: com.artcraft.deckcraft
+      VERSION_NAME: 0.15.0-android.1
+      VERSION_CODE: '100000022'
+      ORIGINAL_CERT_SHA256: 7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
+    steps:
+      - name: Verify authorizations and immutable production signing handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists, refuse overwrite"; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists, refuse moving"; exit 1
+          fi
+          source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN")"
+          jq -e --arg sha "$SOURCE_SIGN_RUN_SHA" '
+            .status=="completed" and .conclusion=="success"
+            and .head_sha==$sha and
+            .name=="DeckCraft v0.15.0-android.1 original-certificate sign and HANDOFF (no release)"
+          ' <<<"$source_run" >/dev/null
+          art="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID")"
+          jq -e --arg name "$ARTIFACT" --argjson run "$SOURCE_RUN" '
+            .name==$name and (.expired|not) and .workflow_run.id==$run
+          ' <<<"$art" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA" --jq '.sha')" = "$SOURCE_SHA"
+          mkdir -p verified-release
+          gh run download "$SOURCE_RUN" -R "$GITHUB_REPOSITORY" -n "$ARTIFACT" -D verified-release
+          test -s "verified-release/$APK"
+          test -s verified-release/SHA256SUMS.txt
+          test -s verified-release/signing-certificate-sha256.txt
+          test -s verified-release/RELEASE-NOTES.md
+          (cd verified-release && sha256sum --check SHA256SUMS.txt)
+          mapfile -d '' apks < <(find verified-release -maxdepth 1 -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 1
+          cert="$(tr -d '\r\n' < verified-release/signing-certificate-sha256.txt)"
+          test "$cert" = "$ORIGINAL_CERT_SHA256"
+          echo "PASS: successful original-key signing run, exact immutable artifact and SHA256"
+
+      - name: Independently verify signed APK certificate, Android version and ARM64 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$manager"
+          "$manager" --sdk_root="$sdk" --install 'build-tools;35.0.0'
+          BT="$sdk/build-tools/35.0.0"
+          "$BT/zipalign" -c -P 16 4 "verified-release/$APK"
+          "$BT/apksigner" verify --verbose --print-certs "verified-release/$APK" > "$RUNNER_TEMP/apksigner-report.txt"
+          python3 - "$RUNNER_TEMP/apksigner-report.txt" <<'PY'
+          import os,re,sys
+          report=open(sys.argv[1]).read()
+          assert any(f"Verified using v{x} scheme (APK Signature Scheme v{x}): true" in report for x in (2,3))
+          found=re.findall(r'^Signer #([0-9]+) certificate SHA-256 digest: ([a-fA-F0-9:]+)',report,re.M)
+          assert len(found)==1 and found[0][0]=='1'
+          assert found[0][1].replace(':','').lower()==os.environ['ORIGINAL_CERT_SHA256']
+          print('PASS: one original DeckCraft certificate, valid Android v2/v3 signature')
+          PY
+          "$BT/aapt" dump badging "verified-release/$APK" > "$RUNNER_TEMP/deckcraft-badging.txt"
+          grep -F "name='$PACKAGE'" "$RUNNER_TEMP/deckcraft-badging.txt"
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/deckcraft-badging.txt"
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/deckcraft-badging.txt"
+          python3 - "verified-release/$APK" <<'PY'
+          from zipfile import ZipFile
+          import sys
+          with ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              ns=z.namelist()
+              assert len(ns)==len(set(ns))
+              assert 'classes.dex' in ns
+              libs=[n for n in ns if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
+              assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in ns)
+          print('PASS: ARM64, Java bridge, valid payload; no keystore leakage')
+          PY
+
+      - name: Publish stable DeckCraft release only (existing assets immutable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release appeared; refuse duplicate"; exit 1
+          fi
+          gh release create "$TAG" \
+            "verified-release/$APK" \
+            verified-release/SHA256SUMS.txt \
+            verified-release/signing-certificate-sha256.txt \
+            verified-release/RELEASE-NOTES.md \
+            -R "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "DeckCraft v0.15.0-android.1 (ARM64, stable)" \
+            --notes-file verified-release/RELEASE-NOTES.md \
+            --latest=false
+          published="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")"
+          jq -e --arg tag "$TAG" --arg target "$SOURCE_SHA" '
+            .tag_name==$tag and .draft==false and .prerelease==false and .target_commitish==$target
+          ' <<<"$published" >/dev/null
+          expected="$(cut -d' ' -f1 verified-release/SHA256SUMS.txt)"
+          jq -e --arg file "$APK" --arg digest "sha256:$expected" '
+            [.assets[]|select(.name==$file and .state=="uploaded" and .digest==$digest)]|length==1
+          ' <<<"$published" >/dev/null
+          echo "SUCCESS: DeckCraft v0.15.0-android.1 signed by original certificate and published"
+
+      - name: Delete local release files
+        if: always()
+        run: rm -rf verified-release

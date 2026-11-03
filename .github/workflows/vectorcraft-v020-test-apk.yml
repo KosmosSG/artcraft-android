@@ -1,15 +1,10 @@
 name: VectorCraft v0.20 ARM64 disposable-key APK (TEST ONLY)
 
-# Exactly one grouped v0.20.0-android.2 test candidate after green source
-# preflight #41551350200. This push trigger is scoped to editing THIS file;
-# remove the push event after the candidate run, keeping manual dispatch.
+# Exactly one grouped v0.20.0-android.2 test build was started by run
+# #41551502312 after green source preflight #41551350200. Manual dispatch
+# only now: no accidental repeated full ARM64 builds or Actions quota waste.
 # No original signing key, merge, or public release.
 on:
-  push:
-    branches:
-      - development/vectorcraft-v020-android14-20261102
-    paths:
-      - .github/workflows/vectorcraft-v020-test-apk.yml
   workflow_dispatch:
 
 permissions:

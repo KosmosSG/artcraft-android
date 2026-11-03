@@ -40,9 +40,24 @@ pub fn handle_keys(
             ctx.request_repaint();
         }
     }
+    // The native Activity sees physical T/V even when winit/IME drops the
+    // associated egui Key event. Consume it only outside document typing.
+    let android_tool = if !dialog && app.ui.dialog.is_none()
+        && app.ui.palette.is_none() && !app.session.wants_text()
+    {
+        match bridge.dc_tool_action() {
+            Ok(1) => Some("type"),
+            Ok(2) => Some("selection"),
+            _ => None,
+        }
+    } else {
+        // Discard queued T/V if the app entered editing or another modal.
+        let _ = bridge.dc_tool_action();
+        None
+    };
     let mut escape = false;
     let mut close = false;
-    let mut tools = None;
+    let mut tools = android_tool;
     let mut modal_action: Option<u8> = None;
     raw.events.retain_mut(|event| {
         if let egui::Event::Key {
@@ -95,11 +110,16 @@ pub fn handle_keys(
             if matches!(text.as_str(), "d" | "D" | "c" | "C" | "s" | "S")));
         ctx.request_repaint();
     }
-    if escape && !dialog && app.ui.palette.is_none() && app.session.wants_text() {
-        app.select_tool("selection");
+    if escape && !dialog && app.ui.palette.is_none() {
+        if app.session.wants_text() {
+            app.select_tool("selection");
+        }
+        // A stale focused egui EditText previously blocked T/V indefinitely
+        // even after the document editor had exited.
         ctx.memory_mut(|memory| {
             if let Some(id) = memory.focused() { memory.surrender_focus(id); }
         });
+        ctx.request_repaint();
     }
     if close && !dialog {
         if app.session.wants_text() { app.select_tool("selection"); }
@@ -249,6 +269,12 @@ pub fn ui(
     state: &SafState,
 ) {
     forward_ui_shortcuts(ui, app);
+    if app.ui.dialog.as_ref().is_some_and(|d| d.id == "closeDocument") {
+        // The native Activity queues D/C/S separately. A repaint tick keeps
+        // the egui raw-input hook polling JNI even when those key events were
+        // consumed by a focused Android IME EditText.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(80));
+    }
     if let Some(event) = RESULT.lock().unwrap_or_else(|e| e.into_inner()).take() {
         match event {
             Ok(message) => match app.run("font.reload", serde_json::json!({})) {

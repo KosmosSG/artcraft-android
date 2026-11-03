@@ -1,13 +1,7 @@
 name: GridCraft v0.15.0 ARM64 disposable testing candidate (ONE build, no release)
 
 on:
-  push:
-    branches:
-      - review/gridcraft-v0150-android-compat-20261102
-    paths:
-      # This workflow does not recompile after every source push. Its first
-      # commit triggers ONE development build; explicit manual dispatch for retry.
-      - '.github/workflows/gridcraft-v0150-test-once.yml'
+  # Explicit manual testing only: changing versionName must NOT consume Actions minutes.
   workflow_dispatch:
 
 permissions:
@@ -161,7 +155,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apk-signing.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
           grep -F "name='com.artcraft.gridcraft.candidate'" apk-badging.txt
-          grep -F "versionName='0.15.0'" apk-badging.txt
+          grep -F "versionName='0.15.0-android.1'" apk-badging.txt
           python3 - "$APK" <<'PY'
           import sys,zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:

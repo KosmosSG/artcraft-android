@@ -18,6 +18,21 @@ def require_once(source: str, old: str, new: str, label: str) -> str:
     return source.replace(old, new, 1)
 
 
+LEGACY_EGUI_ANDROID_ACTIVITY = '    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());'
+DIRECT_ANDROID_ACTIVITY = '    // FilmCraft v0.16: AndroidApp is passed directly to the launcher.'
+
+def remove_legacy_activity_registration(rust: str) -> str:
+    """Remove Android-activity setter available only in stale egui-winit 0.36 fork.
+
+    Current egui-winit 0.37 lacks this registry; app shell still uses the
+    owned AndroidApp directly for SAF, IME, JNI and clipboard.
+    Fail closed if the generated launcher changes or duplicates this call.
+    """
+    return require_once(
+        rust, LEGACY_EGUI_ANDROID_ACTIVITY, DIRECT_ANDROID_ACTIVITY,
+        "Legacy egui-winit Android Activity registration",
+    )
+
 def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[str, str, str]:
     if 'struct AndroidShell {' not in rust or 'fn android_main(' not in rust:
         raise RuntimeError("Refusing to patch an unknown FilmCraft Android launcher")
@@ -30,6 +45,10 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
         raise RuntimeError("FilmCraft package identity differs; inspect before porting features")
     if 'java_sources = "java"' not in manifest:
         raise RuntimeError("FilmCraft Java SAF bridge is missing")
+
+    # v0.16's matching storyTold egui-winit 0.37 does not export the older
+    # builder's android_activity registry. Avoid a stale E0433 at link stage.
+    rust = remove_legacy_activity_registration(rust)
 
     rust = require_once(rust, '        self.inner.ui(ui, frame);', '        self.inner.ui(ui, frame);\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n', "Release Android field focus")
     rust = require_once(rust, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n', 'Capture Android Escape')
@@ -184,6 +203,19 @@ def main() -> None:
     args = parser.parse_args()
     overlay = Path(__file__).with_name("FilmCraftActivity.features.java.inc").read_text()
     if args.self_test:
+        assert remove_legacy_activity_registration(LEGACY_EGUI_ANDROID_ACTIVITY) == DIRECT_ANDROID_ACTIVITY
+        try:
+            remove_legacy_activity_registration("not a FilmCraft launcher")
+        except RuntimeError as err:
+            assert "expected one stable source anchor" in str(err)
+        else:
+            raise AssertionError("Legacy activity check must fail closed")
+        try:
+            remove_legacy_activity_registration(LEGACY_EGUI_ANDROID_ACTIVITY * 2)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Duplicate old activity registration must be rejected")
         # A real staging fixture is not available in this branch-only audit.
         # These assertions check that the injected Java bridge matches the Rust caller.
         rust = Path(__file__).with_name("filmcraft_features.rs").read_text()

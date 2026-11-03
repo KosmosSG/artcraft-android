@@ -1,5 +1,9 @@
-name: DeckCraft v0.15.0 Android integration (manual test only; no release)
+name: DeckCraft v0.15.0 Android Phase 2 - owner-approved test only
 on:
+  # Narrow one-time owner-approved push trigger; remove immediately after kickoff.
+  push:
+    branches: [integration/deckcraft-upstream-v0150-20261104]
+    paths: ['deckcraft/android/PHASE2_APPROVED_ONCE_20261104.md']
   workflow_dispatch:
     inputs:
       temporary_arm64_build_approved:
@@ -14,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compile-unsigned:
-    if: github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true && github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104' && ((github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true) || (github.event_name == 'push' && github.event.head_commit.message == 'DeckCraft Phase 2 owner-approved one-time ARM64 test build'))
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -29,6 +33,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -s deckcraft/android/PHASE2_APPROVED_ONCE_20261104.md
+          grep -Fx 'APPROVED_PHASE2_DECKCRAFT_ONE_TEST_20261104' deckcraft/android/PHASE2_APPROVED_ONCE_20261104.md
           python3 -m py_compile deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
           test -s deckcraft/android/dcs_bridge.rs
           test -s deckcraft/android/dcs_java.inc
@@ -53,7 +59,7 @@ jobs:
           ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
           path: builder
           persist-credentials: false
-      - name: Checkout official stable DeckCraft v0.14.1
+      - name: Checkout pinned official stable DeckCraft v0.15.0
         uses: actions/checkout@v4
         with:
           repository: storytold/deckcraft
@@ -83,18 +89,8 @@ jobs:
           mkdir -p /tmp/deck-font-tests
           javac -d /tmp/deck-font-tests deckcraft/android/FontScanBudget.java deckcraft/tests/FontScanBudgetTest.java
           java -cp /tmp/deck-font-tests FontScanBudgetTest
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-      - name: Install Android NDK, build tools and image dependency
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
-          test -x "$SDKMANAGER"
-          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'
+      - name: Install patch-time Python dependencies
+        run: python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'
       - name: Port current Android enhancements, D/C/S, fonts and recovery to official upstream
         shell: bash
         run: |
@@ -296,6 +292,17 @@ jobs:
           PY
           python3 -m py_compile builder/lib/android_project.py
           bash -n builder/lib/build-common.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK, build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Test save acknowledgement and font rendering
         working-directory: builder/source/deckcraft
         run: cargo test -p deckcraft-ui-egui --lib android_
@@ -317,6 +324,10 @@ jobs:
           grep -F "versionName='0.15.0-android.18-test'" /tmp/deckcraft-android4-badging.txt
           grep -F "versionCode='100000022'" /tmp/deckcraft-android4-badging.txt
           mkdir -p unsigned
+          # The builder generates a new disposable key on this ephemeral checkout.
+          test -s builder/keys/artcraft-builder.jks
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > unsigned/TEMP-SIGNATURE-VERIFICATION.txt
+          cp "$APK" unsigned/DeckCraft-v0.15.0-android.18-test-arm64-v8a-TEMP-SIGNED.apk
           python3 - "$APK" <<'PY'
           from zipfile import ZipFile
           from pathlib import Path
@@ -371,10 +382,11 @@ jobs:
           PY
           (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
           cat > unsigned/README.txt <<'TXT'
-          DeckCraft 0.15.0-android.18-test ARM64 unsigned integration candidate.
-          This artifact is unsigned. For device testing, use a disposable test key
-          and uninstall the previous APK after backing up documents. Reserve the
-          original DeckCraft production key for approved release candidates.
+          DeckCraft 0.15.0-android.18-test ARM64 testing candidate.
+          The TEMP-SIGNED APK uses a fresh disposable builder key, NOT the original
+          production certificate. Back up documents before uninstalling existing DeckCraft.
+          The UNSIGNED APK is also provided for independent disposable-key signing.
+          Reserve the original key for owner-approved releases only.
           Verify certificate SHA256 against installed DeckCraft Android.3
           (or its publicly released original-key APK) before installing.
           Based on PR #91; ports Android enhancements to official DeckCraft 0.15.0.
@@ -385,10 +397,10 @@ jobs:
           echo "### DeckCraft 0.15.0-android.18-test unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload verified unsigned APK for Linux Lab signing
+      - name: Upload temporary-signed and unsigned ARM64 testing APKs
         uses: actions/upload-artifact@v4
         with:
-          name: DeckCraft-v0.15.0-android.18-test-ARM64-UNSIGNED-LinuxLab
+          name: DeckCraft-v0.15.0-android.18-test-ARM64-TEMP-SIGNED-and-UNSIGNED
           path: unsigned/
           retention-days: 7
           if-no-files-found: error

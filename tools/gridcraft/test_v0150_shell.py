@@ -23,6 +23,8 @@ self.poll_file_picker();
 system_fonts::install_system_fonts(ui.ctx());
 self.inner.logic(ctx);
 self.inner.ui(ui);
+        self.inner.raw_input_hook(raw);
+    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());
 """)
     (app / "Cargo.toml").write_text(
         '[package]\nname="gridcraft-android"\nversion="0.1.0"\n'
@@ -59,6 +61,16 @@ class CandidateShellStaging(unittest.TestCase):
             self.assertIn("self.tools.unsaved_dialog(", (stage / "src/lib.rs").read_text())
             self.assertIn("gcHandleActivityResult(requestCode", (
                 stage / "java/com/artcraft/gridcraft/candidate/GridCraftActivity.java").read_text())
+            # The official 0.37 fork no longer exposes the builder's
+            # stale android_activity helper and upstream now passes ctx.
+            rust = (stage / "src/lib.rs").read_text()
+            if version == "0.15.0":
+                self.assertNotIn("egui_winit::android_activity::set_activity(", rust)
+                self.assertIn("self.inner.raw_input_hook(ctx, raw);", rust)
+                self.assertNotIn("self.inner.raw_input_hook(raw);", rust)
+            else:
+                self.assertIn("egui_winit::android_activity::set_activity(", rust)
+                self.assertIn("self.inner.raw_input_hook(raw);", rust)
             self.assertTrue((stage / "src/gridcraft_tools.rs").is_file())
             with self.assertRaises(RuntimeError):
                 OVL["apply_overlay"](stage, "com.artcraft.gridcraft.candidate", ROOT / "android_addons")

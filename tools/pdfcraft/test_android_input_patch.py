@@ -26,7 +26,7 @@ class AndroidInputCompatibility(unittest.TestCase):
             "PdfTouchMode::SingleSelect",
             "std::time::Duration::from_millis(300)",
             "PDFCRAFT_ANDROID_TRACKPAD_SCROLL",
-            "motion_event.source() == Source::Touchpad",
+            "Source::Touchpad | Source::TouchNavigation",
             "PdfTouchMode::Scroll",
             "event::WindowEvent::PanGesture",
             "travelled > 6.0",

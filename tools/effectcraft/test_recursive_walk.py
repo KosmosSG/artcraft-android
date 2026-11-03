@@ -16,7 +16,7 @@ class RecursiveWalk(unittest.TestCase):
         self.assertIn("while (ecFontPaths.size() >= 48)", scan)
         start = scan.index("    private void ecFontQueueRoom()")
         end = scan.index("    private void ecRefreshSharedFonts(", start)
-        scan = scan[:start] + "    private void ecFontQueueRoom() throws InterruptedException { }\\n" + scan[end:]
+        scan = scan[:start] + "    private void ecFontQueueRoom() throws InterruptedException { }\n" + scan[end:]
         harness = r'''
 import java.io.*;
 import java.util.*;
@@ -94,7 +94,8 @@ public class FontWalkTest {
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)/'FontWalkTest.java'
             p.write_text(harness+constants+scan+'\n}')
-            subprocess.run(['javac', str(p)],check=True,capture_output=True)
+            result = subprocess.run(['javac', str(p)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
             subprocess.run(['java','-cp',folder,'FontWalkTest'],check=True,capture_output=True)
 
 if __name__ == '__main__':

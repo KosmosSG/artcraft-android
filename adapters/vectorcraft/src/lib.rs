@@ -40,7 +40,7 @@ mod ime_bridge;
 
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord};
+use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -1063,6 +1063,11 @@ impl eframe::App for VectorCraftAndroidApp {
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
+        // The Android winit backend delivers precise two-finger / touchpad
+        // movement as PixelDelta, while egui-winit labels it Unknown. Label
+        // only point wheels as Trackpad to enable the tested upstream egui
+        // smooth-scroll physics (matching PhotoCraft), not discrete wheels.
+        classify_android_precision_scroll(raw);
         self.inner.raw_input_hook(raw);
     }
 

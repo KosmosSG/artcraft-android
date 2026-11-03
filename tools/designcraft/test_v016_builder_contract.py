@@ -87,7 +87,7 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         self.assertIn('if saf and app == "designcraft":', self.shell)
         self.assertIn('Called from eframe\'s first Resumed', self.shell)
         self.assertIn("let shell = AndroidShell::new(", self.shell)
-        self.assertIn("Box::new(move |_cc| {{", self.shell)
+        self.assertIn("Box::new(move |cc| {{", self.shell)
         self.assertIn('GENERATOR_VERSION = "25" if app == "designcraft" else "24"', self.shell)
 
     def test_raw_input_hook_matches_v016_egui_context_signature(self):
@@ -119,7 +119,7 @@ class DesignCraftV016SourceContract(unittest.TestCase):
         entry = self.shell.split(marker, 1)[1].split("    elif saf:", 1)[0]
         self.assertIn("android_app: Some(android_app)", entry)
         self.assertIn("eframe::run_native(", entry)
-        creator = entry.index("        Box::new(move |_cc| {{")
+        creator = entry.index("        Box::new(move |cc| {{")
         constructed = entry.index("            {inner_decl} = {construct_expr};")
         self.assertLess(creator, constructed)
         self.assertIn("let shell = AndroidShell::new(", entry)

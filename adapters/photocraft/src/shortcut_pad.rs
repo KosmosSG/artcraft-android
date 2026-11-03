@@ -6,6 +6,7 @@ use serde_json::json;
 use std::path::PathBuf;
 
 pub(crate) struct ShortcutPad {
+    reserved: Option<egui::Rect>,
     visible_file: PathBuf,
     left_file: PathBuf,
     last_visible: bool,
@@ -25,7 +26,7 @@ impl ShortcutPad {
         let left = left_file.is_file();
         menus::artcraft_pad_set_visible(visible);
         menus::artcraft_pad_set_left(left);
-        Self { visible_file, left_file, last_visible: visible, last_left: left,
+        Self { reserved: None, visible_file, left_file, last_visible: visible, last_left: left,
             zoom_angle: None, zoom_turn: 0.0,
             held_alt: false, held_pan: false,
             last_alt: false, last_pan: false }
@@ -65,6 +66,22 @@ impl ShortcutPad {
         }
         ctx.request_repaint();
     }
+    // Reference Pad::reserve requires a fork-specific PhotocraftApp.edge_strip
+    // that is NOT present in upstream v0.19. Keep our official upstream pinned:
+    // a native egui SidePanel reserves this area *before* the UI is laid out.
+    pub(crate) fn reserve(&mut self, ctx: &egui::Context) {
+        self.reserved = None;
+        if !menus::artcraft_pad_visible() { return; }
+        let panel = if menus::artcraft_pad_left() {
+            egui::SidePanel::left("artcraft_pad_reserved_left")
+        } else {
+            egui::SidePanel::right("artcraft_pad_reserved_right")
+        };
+        panel.resizable(false).exact_width(78.0)
+            .show(ctx, |ui| {
+                self.reserved = Some(ui.max_rect());
+            });
+    }
     pub(crate) fn show(&mut self, ctx: &egui::Context, app: &mut PhotocraftApp) {
         let show = menus::artcraft_pad_visible();
         let left = menus::artcraft_pad_left();
@@ -75,7 +92,7 @@ impl ShortcutPad {
             // Reference fork uses app.edge_strip and edge_strip_rect,
             // NOT a floating panel over the Properties sidebar.
             // Only draw in the rect the upstream engine reserved.
-            let Some(strip) = app.edge_strip_rect else { return };
+            let Some(strip) = self.reserved else { return };
             egui::Area::new(egui::Id::new("artcraft_android_edge_pad"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(strip.min)

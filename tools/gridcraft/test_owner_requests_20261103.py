@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 ADDONS = Path(__file__).resolve().parent / "android_addons"
-ICON = ROOT / "assets/gridcraft/launcher-approved-20261103.png"
+ICON = ROOT / "assets/gridcraft/launcher-user-20261103.png"
 
 
 class GridCraftOwnerRequests(unittest.TestCase):
@@ -13,13 +13,15 @@ class GridCraftOwnerRequests(unittest.TestCase):
         png = ICON.read_bytes()
         self.assertTrue(png.startswith(bytes.fromhex("89504e470d0a1a0a")))
         self.assertEqual(hashlib.sha256(png).hexdigest(),
-                         "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3")
+                         "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6")
         port = (ROOT / "tools/gridcraft/port_v0150_ui.py").read_text()
         workflow = (ROOT / ".github/workflows/gridcraft-v0150-test-once.yml").read_text()
         self.assertIn('gridcraft-approved-mark.png', port)
-        self.assertIn("GRIDCRAFT_ANDROID_USER_ICON_V1", port)
+        self.assertIn("GRIDCRAFT_ANDROID_USER_ICON_V2", port)
+        self.assertIn('egui::Popup::menu(&gc_button).show(', port)
+        self.assertIn('image::load_from_memory(include_bytes!(', port)
         self.assertIn('launcher-approved-20261103.png', workflow)
-        self.assertIn('49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3', workflow)
+        self.assertIn('0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6', workflow)
 
     def test_dark_mode_explicit_toggle_uses_native_persisted_command(self):
         menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()

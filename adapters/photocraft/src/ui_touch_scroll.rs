@@ -48,10 +48,11 @@ impl UiTouchScroll {
                         self.single_scroll = false;
                     }
                     TouchPhase::Move => {
+                        let finger_count = self.fingers.len();
                         if let Some(f) = self.fingers.iter_mut().find(|f| f.id == *id) {
                             let delta = *pos - f.pos;
                             f.pos = *pos;
-                            if self.fingers.len() == 1 && f.ui_only {
+                            if finger_count == 1 && f.ui_only {
                                 let moved = *pos - f.start;
                                 if self.single_scroll || moved.y.abs() > 8.0 && moved.y.abs() > moved.x.abs() * 1.2 {
                                     if !self.single_scroll {

@@ -758,6 +758,8 @@ struct VectorCraftAndroidApp {
     // when the one-time orphan sweep of the directory is due.
     staged_seen: Vec<String>,
     staged_sweep_at: Option<std::time::Instant>,
+    startup_instant: std::time::Instant,
+    first_ui_logged: bool,
 }
 
 /// Read the files the system asked this app to open (an `ACTION_VIEW`/`ACTION_SEND` it is registered
@@ -1065,6 +1067,10 @@ impl eframe::App for VectorCraftAndroidApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if !self.first_ui_logged {
+            self.first_ui_logged = true;
+            log::info!("VectorCraft startup diagnostic: first_ui={}ms (render/GPU presentation follows)", self.startup_instant.elapsed().as_millis());
+        }
         system_fonts::install_system_fonts(ui.ctx());
         vectorcraft_ui_egui::menus::set_android_preferences(self.touch_dock, self.startup_updates);
 
@@ -1322,9 +1328,11 @@ impl eframe::App for VectorCraftAndroidApp {
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(android_app: AndroidApp) {
+    let startup_instant = std::time::Instant::now();
     log::info!("{SAF_BRIDGE_MARKER} ready; {ANDROID_SHELL_MARKER}; {}", ime_bridge::ime::IME_MARKER);
     install_persist_env(&android_app);
     system_fonts::install_font_env(&android_app);
+    log::info!("VectorCraft startup diagnostic: font_environment={}ms", startup_instant.elapsed().as_millis());
     let bridge = match AndroidFileBridge::new(android_app.clone()) {
         Ok(bridge) => bridge,
         Err(error) => {
@@ -1361,6 +1369,7 @@ fn android_main(android_app: AndroidApp) {
     let app_bridge = bridge.clone_for_services();
     let app_picks = picks.clone();
     let app_intent_inbox = intent_inbox.clone();
+    log::info!("VectorCraft startup diagnostic: before_eframe={}ms", startup_instant.elapsed().as_millis());
     let result = eframe::run_native(
         "VectorCraft",
         options,
@@ -1369,10 +1378,12 @@ fn android_main(android_app: AndroidApp) {
                 Session::new(),
                 services(app_bridge.clone_for_services(), app_picks.clone(), app_intent_inbox.clone()),
             );
+            log::info!("VectorCraft startup diagnostic: app_constructed={}ms", startup_instant.elapsed().as_millis());
             let persist = persist_dir(&app_bridge.app);
             if let Some(dir) = &persist {
                 persist_load(&mut app, dir);
             }
+            log::info!("VectorCraft startup diagnostic: prefs_restored={}ms", startup_instant.elapsed().as_millis());
             let touch_dock = persist.as_ref()
                 .and_then(|dir| fs::read_to_string(dir.join("touch_dock.enabled")).ok())
                 .is_some_and(|value| value.trim() == "1");
@@ -1414,6 +1425,8 @@ fn android_main(android_app: AndroidApp) {
                 intent_warmup: 2,
                 staged_seen: Vec::new(),
                 staged_sweep_at: Some(std::time::Instant::now() + std::time::Duration::from_secs(30)),
+                startup_instant,
+                first_ui_logged: false,
             }))
         }),
     );

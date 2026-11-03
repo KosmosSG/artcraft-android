@@ -62,8 +62,8 @@ class V016InteractionContract(unittest.TestCase):
 
     def test_next_candidate_version_is_android_3(self):
         version = (ROOT / "tools/designcraft/patch_v016_android.py").read_text()
-        self.assertIn('candidate_version = "0.16.0-android.3"', version)
-        self.assertIn('APP_VERSION="0.16.0-android.3"', (ROOT / "lib/build-common.sh").read_text())
+        self.assertIn('candidate_version = "0.16.0-android.4"', version)
+        self.assertIn('APP_VERSION="0.16.0-android.4"', (ROOT / "lib/build-common.sh").read_text())
 
     def test_no_production_workflow_modified(self):
         workflow = (ROOT / ".github/workflows/designcraft-v016-review.yml").read_text()

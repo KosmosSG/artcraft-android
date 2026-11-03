@@ -1,5 +1,10 @@
 name: DeckCraft v0.15.0 Android Phase 2 - owner-approved test only
 on:
+  # Owner-authorized one-time version correction; remove trigger after kickoff.
+  push:
+    branches: [integration/deckcraft-upstream-v0150-20261104]
+    paths:
+      - 'deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md'
   workflow_dispatch:
     inputs:
       temporary_arm64_build_approved:
@@ -14,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compile-unsigned:
-    if: github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true && github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104' && ((github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true) || (github.event_name == 'push' && github.event.head_commit.message == 'DeckCraft owner-approved v0.15.0-android.1 ARM64 temp test ONCE'))
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -31,6 +36,8 @@ jobs:
           set -euo pipefail
           test -s deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
           grep -Fx 'AUTHORIZED_PHASE2_PACKAGING_REPAIR_REBUILD_ONCE' deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
+          test -s deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
+          grep -Fx 'OWNER_APPROVES_V0150_ANDROID1_ONE_TEST_20261104' deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
           python3 -m py_compile deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
           test -s deckcraft/android/dcs_bridge.rs
           test -s deckcraft/android/dcs_java.inc

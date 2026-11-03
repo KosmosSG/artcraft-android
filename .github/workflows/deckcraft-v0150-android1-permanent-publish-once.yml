@@ -1,4 +1,4 @@
-name: DeckCraft v0.15.0-android.1 original-certificate sign and publish ONCE
+name: DeckCraft v0.15.0-android.1 original-certificate sign and HANDOFF (no release)
 
 # Owner approved 0.15.0-android.1 device test and permanent sign/publish 2026-11-04.
 # Derive production APK from the owner's exact TEMP-SIGNED test payload; no rebuild.
@@ -219,24 +219,14 @@ jobs:
           printf '%s\n' "$actual" > verified-release/signing-certificate-sha256.txt
           (cd verified-release && sha256sum "$APK" > SHA256SUMS.txt)
 
-      - name: Publish one immutable stable GitHub release for DeckCraft only
+      - name: Prepare release notes and verify signed handoff files
         shell: bash
-        # The standard Actions integration token returned HTTP 403 on release creation
-        # after all app/signing gates passed in run 41742444529. Use the
-        # owner-provisioned DeckCraft-specific PAT already referenced by
-        # deckcraft-signing-bootstrap.yml. Never print or persist the token.
-        env:
-          GH_TOKEN: ${{ secrets.DECKCRAFT_SECRET_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "::error::DeckCraft publication token unavailable; leave signed APK unpublished"
-            exit 1
-          fi
-          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Release appeared after preflight; refusing overwrite"
-            exit 1
-          fi
+          test -s "verified-release/$APK"
+          test -s verified-release/SHA256SUMS.txt
+          test -s verified-release/signing-certificate-sha256.txt
+          (cd verified-release && sha256sum --check SHA256SUMS.txt)
           cat > verified-release/RELEASE-NOTES.md <<'NOTES'
           ## DeckCraft v0.15.0-android.1 — Stable ARM64
 
@@ -274,26 +264,15 @@ jobs:
           Existing original-certificate installations with lower versionCode
           can upgrade normally. Other ArtCraft apps remain unchanged.
           NOTES
-          gh release create "$TAG" \
-              "verified-release/$APK" \
-              verified-release/SHA256SUMS.txt \
-              verified-release/signing-certificate-sha256.txt \
-              verified-release/RELEASE-NOTES.md \
-              -R "$GITHUB_REPOSITORY" \
-              --target "$SOURCE_SHA" \
-              --title "DeckCraft v0.15.0-android.1 (ARM64, stable)" \
-              --notes-file verified-release/RELEASE-NOTES.md \
-              --latest=false
-          published="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")"
-          jq -e --arg tag "$TAG" --arg target "$SOURCE_SHA" \
-              '.tag_name==$tag and .draft==false and .prerelease==false and .target_commitish==$target' \
-              <<<"$published" >/dev/null
-          expected="$(cut -d' ' -f1 verified-release/SHA256SUMS.txt)"
-          jq -e --arg file "$APK" --arg digest "sha256:$expected" '
-            [.assets[] | select(.name==$file and .state=="uploaded" and .digest==$digest)] |
-            length==1
-          ' <<<"$published" >/dev/null
-          echo "SUCCESS: immutable stable DeckCraft release published with original certificate and asset digest"
+          echo "PASS: verified original-key signed release-ready DeckCraft APK and notes; no public release"
+
+      - name: Upload release-ready ORIGINAL-certificate APK (NO GITHUB RELEASE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-v0.15.0-android.1-ARM64-ORIGINAL-SIGNED-RELEASE-READY
+          path: verified-release/
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Purge signing key and temporary copies
         if: always()

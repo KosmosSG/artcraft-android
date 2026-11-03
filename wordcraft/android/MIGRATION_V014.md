@@ -77,3 +77,9 @@ Android application already passes these tests.
 
 - Build #41469703171 passed the new four compatibility regression tests but stopped before Cargo compilation with `cp: cannot create directory 'source/wordcraft/vendor/android-activity': No such file or directory`. Its older egui vendor block had implicitly created `$SRC/vendor`, but this block is skipped for v0.14. The WordCraft-only shim now creates this directory explicitly immediately before AndroidActivity vendoring; added a regression assertion so this cannot silently recur.
 - This fixes a build-script failure, **not** proof of successful ARM64 compilation or device operation. Continue validating the fork, IME, clipboard and remaining features. The test signing key is disposable; original-key signing/public release require owner permission.
+
+### 2026-11-03: v0.14 launcher API adjustments
+
+- The candidate build [#41560966077](https://github.com/KosmosSG/artcraft-android/actions/runs/41560966077) passed the guarded source tests and compiled past the previous winit and missing-directory failures, but native build exited with two Rust API errors: `craft_ui::printing::Printer` now requires `label: String`, and WordCraft `WordApp::raw_input_hook` now requires `(ctx, raw)` rather than only `raw`.
+- The WordCraft-v0.14-only builder compatibility shim adds an empty `label` (shared print UI falls back to existing `name`, so it still displays Android print system) and changes the generated WordCraft raw-input hook to pass `ctx`. It retains the existing older input hook for all other apps. Guarded regression fixture tests both changes and ensures missing anchors abort.
+- **Build success, actual print submission, D/C/S behavior, clipboard, IME and tablet acceptance remain unverified until a successful candidate and owner testing.** Never use original certificate for this test.

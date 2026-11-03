@@ -6,7 +6,8 @@ from workspace_v014 import (
     OFFICIAL, PINNED_WIN, BUILDER_ANCHOR, SAFE_GUARD,
     EGUI_VENDOR_START, EGUI_VENDOR_END,
     WINIT_VENDOR_START, WINIT_VENDOR_END, ANR_ACTIVITY_START,
-    OLD_EGUI_DEP, preserve_egui_winit_and_winit, apply,
+    OLD_EGUI_DEP, preserve_egui_winit_and_winit, preserve_wordcraft_014_api,
+    PRINT_OLD, PRINT_NEW, HOOK_OLD, HOOK_NEW, apply,
 )
 
 # Exercise the dangerous entrypoints on a minimal build-common fixture.
@@ -25,7 +26,8 @@ SHELL = (
     EGUI_VENDOR_END + "\n" +
     WINIT_VENDOR_START + "\n    echo old-winit\n" +
     WINIT_VENDOR_END + "\n" + ANR_ACTIVITY_START + "\n" +
-    OLD_EGUI_DEP + "\n" + LAUNCHER
+    OLD_EGUI_DEP + "\n" +
+    PRINT_OLD + "\n" + HOOK_OLD + "\n" + LAUNCHER
 )
 MANIFEST = (
     "[workspace.dependencies]\n" + OFFICIAL + "\n\n" +
@@ -60,6 +62,10 @@ class TestV014Compatibility(unittest.TestCase):
             self.assertEqual(result.count('mkdir -p "$SRC/vendor"\n' + ANR_ACTIVITY_START), 1)
             self.assertIn(PINNED_WIN, manifest.read_text())
             self.assertEqual(result.count("set_activity(android_app.activity_as_ptr())"), 1)
+            self.assertIn(PRINT_NEW, result)
+            self.assertNotIn(PRINT_OLD, result)
+            self.assertIn(HOOK_NEW, result)
+            self.assertNotIn(HOOK_OLD, result)
 
     def test_rejects_missing_pinned_fork_without_modifying_builder(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -80,6 +86,14 @@ class TestV014Compatibility(unittest.TestCase):
             with self.assertRaises(ValueError):
                 apply(base)
             self.assertEqual(shell.read_text(), before)
+
+    def test_rejects_missing_printer_field_anchor(self):
+        with self.assertRaises(ValueError):
+            preserve_wordcraft_014_api(SHELL.replace(PRINT_OLD, ""))
+
+    def test_rejects_missing_raw_input_hook_anchor(self):
+        with self.assertRaises(ValueError):
+            preserve_wordcraft_014_api(SHELL.replace(HOOK_OLD, ""))
 
     def test_rejects_missing_egui_036_manifest_anchor(self):
         with self.assertRaises(ValueError):

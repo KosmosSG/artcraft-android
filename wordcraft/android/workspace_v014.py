@@ -24,6 +24,7 @@ def apply(builder: Path) -> None:
         raise ValueError("Pinned builder arboard hook changed; stop before deleting workspace dependency")
     code = code.replace(BUILDER_ANCHOR, SAFE_GUARD, 1)
     code = preserve_egui_winit_and_winit(code, upstream.read_text(encoding="utf-8"))
+    code = preserve_wordcraft_014_api(code)
     shell.write_text(code, encoding="utf-8")
     print("WordCraft 0.14: preserved upstream arboard and Storytold egui/winit 0.37 IME APIs")
 
@@ -39,6 +40,25 @@ EGUI_VENDOR_END = '# Some apps call `rfd` directly from a crate that ends up in 
 WINIT_VENDOR_START = 'echo "Vendoring the mouse/scroll-aware winit for $TITLE..."'
 WINIT_VENDOR_END = "# Every launcher uses the builder's vendored android-activity"
 ANR_ACTIVITY_START = "echo \"Vendoring the ANR-safe android-activity glue for $TITLE...\""
+
+
+# v0.14 native ABI changed the shared print service and WordApp raw-input hook.
+# The builder v0.9 launcher must adapt precisely; no upstream or other app changes.
+PRINT_OLD = '                name: "Android print system".to_owned(),\n                default: true,'
+PRINT_NEW = '                name: "Android print system".to_owned(),\n                label: String::new(),\n                default: true,'
+HOOK_OLD = 'inner_hook = "let _ = ctx;\\n        self.inner.raw_input_hook(raw);"'
+HOOK_NEW = (
+    'inner_hook = ("self.inner.raw_input_hook(ctx, raw);" if app == "wordcraft" '
+    'else "let _ = ctx;\\\\n        self.inner.raw_input_hook(raw);")'
+)
+
+
+def preserve_wordcraft_014_api(code: str) -> str:
+    exactly_one(code, PRINT_OLD, "legacy WordCraft printer service")
+    exactly_one(code, HOOK_OLD, "legacy WordCraft raw input hook")
+    code = code.replace(PRINT_OLD, PRINT_NEW, 1)
+    return code.replace(HOOK_OLD, HOOK_NEW, 1)
+
 
 
 def exactly_one(haystack: str, needle: str, description: str) -> None:

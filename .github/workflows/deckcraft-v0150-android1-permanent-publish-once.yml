@@ -228,37 +228,41 @@ jobs:
             exit 1
           fi
           cat > verified-release/RELEASE-NOTES.md <<'NOTES'
-          ## DeckCraft v0.14.1-android.17 — Stable ARM64
+          ## DeckCraft v0.15.0-android.1 — Stable ARM64
 
-          CI-verified Android build, permanently signed with the EXISTING DeckCraft
-          release certificate (same as the prior published DeckCraft Android releases).
-          Device-level testing of the new Android.17 fixes has not yet been reported.
+          Official upstream DeckCraft v0.15.0 integrated with existing ArtCraft
+          Android enhancements, retaining the tested Android.17 feature baseline.
+          Owner confirmed v0.15.0-android.1 device testing on HONOR MagicPad 4
+          and expressly authorized permanent signing and publication on 2026-11-04.
 
-          - Left-aligned Dk application menu (Import Fonts, Select Font Folder,
-            Refresh Fonts, Check for Updates, Startup Update Settings).
-          - GPU Diagnostics and About DeckCraft remain in the ordinary Help menu.
-          - Vulkan (WGPU) UI compositor with native GPU adapter reporting,
-            GPU slide texture cache optimization and original CPU raster fallback.
-          - Addresses selected-text Backspace deletion using the DeckCraft editing engine.
-          - Removes a trackpad canvas scroll displacement clamp to improve pan responsiveness;
-            on-device smoothness requires confirmation.
-          - Retains earlier trackpad/touch scrolling, arrow and Shift+arrow editing,
-            D/C/S unsaved-changes shortcuts, Escape, dark theme and approved Dk icon.
-          - Persistent Android SAF font import and folder refresh, recursive
-            scan limit of 5,000 font files and cumulative 4 GiB data budget.
-          - App-scoped GitHub release updater checks SHA256, signing certificate,
-            package, ABI and version before offering an Android installer.
+          - Upstream fixes for multi-shape resizing, monospace font fallback,
+            text insets, layout handling and PPTX round-trip edge cases.
+          - Preserved glossy Dk launcher/in-app icon and left-aligned app menu
+            with Import Fonts, Select Font Folder, Refresh Fonts,
+            Check for Updates and Startup Update Settings.
+          - GPU Diagnostics/About remain in Help. WGPU/Vulkan UI rendering,
+            GPU texture-cache reuse and CPU raster fallback retained.
+          - Ctrl+W D/C/S, Escape, keyboard clipboard, Backspace selected-text
+            deletion, arrows/Shift+arrows and autosave/recovery preserved.
+          - One/two-finger touch and trackpad scrolling, pinch/wheel zoom,
+            dark mode, persisted SAF import, 5000 fonts/4 GiB scan budget.
+          - Secure app-scoped update checker verifies downloaded APK SHA256,
+            original signing identity, package, ABI and version.
+          - Release APK is original-certificate signed from the precise
+            compiled application payload in the OWNER-TESTED temporary APK,
+            with cryptographic payload integrity and signing verification.
 
           Package: com.artcraft.deckcraft
-          Version: 0.14.1-android.17 (100000021)
-          Source commit: 54fbdd4088d0e835c7642fafe039a72c3993be72
-          Unsigned source GitHub Actions run: 41661989509
+          Version: 0.15.0-android.1 (versionCode 100000022)
+          Tested GitHub Actions run: 41683732651
+          Tested source commit: 6d6935753f07cedb557206c0c641d3250971c69e
+          Official upstream commit: 3e178d8f5a59c787a6a53a7ed0f052b3e4a1489f
 
-          This release is **permanently signed**, unlike the temporary-key test
-          candidates. Android cannot update a temporary-key testing install
-          in place; back up your documents before uninstalling the test build.
-          Existing installs with the original DeckCraft certificate can update
-          normally if the installed version code is lower.
+          IMPORTANT: The production APK cannot update the temporary-key
+          test build in place. Export/backup documents, fonts, settings,
+          SAF grants and recovery data before uninstalling the temp APK.
+          Existing original-certificate installations with lower versionCode
+          can upgrade normally. Other ArtCraft apps remain unchanged.
           NOTES
           gh release create "$TAG" \
               "verified-release/$APK" \

@@ -82,10 +82,11 @@ impl Updater {
                         return Err("Invalid font file size".into());
                     }
                     // Name tables are parsed on this worker; full font bytes load lazily for rendering.
-                    let faces = effectcraft_text::fonts::android_add_font_file(&file);
+                    let faces = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        effectcraft_text::fonts::android_add_font_file(&file)
+                    })).map_err(|_| "Font parser panicked; this font was skipped safely".to_owned())?;
                     if faces.is_empty() {
-                        // Only delete a verified file directly inside custom-fonts.
-                        if !system { let _ = std::fs::remove_file(&file); }
+                        // Do not delete a user's private font or shared cache on failed parsing.
                         return Err("Font engine could not read any faces in this file".into());
                     }
                     let family = effectcraft_text::fonts::face(faces[0]).info.family.clone();
@@ -93,7 +94,7 @@ impl Updater {
                     Ok(format!("Font ready: {family}. Select it in Character or Properties."))
                 })();
                 match result {
-                    Ok(status) if manual => { let _ = report_tx.send(status); }
+                    Ok(status) if manual => { let _ = report_tx.send(format!("Font imported successfully. {status}")); }
                     Err(error) => { let _ = report_tx.send(format!("Font import: {error}")); }
                     _ => {}
                 }

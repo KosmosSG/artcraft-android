@@ -13,16 +13,35 @@
     public void ecFontMessage(String message) {
         runOnUiThread(() -> android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show());
     }
+    // Keep shared-folder caches on disk for possible recovery, but never auto-load them
+    // after a failed scan. Only individually imported, explicitly recorded fonts
+    // are re-registered at startup, from inside our private storage.
     public void ecInitialize() {
         io.execute(() -> {
-            ecFontDir().mkdirs();
-            File[] files = ecFontDir().listFiles();
-            if (files != null) for (File f : files) {
-                if (f.isFile() && ecFontName(f.getName()))
-                    ecFontPaths.offer(f.getAbsolutePath());
+            try {
+                File root = ecFontDir().getCanonicalFile();
+                if (!root.isDirectory() && !root.mkdirs()) return;
+                java.util.Set<String> manual = getSharedPreferences("effectcraft_fonts", MODE_PRIVATE)
+                    .getStringSet("manual_imports", java.util.Collections.emptySet());
+                int restored = 0;
+                for (String path : manual) {
+                    if (restored >= EC_SCAN_FILES) break;
+                    try {
+                        File font = new File(path).getCanonicalFile();
+                        if (root.equals(font.getParentFile()) && font.isFile()
+                                && ecFontName(font.getName()) && font.length() >= 12
+                                && font.length() <= EC_FONT_MAX) {
+                            ecFontPaths.offer(font.getAbsolutePath());
+                            restored++;
+                        }
+                    } catch (Exception ignored) { /* One bad path cannot prevent opening. */ }
+                }
+            } catch (Exception error) {
+                android.util.Log.w("EffectCraftFonts", "Manual font restoration skipped", error);
             }
         });
-        ecRefreshSharedFonts(false);
+        // Do NOT rescan the selected SAF tree or legacy bulk cache on app startup.
+        // User-triggered refresh is the only way to retry a problematic font folder.
         if (ecStartupUpdatesEnabled()) ecCheckUpdates(false);
     }
     public void ecImportFont() {
@@ -56,7 +75,7 @@
                         if (c != null && c.moveToFirst()) name = c.getString(0);
                     }
                     ecCopyFont(uri, name, new long[]{0}, true);
-                    ecFontMessage("Font stored; checking font faces…");
+                    ecFontMessage("Imported " + name + ". Registering font faces…");
                 } catch (Exception e) { ecFontMessage("Font import failed: " + e.getMessage()); }
             });
         } else {
@@ -64,8 +83,11 @@
                 int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
                 if (flags == 0) throw new SecurityException("No read access was granted");
                 getContentResolver().takePersistableUriPermission(uri, flags);
-                getSharedPreferences("effectcraft_fonts", MODE_PRIVATE).edit().putString("tree", uri.toString()).apply();
-                ecRefreshSharedFonts(true);
+                if (!getSharedPreferences("effectcraft_fonts", MODE_PRIVATE).edit()
+                        .putString("tree", uri.toString()).commit()) {
+                    throw new java.io.IOException("Could not save selected font folder");
+                }
+                ecFontMessage("Font folder saved. Tap Refresh Shared Fonts to scan up to 4 GiB / 5,000 files.");
             } catch (Exception e) { ecFontMessage("Cannot retain shared folder: " + e.getMessage()); }
         }
         return true;
@@ -91,6 +113,8 @@
                 byte[] buffer = new byte[32768]; int n;
                 while ((n = input.read(buffer)) != -1) {
                     size += n; budget[0] += n;
+                    if (size > 4L * 1024 * 1024 && dir.getUsableSpace() < 128L * 1024 * 1024)
+                        throw new java.io.IOException("Low storage; font scan stopped safely");
                     if (size > EC_FONT_MAX) throw new java.io.IOException("Font exceeds 64 MiB");
                     if (budget[0] > EC_SCAN_MAX) throw new java.io.IOException("Refresh exceeds 4 GiB");
                     out.write(buffer, 0, n); digest.update(buffer, 0, n);
@@ -107,14 +131,30 @@
                     java.nio.file.Files.move(staged.toPath(), target.toPath());
                 }
             }
+            if (manual) {
+                android.content.SharedPreferences prefs = getSharedPreferences("effectcraft_fonts", MODE_PRIVATE);
+                java.util.Set<String> remembered = new java.util.HashSet<>(
+                    prefs.getStringSet("manual_imports", java.util.Collections.emptySet()));
+                remembered.add(target.getCanonicalPath());
+                if (!prefs.edit().putStringSet("manual_imports", remembered).commit()) {
+                    throw new java.io.IOException("Font imported but could not save restart registration");
+                }
+            }
             ecFontPaths.offer((manual ? "manual|" : "") + target.getAbsolutePath());
         } finally { staged.delete(); }
     }
     public void ecRefreshFonts() { ecRefreshSharedFonts(true); }
+    // Backpressure: a 5,000-file SAF folder must never create an unbounded
+    // Java-to-Rust queue while the native renderer is still registering faces.
+    private void ecFontQueueRoom() throws InterruptedException {
+        while (ecFontPaths.size() >= 48) {
+            Thread.sleep(40);
+        }
+    }
     private void ecRefreshSharedFonts(boolean manual) {
         String saved = getSharedPreferences("effectcraft_fonts", MODE_PRIVATE).getString("tree", null);
         if (!ecFontBusy.compareAndSet(false, true)) { if (manual) ecFontMessage("Font refresh is already running"); return; }
-        if (manual) ecFontMessage("Scanning fonts in the background…");
+        if (manual) ecFontMessage("Scanning font folder (up to 5,000 fonts / 4 GiB). You can keep editing.");
         io.execute(() -> {
             int detected = 0, skipped = 0, visited = 0;
             long[] budget = {0};
@@ -143,6 +183,7 @@
                             if (!f.canRead() || size < 12 || size > EC_FONT_MAX) { skipped++; continue; }
                             if (size > EC_SCAN_MAX - budget[0]) { limited = true; break; }
                             budget[0] += size;
+                            ecFontQueueRoom();
                             ecFontPaths.offer("system|" + f.getCanonicalPath());
                         }
                     }
@@ -177,7 +218,10 @@
                                 if (!ecFontName(name)) continue;
                                 detected++; // Failed/rejected fonts also consume the file limit.
                                 if (!c.isNull(3) && (c.getLong(3) < 12 || c.getLong(3) > EC_FONT_MAX)) { skipped++; continue; }
-                                try { ecCopyFont(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, budget, false); }
+                                try {
+                                    ecFontQueueRoom();
+                                    ecCopyFont(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, budget, false);
+                                }
                                 catch (Exception error) { skipped++; }
                             }
                         } catch (SecurityException error) { throw error; }

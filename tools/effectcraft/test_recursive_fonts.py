@@ -19,13 +19,17 @@ class RecursiveFonts(unittest.TestCase):
             self.assertIn(token, java)
         self.assertIn('android_add_font_file(&file)', rust)
         self.assertIn('registered families', rust)
-        self.assertIn('if !system { let _ = std::fs::remove_file', rust)
+        self.assertIn('std::panic::catch_unwind', rust)
+        self.assertNotIn('remove_file(&file)', rust)
 
     @unittest.skipUnless(shutil.which('javac'), 'JDK required; executed in private CI')
     def test_real_copy_deduplicates_collections_and_preserves_on_failure(self):
         source = (ROOT / 'FontsBridge.java.inc').read_text()
         helpers = source[source.index('    private static final long EC_FONT_MAX'):source.index('    private static final int EC_FONT_PICK')]
         method = source[source.index('    private void ecCopyFont('):source.index('    public void ecRefreshFonts()')]
+        # The real Activity has Android SharedPreferences; the pure-JVM harness
+        # substitutes a tiny in-memory mock without Android SDK dependencies.
+        method = method.replace("android.content.SharedPreferences prefs", "MockPrefs prefs")
         harness = r'''
 import java.io.*;
 import java.util.*;
@@ -37,6 +41,20 @@ public class FontCopyTest {
   File ecFontDir() { return dir; }
   Resolver getContentResolver() { return new Resolver(); }
   java.util.concurrent.ConcurrentLinkedQueue<String> ecFontPaths = new java.util.concurrent.ConcurrentLinkedQueue<>();
+  static final int MODE_PRIVATE = 0;
+  static class MockPrefs {
+    java.util.Set<String> remembered = new java.util.HashSet<>();
+    java.util.Set<String> getStringSet(String key, java.util.Set<String> fallback) { return remembered; }
+    MockEditor edit() { return new MockEditor(this); }
+  }
+  static class MockEditor {
+    final MockPrefs prefs;
+    MockEditor(MockPrefs p) { prefs = p; }
+    MockEditor putStringSet(String key, java.util.Set<String> value) { prefs.remembered = value; return this; }
+    boolean commit() { return true; }
+  }
+  final MockPrefs prefs = new MockPrefs();
+  MockPrefs getSharedPreferences(String n, int mode) { return prefs; }
   static void check(boolean ok) { if (!ok) throw new AssertionError(); }
   public static void main(String[] args) throws Exception {
     FontCopyTest t = new FontCopyTest(new File(args[0]));
@@ -67,7 +85,8 @@ public class FontCopyTest {
         with tempfile.TemporaryDirectory() as folder:
             p = Path(folder)
             (p / 'FontCopyTest.java').write_text(harness + helpers + method + '\n}')
-            subprocess.run(['javac', str(p / 'FontCopyTest.java')], check=True, capture_output=True)
+            compile_result = subprocess.run(['javac', str(p / 'FontCopyTest.java')], capture_output=True, text=True)
+            self.assertEqual(compile_result.returncode, 0, compile_result.stderr)
             subprocess.run(['java', '-cp', folder, 'FontCopyTest', str(p / 'fonts')], check=True, capture_output=True)
 
 if __name__ == '__main__':

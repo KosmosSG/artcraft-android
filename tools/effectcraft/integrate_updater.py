@@ -17,7 +17,8 @@ apply_font_catalog(root / "source/effectcraft")
 from font_paths import patch_android_font_paths
 font_template = root / "templates/android/system_fonts.rs"
 font_template.write_text(patch_android_font_paths(font_template.read_text()))
-menu = root / "source/effectcraft/crates/ui-egui/src/menus.rs"
+from v020_compat import menu_path_and_anchor
+menu, menu_anchor = menu_path_and_anchor(root / "source/effectcraft")
 builder = root / "lib/build-common.sh"
 java = root / "templates/android/SafActivity.java"
 addon = root / "tools/effectcraft/UpdaterBridge.java.inc"
@@ -30,7 +31,7 @@ def once(src, old, new, label):
     return src.replace(old, new, 1)
 
 m = menu.read_text()
-anchor = "                        crate::widgets::menu_scroll(ui, |ui| menu_nodes(app, ui, children, &mut clicked, &mut nav, 0));"
+anchor = menu_anchor
 injected = anchor + """
                         #[cfg(target_os = "android")]
                         if label == "Help" {

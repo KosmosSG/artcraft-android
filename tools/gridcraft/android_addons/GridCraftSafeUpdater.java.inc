@@ -18,7 +18,7 @@ public void gcDownloadAndInstallUpdate() {
         return;
     }
     if (!gcUpdateDownloading.compareAndSet(false, true)) return;
-    gcWorker.execute(() -> {
+    new Thread(() -> {
         android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         long downloadId = -1;
         java.io.File verificationFile = null;
@@ -110,7 +110,7 @@ public void gcDownloadAndInstallUpdate() {
             }
             gcUpdateDownloading.set(false);
         }
-    });
+    }, "gridcraft-official-apk-download").start();
 }
 
 private static String gcDigestHex(byte[] bytes) {

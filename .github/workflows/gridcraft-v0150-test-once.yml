@@ -57,6 +57,10 @@ jobs:
           assert 'egui = "0.37"' in (src/"Cargo.toml").read_text()
           assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in shell
           assert "GRIDCRAFT_V0150_KEEP_WINIT_FORK" in shell
+          adapter=Path("builder/vendor/winit/src/platform_impl/android/mod.rs").read_text()
+          assert "GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1" in adapter, "Physical trackpad left-button down/up must be delivered"
+          assert "MotionAction::Down | MotionAction::Up | MotionAction::Cancel" in adapter
+          assert "if motion_event.action_button() != Button::Primary" not in adapter
           assert 'mkdir -p "$SRC/vendor"\necho "Vendoring the ANR-safe android-activity glue' in shell, "v0.15 vendor dir must exist for Android Activity"
           approved_icon=Path("assets/gridcraft/launcher-user-20261103.png")
           assert approved_icon.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a"))

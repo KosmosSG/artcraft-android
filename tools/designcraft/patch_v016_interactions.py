@@ -160,9 +160,9 @@ def java_source(root,android):
         int state = event.getAction();
         if (dcDialogHeld.contains(code)) {
             if (state == KeyEvent.ACTION_UP) dcDialogHeld.remove(code);
-            // Keep the native input queue running, so Rust can process and
-            // repaint the dialog immediately after a hardware shortcut.
-            return super.dispatchKeyEvent(event);
+            // Consume repeats as well as the matching key release. Never
+            // leak D/C/S into the document while the modal owns the key.
+            return true;
         }
         int action = code == KeyEvent.KEYCODE_D ? 1 :
             (code == KeyEvent.KEYCODE_C ? 2 : (code == KeyEvent.KEYCODE_S ? 3 : 0));

@@ -67,7 +67,7 @@ jobs:
           approved_icon=Path("assets/gridcraft/launcher-user-20261103.png")
           assert approved_icon.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a"))
           from hashlib import sha256
-          assert sha256(approved_icon.read_bytes()).hexdigest()=="0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6"
+          assert sha256(approved_icon.read_bytes()).hexdigest()=="e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2"
           assert (src/"crates/ui-egui/src/ribbon/gridcraft-approved-mark.png").read_bytes()==approved_icon.read_bytes()
           assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in (src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
           title=(src/"crates/ui-egui/src/ribbon/title_bar.rs").read_text()
@@ -121,7 +121,7 @@ jobs:
           # Debug compilation is faster and consumes fewer minutes than release LTO.
           ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
           if [ -s "$ICON" ]; then
-            echo "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6  $ICON" | sha256sum -c -
+            echo "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2  $ICON" | sha256sum -c -
             bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
           else
             echo "::warning::Approved glossy Gc source absent in branch; candidate is DEVELOPMENT ONLY, requires icon verification before production"

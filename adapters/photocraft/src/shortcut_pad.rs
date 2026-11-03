@@ -68,19 +68,18 @@ impl ShortcutPad {
     }
     // Reference Pad::reserve requires a fork-specific PhotocraftApp.edge_strip
     // that is NOT present in upstream v0.19. Keep our official upstream pinned:
-    // a native egui SidePanel reserves this area *before* the UI is laid out.
-    pub(crate) fn reserve(&mut self, ctx: &egui::Context) {
+    // Use egui 0.37's Panel API, laid out inside the upstream root Ui.
+    pub(crate) fn reserve(&mut self, ui: &mut egui::Ui) {
         self.reserved = None;
         if !menus::artcraft_pad_visible() { return; }
         let panel = if menus::artcraft_pad_left() {
-            egui::SidePanel::left("artcraft_pad_reserved_left")
+            egui::Panel::left("artcraft_pad_reserved_left")
         } else {
-            egui::SidePanel::right("artcraft_pad_reserved_right")
+            egui::Panel::right("artcraft_pad_reserved_right")
         };
-        panel.resizable(false).exact_width(78.0)
-            .show(ctx, |ui| {
-                self.reserved = Some(ui.max_rect());
-            });
+        panel.exact_size(78.0).show(ui, |panel_ui| {
+            self.reserved = Some(panel_ui.max_rect());
+        });
     }
     pub(crate) fn show(&mut self, ctx: &egui::Context, app: &mut PhotocraftApp) {
         let show = menus::artcraft_pad_visible();

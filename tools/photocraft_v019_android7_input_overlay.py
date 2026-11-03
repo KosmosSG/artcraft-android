@@ -36,7 +36,7 @@ def main():
     patch(host,
 '''        self.inner.ui(ui, _frame);
 ''',
-'''        self.shortcut_pad.reserve(ui.ctx());
+'''        self.shortcut_pad.reserve(ui);
         self.inner.ui(ui, _frame);
 ''')
 

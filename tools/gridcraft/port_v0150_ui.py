@@ -7,6 +7,8 @@ This does NOT install the Android launcher, SAF services, dialog or keyboard por
 """
 import argparse
 from pathlib import Path
+import hashlib
+import shutil
 import runpy
 import tomllib
 
@@ -48,10 +50,30 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
         if MARKER in sources[key] or (key == "title" and MENU_MARKER in sources[key]):
             raise RuntimeError(f"{relative}: already ported; refusing a duplicate application")
 
+    # Owner-provided Gc mark, downsampled for Android native UI and launcher.
+    # The same source PNG is used by the APK's adaptive icon pipeline.
+    approved_icon = Path(__file__).resolve().parents[2] / "assets/gridcraft/launcher-approved-20261103.png"
+    icon_bytes = approved_icon.read_bytes()
+    if not icon_bytes.startswith(b"\x5cx89PNG\x5cr\x5cn\x5cx1a\x5cn"):
+        raise RuntimeError("Approved Gc icon isn't a valid PNG")
+    if hashlib.sha256(icon_bytes).hexdigest() != "49073eaa5fd923b8c96ed22e895397005b69d6e4e5753f6b5855862360b428c3":
+        raise RuntimeError("Approved GridCraft Gc PNG changed: re-review launcher asset")
     menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
     if menu.count(MENU_MARKER) != 1 or 'ui.menu_button("GridCraft Tools"' not in menu:
         raise RuntimeError("Approved GridCraft native Tools menu changed unexpectedly")
     title_anchor = '            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));'
+    # Put the same approved mark at the top-left of the native ribbon.
+    # This is an inline 22 px icon, not a new dock or overlay window.
+    sources["title"] = once(
+        sources["title"],
+        "            ui.add_space(TITLE_LEFT_PAD);",
+        '            ui.add_space(TITLE_LEFT_PAD);\\n'
+        '            // GRIDCRAFT_ANDROID_USER_ICON_V1: owner-approved Gc logo.\\n'
+        '            ui.add(egui::Image::new(egui::include_image!("gridcraft-approved-mark.png"))\\n'
+        '                .fit_to_exact_size(vec2(22.0, 22.0)));\\n'
+        '            ui.add_space(5.0);',
+        FILES["title"],
+    )
     sources["title"] = once(
         sources["title"], title_anchor,
         "            // " + MARKER + ": Android Tools menu in relocated title_bar.rs\n"
@@ -111,6 +133,8 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
         "app": "android_font_generation: 0",
         "app_fonts": "catalog_changed",
     }
+    if sources["title"].count("GRIDCRAFT_ANDROID_USER_ICON_V1") != 1 or "gridcraft-approved-mark.png" not in sources["title"]:
+        raise RuntimeError("Owner approved GridCraft title-bar icon was not included")
     for key, value in expected.items():
         if value not in sources[key]:
             raise RuntimeError(f"{FILES[key]}: expected ported code not found")
@@ -118,6 +142,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     if not verify_only:
         for key, relative in FILES.items():
             (root / relative).write_text(sources[key])
+        shutil.copyfile(approved_icon, root / "crates/ui-egui/src/ribbon/gridcraft-approved-mark.png")
     return {
         "source_version": version,
         "files_verified": sorted(FILES.values()),

@@ -1,11 +1,25 @@
 //! Android-only v0.16.0 font-import controls. Kept out of the upstream engine.
 use super::{saf, saf_next_id, ImportRequest, SafState};
-use std::sync::Mutex;
+use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
+
+static SHOW_ANDROID_TOOLS: AtomicBool = AtomicBool::new(true);
+static SHARED_SCAN_PENDING: AtomicBool = AtomicBool::new(false);
+static USER_MESSAGE: Mutex<String> = Mutex::new(String::new());
+
+fn feedback(message: impl Into<String>) {
+    *USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()) = message.into();
+}
+
 
 static RESULT: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 
 pub fn report_shared(event: Result<String, String>) {
+    SHARED_SCAN_PENDING.store(false, Ordering::Relaxed);
     *RESULT.lock().unwrap_or_else(|error| error.into_inner()) = Some(event);
+}
+
+pub fn show_android_tools() -> bool {
+    SHOW_ANDROID_TOOLS.load(Ordering::Relaxed)
 }
 
 /// Handle physical keyboard input before egui text fields and modal widgets
@@ -142,7 +156,23 @@ fn install_font(name: &str, bytes: &[u8]) -> Result<String, String> {
 fn request_shared(bridge: &saf::Bridge, state: &SafState, refresh: bool)
     -> Result<(), String>
 {
-    bridge.dc_font_action(saf_next_id(state), refresh)
+    if SHARED_SCAN_PENDING.swap(true, Ordering::Relaxed) {
+        feedback("A shared-font scan is already running…");
+        return Ok(());
+    }
+    feedback(if refresh {
+        "Refreshing shared fonts… Scan includes subfolders."
+    } else {
+        "Select your shared font folder in the Android picker…"
+    });
+    match bridge.dc_font_action(saf_next_id(state), refresh) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            SHARED_SCAN_PENDING.store(false, Ordering::Relaxed);
+            feedback(format!("Shared fonts: {error}"));
+            Err(error)
+        }
+    }
 }
 
 fn request_import(bridge: &saf::Bridge, state: &SafState) -> Result<(), String> {
@@ -165,10 +195,19 @@ pub fn ui(
     if let Some(event) = RESULT.lock().unwrap_or_else(|e| e.into_inner()).take() {
         match event {
             Ok(message) => match app.run("font.reload", serde_json::json!({})) {
-                Ok(_) => app.status(format!("{message}; font catalog refreshed")),
-                Err(e) => app.status_error("Refresh imported fonts", e),
+                Ok(_) => {
+                    feedback(format!("{message}; font catalog refreshed"));
+                    app.status(format!("{message}; font catalog refreshed"));
+                },
+                Err(e) => {
+                    feedback(format!("Font catalog refresh failed: {e}"));
+                    app.status_error("Refresh fonts", e);
+                },
             },
-            Err(e) => app.status_error("Import Font", e),
+            Err(e) => {
+                feedback(format!("Shared fonts: {e}"));
+                app.status_error("Shared fonts", e);
+            },
         }
     }
     let shared_actions = designcraft_ui_egui::menus::take_android_shared_actions();
@@ -187,8 +226,19 @@ pub fn ui(
             app.status_error("Import Font", e);
         }
     }
-    // The Android menu is also in the main top-level menu bar. Keep a
-    // prominent visible control for touch users who collapse the desktop bar.
+    // Android is a permanent top-level menu even when this compact toolbar
+    // is hidden. Keep processing scan results while the toolbar is invisible.
+    if designcraft_ui_egui::menus::take_android_tools_toggle() {
+        SHOW_ANDROID_TOOLS.fetch_xor(true, Ordering::Relaxed);
+        ui.ctx().request_repaint();
+    }
+    if SHARED_SCAN_PENDING.load(Ordering::Relaxed) {
+        // SAF scanning happens asynchronously; continue polling and repainting.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+    }
+    if !SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
+        return;
+    }
     egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.menu_button("Android Tools ▾", |ui| {
@@ -220,7 +270,16 @@ pub fn ui(
                 ui.label("Ctrl+W → D / C / S; Esc exits typing; V/T tools");
             });
             ui.separator();
-            ui.label("Shared Fonts • Keyboard");
+            if ui.small_button("Hide Tools").clicked() {
+                SHOW_ANDROID_TOOLS.store(false, Ordering::Relaxed);
+                ui.ctx().request_repaint();
+            }
+            let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if status.is_empty() {
+                ui.label("Shared Fonts • Keyboard");
+            } else {
+                ui.label(status);
+            }
         });
     });
 }

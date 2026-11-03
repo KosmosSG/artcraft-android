@@ -2711,11 +2711,15 @@ fn android_main(android_app: android_activity::AndroidApp) {{
                 let info = state.adapter.get_info();
                 log::info!("DesignCraft GPU adapter: {{}} ({{:?}}, {{:?}})",
                     info.name, info.device_type, info.backend);
+                v016_android::set_gpu_adapter(format!(
+                    "{{}} / {{:?}} / {{:?}}", info.name, info.backend, info.device_type
+                ));
                 if info.device_type == eframe::wgpu::DeviceType::Cpu {{
                     log::warn!("DesignCraft wgpu is using a CPU adapter");
                 }}
             }} else {{
                 log::warn!("DesignCraft wgpu adapter details unavailable at creation");
+                v016_android::set_gpu_adapter("WGPU adapter unavailable".to_owned());
             }}
             // Called from eframe's first Resumed. Keep document/session state
             // alive across later Paused/Resumed; eframe only recreates surfaces.

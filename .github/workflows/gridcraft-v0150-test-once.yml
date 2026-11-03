@@ -3,6 +3,7 @@ name: GridCraft v0.15.0 ARM64 disposable testing candidate (ONE build, no releas
 on:
   # One owner-approved push trigger on THIS workflow file only.
   # The job is further gated to one exact commit message; ordinary edits cannot rebuild.
+  # Owner-approved retry after validation gate correction (source audit: passed).
   push:
     branches:
       - review/gridcraft-v0150-android-compat-20261102

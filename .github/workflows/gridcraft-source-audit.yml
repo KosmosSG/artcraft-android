@@ -188,6 +188,10 @@ jobs:
           main=(source/'lib.rs').read_text()
           assert tomllib.loads((b/'source/gridcraft/Cargo.toml').read_text())['workspace']['package']['version']=='0.15.0'
           assert builder.count('GRIDCRAFT_OVERLAY_HOOK_V1')==1
+          adapter=(b/'vendor/winit/src/platform_impl/android/mod.rs').read_text()
+          assert adapter.count("GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1")==1
+          assert "MotionAction::Down | MotionAction::Up | MotionAction::Cancel" in adapter
+          assert "if motion_event.action_button() != Button::Primary" not in adapter
           assert builder.count('GRIDCRAFT_V0150_ACK_SAF_V1')==2
           assert 'android_save_close: Some(Box::new(' in builder
           assert 'GRIDCRAFT_ANDROID_NATIVE_MENU_V1' in title

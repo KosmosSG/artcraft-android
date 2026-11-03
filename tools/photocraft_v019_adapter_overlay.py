@@ -435,7 +435,7 @@ pub fn artcraft_take_font_request() -> u8 {
     )
     replace_once(
         invoke,
-        '    if id == "help.checkForUpdates" {\n',
+        '    if id == "help.checkForUpdates" {\n        return Some(crate::updates_ui::check(app, ctx, params.clone()));\n',
         '''    #[cfg(target_os = "android")]
     if id == "help.artcraftCheckUpdates" {
         super::ARTCRAFT_UPDATE_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);

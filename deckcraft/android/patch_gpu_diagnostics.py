@@ -23,8 +23,8 @@ edit(src / "lib.rs",
     '    ("app.gpuDiagnostics", "GPU Diagnostics…", None, "{}"),')
 
 edit(src / "menus.rs",
-    '("Help", vec![("About DeckCraft", "app.about"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")])',
-    '("Help", vec![("About DeckCraft", "app.about"), ("GPU Diagnostics…", "app.gpuDiagnostics"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")])')
+    '("About DeckCraft", "app.about"),',
+    '("About DeckCraft", "app.about"), ("GPU Diagnostics…", "app.gpuDiagnostics"),')
 
 edit(src / "app/commands.rs",
     '            "app.about" => self.dialog = Some(dialogs::Dialog::new("about")),',

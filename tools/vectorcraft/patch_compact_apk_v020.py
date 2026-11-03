@@ -25,6 +25,20 @@ COMPACT_DEPS = """dependencies {{
     // runtime dependencies are unnecessary for this application's APK.
 }}"""
 
+# The generated theme is shared with the GameActivity builder, which needs
+# AppCompat. The VectorCraft native launcher does NOT: its theme must use a
+# framework-defined ancestor, or AAPT fails after AppCompat is removed.
+APPCOMPAT_THEME = '<style name="Theme.Artcraft" parent="Theme.AppCompat.NoActionBar">'
+NATIVE_THEME = '<style name="Theme.Artcraft" parent="android:style/Theme.Material.NoActionBar">'
+
+
+def patch_native_theme(source: str) -> str:
+    if source.count(APPCOMPAT_THEME) != 1:
+        raise ValueError("Pinned builder AppCompat theme anchor changed; review required")
+    if source.count(NATIVE_THEME):
+        raise ValueError("Android native theme was already patched")
+    return source.replace(APPCOMPAT_THEME, NATIVE_THEME, 1)
+
 
 def patch_source(generated: str, java: str, extras: str, manifest: str) -> str:
     if "extends NativeActivity" not in java or "extends GameActivity" in java:
@@ -46,8 +60,9 @@ def patch_builder(builder: Path, android_port: Path) -> None:
     extras = android_port / "adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java"
     source = generated.read_text()
     updated = patch_source(source, java.read_text(), extras.read_text(), manifest.read_text())
+    updated = patch_native_theme(updated)
     generated.write_text(updated)
-    print("PASS: VectorCraft-only dependency-free NativeActivity Android package; JNI/ARM64 kept")
+    print("PASS: VectorCraft NativeActivity with framework Material.NoActionBar theme; unused AndroidX removed")
 
 
 if __name__ == "__main__":

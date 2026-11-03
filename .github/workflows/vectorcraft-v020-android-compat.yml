@@ -1,0 +1,129 @@
+name: VectorCraft v0.20 Android source compatibility (NO RELEASE)
+
+# Development-only check is manual to conserve GitHub Actions monthly minutes.
+# No production signing, automated APK publication, or release trigger.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v020-android-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  input-regressions:
+    name: Existing Android features and pointer-source regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Run Android source and UI regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+          rustc --edition=2021 --test tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vectorcraft-device-kind"
+          "$RUNNER_TEMP/vectorcraft-device-kind"
+      - name: Fail if Android release identity or existing feature bridges were removed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          root = Path("adapters/vectorcraft")
+          manifest = tomllib.loads((root / "Cargo.toml").read_text())
+          android = manifest["package"]["metadata"]["android"]
+          assert android["package"] == "com.artcraft.vectorcraft"
+          assert android["build_targets"] == ["aarch64-linux-android"]
+          assert android["application"]["activity"][0]["name"] == ".VectorCraftActivity"
+          rust = (root / "src/lib.rs").read_text()
+          java = (root / "java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+          extras = (root / "java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
+          winit = Path("vendor/winit/src/platform_impl/android/mod.rs").read_text()
+          for name in ("poll_answers", "commit_if_mapped", "persist_save", "apply_android_modifiers",
+                       "text.rescanFonts", "check_updates", "startup_updates"):
+              assert name in rust, name
+          for name in ("vcRequestOpen", "vcRequestSave", "vcCommitIfMapped", "imeShow", "imeHide"):
+              assert name in java, name
+          for name in ("vcRequestFontImport", "vcRefreshFontFolder", "vcCheckForUpdates"):
+              assert name in java, name
+          for name in ("requestFontImport", "refreshFontFolder", "checkForUpdates"):
+              assert name in extras, name
+          assert "device_kind::classify" in winit
+          print("PASS: main Android adapter bridges and identity present; runtime device checks remain required")
+          PY
+
+  upstream-android-check:
+    name: Official v0.20.0 compatibility compilation (no APK, no signing)
+    needs: input-regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      UPSTREAM_SHA: 5628de96f866185d8eb289b167b89691f213c0c3
+      BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: android-port
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: 5628de96f866185d8eb289b167b89691f213c0c3
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Verify both pinned upstream inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          grep -q '^version = "0.20.0"' builder/source/vectorcraft/Cargo.toml
+      - name: Overlay approved Android adapter and run existing UI patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builder/source/vectorcraft/apps/vectorcraft-android/src
+          cp -a android-port/adapters/vectorcraft/. builder/source/vectorcraft/apps/vectorcraft-android/
+          cp builder/templates/android/system_fonts.rs builder/source/vectorcraft/apps/vectorcraft-android/src/system_fonts.rs
+          cp builder/templates/android/ime_bridge.rs builder/source/vectorcraft/apps/vectorcraft-android/src/ime_bridge.rs
+          # These patchers are deliberately strict. If v0.20 changed an API,
+          # fail the check instead of silently losing menus, shortcuts or fonts.
+          python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder
+          python3 android-port/tools/vectorcraft/patch_android_about_updates.py builder
+          python3 android-port/tools/vectorcraft/patch_android_unsaved_shortcuts_v020.py builder/source/vectorcraft
+          python3 android-port/tools/vectorcraft/patch_android_adapter_v020.py builder/source/vectorcraft
+          test -s builder/source/vectorcraft/apps/vectorcraft-android/src/lib.rs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android SDK and NDK for ARM64 compilation only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Check VectorCraft v0.20 Android shell without signing or publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android28-clang"
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --target aarch64-linux-android

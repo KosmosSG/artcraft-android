@@ -1,0 +1,242 @@
+name: VectorCraft v0.20 ARM64 disposable-key APK (TEST ONLY)
+
+# v0.20.0-android.3 resource-link fix started once in Actions
+# #41603592981. Manual-only full ARM64 build to conserve quota.
+# Original signing keys, production release and PR merge are untouched.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v020-private-test-apk
+  cancel-in-progress: false
+
+jobs:
+  disposable-test-apk:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/vectorcraft-v020-android14-20261102'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      UPSTREAM_SHA: 5628de96f866185d8eb289b167b89691f213c0c3
+      BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+      VERSION_NAME: 0.20.0-android.3
+      VERSION_CODE: '16782339'
+      LAST_PUBLISHED_CODE: '16780813'
+      ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: 35.0.0
+      ARTCRAFT_NDK_VERSION: 27.2.12479018
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      # Strip native symbol tables but retain Release opt-level 3 / thin-LTO
+      # to avoid slowing startup, painting, font import or trackpad gestures.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      - name: Check out owner Android changes (no write credentials)
+        uses: actions/checkout@v5
+        with:
+          path: android-port
+          persist-credentials: false
+      - name: Check out immutable Android builder
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Check out official VectorCraft v0.20.0
+        uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: 5628de96f866185d8eb289b167b89691f213c0c3
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Enforce source, version, signing and test-only gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test "$VERSION_CODE" -gt "$LAST_PUBLISHED_CODE"
+          test ! -e builder/keys/artcraft-builder.jks
+          test ! -e android-port/keys/artcraft-builder.jks
+          grep -q '^version = "0.20.0"' builder/source/vectorcraft/Cargo.toml
+          python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
+          rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
+          "$RUNNER_TEMP/vc-pointer-tests"
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          meta=tomllib.loads(Path("android-port/adapters/vectorcraft/Cargo.toml").read_text())["package"]["metadata"]["android"]
+          assert meta["package"]=="com.artcraft.vectorcraft"
+          assert meta["build_targets"]==["aarch64-linux-android"]
+          assert meta["application"]["activity"][0]["name"]==".VectorCraftActivity"
+          assert Path("android-port/assets/branding/vectorcraft/vc-owner-20261103.svg").is_file()
+          print("PASS: independent production package and original artwork retained; permanent key forbidden")
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android 35, tools and NDK 27.2 once
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage owner adapter and reviewed upstream v0.20 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf builder/adapters/vectorcraft
+          cp -a android-port/adapters/vectorcraft builder/adapters/vectorcraft
+          python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder
+          python3 android-port/tools/vectorcraft/patch_android_about_updates.py builder
+          python3 android-port/tools/vectorcraft/patch_android_unsaved_shortcuts_v020.py builder/source/vectorcraft
+          # The builder replaces upstream android-activity and winit during the full APK build.
+          # Its native-activity 0.6.1 lacked classification() despite winit calling it.
+          # Safely resolve the Android API-29+ symbol at runtime; on API 28 return None.
+          python3 android-port/tools/vectorcraft/patch_android_native_classification.py builder
+          # VectorCraft v0.20's official egui-winit expects Storytold winit's
+          # ImeResetCompleted and reset_ime_with_request APIs; this builder's
+          # older vendored winit has neither. Preserve all custom touch/mouse
+          # code while adding exactly the upstream public IME interface.
+          python3 android-port/tools/vectorcraft/patch_android_winit_ime_v020.py builder
+          # The reference builder copies adapters/vectorcraft again during packaging.
+          # Patch THAT source, not only the compatibility check's temporary apps crate.
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,"android-port/tools/vectorcraft")
+          from patch_android_adapter_v020 import patch_staged_source
+          manifest=Path("builder/source/vectorcraft/Cargo.toml").read_text()
+          path=Path("builder/adapters/vectorcraft/src/lib.rs")
+          path.write_text(patch_staged_source(manifest,path.read_text()))
+          print("PASS: v0.20 MIME filters and input hook fixed in builder-owned Android adapter")
+          PY
+          python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          # VectorCraft NativeActivity needs no AppCompat, Kotlin or
+          # GameActivity. Do not pull them into the final DEX/resources.
+          python3 android-port/tools/vectorcraft/patch_compact_apk_v020.py builder android-port
+          # Fail *before* expensive ARM64 Rust compilation if the generated
+          # Gradle theme still points to AppCompat after its dependency removal.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("builder/lib/android_project.py").read_text()
+          assert 'parent="android:style/Theme.Material.NoActionBar"' in source
+          assert 'parent="Theme.AppCompat.NoActionBar"' not in source
+          assert "implementation 'androidx.appcompat:" not in source
+          assert "implementation 'androidx.games:" not in source
+          assert 'android:windowFullscreen' in source
+          print("PASS: no native launcher AppCompat theme mismatch before compile")
+          PY
+          # Reuse unchanged system-font symlink layout across cold launches
+          # without affecting native font fallbacks or SAF imported fonts.
+          python3 android-port/tools/vectorcraft/patch_cached_system_fonts_v020.py builder
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          # Owner supplied a NEW flat Vc artwork; the previous glossy approved
+          # icon is preserved for older releases but must not enter this candidate.
+          python3 android-port/tools/vectorcraft/render_owner_icon.py \
+            android-port/assets/branding/vectorcraft/vc-owner-20261103.svg \
+            "$RUNNER_TEMP/vectorcraft-test-icon.png"
+          python3 - "$RUNNER_TEMP/vectorcraft-test-icon.png" <<'PY'
+          from PIL import Image
+          import sys
+          icon=Image.open(sys.argv[1]).convert("RGBA")
+          assert icon.size==(1024,1024) and icon.getpixel((0,0))[3]==0
+          assert icon.getpixel((512,80))[:3]==(45,0,0)
+          orange=icon.getpixel((420,450))
+          assert orange[0]>180 and orange[1]>70 and orange[2]<80
+          print("PASS: owner dark-maroon/orange Vc artwork and transparent corners")
+          PY
+          python3 android-port/tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 android-port/tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vectorcraft-test-icon.png"
+          grep -Fq 'self.inner.raw_input_hook(ctx, raw);' builder/adapters/vectorcraft/src/lib.rs
+      - name: Compile optimized ARM64 VectorCraft Android test APK (disposable builder key)
+        shell: bash
+        timeout-minutes: 125
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/vectorcraft-test-icon.png"
+          test "$(find builder/output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
+      - name: Verify installable test APK package, ARM64, signature and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p private-test
+          APK="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$AAPT" dump badging "$APK" > private-test/badging.txt
+          "$AAPT" dump resources "$APK" > private-test/resources.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > private-test/signature.txt
+          python3 - "$APK" <<'PY'
+          import json,os,re,sys,zipfile,hashlib
+          from pathlib import Path
+          apk=Path(sys.argv[1])
+          badging=Path("private-test/badging.txt").read_text()
+          resources=Path("private-test/resources.txt").read_text()
+          match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
+          assert match and match.groups()==("com.artcraft.vectorcraft",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
+          assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
+          sig=Path("private-test/signature.txt").read_text()
+          fingerprints=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
+          assert len(fingerprints)==1 and fingerprints[0].lower()!=os.environ["ORIGINAL_CERT"], "Test must NOT use permanent key"
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              files=z.namelist()
+              libs=[x for x in files if x.startswith("lib/") and x.endswith(".so")]
+              assert libs and all(x.startswith("lib/arm64-v8a/") for x in libs),libs
+              assert "lib/arm64-v8a/libvectorcraft_android.so" in files
+              dex=[z.read(x) for x in files if x.endswith(".dex")]
+              assert dex and any(b"VectorCraftActivity" in x for x in dex)
+              # aapt2/Gradle compiles launcher mipmap entries into resources.arsc;
+              # individual ic_launcher files do NOT necessarily appear as ZIP names.
+              assert "resources.arsc" in files, "Android compiled resources missing"
+          assert "mipmap/ic_launcher" in resources or "drawable/ic_launcher" in resources, "Android launcher icon resource missing"
+          report={"package":match.group(1),"version_code":int(match.group(2)),"version_name":match.group(3),"test_certificate_sha256":fingerprints[0].lower(),"original_certificate_used":False,"apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),"install_mode":"must uninstall production first; back up documents and SAF access","device_checks":"pending"}
+          Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("PASS: temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and monotonic version")
+          PY
+          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
+          (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
+          # Record sizes inside the APK for subsequent APK.3 vs APK.2
+          # comparisons; JNI libraries must remain uncompressed for
+          # Android's direct page-aligned loading and faster startup.
+          python3 - "$APK" <<'PY'
+          import json,sys,zipfile
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          with zipfile.ZipFile(path) as z:
+              entries=sorted(z.infolist(),key=lambda e:e.file_size,reverse=True)
+              total_lib=sum(e.file_size for e in entries if e.filename.startswith("lib/") and e.filename.endswith(".so"))
+              details=[{"path":e.filename,"raw_bytes":e.file_size,"compressed_bytes":e.compress_size}
+                       for e in entries[:12]]
+              report={"apk_bytes":path.stat().st_size,"native_library_raw_bytes":total_lib,
+                      "largest_entries":details,"release_symbols_stripped":True,
+                      "unused_androidx_gameactivity_removed":True,
+                      "native_library_direct_loading_retained":True}
+          Path("private-test/size-report.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("PASS: APK size report recorded",report["apk_bytes"],"bytes")
+          PY
+          rm -f private-test/badging.txt private-test/resources.txt private-test/signature.txt
+      - name: Upload PRIVATE test artifact only — never publish a GitHub Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: VectorCraft-v0.20.0-android.3-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          path: private-test/
+          if-no-files-found: error
+          retention-days: 3
+      - name: Delete disposable builder signing materials
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys

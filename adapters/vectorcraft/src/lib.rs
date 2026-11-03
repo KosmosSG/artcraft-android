@@ -40,7 +40,7 @@ mod ime_bridge;
 
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand};
+use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -426,7 +426,11 @@ impl FontUiState {
             self.pending_shared = None;
             self.shared_status = message.into();
         }
-        Some(success)
+        // A refresh that only found existing fonts must NOT rescan the entire
+        // native text catalog again. The previous unconditional rescan could
+        // freeze or kill large shared-library sessions on the first picker return.
+        let added = value.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        Some(success && added > 0)
     }
 }
 
@@ -754,6 +758,8 @@ struct VectorCraftAndroidApp {
     // when the one-time orphan sweep of the directory is due.
     staged_seen: Vec<String>,
     staged_sweep_at: Option<std::time::Instant>,
+    startup_instant: std::time::Instant,
+    first_ui_logged: bool,
 }
 
 /// Read the files the system asked this app to open (an `ACTION_VIEW`/`ACTION_SEND` it is registered
@@ -959,6 +965,37 @@ impl eframe::App for VectorCraftAndroidApp {
         let field_focused = ctx.text_edit_focused();
         let composing = self.inner.session.tool_composing();
         let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // Native Type editing owns the input before egui's generic shortcut router.
+        // On Ctrl+W, finish Type via the device-tested Escape transition first,
+        // then invoke the regular upstream close command so the ORIGINAL Save
+        // Changes modal opens with D/C/S focused (without discarding typed text).
+        if consume_type_close_chord(raw, editing, field_focused, composing, modal) {
+            let view = self.inner.view_info();
+            let mut exited = false;
+            match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                Ok(requests) => {
+                    for request in requests {
+                        if let UiRequest::SwitchTool(tool) = request {
+                            self.inner.select_tool(&tool);
+                            exited = true;
+                        }
+                    }
+                }
+                Err(error) => log::warn!("Type Ctrl+W editor finish failed: {error}"),
+            }
+            if exited {
+                ctx.memory_mut(|memory| {
+                    if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                });
+                if let Err(error) = self.bridge.end_type_editing() {
+                    log::warn!("Type Ctrl+W focus handoff failed: {error}");
+                }
+                if let Err(error) = self.inner.run("file.close", serde_json::json!({})) {
+                    log::warn!("Type Ctrl+W close dialog failed: {error}");
+                }
+                ctx.request_repaint();
+            }
+        }
         let selection_idle = matches!(self.inner.session.tool_id(), "selection" | "directSelection")
             && !self.inner.session.tool_busy();
         let context_bar_with_selection = self.inner.ui.task_bar && selection_idle &&
@@ -1026,10 +1063,19 @@ impl eframe::App for VectorCraftAndroidApp {
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
+        // The Android winit backend delivers precise two-finger / touchpad
+        // movement as PixelDelta, while egui-winit labels it Unknown. Label
+        // only point wheels as Trackpad to enable the tested upstream egui
+        // smooth-scroll physics (matching PhotoCraft), not discrete wheels.
+        classify_android_precision_scroll(raw);
         self.inner.raw_input_hook(raw);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if !self.first_ui_logged {
+            self.first_ui_logged = true;
+            log::info!("VectorCraft startup diagnostic: first_ui={}ms (render/GPU presentation follows)", self.startup_instant.elapsed().as_millis());
+        }
         system_fonts::install_system_fonts(ui.ctx());
         vectorcraft_ui_egui::menus::set_android_preferences(self.touch_dock, self.startup_updates);
 
@@ -1287,9 +1333,11 @@ impl eframe::App for VectorCraftAndroidApp {
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(android_app: AndroidApp) {
+    let startup_instant = std::time::Instant::now();
     log::info!("{SAF_BRIDGE_MARKER} ready; {ANDROID_SHELL_MARKER}; {}", ime_bridge::ime::IME_MARKER);
     install_persist_env(&android_app);
     system_fonts::install_font_env(&android_app);
+    log::info!("VectorCraft startup diagnostic: font_environment={}ms", startup_instant.elapsed().as_millis());
     let bridge = match AndroidFileBridge::new(android_app.clone()) {
         Ok(bridge) => bridge,
         Err(error) => {
@@ -1308,8 +1356,13 @@ fn android_main(android_app: AndroidApp) {
     }
     let picks = Arc::new(PickState::default());
     let mut initial_fonts = FontUiState::default();
-    // Restore a previously authorized shared library on startup; missing access is nonfatal.
-    initial_fonts.shared(&picks, &bridge, true);
+    // Do NOT automatically copy/re-hash 5000 shared fonts at every cold start.
+    // This used to start a potentially 4 GiB folder scan before first drawing,
+    // delaying startup and racing native font-catalog initialization.
+    // Cached app-private Fonts/Shared remains available immediately. The user
+    // can explicitly select/refresh the SAF folder from Type > Fonts.
+    initial_fonts.shared_status =
+        "Shared fonts cached. Select Refresh Shared Fonts to scan again.".into();
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -1321,6 +1374,7 @@ fn android_main(android_app: AndroidApp) {
     let app_bridge = bridge.clone_for_services();
     let app_picks = picks.clone();
     let app_intent_inbox = intent_inbox.clone();
+    log::info!("VectorCraft startup diagnostic: before_eframe={}ms", startup_instant.elapsed().as_millis());
     let result = eframe::run_native(
         "VectorCraft",
         options,
@@ -1329,10 +1383,12 @@ fn android_main(android_app: AndroidApp) {
                 Session::new(),
                 services(app_bridge.clone_for_services(), app_picks.clone(), app_intent_inbox.clone()),
             );
+            log::info!("VectorCraft startup diagnostic: app_constructed={}ms", startup_instant.elapsed().as_millis());
             let persist = persist_dir(&app_bridge.app);
             if let Some(dir) = &persist {
                 persist_load(&mut app, dir);
             }
+            log::info!("VectorCraft startup diagnostic: prefs_restored={}ms", startup_instant.elapsed().as_millis());
             let touch_dock = persist.as_ref()
                 .and_then(|dir| fs::read_to_string(dir.join("touch_dock.enabled")).ok())
                 .is_some_and(|value| value.trim() == "1");
@@ -1374,6 +1430,8 @@ fn android_main(android_app: AndroidApp) {
                 intent_warmup: 2,
                 staged_seen: Vec::new(),
                 staged_sweep_at: Some(std::time::Instant::now() + std::time::Duration::from_secs(30)),
+                startup_instant,
+                first_ui_logged: false,
             }))
         }),
     );

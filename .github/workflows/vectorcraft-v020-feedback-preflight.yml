@@ -1,0 +1,55 @@
+name: VectorCraft v0.20 device-feedback source preflight
+
+# Run once on creation; subsequent source edits do not spend Actions minutes.
+on:
+  push:
+    branches:
+      - development/vectorcraft-v020-android14-20261102
+    paths:
+      - .github/workflows/vectorcraft-v020-feedback-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check Python and shared-folder Java scanner regressions (no APK/signing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q tools/vectorcraft
+          python3 -m unittest discover -v -s tools/vectorcraft -p 'test_*.py'
+      - name: Verify owner Vc renderer and manual-only APK workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 tools/vectorcraft/render_owner_icon.py assets/branding/vectorcraft/vc-owner-20261103.svg "$RUNNER_TEMP/vc.png"
+          python3 - "$RUNNER_TEMP/vc.png" <<'PY'
+          from PIL import Image
+          import sys
+          from pathlib import Path
+          p=Path(sys.argv[1])
+          im=Image.open(p).convert("RGBA")
+          assert im.size==(1024,1024)
+          assert im.getpixel((0,0))[3]==0
+          assert im.getpixel((512,80))[:3]==(45,0,0)
+          assert im.getpixel((420,450))[:3]==(255,159,0)
+          # No repeated expensive test builds until device-feedback fixes pass.
+          w=Path(".github/workflows/vectorcraft-v020-test-apk.yml").read_text()
+          assert "workflow_dispatch:" in w
+          assert "\n  push:" not in w
+          assert "0.20.0-android.3" in w
+          assert "CARGO_PROFILE_RELEASE_STRIP" in w
+          assert "patch_compact_apk_v020.py" in w
+          assert "patch_cached_system_fonts_v020.py" in w
+          print("PASS: latest user icon, nonmasked corners, manual full build")
+          PY

@@ -20,7 +20,28 @@ def patch(builder, app):
     source = module.read_text()
     if source.count(NEEDLE) != 1:
         raise ValueError("Pinned builder adaptive icon code changed: review required")
-    injected = '''    if app == "APP_ID" and explicit is not None:
+    if app == "vectorcraft":
+        # The owner now supplied the FLAT orange Vc on a deep-maroon tile.
+        # Use only the glyphs in the adaptive foreground, because Android itself
+        # masks the background to the device's launcher shape. Keeping the
+        # rounded-square tile in the foreground causes the unwanted double mask.
+        injected = '''    if app == "vectorcraft" and explicit is not None:
+        from PIL import Image
+        work_icon = pristine.convert("RGBA")
+        mask = Image.new("L", work_icon.size)
+        mask.putdata([alpha if red > 150 and green > 60 and red > green * 1.3
+                      else 0 for red, green, blue, alpha in work_icon.getdata()])
+        work_icon.putalpha(mask)
+        tile_size = round(CANVAS_PX * 0.82)
+        glyph = work_icon.resize((tile_size, tile_size), Image.LANCZOS)
+        foreground = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
+        foreground.alpha_composite(glyph,
+            ((CANVAS_PX - tile_size) // 2, (CANVAS_PX - tile_size) // 2))
+    else:
+        stripped, _changed = _strip_background(work, pristine=pristine)
+        foreground = _foreground(Image, stripped)'''
+    else:
+        injected = '''    if app == "APP_ID" and explicit is not None:
         from PIL import ImageChops
         tile_size = round(CANVAS_PX * 0.61)
         tile = pristine.resize((tile_size, tile_size), Image.LANCZOS)

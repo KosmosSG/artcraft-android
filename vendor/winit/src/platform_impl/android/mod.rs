@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use android_activity::input::{
-    Axis, Button, InputEvent, KeyAction, Keycode, MotionAction, Source, ToolType,
+    Axis, Button, InputEvent, KeyAction, Keycode, MotionAction, ToolType,
 };
 use android_activity::{
     AndroidApp, AndroidAppWaker, ConfigurationRef, InputStatus, MainEvent, Rect,
@@ -28,6 +28,7 @@ use crate::window::{
 };
 
 mod keycodes;
+mod device_kind;
 
 pub(crate) use crate::cursor::{
     NoCustomCursor as PlatformCustomCursor, NoCustomCursor as PlatformCustomCursorSource,
@@ -42,11 +43,6 @@ static HAS_FOCUS: AtomicBool = AtomicBool::new(true);
 fn min_timeout(a: Option<Duration>, b: Option<Duration>) -> Option<Duration> {
     a.map_or(b, |a_timeout| b.map_or(Some(a_timeout), |b_timeout| Some(a_timeout.min(b_timeout))))
 }
-
-/// Above this a scroll axis value is a point-like (smooth trackpad) amount rather than a number of
-/// wheel notches. egui multiplies `LineDelta` by `line_scroll_speed` (40 points per line), which is
-/// right for a mouse's ±1-per-notch report and far too fast for a trackpad's larger amounts.
-const MAX_LINE_SCROLL: f32 = 3.0;
 
 /// egui's line scroll speed in points: pixel-style scroll deltas (from smooth/trackpad amounts
 /// reported by `MotionAction::Scroll`) are converted with this so they feel the same as the
@@ -418,10 +414,22 @@ impl<T: 'static> EventLoop<T> {
                 } else {
                     ToolType::Unknown
                 };
-                let pointer_class = matches!(
-                    motion_event.source(),
-                    Source::Mouse | Source::MouseRelative | Source::Touchpad | Source::Trackball
-                ) || tool_type == ToolType::Mouse;
+                // Android source identifiers are bitmasks. A touchpad may report
+                // SOURCE_MOUSE | SOURCE_TOUCHPAD; comparing against one exact
+                // source variant misclassifies its wheel/hover as glass touches.
+                // Also distinguish the touchpad's finger tool from a real mouse.
+                let device = device_kind::classify(
+                    u32::from(motion_event.source()),
+                    match tool_type {
+                        ToolType::Unknown => device_kind::Tool::Unknown,
+                        ToolType::Finger => device_kind::Tool::Finger,
+                        ToolType::Stylus => device_kind::Tool::Stylus,
+                        ToolType::Mouse => device_kind::Tool::Mouse,
+                        _ => device_kind::Tool::Other,
+                    },
+                );
+                let pointer_class = device.pointer;
+                let touchpad = device.touchpad;
 
                 match motion_event.action() {
                     // Hover: the cursor moves without any button held. Ordered before the
@@ -479,15 +487,16 @@ impl<T: 'static> EventLoop<T> {
                             })
                             .unwrap_or((0.0, 0.0));
                         if vertical != 0.0 || horizontal != 0.0 {
-                            let delta = if vertical.abs() <= MAX_LINE_SCROLL
-                                && horizontal.abs() <= MAX_LINE_SCROLL
-                            {
-                                event::MouseScrollDelta::LineDelta(horizontal, vertical)
-                            } else {
+                            // Scroll units belong to the DEVICE, not the delta
+                            // magnitude: even a large wheel notch is still a notch.
+                            // Smooth touchpad deltas must never jump between modes.
+                            let delta = if touchpad {
                                 event::MouseScrollDelta::PixelDelta(PhysicalPosition {
                                     x: f64::from(horizontal) * f64::from(POINTS_PER_LINE),
                                     y: f64::from(vertical) * f64::from(POINTS_PER_LINE),
                                 })
+                            } else {
+                                event::MouseScrollDelta::LineDelta(horizontal, vertical)
                             };
                             trace!("Scroll {device_id:?} {delta:?}");
                             callback(

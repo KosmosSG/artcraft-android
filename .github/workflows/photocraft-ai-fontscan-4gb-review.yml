@@ -1,0 +1,66 @@
+name: PhotoCraft AI 4GiB font scan source review (NO APK)
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - 'tools/photocraft_ai_fontscan_4g_stage.py'
+      - '.github/workflows/photocraft-ai-fontscan-4gb-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reviewed-font-scan-overlay:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fail-closed 4 GiB source script self-test
+        run: |
+          python3 -m py_compile tools/photocraft_ai_fontscan_4g_stage.py
+          python3 tools/photocraft_ai_fontscan_4g_stage.py --self-test
+      - name: Load immutable owner-tested PhotoCraft Android adapter without modifying checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/photocraft-fontscan-4g"
+          mkdir -p "$ROOT/adapters/photocraft/src" "$ROOT/adapters/photocraft/java/com/artcraft/photocraft" "$ROOT/source/photocraft/crates/text/src"
+          git fetch --no-tags --depth=1 https://github.com/KosmosSG/artcraft-android.git f708fff8a333c2246b6d342570b19db5b95f4be1
+          git show FETCH_HEAD:adapters/photocraft/src/lib.rs > "$ROOT/adapters/photocraft/src/lib.rs"
+          git show FETCH_HEAD:adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java > "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
+          git show FETCH_HEAD:adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java > "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java"
+          git init -q "$RUNNER_TEMP/official-photo-fonts"
+          git -C "$RUNNER_TEMP/official-photo-fonts" fetch --no-tags --depth=1 https://github.com/storytold/photocraft.git ff4738810134d7f7e68b49f2e4f231b686282ff3
+          git -C "$RUNNER_TEMP/official-photo-fonts" show FETCH_HEAD:crates/text/src/fonts.rs > "$ROOT/source/photocraft/crates/text/src/fonts.rs"
+          python3 tools/photocraft_ai_fontscan_4g_stage.py "$ROOT"
+          rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/adapters/photocraft/src/lib.rs" > /dev/null
+          rustfmt --edition 2024 --config skip_children=true --emit stdout "$ROOT/source/photocraft/crates/text/src/fonts.rs" > /dev/null
+          ANDROID_JAR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms/android-35/android.jar"
+          test -s "$ANDROID_JAR"
+          mkdir -p "$RUNNER_TEMP/photocraft-fontscan-java-classes"
+          javac -source 17 -target 17 -cp "$ANDROID_JAR" -d "$RUNNER_TEMP/photocraft-fontscan-java-classes" \
+            "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java" \
+            "$ROOT/adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java"
+          echo 'PASS: actual modified PhotoCraft Android SAF scanner compiled with Android SDK 35'
+          python3 - "$ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+          root=Path(sys.argv[1])
+          j=(root/'adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java').read_text()
+          r=(root/'adapters/photocraft/src/lib.rs').read_text()
+          fonts=(root/'source/photocraft/crates/text/src/fonts.rs').read_text()
+          assert '4L * 1024 * 1024 * 1024' in j
+          assert 'FONT_SCAN_MAX_FILES = 5000' in j
+          assert 'scannedBytes += total;' in j
+          assert 'total > FONT_SCAN_MAX_BYTES - scannedBytes' in j
+          assert 'scan_limit_reached' in j
+          assert 'register_font_paths(&candidates)' in r
+          shared=r.split('fn process_shared_font_result(',1)[1].split('fn process_font_result(',1)[0]
+          assert 'fs::read(path)' not in shared
+          assert 'collection.load_fonts_from_paths(' in fonts
+          assert 'fn register_font_paths(' in fonts
+          print('PASS: actual pinned adapter and upstream font scanner patched and Rust parses')
+          PY
+          echo 'No APK built or signed, no keys accessed, no Android data modified.' >> "$GITHUB_STEP_SUMMARY"

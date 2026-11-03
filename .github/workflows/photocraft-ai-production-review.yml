@@ -1,0 +1,34 @@
+name: PhotoCraft AI production integration review (no APK)
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - 'adapters/photocraft/**'
+      - 'tools/photocraft_ai_cpu/**'
+      - 'tools/photocraft_ai_production_readiness.py'
+      - '.github/workflows/build-photocraft-release.yml'
+      - '.github/workflows/photocraft-ai-production-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-review:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate review script syntax
+        run: python3 -m py_compile tools/photocraft_ai_production_readiness.py
+      - name: Validate AI integration with existing production name and safeguards
+        run: python3 tools/photocraft_ai_production_readiness.py
+      - name: Record release boundaries
+        run: |
+          {
+            echo '## PhotoCraft AI PR93 — production integration review'
+            echo ''
+            echo 'Source-level production name, localhost AI transport and undo safeguards validated.'
+            echo ''
+            echo '**This run does not build, sign, publish, merge, or install an APK.**'
+            echo 'Release remains blocked pending production certificate/version verification,'
+            echo 'owner-approved signed candidate testing, model rights review, and lifecycle checks.'
+          } >> "$GITHUB_STEP_SUMMARY"

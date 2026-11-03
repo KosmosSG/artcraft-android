@@ -1,0 +1,53 @@
+{
+  "package": "com.artcraft.photocraft",
+  "v2_certificate_sha256": "EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936",
+  "release_channel": "prerelease",
+  "pr_93_state": "draft",
+  "checks": {
+    "v2_signed_ai_artifact_verified": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268439675",
+      "notes": "V2-signed ARM64 AI preview produced; private signature and published checksum verified."
+    },
+    "owner_feature_acceptance": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6552850028",
+      "notes": "Owner confirmed seven PhotoCraft AI checks on HONOR MagicPad 4."
+    },
+    "candidate_specific_owner_device_acceptance": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6556329700",
+      "notes": "Owner reported testing the exact V2-signed android.3 candidate and said everything looks good on 1 Nov 2026. This is owner-reported general device acceptance only; a specifically documented in-place data-preserving upgrade, extended Linux Lab lifecycle tests, licensing, and original-vs-V2 signer policy remain separate pending gates."
+    },
+    "owner_signing_policy_compliance": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/pull/93#issuecomment-6554059878",
+      "notes": "Latest PR93 task policy requires owner-only HONOR Linux Lab original-certificate signing, while private GitHub V2-signing run 41278752124 succeeded with a DIFFERENT V2 certificate. Neither its CI success nor an earlier V2 prerelease overrides the explicit policy; owner must explicitly reconcile before any stable publication. No seamless original-key-to-V2 upgrade."
+    },
+    "model_weight_and_dataset_rights_review": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/docs/photocraft-ai-model-rights-review.md",
+      "notes": "Owner clarified on 1 Nov 2026: PhotoCraft is free and intended for personal, noncommercial development/testing. No model weights or DUTS dataset are bundled in the public APK; Linux Lab model service is separate. Commercial licensing inquiry is not needed for owner-only testing. U²-Net author states code/models Apache-2.0, but DUTS-derived training rights and public third-party use/notice obligations are not blanket-cleared. Keep public Stable/Latest gate pending until the remaining release-policy review; do not claim commercial approval."
+    },
+    "real_device_sidecar_lifecycle_stress": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/actions/runs/41275814976",
+      "notes": "24 synthetic localhost transport tests pass, including disconnection, CPU timeouts, server restart token rotation and sequential jobs; physical-device Linux Lab suspend/resume, cancellation and stress acceptance remains pending."
+    },
+    "v2_to_v2_in_place_upgrade_and_data_retention": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268525156",
+      "notes": "Matching V2 certificate and increasing versionCode proven in CI; on-device data-preserving upgrade not independently verified."
+    },
+    "original_signed_to_v2_migration_notice": {
+      "status": "passed",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.2-ai-v2-preview",
+      "notes": "Public release notes warn that old original-signature PhotoCraft requires backup/uninstall for V2 migration."
+    },
+    "stable_release_owner_signoff": {
+      "status": "pending",
+      "evidence": "https://github.com/KosmosSG/artcraft-android/pull/93",
+      "notes": "Preview was approved and tested; separate stable/Latest release approval has not been recorded."
+    }
+  }
+}

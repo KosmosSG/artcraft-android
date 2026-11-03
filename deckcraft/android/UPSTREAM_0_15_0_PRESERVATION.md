@@ -1,6 +1,6 @@
 # DeckCraft Android: protected upstream v0.15.0 staging
 
-**Status:** Phase 2 first run `41675943962` failed only at APK version verification after passing build/tests. Corrected disposable branding metadata; second test run `41682410373` underway. **Not yet device-tested, permanently signed, or published.**
+**Status:** Official v0.15.0 integration and Rust/ARM64 compile succeeded in earlier run. Corrected owner-approved `0.15.0-android.1` disposable-key test run `41683732651` has been queued; device acceptance, permanent signing and publication remain blocked.
 **Baseline:** published `deckcraft-v0.14.1-android.17`, source `54fbdd4088d0e835c7642fafe039a72c3993be72`.
 **Rollback:** the published Android.17 release and original release certificate must remain intact.
 **Upstream target:** official `storytold/deckcraft` v0.15.0, pinned at `3e178d8f5a59c787a6a53a7ed0f052b3e4a1489f`.
@@ -46,6 +46,17 @@ Retain all approved Android.17 behavior and patches; do not replace these with v
 - Previous already-started run `41682410373` was checked out with immutable workflow source version `0.15.0-android.18-test`; it must not be relabeled or represented as `0.15.0-android.1` unless the actual APK manifest is corrected, validated and signed with a disposable test key.
 - The current branch workflow now uses `0.15.0-android.1` consistently in the workspace, APK version verification, and temporary-signed/unsigned artifact names. Editing branch workflows does **not** retroactively modify an in-flight run.
 - Avoid unnecessary duplicate full builds. Inspect the in-flight artifact/result before deciding how to produce a correctly-versioned test candidate. Never count a renamed file as changed package metadata.
+
+## Corrected 0.15.0-android.1 test build (4 November 2026)
+
+- **User-mandated versionName:** `0.15.0-android.1` (no `-test` suffix in the APK versionName).
+- **Internal versionCode:** `100000022` to ensure monotonic upgrade above published Android.17 versionCode `100000021`.
+- **Corrected build:** GitHub Actions run `41683732651`, source commit `6d6935753f07cedb557206c0c641d3250971c69e`.
+- **Superseded in-progress build:** `41682410373` with wrong versionName `0.15.0-android.18-test`; never relabel or distribute it as Android.1.
+- **Quota safeguard:** One-time push trigger removed at commit `e35299d046c0d7c31a3643e2bcb8eebdaec778a8`, future workflow builds require an explicit manual approval input.
+- **Expected artifact:** `DeckCraft-v0.15.0-android.1-arm64-v8a-TEMP-SIGNED.apk`, plus unsigned counterpart, both from same CI build; the TEMP-SIGNED APK must verify against the fresh builder test key.
+- **Device testing:** required on HONOR MagicPad 4 after backup of documents, settings, imported fonts and SAF grants. A different temporary signing certificate requires uninstalling production DeckCraft; uninstall may destroy app-private data.
+- **Production:** DO NOT permanently sign, merge, tag, publish, or replace the original release certificate until explicit later approvals.
 
 ## Current check results
 

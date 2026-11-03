@@ -1,158 +1,89 @@
-name: EffectCraft v0.20.0 ARM64 isolated compatibility build (NO RELEASE)
+"""Execute actual bridge copying methods on JVM; catalog parsing is tested in Rust CI."""
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
 
-on:
-  push:
-    branches:
-      - feature/effectcraft-v020-android-port-20261102
-    paths:
-      - .github/workflows/effectcraft-v020-compatibility.yml
-      - tools/effectcraft/integrate_updater.py
-      - tools/effectcraft/v020_compat.py
-      - tools/effectcraft/test_v020_compat.py
-      - tools/effectcraft/v020_winit_compat.py
-      - tools/effectcraft/test_v020_winit_compat.py
-  workflow_dispatch:
+ROOT = Path(__file__).parent
 
-permissions:
-  contents: read
+class RecursiveFonts(unittest.TestCase):
+    def test_scan_bounds_and_runtime_registration(self):
+        java = (ROOT / 'FontsBridge.java.inc').read_text()
+        rust = (ROOT / 'android_updater.rs').read_text()
+        for token in ('64L * 1024 * 1024', '4L * 1024 * 1024 * 1024',
+                      'EC_SCAN_FILES = 5000, EC_SCAN_FOLDERS = 5000',
+                      'pending.addLast(id)', 'seen.add(parent)',
+                      'getPersistedUriPermissions()', 'summary|',
+                      '"/system/fonts"', '"/product/fonts"'):
+            self.assertIn(token, java)
+        self.assertIn('android_add_font_file(&file)', rust)
+        self.assertIn('registered families', rust)
+        self.assertIn('std::panic::catch_unwind', rust)
+        self.assertNotIn('remove_file(&file)', rust)
 
-concurrency:
-  group: effectcraft-v020-compatibility
-  cancel-in-progress: false
+    @unittest.skipUnless(shutil.which('javac'), 'JDK required; executed in private CI')
+    def test_real_copy_deduplicates_collections_and_preserves_on_failure(self):
+        source = (ROOT / 'FontsBridge.java.inc').read_text()
+        helpers = source[source.index('    private static final long EC_FONT_MAX'):source.index('    private static final int EC_FONT_PICK')]
+        method = source[source.index('    private void ecCopyFont('):source.index('    public void ecRefreshFonts()')]
+        harness = r'''
+import java.io.*;
+import java.util.*;
+public class FontCopyTest {
+  static class Uri { byte[] data; Uri(byte[] b) { data=b; } }
+  static class Resolver { InputStream openInputStream(Uri uri) { return new ByteArrayInputStream(uri.data); } }
+  final File dir;
+  FontCopyTest(File d) { dir=d; }
+  File ecFontDir() { return dir; }
+  Resolver getContentResolver() { return new Resolver(); }
+  java.util.concurrent.ConcurrentLinkedQueue<String> ecFontPaths = new java.util.concurrent.ConcurrentLinkedQueue<>();
+  static final int MODE_PRIVATE = 0;
+  static class MockPrefs {
+    java.util.Set<String> remembered = new java.util.HashSet<>();
+    java.util.Set<String> getStringSet(String key, java.util.Set<String> fallback) { return remembered; }
+    MockEditor edit() { return new MockEditor(this); }
+  }
+  static class MockEditor {
+    final MockPrefs prefs;
+    MockEditor(MockPrefs p) { prefs = p; }
+    MockEditor putStringSet(String key, java.util.Set<String> value) { prefs.remembered = value; return this; }
+    boolean commit() { return true; }
+  }
+  final MockPrefs prefs = new MockPrefs();
+  MockPrefs getSharedPreferences(String n, int mode) { return prefs; }
+  static void check(boolean ok) { if (!ok) throw new AssertionError(); }
+  public static void main(String[] args) throws Exception {
+    FontCopyTest t = new FontCopyTest(new File(args[0]));
+    check(EC_SCAN_MAX == 4294967296L); // long arithmetic: exceeds signed 32-bit range
+    byte[] font = new byte[32]; font[0]='t'; font[1]='t'; font[2]='c'; font[3]='f';
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{0}, true);
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{0}, true);
+    long[] aboveOldLimit = {2L * 1024 * 1024 * 1024};
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", aboveOldLimit, true);
+    check(aboveOldLimit[0] > 2147483648L);
+    t.ecCopyFont(new Uri(font), "COLLECTION.TTC", new long[]{EC_SCAN_MAX - font.length}, true);
+    check(t.dir.list().length == 1);
+    check(t.dir.list()[0].endsWith(".ttc"));
+    check(t.ecFontPaths.poll().startsWith("manual|"));
+    try { t.ecCopyFont(new Uri(font), "bad.exe", new long[]{0}, true); throw new AssertionError(); }
+    catch (IOException expected) { }
+    try { t.ecCopyFont(new Uri(font), "test.ttc", new long[]{EC_SCAN_MAX}, true); throw new AssertionError(); }
+    catch (IOException expected) { }
+    check(t.dir.list().length == 1); // previous cached font survived, no pending file
+    byte[] huge = new byte[(int)EC_FONT_MAX + 1]; huge[1]=1;
+    try { t.ecCopyFont(new Uri(huge), "huge.ttf", new long[]{0}, true); throw new AssertionError(); }
+    catch (IOException expected) { }
+    check(t.dir.list().length == 1);
+    check(ecFontName("a.OTF") && ecFontName("a.ttf") && ecFontName("a.TTC"));
+    check(!ecFontName("a.ttf.exe"));
+  }
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            p = Path(folder)
+            (p / 'FontCopyTest.java').write_text(harness + helpers + method + '\n}')
+            subprocess.run(['javac', str(p / 'FontCopyTest.java')], check=True, capture_output=True)
+            subprocess.run(['java', '-cp', folder, 'FontCopyTest', str(p / 'fonts')], check=True, capture_output=True)
 
-jobs:
-  check-and-compile:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
-    env:
-      UPSTREAM_SHA: 720c67117ea232ef01631a368bb617012f4c63d6
-      CARGO_BUILD_JOBS: '2'
-      ARTCRAFT_TARGET_SDK: '35'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Validate compatibility helper and existing EffectCraft regressions
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
-      - name: Fetch immutable official stable EffectCraft v0.20.0 (not upstream main)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p source
-          git clone --depth 1 --branch v0.20.0 https://github.com/storytold/effectcraft.git source/effectcraft
-          test "$(git -C source/effectcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
-          grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
-      - name: Prepare isolated Android integration; stop on incompatible upstream hooks
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/effectcraft/prepare_candidate.py .
-          PYTHONPATH=tools/effectcraft python3 - <<'PY'
-          from pathlib import Path
-          from v020_compat import stage_trial_metadata, stage_trial_branding_metadata, menu_path_and_anchor
-          stage_trial_metadata(Path('.'))
-          stage_trial_branding_metadata(Path('.'))
-          path, anchor = menu_path_and_anchor(Path('source/effectcraft'))
-          print('Verified EffectCraft v0.20 menu location:', path)
-          PY
-          python3 tools/effectcraft/integrate_updater.py .
-          echo 'All legacy font/DCS/updater hooks accepted source changes (compile still required).'
-      - name: Configure Java 21, Rust 1.95, Android SDK 35 / NDK 27
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.95.0
-          targets: aarch64-linux-android
-      - name: Install Android compile prerequisites
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 4 -type f -name sdkmanager -print -quit)"
-          test -n "$SDKMANAGER"
-          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
-      - name: Rebase Android pointer input onto exact upstream winit fork; retain IME reset APIs
-        shell: bash
-        env:
-          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
-        run: |
-          set -euo pipefail
-          # Only the isolated runner's vendor directory is changed: the GitHub branch
-          # still retains the original shared Android winit for other app releases.
-          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
-          git init -q vendor/winit
-          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
-          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
-          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
-          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
-          python3 tools/effectcraft/v020_winit_compat.py \
-            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
-            "vendor/winit/src/platform_impl/android/mod.rs"
-          test "$(git -C vendor/winit diff --name-only)" = 'src/platform_impl/android/mod.rs'
-          grep -Fq 'ImeResetCompleted' vendor/winit/src/event.rs
-          grep -Fq 'reset_ime_with_request' vendor/winit/src/window.rs
-          grep -Fq 'MouseWheel' vendor/winit/src/platform_impl/android/mod.rs
-          grep -Fq 'MouseInput' vendor/winit/src/platform_impl/android/mod.rs
-          echo 'Exact official pinned winit + limited Android motion adaptation, no production-signing job' >> "$GITHUB_STEP_SUMMARY"
-      - name: Build temporary-key EffectCraft 0.20.0 Android test package
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user Pillow==11.3.0
-          python3 tools/effectcraft/install_packager.py
-          test -s tools/effectcraft/icon/ec-approved-512.png
-          cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
-          python3 tools/approved-branding/approved_branding.py install . effectcraft
-          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v020test -appname=EffectCraft-v020-Test -appicon=source/effectcraft/ec-approved-512.png
-          test -s output/effectcraft-0.20.0.apk
-          mkdir -p candidate
-          cp output/effectcraft-0.20.0.apk candidate/EffectCraft-v0.20.0-android.1-TEST-arm64-v8a.apk
-      - name: Verify test-only package, version, ABI, and disposable signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK=candidate/EffectCraft-v0.20.0-android.1-TEST-arm64-v8a.apk
-          SDK="$ANDROID_HOME/build-tools/35.0.0"
-          "$SDK/apksigner" verify --verbose --print-certs "$APK" > candidate/certificate.txt
-          "$SDK/aapt" dump badging "$APK" > candidate/badging.txt
-          grep -F "name='com.artcraft.effectcraft.v020test'" candidate/badging.txt
-          grep -F "versionName='0.20.0-android.1'" candidate/badging.txt
-          grep -F "versionCode='16810001'" candidate/badging.txt
-          "$SDK/zipalign" -c -P 16 -v 4 "$APK"
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib, json, zipfile
-          apk = Path('candidate/EffectCraft-v0.20.0-android.1-TEST-arm64-v8a.apk')
-          with zipfile.ZipFile(apk) as z:
-              names=z.namelist()
-              libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
-              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs)
-              assert any(x.endswith('.dex') for x in names)
-          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
-          (apk.parent/'SHA256SUMS.txt').write_text(digest+'  '+apk.name+'\n')
-          (apk.parent/'verification.json').write_text(json.dumps({
-              'upstream_tag':'v0.20.0','upstream_sha':'720c67117ea232ef01631a368bb617012f4c63d6',
-              'package':'com.artcraft.effectcraft.v020test',
-              'versionName':'0.20.0-android.1','versionCode':16810001,
-              'apk_sha256':digest,'production_signing_verified':False,
-              'device_tested':False,'eligible_for_release':False
-          },indent=2))
-          PY
-          echo 'This APK uses a temporary key and separate package; it is NOT a production upgrade or an approved release.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload private Actions test artifact (never a GitHub Release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: EffectCraft-v0.20.0-Android1-TEMPORARY-TEST-ONLY
-          path: candidate/
-          retention-days: 3
-          if-no-files-found: error
-      - name: Delete disposable build keystore
-        if: always()
-        run: rm -rf keys
+if __name__ == '__main__':
+    unittest.main()

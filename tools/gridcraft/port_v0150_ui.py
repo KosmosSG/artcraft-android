@@ -79,8 +79,23 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
                 None => {
                     let image = image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))
                         .expect("approved Gc icon PNG").into_rgba8();
-                    let [width, height] = [image.width() as usize, image.height() as usize];
-                    let pixels = egui::ColorImage::from_rgba_unmultiplied([width, height], image.as_raw());
+                    // GRIDCRAFT_GC_SAFE_PADDING_V1: keep the Gc lettering
+                    // away from the edge even at the small 26px title bar size.
+                    let [width, height] = [image.width(), image.height()];
+                    let inset_width = (width * 82 / 100).max(1);
+                    let inset_height = (height * 82 / 100).max(1);
+                    let inset = image::imageops::resize(
+                        &image, inset_width, inset_height, image::imageops::FilterType::Lanczos3,
+                    );
+                    let mut padded = image::RgbaImage::new(width, height);
+                    image::imageops::overlay(
+                        &mut padded, &inset,
+                        ((width - inset_width) / 2) as i64,
+                        ((height - inset_height) / 2) as i64,
+                    );
+                    let pixels = egui::ColorImage::from_rgba_unmultiplied(
+                        [width as usize, height as usize], padded.as_raw(),
+                    );
                     let texture = ui.ctx().load_texture(
                         "gridcraft-gc-icon", pixels, egui::TextureOptions::LINEAR,
                     );

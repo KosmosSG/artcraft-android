@@ -20,7 +20,7 @@ class GridCraftOwnerRequests(unittest.TestCase):
         self.assertIn("GRIDCRAFT_ANDROID_USER_ICON_V2", port)
         self.assertIn('egui::Popup::menu(&gc_button).show(', port)
         self.assertIn('image::load_from_memory(include_bytes!(', port)
-        self.assertIn('launcher-approved-20261103.png', workflow)
+        self.assertIn('launcher-user-20261103.png', workflow)
         self.assertIn('e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2', workflow)
 
     def test_dark_mode_explicit_toggle_uses_native_persisted_command(self):

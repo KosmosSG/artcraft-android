@@ -158,9 +158,10 @@ pub fn consume_canvas_hardware_command(raw: &mut egui::RawInput, cmd: CanvasHard
 /// The caller must first finish editing through the same Escape tool transition
 /// the device has already tested, *then* invoke the normal file.close command.
 pub fn consume_type_close_chord(
-    raw: &mut egui::RawInput, type_editing: bool, composing: bool, modal_open: bool,
+    raw: &mut egui::RawInput, type_editing: bool, field_focused: bool,
+    composing: bool, modal_open: bool,
 ) -> bool {
-    if !type_editing || composing || modal_open { return false; }
+    if !type_editing || field_focused || composing || modal_open { return false; }
     let close = raw.events.iter().any(|event| matches!(event,
         egui::Event::Key { key: egui::Key::W, pressed: true, repeat: false, modifiers, .. }
         if modifiers.command && !modifiers.alt
@@ -283,11 +284,11 @@ mod tests {
             modifiers: Modifiers { ctrl: true, command: true, ..Modifiers::NONE } };
         let normal = key(Key::D, true);
         let mut raw = RawInput { events: vec![chord.clone(), normal.clone()], ..Default::default() };
-        assert!(consume_type_close_chord(&mut raw, true, false, false));
+        assert!(consume_type_close_chord(&mut raw, true, false, false, false));
         assert_eq!(raw.events, vec![normal]);
-        for (editing, composing, dialog) in [(false,false,false),(true,true,false),(true,false,true)] {
+        for (editing, field, composing, dialog) in [(false,false,false,false),(true,true,false,false),(true,false,true,false),(true,false,false,true)] {
             let mut raw = RawInput { events: vec![chord.clone()], ..Default::default() };
-            assert!(!consume_type_close_chord(&mut raw, editing, composing, dialog));
+            assert!(!consume_type_close_chord(&mut raw, editing, field, composing, dialog));
             assert_eq!(raw.events, vec![chord.clone()]);
         }
     }

@@ -204,3 +204,37 @@ mandatory. After CI success use local disposable test signing with no additional
 GitHub signing job. Retest immediate Ctrl+A/C/X/V with focused text, no extra tap,
 repeat D/C/S, centered title, trackpad pan away from screen edges and native
 touchscreen gestures and themes.
+
+## v0.14.1-android.11 — caret arrows + selection, touch-like trackpad settling, native APK strip (2026-11-03)
+
+Owner tested v0.14.1-android.10 on HONOR MagicPad 4: ALL prior clipboard, Ctrl+W,
+D/C/S, Escape, dialog centering, dark theme, touch pan/pinch and trackpad fixes WORK.
+New requests: physical Left/Right/Up/Down arrow keys should move the live text
+caret (currently inert); Shift+Arrow should extend text selection; trackpad
+scrolling should feel as smooth as two-finger touchscreen pan; reduce APK size.
+
+Official DeckCraft engine already supports session.key Left/Right/Up/Down,
+where Mods.shift maps to text.move.extend. Android.11 captures only arrow
+key-down during CUSTOM slide-text editing at both pre-egui RawInput and Java
+Activity event dispatch, sends one-shot encoded direction + Shift through the
+existing JNI bridge, then calls official engine session.key before the
+focused-widget early return; does not interfere with ordinary UI widgets,
+dialogs, slide selection or plain typing. Test text arrow/caret and Shift+Arrow
+range, no accidental slide movement.
+
+Trackpad-only scroll now interpolates uneven point-wheel bursts with a short
+bounded 16ms momentum tail of <=220ms, using 64px per frame max, leaving
+native direct touchscreen pan/pinch and Android system edge gestures alone.
+
+Size audit of Android.10 signed APK: 125MiB total, 123,993,296 bytes in the
+STORED arm64-v8a libdeckcraft_android.so, which is unstripped and includes
+.symtab/.strtab. Android.11 removes nonessential ELF symbols using Android
+NDK llvm-strip --strip-unneeded while converting the disposable-key APK to
+unsigned, and then zipaligns preserving 16KiB native-page alignment. No change
+to executable code/data, fonts/import, package, certificate policy, or DEX.
+Measure reduced native size in GitHub build and verify SHA256/package/ABI.
+Potential deeper LTO/code/data reductions require separate compatibility
+review and are intentionally not attempted.
+
+Use locally disposable-key v2-signing test APK, no additional GitHub signing
+job, no permanent key, merge or public release before physical tablet test.

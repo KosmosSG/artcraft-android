@@ -19,6 +19,22 @@ impl ModalBridge {
         }
     }
 
+    pub fn editor_arrow(&self, ctx: &egui::Context) {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, JNIString::new("dkTakeEditorArrow"), jni_sig!("()I"), &[])?.i()
+        });
+        if let Ok(arrow @ 1..=20) = result {
+            ctx.data_mut(|d| {
+                let id = egui::Id::new("deckcraft.android.editor_arrow");
+                if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, arrow as u8); }
+            });
+            ctx.request_repaint();
+        }
+    }
+
     pub fn editor_clipboard(&self, ctx: &egui::Context) {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         let result = vm.attach_current_thread(|env| -> jni::errors::Result<(i32, Option<String>)> {

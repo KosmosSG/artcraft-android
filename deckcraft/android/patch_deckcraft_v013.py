@@ -185,6 +185,33 @@ def apply(root):
             self.drain_requests();
             return;
         }
+        // Route hardware arrows to the official engine text.move command
+        // before egui's focused-widget guard. The engine interprets Shift as
+        // "extend selection" and plain arrows as caret movement. Do not move
+        // slide objects while canvas text editing is active.
+        #[cfg(target_os = "android")]
+        if !modal && !ctx.text_edit_focused() && !ctx.any_popup_open()
+            && self.session.active().is_some_and(|d| d.selection.text.is_some())
+        {
+            if let Some(action) = ctx.data_mut(|d| d.remove_temp::<u8>(
+                egui::Id::new("deckcraft.android.editor_arrow")))
+            {
+                let name = match action & 15 {
+                    1 => "Left", 2 => "Right", 3 => "Up", 4 => "Down",
+                    _ => "",
+                };
+                if !name.is_empty() {
+                    self.note_settled_composition(ctx);
+                    let modifiers = Mods { shift: action & 16 != 0, alt: false, cmd: false };
+                    if let Err(err) = self.session.key(name, modifiers) {
+                        self.set_status(err.to_string());
+                    }
+                    ctx.request_repaint();
+                    self.drain_requests();
+                    return;
+                }
+            }
+        }
         // Android hardware Ctrl+A/C/X/V can be intercepted by the IME before
         // ctx.input(). The early RawInput and Java side channel carry a
         // one-shot action. Standard egui text fields and modals keep theirs.
@@ -424,17 +451,28 @@ def apply(root):
             #[cfg(target_os = "android")]
             let frame_scroll = if !touch_pan_active && scroll_gain > 1.0 {
                 let key = scroll_id.with("deckcraft_trackpad_smooth");
-                let old: egui::Vec2 = ui.data_mut(|d| d.get_temp(key)).unwrap_or(egui::Vec2::ZERO);
-                let next = if wheel != egui::Vec2::ZERO {
-                    let delta = old * 0.32 + wheel * scroll_gain * 0.68;
-                    // Avoid extreme one-frame jumps when the trackpad emits a
-                    // burst; this does not affect direct touchscreen gestures.
-                    egui::vec2(delta.x.clamp(-80.0, 80.0),
-                               delta.y.clamp(-80.0, 80.0))
+                let (old, last_input): (egui::Vec2, f64) = ui.data_mut(|d|
+                    d.get_temp(key)).unwrap_or((egui::Vec2::ZERO, 0.0));
+                let now = ui.input(|i| i.time);
+                // A trackpad may send large, uneven point-wheel bursts. Interpolate
+                // to touchscreen-like motion, then let the last 2–5 frames
+                // settle with bounded momentum. Do not synthesize page turns.
+                let input = wheel * scroll_gain;
+                let motion = if input != egui::Vec2::ZERO {
+                    old * 0.36 + input * 0.64
+                } else if now - last_input < 0.22 {
+                    old * 0.72
                 } else {
                     egui::Vec2::ZERO
                 };
-                ui.data_mut(|d| d.insert_temp(key, next));
+                let next = if motion.length() < 0.65 { egui::Vec2::ZERO }
+                    else { egui::vec2(motion.x.clamp(-64.0, 64.0),
+                                      motion.y.clamp(-64.0, 64.0)) };
+                ui.data_mut(|d| d.insert_temp(key,
+                    (next, if input != egui::Vec2::ZERO { now } else { last_input })));
+                if next != egui::Vec2::ZERO {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+                }
                 next
             } else { wheel * scroll_gain };
             #[cfg(not(target_os = "android"))]

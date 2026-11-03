@@ -194,4 +194,41 @@ impl SlideApp {
 }
 '''
 
+
+# Arrow navigation in active Android canvas-text mode is normally swallowed by
+# egui's focused-widget guard. Capture only the four editing cursor keys before
+# the normal UI input pass, preserving Shift for selection range extension.
+HELPER += r'''
+impl SlideApp {
+    pub fn android_capture_editor_arrows_raw(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if self.session.active().is_none_or(|d| d.selection.text.is_none())
+            || self.dialog.is_some() || self.palette.is_some() || self.backstage.is_some()
+            || ctx.text_edit_focused() || ctx.any_popup_open() { return; }
+        let arrow_action = |event: &egui::Event| -> Option<u8> {
+            match event {
+                egui::Event::Key {
+                    key, pressed: true, modifiers, ..
+                } if !modifiers.ctrl && !modifiers.command && !modifiers.alt => {
+                    let direction = match key {
+                        egui::Key::ArrowLeft => 1_u8,
+                        egui::Key::ArrowRight => 2_u8,
+                        egui::Key::ArrowUp => 3_u8,
+                        egui::Key::ArrowDown => 4_u8,
+                        _ => return None,
+                    };
+                    Some(direction | if modifiers.shift { 16 } else { 0 })
+                },
+                _ => None,
+            }
+        };
+        if let Some(action) = raw.events.iter().find_map(arrow_action) {
+            ctx.data_mut(|d| d.insert_temp(
+                egui::Id::new("deckcraft.android.editor_arrow"), action));
+            ctx.request_repaint();
+            raw.events.retain(|e| arrow_action(e).is_none());
+        }
+    }
+}
+'''
+
 if __name__=="__main__":apply(sys.argv[1])

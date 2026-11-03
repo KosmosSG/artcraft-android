@@ -246,6 +246,48 @@ mod android_dcs_regression {
     }
 
     #[test]
+    fn editor_arrows_move_caret_and_shift_extends_only_text_selection() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        // When no custom text caret exists, leave slide and stock-widget
+        // arrow navigation unmodified.
+        let mut raw = egui::RawInput::default();
+        raw.events = vec![key_event(egui::Key::ArrowLeft, true, false, egui::Modifiers::NONE)];
+        app.android_capture_editor_arrows_raw(&ctx, &mut raw);
+        assert_eq!(raw.events.len(), 1);
+        assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(
+            egui::Id::new("deckcraft.android.editor_arrow"))), None);
+
+        app.session.execute("shape.insert", &json!({
+            "preset":"rect", "rect":[20.0,30.0,280.0,90.0], "text":"ABCDEF"
+        })).unwrap();
+        app.session.execute("text.edit", &json!({})).unwrap();
+        for (key, shift, direction) in [
+            (egui::Key::ArrowLeft, false, 1_u8),
+            (egui::Key::ArrowRight, true, 2_u8),
+            (egui::Key::ArrowUp, true, 3_u8),
+            (egui::Key::ArrowDown, false, 4_u8),
+        ] {
+            let mut raw = egui::RawInput::default();
+            let mut modifiers = egui::Modifiers::NONE;
+            modifiers.shift = shift;
+            raw.events = vec![key_event(key, true, false, modifiers)];
+            app.android_capture_editor_arrows_raw(&ctx, &mut raw);
+            assert!(raw.events.is_empty(), "Active editor consumes arrow key");
+            assert_eq!(ctx.data_mut(|d| d.remove_temp::<u8>(
+                egui::Id::new("deckcraft.android.editor_arrow"))),
+                Some(direction | if shift { 16 } else { 0 }));
+        }
+        // The pinned DeckCraft engine already supports Shift -> extend=true
+        // in text.move; the Android UI must not reimplement text geometry.
+        app.session.execute("text.selectAll", &json!({})).unwrap();
+        app.session.key("Right", Mods {shift:false,alt:false,cmd:false}).unwrap();
+        assert!(!app.session.active().unwrap().selection.text.as_ref().unwrap().is_range());
+        app.session.key("Left", Mods {shift:true,alt:false,cmd:false}).unwrap();
+        assert!(app.session.active().unwrap().selection.text.as_ref().unwrap().is_range());
+    }
+
+    #[test]
     fn escape_remains_in_raw_input_for_deckcraft_text_editing() {
         let mut app = app();
         app.dialog = Some(dialogs::Dialog::new("close"));

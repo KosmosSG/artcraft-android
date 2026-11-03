@@ -4,6 +4,9 @@
     // Hardware Ctrl+W can be handled by Android while the slide's text editor
     // owns focus, before egui receives an ordinary Key event.
     public int dkTakeEditorClose() { return dkEditorClose.getAndSet(0); }
+    private final java.util.concurrent.atomic.AtomicInteger dkEditorArrow = new java.util.concurrent.atomic.AtomicInteger();
+    public int dkTakeEditorArrow() { return dkEditorArrow.getAndSet(0); }
+
     private final java.util.concurrent.atomic.AtomicInteger dkEditorClipboard = new java.util.concurrent.atomic.AtomicInteger();
     public int dkTakeEditorClipboard() { return dkEditorClipboard.getAndSet(0); }
 
@@ -78,6 +81,19 @@
                     : code == android.view.KeyEvent.KEYCODE_V ? 4 : 0;
                 if (action != 0) dkEditorClipboard.set(action);
                 // Do not consume: native RawInput also handles regular widgets.
+            }
+            // While DeckCraft owns a custom text caret, Android/IME may take
+            // physical arrows before egui keyboard() sees them. Preserve Shift
+            // (select range) and let the normal input path handle stock fields.
+            if (!dkDialogActive && !event.isCtrlPressed() && !event.isAltPressed()
+                    && !event.isMetaPressed()
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                int dir = code == android.view.KeyEvent.KEYCODE_DPAD_LEFT ? 1
+                    : code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ? 2
+                    : code == android.view.KeyEvent.KEYCODE_DPAD_UP ? 3
+                    : code == android.view.KeyEvent.KEYCODE_DPAD_DOWN ? 4 : 0;
+                if (dir != 0) dkEditorArrow.set(dir | (event.isShiftPressed() ? 16 : 0));
+                // No event consumption: original Activity widgets retain arrows.
             }
             // A confirmation may close on KEY_DOWN: swallow the matching KEY_UP.
             if (dkDialogKeys.contains(code)) {

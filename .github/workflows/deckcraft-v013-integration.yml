@@ -1,9 +1,5 @@
 name: DeckCraft v0.15.0 Android Phase 2 - owner-approved test only
 on:
-  # One-time authorized repair build; removed immediately after kickoff.
-  push:
-    branches: [integration/deckcraft-upstream-v0150-20261104]
-    paths: ['deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md']
   workflow_dispatch:
     inputs:
       temporary_arm64_build_approved:
@@ -18,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compile-unsigned:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104' && ((github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true) || (github.event_name == 'push' && github.event.head_commit.message == 'DeckCraft owner-authorized Phase 2 packaging repair rebuild ONCE'))
+    if: github.event_name == 'workflow_dispatch' && inputs.temporary_arm64_build_approved == true && github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0150-20261104'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

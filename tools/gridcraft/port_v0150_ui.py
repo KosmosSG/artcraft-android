@@ -62,7 +62,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     if menu.count(MENU_MARKER) != 1 or 'ui.menu_button("GridCraft Tools"' not in menu:
         raise RuntimeError("Approved GridCraft native Tools menu changed unexpectedly")
     # Same menu contents, but anchored directly BELOW the top-left clickable Gc
-    # ImageButton. Do not add a second button or toolbar row.
+    # Button::new(Image) works on egui 0.37; no extra toolbar row.
     menu = menu.replace(
         'ui.menu_button("GridCraft Tools", |ui| {',
         'egui::Popup::menu(&gc_button).show(|ui| {', 1,
@@ -88,8 +88,11 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
                     texture
                 }
             };
-            let gc_button = ui.add(egui::ImageButton::new(
-                (gc_texture.id(), vec2(26.0, ch))
+            // egui 0.37 removed ImageButton: Button::new(Image) retains the
+            // exact 26px GPU texture without the auto font-height shrink of
+            // Button::image. Popup::menu anchors directly beneath this response.
+            let gc_button = ui.add(egui::Button::new(
+                egui::Image::from_texture((gc_texture.id(), vec2(26.0, ch)))
             ).frame(false)).on_hover_text("GridCraft Tools");
             ui.add_space(5.0);
 """
@@ -158,7 +161,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
         "app": "android_font_generation: 0",
         "app_fonts": "catalog_changed",
     }
-    if sources["title"].count("GRIDCRAFT_ANDROID_USER_ICON_V2") != 1 or "gridcraft-approved-mark.png" not in sources["title"] or 'egui::Popup::menu(&gc_button)' not in sources["title"] or 'ui.menu_button("GridCraft Tools"' in sources["title"]:
+    if sources["title"].count("GRIDCRAFT_ANDROID_USER_ICON_V2") != 1 or "gridcraft-approved-mark.png" not in sources["title"] or 'egui::Popup::menu(&gc_button)' not in sources["title"] or 'egui::Button::new(' not in sources["title"] or 'egui::ImageButton' in sources["title"] or 'ui.menu_button("GridCraft Tools"' in sources["title"]:
         raise RuntimeError("Owner approved GridCraft title-bar icon was not included")
     for key, value in expected.items():
         if value not in sources[key]:

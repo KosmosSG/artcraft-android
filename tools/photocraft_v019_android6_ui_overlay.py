@@ -408,6 +408,18 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
     fn toggle_startup_updates(&self) -> Result<(), String> {
 ''')
 
+    # Route keys delivered through the EditText InputConnection as well as
+    # dispatchKeyEvent/onKeyDown. The Activity deduplicates matching event time,
+    # keycode and action, avoiding repeated shortcuts and preserving text.
+    replace(activity,
+'''                        public boolean sendKeyEvent(KeyEvent event) {
+                            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+''',
+'''                        public boolean sendKeyEvent(KeyEvent event) {
+                            pcRememberHardwareKey(event);
+                            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+''')
+
     print("Prepared PhotoCraft Android.6 icon menu, font refresh and canvas view gestures.")
 
 if __name__ == "__main__":

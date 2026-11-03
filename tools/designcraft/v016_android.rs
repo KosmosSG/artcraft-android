@@ -5,6 +5,11 @@ use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
 static SHOW_ANDROID_TOOLS: AtomicBool = AtomicBool::new(true);
 static SHARED_SCAN_PENDING: AtomicBool = AtomicBool::new(false);
 static USER_MESSAGE: Mutex<String> = Mutex::new(String::new());
+static GPU_STATUS: Mutex<String> = Mutex::new(String::new());
+
+pub fn set_gpu_adapter(message: String) {
+    *GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = message;
+}
 
 fn feedback(message: impl Into<String>) {
     *USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()) = message.into();
@@ -350,6 +355,12 @@ pub fn ui(
                     ui.close();
                 }
                 ui.separator();
+                let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                ui.label(if gpu.is_empty() {
+                    "GPU: WGPU initialization pending".to_owned()
+                } else {
+                    format!("GPU: {gpu}")
+                });
                 ui.label("Ctrl+W → D / C / S; Esc exits typing; V/T tools");
             });
             ui.separator();

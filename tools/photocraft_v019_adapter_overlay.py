@@ -416,21 +416,22 @@ pub fn artcraft_take_font_request() -> u8 {
         '''    #[cfg(target_os = "android")]
     {
         for (id, label, top) in [
-            ("file.artcraftImportFonts", "Import Font…", "File"),
-            ("file.artcraftImportFontFolder", "Import Font Folder…", "File"),
+            ("file.artcraftImportFonts", "Import Font…", "Type"),
+            ("file.artcraftImportFontFolder", "Import Font Folder…", "Type"),
             ("help.artcraftCheckUpdates", "Check for Updates…", "Help"),
         ] {
             if !items.iter().any(|i| i.id == id) {
-                // Keep Android commands near the TOP, not below hundreds of
+                // Keep Android font commands at the TOP of Type, not below hundreds of
                 // Photoshop catalogue rows in File/Help.
-                let after = match id {
-                    "file.artcraftImportFonts" => "file.open",
-                    "file.artcraftImportFontFolder" => "file.artcraftImportFonts",
-                    _ => "help.checkForUpdates",
-                };
-                let at = items.iter().position(|i| i.id == after)
-                    .map(|pos| pos + 1)
-                    .or_else(|| items.iter().position(|i| i.path.first().map(String::as_str) == Some(top)))
+                let at = if id == "file.artcraftImportFontFolder" {
+                    items.iter().position(|i| i.id == "file.artcraftImportFonts")
+                        .map(|pos| pos + 1)
+                } else if id == "help.artcraftCheckUpdates" {
+                    items.iter().position(|i| i.id == "help.checkForUpdates")
+                        .map(|pos| pos + 1)
+                } else {
+                    None
+                }.or_else(|| items.iter().position(|i| i.path.first().map(String::as_str) == Some(top)))
                     .unwrap_or(items.len());
                 items.insert(at, MenuItem {
                     id: id.into(), label: label.into(), path: vec![top.into()],

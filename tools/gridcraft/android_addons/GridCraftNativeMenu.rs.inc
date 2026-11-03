@@ -74,6 +74,20 @@
                     ui.ctx().request_repaint();
                 }
                 ui.separator();
+                ui.label(egui::RichText::new("Appearance").strong());
+                let mut dark = ui.ctx().theme() == egui::Theme::Dark;
+                if ui.checkbox(&mut dark, "Dark mode").changed() {
+                    // GridCraft's own view.darkMode command persists the
+                    // choice; do not override its existing System/Light mode.
+                    app.run_or_alert("view.darkMode", json!({}));
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
+                ui.menu_button("Theme preferences (System / Light / Dark)", |ui| {
+                    theme_choices(app, ui);
+                });
+                ui.label(egui::RichText::new("Graphics: wgpu GPU • Vulkan preferred, OpenGL fallback").small());
+                ui.separator();
                 ui.label(egui::RichText::new("Spreadsheet shortcuts").strong());
                 for (title, command) in [
                     ("Undo", "edit.undo"), ("Redo", "edit.redo"),

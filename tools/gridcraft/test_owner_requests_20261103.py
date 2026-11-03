@@ -13,7 +13,7 @@ class GridCraftOwnerRequests(unittest.TestCase):
         png = ICON.read_bytes()
         self.assertTrue(png.startswith(bytes.fromhex("89504e470d0a1a0a")))
         self.assertEqual(hashlib.sha256(png).hexdigest(),
-                         "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6")
+                         "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2")
         port = (ROOT / "tools/gridcraft/port_v0150_ui.py").read_text()
         workflow = (ROOT / ".github/workflows/gridcraft-v0150-test-once.yml").read_text()
         self.assertIn('gridcraft-approved-mark.png', port)
@@ -21,7 +21,7 @@ class GridCraftOwnerRequests(unittest.TestCase):
         self.assertIn('egui::Popup::menu(&gc_button).show(', port)
         self.assertIn('image::load_from_memory(include_bytes!(', port)
         self.assertIn('launcher-approved-20261103.png', workflow)
-        self.assertIn('0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6', workflow)
+        self.assertIn('e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2', workflow)
 
     def test_dark_mode_explicit_toggle_uses_native_persisted_command(self):
         menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()

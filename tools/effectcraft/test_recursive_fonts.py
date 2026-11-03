@@ -27,6 +27,9 @@ class RecursiveFonts(unittest.TestCase):
         source = (ROOT / 'FontsBridge.java.inc').read_text()
         helpers = source[source.index('    private static final long EC_FONT_MAX'):source.index('    private static final int EC_FONT_PICK')]
         method = source[source.index('    private void ecCopyFont('):source.index('    public void ecRefreshFonts()')]
+        # The real Activity has Android SharedPreferences; the pure-JVM harness
+        # substitutes a tiny in-memory mock without Android SDK dependencies.
+        method = method.replace("android.content.SharedPreferences prefs", "MockPrefs prefs")
         harness = r'''
 import java.io.*;
 import java.util.*;
@@ -82,7 +85,8 @@ public class FontCopyTest {
         with tempfile.TemporaryDirectory() as folder:
             p = Path(folder)
             (p / 'FontCopyTest.java').write_text(harness + helpers + method + '\n}')
-            subprocess.run(['javac', str(p / 'FontCopyTest.java')], check=True, capture_output=True)
+            compile_result = subprocess.run(['javac', str(p / 'FontCopyTest.java')], capture_output=True, text=True)
+            self.assertEqual(compile_result.returncode, 0, compile_result.stderr)
             subprocess.run(['java', '-cp', folder, 'FontCopyTest', str(p / 'fonts')], check=True, capture_output=True)
 
 if __name__ == '__main__':

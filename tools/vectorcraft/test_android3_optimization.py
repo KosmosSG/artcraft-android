@@ -66,7 +66,14 @@ class Android3OptimizationSourceTests(unittest.TestCase):
                        "CARGO_PROFILE_RELEASE_STRIP", "size-report.json", "0.20.0-android.3"):
             self.assertIn(marker, workflow)
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("\n  push:", workflow)
+        if "\n  push:" in workflow:
+            # A one-shot build commit temporarily enables push for THIS workflow
+            # file alone. The next commit immediately restores manual-only.
+            self.assertEqual(workflow.count("\n  push:"), 1)
+            self.assertIn("      - .github/workflows/vectorcraft-v020-test-apk.yml", workflow)
+            self.assertIn("      - development/vectorcraft-v020-android14-20261102", workflow)
+        else:
+            self.assertIn("  workflow_dispatch:", workflow)
 
 
 if __name__ == "__main__":

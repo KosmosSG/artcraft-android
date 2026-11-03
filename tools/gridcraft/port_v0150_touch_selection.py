@@ -66,6 +66,14 @@ def port(root: Path, verify_only=False):
         app.grid.touch_pan = multi_touch || !(select_mode || long_hold || on_fill_handle);
     }"""
     show = once(show, touch_pan_old, touch_pan_new, SHOW)
+    # Block pan/zoom deltas that Android trackpads emit during a held click:
+    # only in the disposable v0.15 GridCraft source, never suite-wide winit.
+    scroll_input_old = """    if (resp.hovered() || resp.contains_pointer()) && !crate::text_box::contains_pointer(app, ui.ctx()) {"""
+    scroll_input_new = "    // GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1:\n    // A held physical pointer button selects cells. Some Android trackpads\n    // report smooth_scroll_delta during a one-finger click-and-drag, which\n    // would pan the sheet underneath the active drag. Suppress sheet wheel/\n    // touchpad scroll and zoom ONLY while a non-touch pointer drag is active.\n    // Finger touch panning, pinch zoom, normal two-finger trackpad scrolling\n    // (no button down), and edge-autoscroll during range selection are unchanged.\n    let trackpad_range_drag = ui.input(|i| {\n        !i.any_touches() && (i.pointer.any_down() || app.grid.drag_select)\n    });\n" + """    if (resp.hovered() || resp.contains_pointer())
+        && !crate::text_box::contains_pointer(app, ui.ctx())
+        && !trackpad_range_drag
+    {"""
+    show = once(show, scroll_input_old, scroll_input_new, SHOW)
     touch_handle_old = "    let handle = Rect::from_center_size(cur_rect.right_bottom(), vec2(9.0, 9.0));"
     touch_handle_new = """    // GRIDCRAFT_ANDROID_TOUCH_SELECT_V1: fingertip-sized hit target only
     // on true touchscreen input; mouse hit testing stays pixel precise.
@@ -75,7 +83,7 @@ def port(root: Path, verify_only=False):
     # The source's show_grid_interactions already skips *only* touch_pan.
     # All drag select, drag fill, shift+arrow, popup and scroll math stay intact.
     for label, source, must in [
-        (SHOW, show, ["long_hold", "app.grid.touch_pan = multi_touch ||", "on_fill_handle", "gridcraft.android.touch_select"]),
+        (SHOW, show, ["long_hold", "app.grid.touch_pan = multi_touch ||", "on_fill_handle", "gridcraft.android.touch_select", "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1", "&& !trackpad_range_drag"]),
         (INTERACT, interact, ["let handle_size =", "Drag::Select", "Drag::Fill"]),
     ]:
         for token in must:
@@ -89,6 +97,8 @@ def port(root: Path, verify_only=False):
         "touch_hold_and_drag_select": True,
         "touch_fill_handle_hit_area": 44,
         "mouse_drag_selection_preserved": True,
+        "trackpad_drag_prevents_canvas_scroll": True,
+        "normal_trackpad_two_finger_scroll_preserved": True,
         "single_touch_swipe_pan_preserved": True,
         "two_finger_zoom_preserved": True,
         "source_modified": not verify_only,

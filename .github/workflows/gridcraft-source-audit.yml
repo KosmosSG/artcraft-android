@@ -160,6 +160,10 @@ jobs:
           assert "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in show and "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in interaction
           assert "long_hold" in show and "on_fill_handle" in show
           assert "app.grid.touch_pan = multi_touch ||" in show
+          assert "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1" in show
+          assert "i.pointer.any_down() || app.grid.drag_select" in show
+          assert "!i.any_touches()" in show
+          assert "&& !trackpad_range_drag" in show
           assert 'gridcraft.android.touch_select' in show
           assert 'let handle_size = if ctx.input(|i| i.any_touches()) { 44.0 } else { 9.0 };' in interaction
           assert 'Drag::Select' in interaction and 'Drag::Fill' in interaction
@@ -201,6 +205,8 @@ jobs:
           grid=(source/"grid/show.rs").read_text()
           assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in grid
           assert 'app.grid.touch_pan = multi_touch ||' in grid
+          assert 'GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1' in grid
+          assert '&& !trackpad_range_drag' in grid
           assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in (source/"grid/interact.rs").read_text()
           assert (b/'tools/gridcraft_android/gridcraft_tools.rs').is_file()
           print('PASS: both GridCraft v0.15.0 source ports, Android generator hook, and SAF acknowledgement wired through the complete staging installer')

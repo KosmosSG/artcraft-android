@@ -154,7 +154,7 @@ pub fn artcraft_ai_tools_visible() -> bool {
     replace_once(
         adapter / "Cargo.toml",
         "version.workspace = true\n",
-        'version = "0.19.0-android.4"\n',
+        'version = "0.19.0-android.5"\n',
     )
 
     # New ArtCraft-owned overlay only; do not replace our shipped NativeActivity.
@@ -701,7 +701,7 @@ pub fn artcraft_take_font_request() -> u8 {
 ''',
     )
 
-    print("PhotoCraft v0.19.0-android.4: docked pad, popup scroll, menu prominence and hardware shortcuts staged (runner only).")
+    print("PhotoCraft v0.19.0-android.5: docked pad, popup scroll, menu prominence and hardware shortcuts staged (runner only).")
 
 
 if __name__ == "__main__":

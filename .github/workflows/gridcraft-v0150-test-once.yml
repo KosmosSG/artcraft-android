@@ -82,6 +82,16 @@ jobs:
           assert "GC_MAX_SHARED_DIRS = 5000" in java
           assert "4L * 1024 * 1024 * 1024" in java
           assert "gcEscapePending.set(true)" in java
+          icon_generator=Path("builder/lib/app_icons.py").read_text()
+          assert "GRIDCRAFT_USER_ADAPTIVE_ICON_V2" in icon_generator
+          assert "GRIDCRAFT_USER_LEGACY_ICON_V2" in icon_generator
+          assert 'color = "#006818"' in icon_generator
+          updater=Path("builder/tools/gridcraft_android/GridCraftSafeUpdater.java.inc").read_text()
+          assert "getPackageArchiveInfo(" in updater
+          assert "getApkContentsSigners()" in updater
+          assert 'getPackageName().endsWith(".candidate")' in updater
+          assert 'android.content.Intent.ACTION_VIEW' in updater
+          assert "GridCraftSafeUpdater.java.inc" in Path("builder/tools/gridcraft_android/overlay.py").read_text()
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in shell
           assert "GRIDCRAFT_OVERLAY_HOOK_V1" in shell
           assert 'gridcraft_android_take_dcs(ui.ctx())' in (src/"crates/ui-egui/src/dialogs/show.rs").read_text()

@@ -185,7 +185,9 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                                 && expansion > 2.5 * travelled
                             {
                                 self.pdfcraft_touch_mode = PdfTouchMode::Pinch;
-                            } else if travelled > 12.0 {
+                            } else if travelled > 6.0 {
+                                // Commit to pan promptly instead of waiting for
+                                // a large finger displacement: no "stuck then jump".
                                 self.pdfcraft_touch_mode = PdfTouchMode::Scroll;
                             }
                         }
@@ -193,16 +195,17 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                             PdfTouchMode::Scroll => {
                                 // Physical pixel delta follows fingers, regardless of
                                 // Select, Text, Comment or Hand tool.
-                                let dx = (mid.x-last.x)*1.5;
-                                let dy = (mid.y-last.y)*1.5;
+                                // PanGesture is translated by egui-winit into a
+                                // precise Trackpad-source scroll. Use actual
+                                // finger distance (no 1.5x amplification).
+                                let dx = (mid.x-last.x).clamp(-80.0, 80.0);
+                                let dy = (mid.y-last.y).clamp(-80.0, 80.0);
                                 if dx != 0.0 || dy != 0.0 {
                                     callback(event::Event::WindowEvent {
                                         window_id,
-                                        event: event::WindowEvent::MouseWheel {
+                                        event: event::WindowEvent::PanGesture {
                                             device_id,
-                                            delta: event::MouseScrollDelta::PixelDelta(
-                                                PhysicalPosition { x: dx, y: dy }
-                                            ),
+                                            delta: PhysicalPosition { x: dx as f32, y: dy as f32 },
                                             phase: event::TouchPhase::Moved,
                                         },
                                     }, self.window_target());
@@ -212,7 +215,11 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                                 callback(event::Event::WindowEvent {
                                     window_id,
                                     event: event::WindowEvent::PinchGesture {
-                                        device_id, delta: (spread/last_spread).ln(),
+                                        device_id,
+                                        // Clamp per-event magnification to prevent
+                                        // a large Android coordinate jump from
+                                        // visibly jerking the PDF in one frame.
+                                        delta: (spread/last_spread).ln().clamp(-0.06, 0.06),
                                         phase: event::TouchPhase::Moved,
                                     },
                                 }, self.window_target());

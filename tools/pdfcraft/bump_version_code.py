@@ -13,7 +13,7 @@ import struct
 import zipfile
 
 def rewrite(source: Path, dest: Path, old_code: int, new_code: int) -> None:
-    assert old_code < new_code <= old_code + 9, "Only reviewed monotonic .android.2 through .android.10 codes are authorized"
+    assert old_code < new_code <= old_code + 10, "Only reviewed monotonic .android.2 through .android.11 codes are authorized"
     assert source != dest
     old = struct.pack("<I", old_code)
     new = struct.pack("<I", new_code)

@@ -18,5 +18,9 @@ class SaveAndNavigationRegression(unittest.TestCase):
         s=(ROOT/"tools"/"pdfcraft"/"android_interaction_patch.py").read_text()
         for marker in ("ARTCRAFT_ANDROID_DCS", "Key::D", "Key::C", "Key::S",
                        "ARTCRAFT_ANDROID_REPEAT_TOOL_KEYS", "ctx.text_edit_focused()",
-                       "ARTCRAFT_ANDROID_TOUCH_HINT", "Touch: swipe to scroll"):
+                       "ARTCRAFT_ANDROID_TOUCH_HINT", "Touch: swipe to scroll",
+                       "PDFCRAFT_ANDROID_DCS_MODAL_FALLBACK",
+                       "PDFCRAFT_ANDROID_REPEAT_VH",
+                       "PDFCRAFT_ANDROID_VH_EVENT_FALLBACK",
+                       "egui::ImeEvent::Commit(text)"):
             self.assertIn(marker,s)

@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.10'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.17.0-android.11'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.17.0-android.10'
+    assert cargo['package']['version'] == '0.17.0-android.11'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
@@ -60,6 +60,11 @@ with tempfile.TemporaryDirectory() as folder:
     keys = (dst / 'crates/ui-egui/src/app/keys.rs').read_text()
     prompt = (dst / 'crates/ui-egui/src/dialogs/prompts.rs').read_text()
     assert 'ARTCRAFT_ANDROID_DCS' in prompt
+    assert 'PDFCRAFT_ANDROID_DCS_MODAL_FALLBACK' in prompt
+    assert 'egui::ImeEvent::Commit(text)' in prompt
+    assert 'PDFCRAFT_ANDROID_REPEAT_VH' in keys
+    assert 'PDFCRAFT_ANDROID_VH_EVENT_FALLBACK' in keys
+    assert 'event::WindowEvent::PanGesture' in (root/'tools/pdfcraft/android_input_patch.py').read_text()
     assert 'ARTCRAFT_ANDROID_REPEAT_TOOL_KEYS' in keys
     assert 'ARTCRAFT_ANDROID_TOUCH_HINT' in canvas
     # Android.8 deliberately removes the duplicate H/V command consumer.

@@ -29,11 +29,17 @@ def patch(source: str) -> str:
                 // Therefore the shared "Scroll if pointer_class" branch silently
                 // drops ACTION_SCROLL from a real trackpad. HONOR can also report
                 // trackpads as SOURCE_MOUSE (pointer-class) with two pointers.
-                let touchpad_source = motion_event.source() == Source::Touchpad;
-                let mouse_source = motion_event.source() == Source::Mouse;
+                let touchpad_source = matches!(
+                    motion_event.source(), Source::Touchpad | Source::TouchNavigation
+                );
+                let mouse_source = matches!(
+                    motion_event.source(), Source::Mouse | Source::MouseRelative
+                );
                 if touchpad_source || mouse_source {
                     let points: Vec<_> = motion_event.pointers().map(|p| pointer_position(&p)).collect();
-                    if motion_event.action() == MotionAction::HoverMove && points.len() == 1 {
+                    if matches!(motion_event.action(),
+                        MotionAction::HoverMove | MotionAction::HoverEnter | MotionAction::Move
+                    ) && points.len() == 1 {
                         self.pdfcraft_trackpad_cursor = points.first().copied();
                     }
                     let axes = motion_event.pointers().next().map(|pointer| {
@@ -55,12 +61,14 @@ def patch(source: str) -> str:
                         if axes.0 != 0.0 || axes.1 != 0.0 {
                             callback(event::Event::WindowEvent {
                                 window_id,
-                                event: event::WindowEvent::MouseWheel {
+                                // egui-winit's PanGesture is a precise
+                                // trackpad scroll rather than a line-wheel.
+                                event: event::WindowEvent::PanGesture {
                                     device_id,
-                                    delta: event::MouseScrollDelta::PixelDelta(PhysicalPosition {
-                                        x: f64::from(axes.1)*POINTS_PER_LINE as f64,
-                                        y: f64::from(axes.0)*POINTS_PER_LINE as f64,
-                                    }),
+                                    delta: PhysicalPosition {
+                                        x: axes.1 * POINTS_PER_LINE,
+                                        y: axes.0 * POINTS_PER_LINE,
+                                    },
                                     phase: event::TouchPhase::Moved,
                                 },
                             }, self.window_target());
@@ -80,13 +88,15 @@ def patch(source: str) -> str:
                         if motion_event.action() == MotionAction::Move {
                             if let Some(last) = old {
                                 let delta = PhysicalPosition {
-                                    x: (mid.x-last.x)*1.5, y: (mid.y-last.y)*1.5,
+                                    x: (mid.x-last.x).clamp(-80.0, 80.0),
+                                    y: (mid.y-last.y).clamp(-80.0, 80.0),
                                 };
                                 if delta.x != 0.0 || delta.y != 0.0 {
                                     callback(event::Event::WindowEvent {
                                         window_id,
-                                        event: event::WindowEvent::MouseWheel {
-                                            device_id, delta: event::MouseScrollDelta::PixelDelta(delta),
+                                        event: event::WindowEvent::PanGesture {
+                                            device_id,
+                                            delta: PhysicalPosition { x: delta.x as f32, y: delta.y as f32 },
                                             phase: event::TouchPhase::Moved,
                                         },
                                     }, self.window_target());

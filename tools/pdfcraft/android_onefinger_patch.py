@@ -107,7 +107,9 @@ def patch(source: str) -> str:
                                 location: start, id, force: None,
                             }),
                         }, self.window_target());
-                    } else if moved >= 12.0 {
+                    } else if moved >= 6.0 {
+                        // Earlier activation avoids the first-swipe lag while
+                        // still distinguishing tap from drag and hold-select.
                         self.pdfcraft_touch_mode = PdfTouchMode::SinglePan;
                     }
                 }
@@ -119,16 +121,16 @@ def patch(source: str) -> str:
                                 device_id, position: pos,
                             },
                         }, self.window_target());
-                        let delta_x = pos.x - last.x;
-                        let delta_y = pos.y - last.y;
+                        let delta_x = (pos.x - last.x).clamp(-80.0, 80.0);
+                        let delta_y = (pos.y - last.y).clamp(-80.0, 80.0);
                         if delta_x != 0.0 || delta_y != 0.0 {
                             callback(event::Event::WindowEvent {
                                 window_id,
-                                event: event::WindowEvent::MouseWheel {
+                                event: event::WindowEvent::PanGesture {
                                     device_id,
-                                    delta: event::MouseScrollDelta::PixelDelta(
-                                        PhysicalPosition { x: delta_x * 1.5, y: delta_y * 1.5 }
-                                    ),
+                                    delta: PhysicalPosition {
+                                        x: delta_x as f32, y: delta_y as f32,
+                                    },
                                     phase: event::TouchPhase::Moved,
                                 },
                             }, self.window_target());

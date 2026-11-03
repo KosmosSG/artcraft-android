@@ -115,44 +115,40 @@ def install(builder: Path, additions: Path):
         elif (builder / "source/gridcraft").exists():
             raise RuntimeError("Pinned GridCraft font catalog missing")
 
-    # GridCraft uses extracted lettering, not a scaled green square. The same
-    # 66.56/108 foreground geometry as the pinned suite builder is retained.
+    # Owner-approved icon: use uploaded Gc tile for legacy launcher pixels,
+    # but separate lime letters from the dark-green background for Android's
+    # adaptive foreground. This avoids Android double-masking a rounded tile.
+    # Fail closed on unexpected image SHA, source, or generic builder changes.
     icon_script = builder / "lib/app_icons.py"
     icon_source = icon_script.read_text()
     icon_hook = '    foreground = _foreground(Image, stripped)'
-    replacement = '''    # GRIDCRAFT_PADDED_ADAPTIVE_ICON_V3
+    replacement = '''    # GRIDCRAFT_USER_ADAPTIVE_ICON_V2
     if app == "gridcraft":
-        cutout = source.with_name("launcher-lettering.png")
-        if not cutout.is_file():
-            raise RuntimeError("GridCraft transparent lettering asset missing")
-        lettering = Image.open(cutout).convert("RGBA")
-        if lettering.getextrema()[3][0] != 0:
-            raise RuntimeError("GridCraft lettering must have transparency")
-        # Ignore nearly invisible extraction noise when measuring optical bounds.
-        bounds = lettering.getchannel("A").point(lambda a: 255 if a > 16 else 0).getbbox()
-        if bounds is None:
-            raise RuntimeError("GridCraft lettering is empty")
-        lettering = lettering.crop(bounds)
-        foreground = _foreground(Image, lettering)
-        color = "#006039"
+        import hashlib
+        if hashlib.sha256(source.read_bytes()).hexdigest() != "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2":
+            raise RuntimeError("GridCraft user Gc image mismatch")
+        from PIL import ImageChops
+        # The supplied tile has red=0 on the green background and red=171 on
+        # the Gc lettering. Reconstruct only the antialiased lettering alpha.
+        shade = pristine.getchannel("R").point(lambda r: min(255, round(r * 255 / 171)))
+        alpha = ImageChops.multiply(shade, pristine.getchannel("A"))
+        lettering = Image.new("RGBA", pristine.size, (171, 232, 128, 0))
+        lettering.putalpha(alpha)
+        bounds = lettering.getchannel("A").getbbox()
+        if not bounds:
+            raise RuntimeError("GridCraft user Gc lettering is missing")
+        foreground = _foreground(Image, lettering.crop(bounds))
+        color = "#006818"
     else:
         foreground = _foreground(Image, stripped)'''
     if icon_source.count(icon_hook) != 1:
         raise RuntimeError("Pinned adaptive icon generator changed")
     icon_source = icon_source.replace(icon_hook, replacement, 1)
-    # Match legacy surfaces to the adaptive visible 72dp area, without a second mask.
+    # Legacy density surfaces use the uploaded PNG, not a second padded and
+    # masked raster. The Gc logo is already rounded exactly as the user wants.
     legacy_hook = '    _write_legacy(source, pristine, res_dir)'
-    legacy = '''    if app == "gridcraft":
-        flat = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), color)
-        flat.alpha_composite(foreground)
-        inset = (CANVAS_PX - round(CANVAS_PX * 72 / 108)) // 2
-        flat = flat.crop((inset, inset, CANVAS_PX - inset, CANVAS_PX - inset))
-        for density, size in DENSITIES.items():
-            out = res_dir / f"mipmap-{density}"
-            out.mkdir(parents=True, exist_ok=True)
-            flat.resize((size, size), Image.LANCZOS).save(out / "ic_launcher.png")
-    else:
-        _write_legacy(source, pristine, res_dir)'''
+    legacy = '''    # GRIDCRAFT_USER_LEGACY_ICON_V2: keep uploaded PNG exactly on Android
+    _write_legacy(source, pristine, res_dir)'''
     if icon_source.count(legacy_hook) != 1:
         raise RuntimeError("Pinned legacy icon generator changed")
     icon_script.write_text(icon_source.replace(legacy_hook, legacy, 1))
@@ -165,7 +161,7 @@ def install(builder: Path, additions: Path):
         text = saf_patch["transform"](text)
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
-    for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc"):
+    for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc", "GridCraftSafeUpdater.java.inc"):
         shutil.copyfile(additions / item, dest / item)
     # All generated files (Cargo.toml, Java Activity, Rust lib.rs) must exist first.
     # Inject immediately AFTER the generator writes lib.rs, before its

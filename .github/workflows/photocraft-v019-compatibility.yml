@@ -24,7 +24,7 @@ jobs:
       # Keep debug instrumentation but avoid shipping large symbol sections.
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_DEV_STRIP: "symbols"
-      PHOTOCRAFT_OVERRIDE_VERSION: "0.19.0-android.5"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.19.0-android.6"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.19.0"
@@ -98,6 +98,10 @@ jobs:
           python3 tools/photocraft_v019_android5_input_overlay.py \
             --upstream source/photocraft \
             --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android6_ui_overlay.py
+          python3 tools/photocraft_v019_android6_ui_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
           grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
           grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs
@@ -113,13 +117,18 @@ jobs:
           grep -Fq 'std::thread::Builder::new()' adapters/photocraft/src/android_fonts.rs
           grep -Fq 'fn pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java || grep -Fq 'String pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'delayed_taps' adapters/photocraft/src/ui_touch_scroll.rs
+          grep -Fq 'artcraft_take_pc_menu_action' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'artcraft_pc_icon_menu' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'canvas_gesture.apply' adapters/photocraft/src/lib.rs
+          grep -Fq 'pub(crate) fn refresh' adapters/photocraft/src/android_fonts.rs
+          grep -Fq 'pcToggleStartupUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'artcraft_android_edge_pad' adapters/photocraft/src/shortcut_pad.rs
           grep -Fq 'pcRequestFontImport' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'Paste token from Android clipboard' adapters/photocraft/src/ai_menu.rs
           grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
-          grep -Fq 'version = "0.19.0-android.5"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.19.0-android.6"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release untouched.'
 
       - name: Stage owner's blue Pc icon into disposable upstream checkout
@@ -147,7 +156,7 @@ jobs:
           # Never sign with a production key here; never publish any Releases.
           bash build-debug.sh -photocraft
           test -f output/photocraft-0.19.0-debug.apk
-          mv output/photocraft-0.19.0-debug.apk output/photocraft-0.19.0-android.5-debug.apk
+          mv output/photocraft-0.19.0-debug.apk output/photocraft-0.19.0-android.6-debug.apk
 
       - name: Print compiler failure summary for upstream v0.19 adaptation
         if: failure()
@@ -183,15 +192,15 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
           "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft'"
-          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.19.0-android.5'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.19.0-android.6'"
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED disposable-key debug APK: DO NOT install over the owner's current PhotoCraft." >> "$GITHUB_STEP_SUMMARY"
-          echo "Candidate v0.19.0-android.5; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.19.0-android.6; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain debug test artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.19.0-android.5-ARM64-UNTESTED-DISPOSABLE-KEY
+          name: PhotoCraft-v0.19.0-android.6-ARM64-UNTESTED-DISPOSABLE-KEY
           path: |
             output/*.apk
             SHA256SUMS.txt

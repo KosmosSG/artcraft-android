@@ -156,6 +156,33 @@ jobs:
           echo "Owner's Pc logo now matches in Android launcher and PhotoCraft title bar."
           echo "Owner-provided Pc icon staged, SHA-256 verified; the stable launcher remains unchanged."
 
+      - name: Isolate temporary-signed candidate from owner's production PhotoCraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Modify the CI workspace copy only. The committed production Android
+          # adapter, signing identity and protected release tree are untouched.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("adapters/photocraft/Cargo.toml")
+          manifest = p.read_text()
+          changes = [
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate"', 1),
+              ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Test"', 2),
+          ]
+          for old, new, expected in changes:
+              count = manifest.count(old)
+              if count != expected:
+                  raise SystemExit(f"Refusing ambiguous test-package override: {old}: {count} != {expected}")
+              manifest = manifest.replace(old, new)
+          p.write_text(manifest)
+          import tomllib
+          data = tomllib.loads(manifest)
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate"
+          print("Separate com.artcraft.photocraft.candidate app: production package and keys untouched")
+          PY
+
       - name: Compile debug-only upstream v0.19 Android compatibility candidate
         shell: bash
         run: |
@@ -199,16 +226,16 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
-          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft'"
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate'"
           "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.19.0-android.7'"
           sha256sum "$APK" | tee SHA256SUMS.txt
-          echo "UNTESTED disposable-key debug APK: DO NOT install over the owner's current PhotoCraft." >> "$GITHUB_STEP_SUMMARY"
+          echo "UNTESTED disposable-key debug APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
           echo "Candidate v0.19.0-android.7; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain debug test artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.19.0-android.7-ARM64-UNTESTED-DISPOSABLE-KEY
+          name: PhotoCraft-v0.19.0-android.7-ARM64-ISOLATED-TEST-DISPOSABLE-KEY
           path: |
             output/*.apk
             SHA256SUMS.txt

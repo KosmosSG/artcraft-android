@@ -3118,7 +3118,7 @@ PY
 if [[ "$DESIGNCRAFT_V016" == true ]]; then
     # The source workspace remains v0.16.0; this is the separate ArtCraft
     # Android testing revision shown in filenames and Android app settings.
-    APP_VERSION="0.16.0-android.3"
+    APP_VERSION="0.16.0-android.4"
 fi
 
 # FigCraft and DeckCraft set `CRAFT_FONTS_DIR = "../craft-fonts"` (relative) in .cargo/config.toml.

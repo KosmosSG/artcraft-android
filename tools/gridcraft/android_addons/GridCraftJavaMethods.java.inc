@@ -171,7 +171,7 @@
         }
     }
 
-    private void gcScanShared(android.net.Uri tree) {
+    // Shared-font SAF scan: up to 5,000 files in up to 5,000 directories, while\n    // retaining the independent 4 GiB aggregate byte budget. Never load font blobs into RAM.\n    private static final int GC_MAX_SHARED_FONTS = 5000;\n    private static final int GC_MAX_SHARED_DIRS = 5000;\n    private void gcScanShared(android.net.Uri tree) {
         java.io.File root = gcFontRoot();
         java.io.File active = new java.io.File(root, "artcraft-shared");
         java.io.File staged = new java.io.File(root, "artcraft-shared-staging");
@@ -184,7 +184,7 @@
             pending.add(android.provider.DocumentsContract.getTreeDocumentId(tree));
             long[] scanBytes = {0};
             int dirs = 0, imported = 0;
-            while (!pending.isEmpty() && dirs++ < 200 && imported < 200 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
+            while (!pending.isEmpty() && dirs++ < GC_MAX_SHARED_DIRS && imported < GC_MAX_SHARED_FONTS && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                 String documentId = pending.removeFirst();
                 android.net.Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId);
                 try (android.database.Cursor cursor = getContentResolver().query(children,
@@ -193,11 +193,11 @@
                                        android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE },
                         null, null, null)) {
                     if (cursor == null) continue;
-                    while (cursor.moveToNext() && imported < 200 && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
+                    while (cursor.moveToNext() && imported < GC_MAX_SHARED_FONTS && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                         String id = cursor.getString(0), name = cursor.getString(1), mime = cursor.getString(2);
                         if (id == null || name == null) continue;
                         if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                            if (dirs + pending.size() < 200) pending.add(id);
+                            if (dirs + pending.size() < GC_MAX_SHARED_DIRS) pending.add(id);
                         } else if (gcHasFontExtension(name)) {
                             android.net.Uri child = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id);
                             try {
@@ -404,11 +404,18 @@
                 }
                 return true;
             }
-            if (gcEditorActive && !gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE
+            // Hardware Esc can arrive before Rust's latest frame has updated
+            // gcEditorActive (IME and native render loops run on different threads).
+            // Latch its first key-down regardless of the stale focus flag;
+            // Rust checks the *current* editor and modal state before cancelling.
+            if (!gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE
                     && event.hasNoModifiers() && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                gcDialogKeys.add(code);
                 if (event.getRepeatCount() == 0) gcEscapePending.set(true);
-                return true;
+                if (gcEditorActive) {
+                    gcDialogKeys.add(code); // also consume paired key-up
+                    return true;
+                }
+                // When not editing, allow normal menu/back Esc handling.
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
             if (gcDialogActive && action != 0 && event.hasNoModifiers()) {

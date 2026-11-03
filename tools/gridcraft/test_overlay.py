@@ -81,7 +81,9 @@ public final class GridCraftActivity extends NativeActivity {
             if feature != "android.permission":
                 with self.subTest(feature=feature):
                     self.assertIn(feature, java)
-        self.assertIn('("GridCraft-v" + version + "-arm64-v8a.apk")', java)
+        self.assertIn('name.matches("GridCraft-v" + java.util.regex.Pattern.quote(version)', java)
+        self.assertIn('browser_download_url', java)
+        self.assertIn('gcEligibleUpdateApkUrl = bestApk;', java)
         self.assertIn('"uploaded".equals(asset.optString("state"))', java)
         self.assertIn('release.optBoolean("draft")', java)
         self.assertIn('release.optBoolean("prerelease")', java)

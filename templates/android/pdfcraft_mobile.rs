@@ -10,8 +10,9 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 pub struct Mobile {
     app: AndroidApp,
     renderer: String,
-    fonts_open: bool,
+    gpu_details_open: bool,
     updates_open: bool,
+    toolbar_shown: bool,
     font_status: String,
     update_status: String,
     update_url: Option<String>,
@@ -23,12 +24,13 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), fonts_open: false, updates_open: false,
+            app, renderer: "Renderer not initialized".into(), gpu_details_open: false, updates_open: false, toolbar_shown: true,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
         };
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
+        mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(true);
         mobile
     }
 
@@ -51,6 +53,39 @@ impl Mobile {
             Ok(())
         }).map_err(|err| err.to_string())
     }
+    pub fn toolbar_shown(&self) -> bool { self.toolbar_shown }
+
+    fn read_toolbar_setting(&self) -> Result<bool, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfToolbarVisible"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|err| err.to_string())
+    }
+
+    fn save_toolbar_setting(&self, visible: bool) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfSetToolbarVisible"),
+                jni_sig!("(Z)V"), &[JValue::Bool(visible)])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
+
+    /// One Java preference write per actual change, never a JNI call every frame.
+    pub fn sync_toolbar_preference(&mut self, visible: bool) {
+        if visible != self.toolbar_shown {
+            if let Err(error) = self.save_toolbar_setting(visible) {
+                self.font_status = format!("Toolbar preference not saved: {error}");
+            }
+            self.toolbar_shown = visible;
+        }
+    }
+
     fn request(&self, action: Action) -> Result<(), String> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -156,34 +191,57 @@ impl Mobile {
         }
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
-    pub fn toolbar(&mut self, parent: &mut egui::Ui) {
-        egui::Panel::bottom("pdfcraft_android_tools").resizable(false).show(parent, |ui| {
+    /// Optional native View > Android tools panel. Hidden means NO egui widget
+    /// is drawn above the real application menu, giving the PDF editor its space.
+    /// Return true when "Hide panel" was clicked, so the shell can toggle it.
+    pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool {
+        let mut hide_requested = false;
+        // The root PDFCraft window is transparent on Android. A plain egui group
+        // draws NO background: dark native surface shows through behind black text
+        // when upstream PDFCraft switches to the light theme. Paint the panel with
+        // the same live palette as the built-in File/View chrome on every frame.
+        let available_width = parent.available_width();
+        egui::Frame::group(parent.style())
+            .fill(parent.visuals().panel_fill)
+            .show(parent, |ui| {
+            // Cover the full width, not just the buttons, so the remaining strip
+            // is also light in light mode and dark in dark mode.
+            ui.set_min_width((available_width - 14.0).max(0.0));
             ui.horizontal_wrapped(|ui| {
-                if ui.button(if self.fonts_open { "Fonts ▴" } else { "Fonts ▾" }).clicked() {
-                    self.fonts_open = !self.fonts_open;
+                ui.strong("Fonts:");
+                if ui.button("Import Font…")
+                    .on_hover_text("Choose an individual .ttf or .otf font").clicked() {
+                    self.font_status = "Choose a .ttf or .otf font…".into();
+                    if let Err(error) = self.request(Action::ImportFont) { self.font_status = error; }
                 }
+                if ui.button("Choose Shared Font Folder…")
+                    .on_hover_text("Select ArtCraft-Fonts; nested folders are included").clicked() {
+                    self.font_status = "Choose your shared Android font folder…".into();
+                    if let Err(error) = self.request(Action::SelectFolder) { self.font_status = error; }
+                }
+                if ui.button("Refresh Font Folder")
+                    .on_hover_text("Rescan the previously selected shared folder (4 GiB / 5,000 fonts)").clicked() {
+                    self.font_status = "Refreshing previously selected folder…".into();
+                    if let Err(error) = self.request(Action::RefreshFonts) { self.font_status = error; }
+                }
+                ui.separator();
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
+                if ui.button("GPU info").on_hover_text("Show actual Android wgpu adapter and graphics backend").clicked() {
+                    self.gpu_details_open = !self.gpu_details_open;
+                }
                 ui.separator();
-                ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
+                if ui.button("Hide panel").on_hover_text(
+                    "Reopen from View > Android tools panel").clicked() {
+                    hide_requested = true;
+                }
             });
-            if self.fonts_open {
+            // Keep import/scan feedback on screen without hiding the actual actions.
+            ui.label(&self.font_status).on_hover_text(
+                "PDFCraft accepts embeddable TTF/OTF fonts; existing embedded PDF fonts are unchanged.");
+            if self.gpu_details_open {
                 ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Import TTF/OTF").clicked() {
-                        self.font_status = "Choose a .ttf or .otf font…".into();
-                        if let Err(error) = self.request(Action::ImportFont) { self.font_status = error; }
-                    }
-                    if ui.button("Select shared ArtCraft-Fonts folder").clicked() {
-                        self.font_status = "Choose your shared Android font directory…".into();
-                        if let Err(error) = self.request(Action::SelectFolder) { self.font_status = error; }
-                    }
-                    if ui.button("Refresh shared folder").clicked() {
-                        self.font_status = "Refreshing previously selected folder…".into();
-                        if let Err(error) = self.request(Action::RefreshFonts) { self.font_status = error; }
-                    }
-                });
-                ui.label(&self.font_status);
-                ui.label(egui::RichText::new("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.").small());
+                ui.label(&self.renderer).on_hover_text(
+                    "Android GPU adapter information from wgpu at startup. PDF page rasterization is performed by hayro on CPU; the page textures and interface are composited by wgpu. Software/unknown adapters do not prove hardware acceleration.");
             }
             if self.updates_open {
                 ui.separator();
@@ -195,7 +253,7 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
-                    if ui.button("Hide").clicked() { self.updates_open = false; }
+                    if ui.button("Hide update status").clicked() { self.updates_open = false; }
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
                     if let Err(error) = self.save_startup_setting(self.startup_check) {
@@ -205,5 +263,6 @@ impl Mobile {
                 ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
             }
         });
+        hide_requested
     }
 }

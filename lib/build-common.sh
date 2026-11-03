@@ -321,6 +321,24 @@ if app == "pdfcraft":
         scanner.write_text(original.replace(needle, needle + addition, 1))
         fixed.append("crates/engine/src/text_fonts.rs")
 
+    # Guarded Android-only PDFCraft View-menu integration; never touches desktop.
+    import subprocess
+    subprocess.run(
+        [sys.executable, str(Path.cwd() / "tools/pdfcraft/android_tools_menu_patch.py"), str(src)],
+        check=True,
+    )
+    fixed.append("crates/ui-egui/src/menus.rs (Android toolbar View toggle)")
+    subprocess.run(
+        [sys.executable, str(Path.cwd() / "tools/pdfcraft/android_canvas_input_patch.py"), str(src)],
+        check=True,
+    )
+    fixed.append("crates/ui-egui/src/canvas.rs + app.rs (one-finger Select and tool keys)")
+    subprocess.run(
+        [sys.executable, str(Path.cwd() / "tools/pdfcraft/android_interaction_patch.py"), str(src)],
+        check=True,
+    )
+    fixed.append("PDFCraft Android D/C/S save dialog, repeated tools and touch hints")
+
     # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
     update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]
     existing = [p for p in update_paths if p.is_file()]
@@ -377,7 +395,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "26-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "28-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2042,7 +2060,7 @@ try:
         values = staging_dir / "res" / "values"
         values.mkdir(parents=True, exist_ok=True)
         (values / "pdfcraft_colors.xml").write_text(
-            '<resources><color name="pdfcraft_bg">#980006</color></resources>\n'
+            '<resources><color name="pdfcraft_bg">#fb0e00</color></resources>\n'
         )
 
     serde_dep = 'serde_json = { workspace = true }\n' if (saf or _persist) else ''
@@ -2696,10 +2714,10 @@ impl eframe::App for AndroidShell {{
         checks = [
             ("    probe: InputProbe,", "    probe: InputProbe,\n    pdf_mobile: pdfcraft_mobile::Mobile,"),
             ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
-             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
+             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
-            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);"),
-            ("        self.inner.ui(ui, frame);", "        self.pdf_mobile.toolbar(ui);\n        self.inner.ui(ui, frame);"),
+            ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.poll(ctx);\n        self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());"),
+            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        self.inner.ui(ui, frame);"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:
@@ -2723,18 +2741,33 @@ impl eframe::App for AndroidShell {{
     if app == "pdfcraft":
         creator = """Box::new(move |cc| {
             let mut shell = shell;
+            // GPU info is the actual adapter selected by eframe/wgpu, not
+            // a hard-coded Adreno claim. The upstream hayro page rasterizer is
+            // CPU-based; wgpu composites the page textures and application UI.
             let description = match cc.wgpu_render_state.as_ref() {
                 Some(rs) => {
                     let info = rs.adapter.get_info();
-                    format!("UI: {} ({:?}, {:?}). PDF page rendering uses the upstream renderer.", info.name, info.backend, info.device_type)
+                    let adapter_kind = match info.device_type {
+                        eframe::wgpu::DeviceType::DiscreteGpu
+                        | eframe::wgpu::DeviceType::IntegratedGpu => "Hardware GPU reported",
+                        eframe::wgpu::DeviceType::Cpu => "Software CPU adapter reported",
+                        _ => "Adapter hardware status unverified",
+                    };
+                    format!("UI: wgpu {:?}, adapter: {} ({:?}). {}. PDF pages: hayro CPU rasterization, then wgpu texture compositing.",
+                        info.backend, info.name, info.device_type, adapter_kind)
                 }
-                None => "UI adapter information unavailable. PDF page rendering uses the upstream renderer.".to_owned(),
+                None => "wgpu adapter information unavailable; GPU hardware not verified. PDF pages: hayro CPU rasterization.".to_owned(),
             };
             log::info!("PDFCraft Android renderer: {}", description);
             shell.pdf_mobile.set_renderer(description);
             Ok(Box::new(shell))
         })"""
 
+    # PDFCraft already has only wgpu compiled into its Android launcher;
+    # make that GPU compositor explicit, retaining egui-wgpu's default
+    # high-performance preference and supported-backend fallback selection.
+    # Do not force Vulkan: an unsupported driver must be allowed to use GLES.
+    gpu_renderer_option = '        renderer: eframe::Renderer::Wgpu,\n' if app == "pdfcraft" else ''
     if saf:
         entry = f'''//! Generated Android launcher for {title}.
 //! Starts the app's egui UI with Android Storage Access Framework (SAF) file services plus the
@@ -2757,7 +2790,7 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         viewport: egui::ViewportBuilder::default()
             .with_title("{title}")
             .with_drag_and_drop(true),
-        android_app: Some(android_app),
+{gpu_renderer_option}        android_app: Some(android_app),
         ..Default::default()
     }};
     let result = eframe::run_native(
@@ -2787,7 +2820,7 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         viewport: egui::ViewportBuilder::default()
             .with_title("{title}")
             .with_drag_and_drop(true),
-        android_app: Some(android_app),
+{gpu_renderer_option}        android_app: Some(android_app),
         ..Default::default()
     }};
     let result = eframe::run_native(
@@ -2911,11 +2944,11 @@ fi
 
 # Some apps also use arboard (the clipboard) from a crate in the launcher's dependency graph
 # (PDFCraft does). arboard ships no Android backend and its Unix backend needs X11/Wayland, so it
-# cannot compile for `aarch64-linux-android`. Vendor the builder's Android-compatible stub (a
-# no-op clipboard) and patch it in, exactly like rfd above. Clipboard access degrades gracefully;
-# real Android clipboard support needs a platform adapter (see adapters/README.md).
+# cannot compile for `aarch64-linux-android`. Vendor the builder's reviewed
+# Android-compatible JNI text-clipboard bridge and patch it in, just like rfd above.
+# Unsupported image/HTML operations may be limited; test these separately.
 if grep -rqE '\barboard\b' "$SRC"/crates/*/src 2>/dev/null; then
-    echo "Vendoring an Android-compatible arboard for $TITLE (clipboard access becomes a no-op)..."
+    echo "Vendoring the JNI-backed Android arboard for $TITLE..."
     mkdir -p "$SRC/vendor"
     rm -rf "$SRC/vendor/arboard"
     cp -a "$ROOT/vendor/arboard" "$SRC/vendor/arboard"
@@ -2953,11 +2986,11 @@ else
     rm -rf "$SRC/vendor/winit"
     cp -a "$ROOT/vendor/winit" "$SRC/vendor/winit"
 fi
-# PDFCraft v0.15's pinned egui-winit needs winit's IME-reset API. The generic
+# PDFCraft v0.15/v0.17 pinned egui-winit needs winit's IME-reset API. The generic
 # builder's older mouse-aware vendor copy lacks it. For this disposable candidate
 # only, restore the exact official winit commit and reapply the guarded Android
 # mouse/scroll/hover backend. Do not silently fall back to touch-only input.
-if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.15.0" ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
 fi
@@ -3007,6 +3040,24 @@ if entry not in s:
     tomllib.loads(s)
     p.write_text(s)
 PY
+fi
+
+# Official PDFCraft v0.17.0 can resolve arboard 3.7.0 from the upstream lock even
+# when our existing Android JNI-backed arboard 3.6.1 is [patch.crates-io].
+# That 3.7 crate has no Android platform and fails with missing platform::Clipboard.
+# Select the already reviewed Android JNI implementation for this *candidate only*;
+# never silently replace it with a stub or bypass clipboard tests. Cargo will fail
+# closed if a newer upstream dependency actually requires arboard >=3.7.
+if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.17.0" ]]; then
+    grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
+        fail "PDFCraft Android clipboard patch missing; refusing v0.17 build"
+    cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||
+        fail "Cannot resolve PDFCraft v0.17 against reviewed Android arboard 3.6.1"
+    cargo tree --manifest-path "$SRC/Cargo.toml" --target aarch64-linux-android -i arboard |
+        grep -F 'arboard v3.6.1 (' |
+        grep -F 'vendor/arboard' >/dev/null ||
+        fail "Unreviewed Android clipboard dependency resolution; aborting"
+    echo "PDFCraft Android clipboard uses reviewed JNI-backed arboard 3.6.1."
 fi
 
 # A `target/` directory left behind by running cargo inside a vendored crate must never be

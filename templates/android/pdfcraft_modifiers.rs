@@ -4,17 +4,16 @@
 #[derive(Default)]
 pub struct AndroidModifiers {
     held: [bool; 6],
+    // Android reports some Ctrl+key chords only via KeyEvent.meta_state.
+    reported: egui::Modifiers,
 }
 
 impl AndroidModifiers {
     fn modifiers(&self) -> egui::Modifiers {
-        egui::Modifiers {
-            shift: self.held[0] || self.held[1],
-            ctrl: self.held[2] || self.held[3],
-            alt: self.held[4] || self.held[5],
-            mac_cmd: false,
-            command: self.held[2] || self.held[3],
-        }
+        let shift = self.held[0] || self.held[1] || self.reported.shift;
+        let ctrl = self.held[2] || self.held[3] || self.reported.ctrl;
+        let alt = self.held[4] || self.held[5] || self.reported.alt;
+        egui::Modifiers { shift, ctrl, alt, mac_cmd: false, command: ctrl }
     }
 }
 
@@ -22,6 +21,20 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
     let mut kept = Vec::with_capacity(raw.events.len());
     for mut event in raw.events.drain(..) {
         match &mut event {
+            egui::Event::ModifiersChanged(mods) => {
+                let before = state.modifiers();
+                state.reported = *mods;
+                // Android's KeyEvent.meta_state is authoritative: if the OS
+                // reports Ctrl released after Ctrl+W, clear any physical-side
+                // keydown that was never paired with a winit KeyUp. Otherwise
+                // later touch/trackpad wheel events zoom instead of scrolling
+                // and modal D/C/S may be incorrectly tagged as Ctrl chords.
+                if !mods.ctrl { state.held[2] = false; state.held[3] = false; }
+                if !mods.shift { state.held[0] = false; state.held[1] = false; }
+                if !mods.alt { state.held[4] = false; state.held[5] = false; }
+                let current = state.modifiers();
+                if current != before { kept.push(egui::Event::ModifiersChanged(current)); }
+            }
             egui::Event::Key { key, physical_key, pressed, modifiers, .. } => {
                 let tracked = physical_key.unwrap_or(*key);
                 let before = state.modifiers();
@@ -114,6 +127,46 @@ mod tests {
         assert!(matches!(&events[2], Event::Key { key: Key::S, modifiers, .. } if modifiers.command));
         assert!(matches!(&events[3], Event::ModifiersChanged(mods) if !mods.command));
     }
+    #[test]
+    fn ctrl_shortcuts_without_separate_modifier_key_event() {
+        let mut state = AndroidModifiers::default();
+        let meta = Modifiers { ctrl: true, command: true, ..Modifiers::NONE };
+        let received = apply(&mut state, vec![Event::ModifiersChanged(meta), key(Key::O, true)]);
+        assert!(matches!(&received[0], Event::ModifiersChanged(m) if m.command));
+        assert!(matches!(&received[1], Event::Key { key: Key::O, modifiers, .. } if modifiers.ctrl && modifiers.command));
+        for k in [Key::S, Key::W] {
+            let next = apply(&mut state, vec![key(k, true)]);
+            assert!(matches!(&next[0], Event::Key { modifiers, .. } if modifiers.command));
+        }
+        let released = apply(&mut state, vec![Event::ModifiersChanged(Modifiers::NONE), key(Key::A, true)]);
+        assert!(matches!(released.last(), Some(Event::Key { modifiers, .. }) if !modifiers.ctrl));
+    }
+
+    #[test]
+    fn authoritative_meta_release_clears_stale_control_side_and_wheel_zoom() {
+        let mut state = AndroidModifiers::default();
+        apply(&mut state, vec![key(Key::ControlLeft, true), key(Key::W, true)]);
+        assert!(state.modifiers().ctrl);
+        // A physical CtrlUp can be swallowed by Android's input method;
+        // the next native modifiers event is authoritative.
+        let out = apply(&mut state, vec![
+            Event::ModifiersChanged(Modifiers::NONE),
+            key(Key::D, true),
+        ]);
+        assert!(!state.modifiers().ctrl);
+        assert!(matches!(out.last(), Some(Event::Key { key: Key::D, modifiers, .. }) if !modifiers.ctrl));
+    }
+
+    #[test]
+    fn meta_shift_and_focus_reset_clears_shortcuts() {
+        let mut state = AndroidModifiers::default();
+        let meta = Modifiers { ctrl: true, command: true, shift: true, ..Modifiers::NONE };
+        let received = apply(&mut state, vec![Event::ModifiersChanged(meta), key(Key::S, true)]);
+        assert!(matches!(received.last(), Some(Event::Key { modifiers, .. }) if modifiers.ctrl && modifiers.shift));
+        apply(&mut state, vec![Event::WindowFocused(false)]);
+        assert_eq!(state.modifiers(), Modifiers::NONE);
+    }
+
     #[test]
     fn ime_composition_is_never_rewritten() {
         let mut state = AndroidModifiers::default();

@@ -1,0 +1,134 @@
+name: PDFCraft v0.17 Android.2 original-key sign only (never publish)
+on:
+  push:
+    branches: [integration/pdfcraft-v017-arm64-candidate-20261102]
+    paths: ['.github/workflows/pdfcraft-v017-android2-permanent-sign.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pdfcraft-v017-android2-sign-only
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/pdfcraft-v017-arm64-candidate-20261102'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CANDIDATE_RUN: '41411020349'
+      CANDIDATE_SHA: 'ac837e3e7c48b176e0b6dd302deea4021acd8daa'
+      CANDIDATE_APK_SHA: '21832872b8a1f5b1cae3f95cb5718285dade0e9500ecc70f13ecf28e22f0b5fe'
+      PREVIOUS_APK_SHA: 'f8f3b7bb806bac9eb62c25f4eea762a7912382afb67c72d38e7997112afffb4a'
+      ORIGINAL_CERT: 'be7254670cf0d451a17dd7ad8462ada3f806e50ab296d78a5db685e2a30a849f'
+      RELEASE_APK: PDFCraft-v0.17.0-android.2-arm64-v8a.apk
+    steps:
+      - name: Download exact previously verified candidate and published original
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate previous signed
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > run.json
+          jq -e --arg sha "$CANDIDATE_SHA" '.conclusion == "success" and .head_sha == $sha and .head_branch == "integration/pdfcraft-v017-arm64-candidate-20261102" and .path == ".github/workflows/pdfcraft-candidate.yml" and .event == "push"' run.json >/dev/null
+          gh run download "$CANDIDATE_RUN" -R "$GITHUB_REPOSITORY" -n PDFCraft-0.17.0-android.2-EPHEMERAL-NOT-UPDATE -D candidate
+          echo "$CANDIDATE_APK_SHA  candidate/pdfcraft-0.17.0-android.2.apk" | sha256sum -c
+          gh release download pdfcraft-v0.12.1-android.3 -R "$GITHUB_REPOSITORY" -p 'PDFCraft-v0.12.1-android.3-arm64-v8a.apk' -D previous
+          echo "$PREVIOUS_APK_SHA  previous/PDFCraft-v0.12.1-android.3-arm64-v8a.apk" | sha256sum -c
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify original installed certificate and candidate upgrade identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/apksigner" && test -x "$BUILD_TOOLS/aapt2"
+          echo "BUILD_TOOLS=$BUILD_TOOLS" >> "$GITHUB_ENV"
+          "$BUILD_TOOLS/apksigner" verify --print-certs previous/PDFCraft-v0.12.1-android.3-arm64-v8a.apk > previous-cert.txt
+          "$BUILD_TOOLS/aapt2" dump badging previous/PDFCraft-v0.12.1-android.3-arm64-v8a.apk > previous-badging.txt
+          "$BUILD_TOOLS/aapt2" dump badging candidate/pdfcraft-0.17.0-android.2.apk > candidate-badging.txt
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          def code(path):
+              m=re.search(r"versionCode='(\d+)'", Path(path).read_text())
+              assert m, f"Missing versionCode: {path}"
+              return int(m.group(1))
+          def cert(path):
+              m=re.search(r'certificate SHA-256 digest:\s*([a-fA-F0-9]{64})', Path(path).read_text(), re.I)
+              assert m, f"Missing certificate: {path}"
+              return m.group(1).lower()
+          assert cert('previous-cert.txt')==os.environ['ORIGINAL_CERT'], 'Published PDFCraft certificate differs'
+          old=Path('previous-badging.txt').read_text(); new=Path('candidate-badging.txt').read_text()
+          assert "name='com.artcraft.pdfcraft'" in old and "name='com.artcraft.pdfcraft'" in new
+          assert "versionName='0.17.0-android.2'" in new
+          assert code('candidate-badging.txt')==16781569 and code('candidate-badging.txt')>code('previous-badging.txt')
+          assert code('candidate-badging.txt')>16781568, 'Must upgrade the original-key-signed android.1 test APK'
+          print('PASS: original certificate and versionCode support an in-place update')
+          PY
+
+      - name: Sign with the existing PDFCraft-only GitHub keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PDFCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PDFCRAFT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PDFCRAFT_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PDFCRAFT_KEY_ALIAS }}
+          CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for required in KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD KEY_ALIAS CERT_SHA256; do
+            if [[ -z "${!required}" ]]; then echo "::error::Original PDFCraft signing secret is unavailable: $required"; exit 1; fi
+          done
+          [[ "${CERT_SHA256,,}" == "$ORIGINAL_CERT" ]] || { echo "::error::PDFCraft secret certificate is not the published original"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/pdfcraft-original.p12"
+          trap 'rm -f "$KEYFILE"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          test -s "$KEYFILE"
+          keytool -list -storetype PKCS12 -keystore "$KEYFILE" -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD >/dev/null
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 candidate/pdfcraft-0.17.0-android.2.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYFILE" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --v4-signing-enabled false --out "signed/$RELEASE_APK" aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "signed/$RELEASE_APK" > signed/signature.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "signed/$RELEASE_APK"
+          "$BUILD_TOOLS/aapt2" dump badging "signed/$RELEASE_APK" > signed/badging.txt
+          python3 - <<'PY'
+          import hashlib, os, re, zipfile
+          from pathlib import Path
+          apk=Path('signed')/os.environ['RELEASE_APK']
+          def cert(path):
+              m=re.search(r'certificate SHA-256 digest:\s*([a-fA-F0-9]{64})', Path(path).read_text(), re.I)
+              assert m, 'Missing verified signature fingerprint'
+              return m.group(1).lower()
+          assert cert('signed/signature.txt') == os.environ['ORIGINAL_CERT'] == cert('previous-cert.txt')
+          badging=Path('signed/badging.txt').read_text()
+          assert "name='com.artcraft.pdfcraft'" in badging and "versionName='0.17.0-android.2'" in badging and "versionCode='16781569'" in badging
+          with zipfile.ZipFile('candidate/pdfcraft-0.17.0-android.2.apk') as before, zipfile.ZipFile(apk) as after:
+              def payload(z):
+                  return {n: hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist() if not n.upper().startswith('META-INF/')}
+              assert payload(before)==payload(after), 'Signing changed non-signature files'
+              libs=[n for n in after.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in after.namelist())
+          print('PASS: original signing identity, byte-identical payload, ARM64-only')
+          PY
+          (cd signed && sha256sum "$RELEASE_APK" > SHA256SUMS.txt)
+          echo "Owner device testing required; NO PUBLICATION was made." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload original-key signed APK for device test; never publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFCraft-v0.17.0-android.2-ORIGINAL-KEY-SIGNED-DEVICE-TEST
+          path: |
+            signed/PDFCraft-v0.17.0-android.2-arm64-v8a.apk
+            signed/SHA256SUMS.txt
+            signed/signature.txt
+            signed/badging.txt
+          retention-days: 30
+          if-no-files-found: error

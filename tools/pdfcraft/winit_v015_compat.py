@@ -1,7 +1,7 @@
-"""PDFCraft v0.15 candidate-only pinned winit/Android input compatibility.
+"""PDFCraft v0.15/v0.17 candidate-only pinned winit/Android input compatibility.
 
 The shared builder's old vendored winit lacks the IME API required by the
-immutable egui-winit revision in PDFCraft v0.15. Start with the exact official
+immutable egui-winit revision in PDFCraft v0.15/v0.17. Start with the exact official
 Storytold winit commit, then retain the existing Android mouse/scroll/hover
 backend with only the upstream Android IME stubs restored.
 """
@@ -38,8 +38,8 @@ def with_ime_api(android_mod: str) -> str:
 def prepare(source: Path, builder_android: Path) -> None:
     raw = (source / "Cargo.toml").read_text()
     data = tomllib.loads(raw)
-    if data["workspace"]["package"]["version"] != "0.15.0":
-        raise ValueError("Only official PDFCraft v0.15.0 is supported")
+    if data["workspace"]["package"]["version"] not in ("0.15.0", "0.17.0"):
+        raise ValueError("Only audited official PDFCraft v0.15.0/v0.17.0 are supported")
     patches = data["patch"]["crates-io"]
     if patches["winit"].get("rev") != PIN or patches["winit"].get("git") != REMOTE:
         raise ValueError("PDFCraft official winit source pin changed")
@@ -49,6 +49,12 @@ def prepare(source: Path, builder_android: Path) -> None:
     if not vendor.is_dir():
         raise ValueError("Missing PDFCraft vendor/winit staging directory")
     overlay = with_ime_api((builder_android / "mod.rs").read_text())
+    # PDFCraft-only: do not replace the shared Android keyboard/mouse backend.
+    from android_input_patch import patch as patch_android_input
+    overlay = patch_android_input(overlay)
+    from android_onefinger_patch import patch as patch_onefinger
+    from android_trackpad_patch import patch as patch_trackpad
+    overlay = patch_trackpad(patch_onefinger(overlay))
     keycodes = (builder_android / "keycodes.rs").read_bytes()
     with tempfile.TemporaryDirectory(prefix=".pdfcraft-winit-", dir=vendor.parent) as temp:
         pinned = Path(temp) / "pinned"
@@ -76,7 +82,7 @@ def prepare(source: Path, builder_android: Path) -> None:
         # Only the disposable candidate's generated source tree is replaced.
         shutil.rmtree(vendor)
         shutil.move(str(pinned), str(vendor))
-    print("Pinned winit IME API restored with Android mouse/scroll/hover overlay")
+    print("Pinned Android mouse/hover overlay, IME API, PDFCraft 2-finger scroll and hardware key metadata restored")
 
 
 if __name__ == "__main__":

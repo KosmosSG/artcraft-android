@@ -154,7 +154,7 @@ pub fn artcraft_ai_tools_visible() -> bool {
     replace_once(
         adapter / "Cargo.toml",
         "version.workspace = true\n",
-        'version = "0.19.0-android.3"\n',
+        'version = "0.19.0-android.4"\n',
     )
 
     # New ArtCraft-owned overlay only; do not replace our shipped NativeActivity.
@@ -421,8 +421,17 @@ pub fn artcraft_take_font_request() -> u8 {
             ("help.artcraftCheckUpdates", "Check for Updates…", "Help"),
         ] {
             if !items.iter().any(|i| i.id == id) {
-                let at = items.iter().rposition(|i| i.path.first().map(String::as_str) == Some(top))
-                    .map_or(items.len(), |pos| pos + 1);
+                // Keep Android commands near the TOP, not below hundreds of
+                // Photoshop catalogue rows in File/Help.
+                let after = match id {
+                    "file.artcraftImportFonts" => "file.open",
+                    "file.artcraftImportFontFolder" => "file.artcraftImportFonts",
+                    _ => "help.checkForUpdates",
+                };
+                let at = items.iter().position(|i| i.id == after)
+                    .map(|pos| pos + 1)
+                    .or_else(|| items.iter().position(|i| i.path.first().map(String::as_str) == Some(top)))
+                    .unwrap_or(items.len());
                 items.insert(at, MenuItem {
                     id: id.into(), label: label.into(), path: vec![top.into()],
                     shortcut: None, enabled: true, checked: None, color: None,
@@ -626,7 +635,72 @@ pub fn artcraft_take_font_request() -> u8 {
 ''',
     )
 
-    print("PhotoCraft v0.19.0-android.3: SAF fonts, native clipboard, update menu and icon fix staged (runner only).")
+
+    # NativeActivity's IME host delivers text, but device keyboards on some
+    # tablets don't deliver the matching egui::Key to upstream shortcut dispatch.
+    # Queue only a minimal allowlist of physical key events and let the native
+    # input system continue to receive each original event. No text/tokens logged.
+    replace_once(host, 'mod android_fonts;\n', 'mod android_fonts;\nmod hardware_keys;\n')
+    replace_once(
+        host,
+        '        apply_android_modifiers(&mut self.modifiers, raw);\n',
+        '        apply_android_modifiers(&mut self.modifiers, raw);\n        hardware_keys::inject(&self.bridge, raw);\n',
+    )
+    replace_once(
+        host,
+        '    fn poll_font_import(&self) -> Result<Option<String>, String> {\n',
+        '''    fn poll_hardware_key(&self) -> Result<Option<String>, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("pcHardwareKeyPoll"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, result)?;
+            Ok(Some(value.try_to_string(env)?))
+        }).map_err(|e| e.to_string())
+    }
+
+    fn poll_font_import(&self) -> Result<Option<String>, String> {
+''',
+    )
+    replace_once(
+        activity,
+        '    private PhotoCraftFontImport fontImport;\n',
+        '''    private PhotoCraftFontImport fontImport;
+    private final ConcurrentLinkedQueue<String> artcraftHardwareKeys = new ConcurrentLinkedQueue<>();
+
+    // Hardware keys that upstream egui needs for tool, close, and type editing
+    // actions. All other keys stay on the normal native/IME path. NEVER log
+    // typed keys or read/retain secure text, including U2NetP tokens.
+    public String pcHardwareKeyPoll() { return artcraftHardwareKeys.poll(); }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        int action = event.getAction();
+        if ((action == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+                || action == KeyEvent.ACTION_UP) {
+            if (code == KeyEvent.KEYCODE_ESCAPE || code == KeyEvent.KEYCODE_V
+                    || code == KeyEvent.KEYCODE_T || code == KeyEvent.KEYCODE_B
+                    || code == KeyEvent.KEYCODE_Y || code == KeyEvent.KEYCODE_N
+                    || code == KeyEvent.KEYCODE_C || code == KeyEvent.KEYCODE_W
+                    || code == KeyEvent.KEYCODE_D || code == KeyEvent.KEYCODE_S
+                    || code == KeyEvent.KEYCODE_ENTER) {
+                int flags = (event.isAltPressed() ? 1 : 0)
+                    | (event.isCtrlPressed() ? 2 : 0)
+                    | (event.isShiftPressed() ? 4 : 0);
+                // Encoded physical key, modifiers, and whether this is DOWN.
+                artcraftHardwareKeys.offer(code + "," + flags + ","
+                    + (action == KeyEvent.ACTION_DOWN ? "1" : "0"));
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+''',
+    )
+
+    print("PhotoCraft v0.19.0-android.4: docked pad, popup scroll, menu prominence and hardware shortcuts staged (runner only).")
 
 
 if __name__ == "__main__":

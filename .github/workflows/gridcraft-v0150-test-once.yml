@@ -47,7 +47,10 @@ jobs:
           set -euo pipefail
           test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
           test "$(git -C builder/source/gridcraft rev-parse HEAD)" = 30b210b4ef03b30616923465efa70766cefba379
+          # Fail fast on malformed injected Java (caught 2026-11-03), before
+          # spending GitHub minutes on the full ARM64 native compile.
           python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -q
+          python3 -m unittest discover -s tools/gridcraft -p 'test_java_syntax.py' -v
           python3 tools/gridcraft/verify_source.py
           python3 tools/gridcraft/install_overlay.py builder
           bash -n builder/lib/build-common.sh

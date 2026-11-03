@@ -18,6 +18,28 @@ SNIPPET = '''    # GRIDCRAFT_OVERLAY_HOOK_V1: GridCraft only, never other apps.
                        init_globals={"staging_dir": staging_dir, "package_name": package_name, "root": root})
 '''
 
+def stage_trackpad_primary_button(builder: Path):
+    """Fix dropped trackpad click+drag in a disposable GridCraft-only winit copy.
+
+    The pinned Android winit adaptor checked action_button() for ACTION_DOWN
+    and ACTION_UP. Android only defines action_button() for BUTTON_PRESS/RELEASE,
+    so physical primary clicks could disappear while cursor hover still worked.
+    Keep touch events, scroll axes and nonprimary-button handling unchanged.
+    """
+    source_file = builder / "vendor/winit/src/platform_impl/android/mod.rs"
+    if not source_file.is_file():
+        raise RuntimeError("Pinned Android winit mouse adapter missing")
+    source = source_file.read_text()
+    anchor = "                                    if motion_event.action_button() != Button::Primary {\n                                        button_sent = true;\n                                    } else {\n                                        button_sent = true;\n                                        callback("
+    replacement = "                                    // GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1:\n                                    // Android getActionButton() is undefined on ordinary\n                                    // ACTION_DOWN / ACTION_UP. Those are the primary\n                                    // trackpad/mouse clicks, not secondary-button actions.\n                                    // Keep ACTION_POINTER_* restricted to explicit primary.\n                                    let primary = matches!(\n                                        motion_event.action(),\n                                        MotionAction::Down | MotionAction::Up | MotionAction::Cancel\n                                    ) || motion_event.action_button() == Button::Primary;\n                                    button_sent = true;\n                                    if primary {\n                                        callback("
+    if source.count(anchor) != 1 or "GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1" in source:
+        raise RuntimeError("Pinned winit trackpad event translation changed; manual review required")
+    patched = source.replace(anchor, replacement, 1)
+    if patched.count("GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1") != 1:
+        raise RuntimeError("Trackpad input fix missing from isolated winit adapter")
+    source_file.write_text(patched)
+
+
 def stage_candidate_android_version(builder: Path):
     """Set GridCraft candidate's Android versionName without changing upstream or versionCode."""
     generator = builder / "lib/android_project.py"
@@ -205,6 +227,7 @@ def install(builder: Path, additions: Path):
     # Inject immediately AFTER the generator writes lib.rs, before its
     # atomic staging-directory rename publishes the Android launcher.
     if source_version == "0.15.0":
+        stage_trackpad_primary_button(builder)
         stage_candidate_android_version(builder)
     source.write_text(text.replace(TRIGGER, TRIGGER + "\n" + SNIPPET, 1))
     print("Installed isolated GridCraft native top Tools menu and Android source overlay.")

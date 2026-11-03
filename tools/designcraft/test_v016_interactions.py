@@ -40,8 +40,11 @@ class V016InteractionContract(unittest.TestCase):
         self.assertIn("dcUnsavedDialog", stager)
         self.assertIn("dispatchKeyEvent(KeyEvent event)", stager)
         self.assertIn("KEYCODE_ESCAPE", stager)
-        self.assertIn("KEYCODE_T", stager)
-        self.assertIn("KEYCODE_V", stager)
+        # T/V must pass through native dispatch; Java interception caused
+        # shortcuts to disappear while the Activity kept focus.
+        self.assertNotIn("code == KeyEvent.KEYCODE_T || code == KeyEvent.KEYCODE_V", stager)
+        self.assertIn("return super.dispatchKeyEvent(event);", stager)
+        self.assertIn('app.select_tool(tool)', ui)
         self.assertIn('egui::Panel::top("artcraft-designcraft-android-tools").show(ui,', ui)
         self.assertIn('designcraft.unsaved.dcs', ui)
         self.assertIn('modifiers.ctrl || modifiers.command', ui)

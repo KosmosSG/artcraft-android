@@ -68,7 +68,9 @@ def install(builder: Path, additions: Path):
         port["stage"](builder / "source/gridcraft")
         save_port = runpy.run_path(str(Path(__file__).with_name("port_v0150_save_dcs.py")))
         save_port["port"](builder / "source/gridcraft")
-        print("v0.15.0 relocated menu/font, modal D/C/S, Esc and SAF-acknowledged close sources staged; generated launcher still requires compatibility work")
+        selection_port = runpy.run_path(str(Path(__file__).with_name("port_v0150_touch_selection.py")))
+        selection_port["port"](builder / "source/gridcraft")
+        print("v0.15.0 menu/font, D/C/S, Esc, acknowledged SAF and Android touch-selection sources staged")
     else:
         if ribbon.is_file():
             ribbon_source = ribbon.read_text()

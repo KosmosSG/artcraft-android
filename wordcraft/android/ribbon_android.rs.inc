@@ -3,7 +3,21 @@
 // the ribbon finishes drawing; no Android dependency enters the upstream UI crate.
 #[cfg(target_os = "android")]
 fn artcraft_android_menu(ui: &mut Ui) {
-    ui.menu_button("ArtCraft", |ui| {
+    // The same approved artwork used for the Android launcher, scaled down for the
+    // first (leftmost) control of WordCraft's top tab strip.
+    let icon_id = egui::Id::new("wc_approved_menu_texture");
+    let texture = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(icon_id))
+        .unwrap_or_else(|| {
+            let rgba = include_bytes!("wordcraft-android-menu-icon.rgba");
+            let color = egui::ColorImage::from_rgba_unmultiplied([40, 40], rgba);
+            let texture = ui.ctx().load_texture("WordCraft approved launcher icon", color, egui::TextureOptions::LINEAR);
+            ui.ctx().data_mut(|d| d.insert_temp(icon_id, texture.clone()));
+            texture
+        });
+    let button = ui.add(egui::ImageButton::new(
+        egui::Image::new((texture.id(), egui::vec2(24.0, 24.0)))
+    )).on_hover_text("WordCraft • ArtCraft tools");
+    egui::Popup::menu(&button).show(|ui| {
         ui.set_min_width(270.0);
         let refreshing = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_font_busy"))).unwrap_or(false);
         for (label, action) in [

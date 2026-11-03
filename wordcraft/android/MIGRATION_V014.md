@@ -83,3 +83,11 @@ Android application already passes these tests.
 - The candidate build [#41560966077](https://github.com/KosmosSG/artcraft-android/actions/runs/41560966077) passed the guarded source tests and compiled past the previous winit and missing-directory failures, but native build exited with two Rust API errors: `craft_ui::printing::Printer` now requires `label: String`, and WordCraft `WordApp::raw_input_hook` now requires `(ctx, raw)` rather than only `raw`.
 - The WordCraft-v0.14-only builder compatibility shim adds an empty `label` (shared print UI falls back to existing `name`, so it still displays Android print system) and changes the generated WordCraft raw-input hook to pass `ctx`. It retains the existing older input hook for all other apps. Guarded regression fixture tests both changes and ensures missing anchors abort.
 - **Build success, actual print submission, D/C/S behavior, clipboard, IME and tablet acceptance remain unverified until a successful candidate and owner testing.** Never use original certificate for this test.
+
+## 2026-11-03: HONOR MagicPad test feedback for android.2 preview
+
+- Device tested android.1: user reports launcher icon missing in top-left UI ribbon, D/C/S not working, and shared folder scan too small. **None of the three new fixes have passed device validation yet.**
+- Android.2 uses the exact approved launcher artwork as an embedded 40x40 RGBA texture and renders an ArtCraft popup button at the start (left side) of the tab strip, rather than text-only menu inside the right-to-left buttons group.
+- Android.2 adds WordCraft-only raw-key D/C/S intercept before editor processing, in addition to existing Java physical-key dispatch and v0.14 dialog handler. Preserves Save/Don't Save/Cancel button actions; clears stale JNI action on modal close.
+- Recursive shared SAF font scan: 5,000 recognized fonts, aggregate 4 GiB file data, up to 20,000 folders, with a 256 MiB per-file safety limit, streamed 64 KiB at a time and asynchronously staged. Font load processes up to 8 files per frame. Actual free app-private storage must be adequate. No blanket filesystem permission or signing-key changes.
+- Scope: draft PR117 only, temporary-signed candidate `0.14.0-android.2`. Do not merge, publish or use original certificate until explicit user approval after testing.

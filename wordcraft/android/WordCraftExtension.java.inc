@@ -3,6 +3,10 @@
     // WordCraft candidate's generated Activity; other ArtCraft apps are unchanged.
     private static final int WC_FONT_FOLDER_REQUEST = 0x5751;
     private static final String WC_FONT_TREE_KEY = "wordcraft_shared_font_tree";
+    private static final int WC_MAX_FONTS = 5_000;
+    private static final int WC_MAX_FOLDERS = 20_000;
+    private static final long WC_MAX_FONT_TOTAL_BYTES = 4L * 1024 * 1024 * 1024;
+    private static final long WC_MAX_SINGLE_FONT_BYTES = 256L * 1024 * 1024;
     private final ConcurrentLinkedQueue<String> wcFontEvents = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<String> wcUpdateEvents = new ConcurrentLinkedQueue<>();
     private final ExecutorService wcUpdateIo = Executors.newSingleThreadExecutor();
@@ -93,8 +97,8 @@
             int copied = 0;
             long copiedBytes = 0;
             int skipped = 0;
-            while (!pending.isEmpty() && scannedFolders < 300 && copied < 150
-                    && copiedBytes < 200L * 1024 * 1024) {
+            while (!pending.isEmpty() && scannedFolders < WC_MAX_FOLDERS && copied < WC_MAX_FONTS
+                    && copiedBytes < WC_MAX_FONT_TOTAL_BYTES) {
                 String parentId = pending.removeFirst();
                 if (!seen.add(parentId)) continue;
                 scannedFolders++;
@@ -106,21 +110,22 @@
                                 DocumentsContract.Document.COLUMN_SIZE },
                         null, null, null)) {
                     if (cursor == null) { skipped++; continue; }
-                    while (cursor.moveToNext() && copied < 150
-                            && copiedBytes < 200L * 1024 * 1024) {
+                    while (cursor.moveToNext() && copied < WC_MAX_FONTS
+                            && copiedBytes < WC_MAX_FONT_TOTAL_BYTES) {
                         String id = cursor.getString(0);
                         String name = cursor.getString(1);
                         String mime = cursor.getString(2);
                         if (id == null || name == null) continue;
                         if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                            if (pending.size() + seen.size() < 300) pending.addLast(id);
+                            if (pending.size() + seen.size() < WC_MAX_FOLDERS) pending.addLast(id);
                             continue;
                         }
                         String lower = name.toLowerCase(java.util.Locale.ROOT);
                         if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")
                                 && !lower.endsWith(".ttc") && !lower.endsWith(".otc")) continue;
                         long size = cursor.isNull(3) ? -1 : cursor.getLong(3);
-                        if (size == 0 || size > 20L * 1024 * 1024) { skipped++; continue; }
+                        if (size == 0 || size > WC_MAX_SINGLE_FONT_BYTES
+                                || (size > 0 && copiedBytes + size > WC_MAX_FONT_TOTAL_BYTES)) { skipped++; continue; }
                         String suffix = lower.substring(lower.lastIndexOf('.'));
                         String hash = java.util.UUID.nameUUIDFromBytes(
                                 id.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
@@ -135,8 +140,8 @@
                             int n;
                             while ((n = input.read(buffer)) != -1) {
                                 total += n;
-                                if (total > 20L * 1024 * 1024
-                                        || copiedBytes + total > 200L * 1024 * 1024)
+                                if (total > WC_MAX_SINGLE_FONT_BYTES
+                                        || copiedBytes + total > WC_MAX_FONT_TOTAL_BYTES)
                                     throw new java.io.IOException("Font storage limit exceeded");
                                 output.write(buffer, 0, n);
                             }
@@ -169,7 +174,11 @@
             result.put("paths", paths);
             result.put("count", copied);
             result.put("skipped", skipped);
-            result.put("limited", !pending.isEmpty());
+            result.put("limited", !pending.isEmpty() || copied >= WC_MAX_FONTS
+                    || copiedBytes >= WC_MAX_FONT_TOTAL_BYTES || scannedFolders >= WC_MAX_FOLDERS);
+            result.put("scannedBytes", copiedBytes);
+            result.put("maxFonts", WC_MAX_FONTS);
+            result.put("maxBytes", WC_MAX_FONT_TOTAL_BYTES);
             wcFontEvents.offer(result.toString());
         } catch (Exception error) {
             wcFontError("Could not read shared font folder: " + error);
@@ -345,7 +354,7 @@
         }
         // Do not silently drain a queued key while the UI is transitioning
         // into or out of the dialog. The dialog consumes its own choice.
-        if (!active) return 0;
+        if (!active) { wcDialogAction.set(0); return 0; }
         int action = wcDialogAction.getAndSet(0);
         if (action != 0) Log.i(TAG, "WC_DCS_DIAG delivered=" + action);
         return action;

@@ -118,11 +118,17 @@ def main() -> None:
     # Android candidate still builds the unmodified upstream engine and UI.
     patched = exactly_once(
         patched,
+        "        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
+        "{wc_raw_dcs}        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
+        "intercept D/C/S physical keys before app input processing",
+    )
+    patched = exactly_once(
+        patched,
         "    shell = f'''",
         "    wc_fields = '\\n    wc: wordcraft_android::Tools,' if app == 'wordcraft' else ''\n"
         "    wc_new_setup = '        let wc_tools = wordcraft_android::Tools::new(&app);\\n' if app == 'wordcraft' else ''\n"
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
-        "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"        "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
         "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui);\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",
@@ -168,6 +174,17 @@ def main() -> None:
         "permit WordCraft-only read-only GitHub update checks",
     )
 
+    # The approved launcher icon is the only source for the in-app menu artwork.
+    # Embed a tiny raw RGBA texture: no PNG loader, file permission or runtime
+    # decoding dependency. This is only copied into the isolated WordCraft UI.
+    from PIL import Image
+    app_icon = Path(__file__).with_name("icon") / "wordcraft-approved-192.png"
+    if not app_icon.is_file():
+        raise SystemExit("Approved WordCraft launcher icon missing; stop")
+    with Image.open(app_icon) as approved:
+        rgba = approved.convert("RGBA").resize((40, 40), Image.Resampling.LANCZOS)
+        (root / "source" / "wordcraft" / "crates" / "ui-egui" / "src" /
+         "wordcraft-android-menu-icon.rgba").write_bytes(rgba.tobytes())
     # Add ArtCraft as a real ribbon dropdown, with room reserved by the tab
     # planner. Other app checkouts and the upstream repository are untouched.
     ribbon = root / "source" / "wordcraft" / "crates" / "ui-egui" / "src" / "ribbon.rs"
@@ -175,17 +192,19 @@ def main() -> None:
     ribbon_text = exactly_once(
         ribbon_text,
         "let button_levels = [button_widths(0), button_widths(1), button_widths(2)];",
-        "let android_tools_width = if cfg!(target_os = \"android\") { 92.0 } else { 0.0 };\n"
+        "let android_tools_width = if cfg!(target_os = \"android\") { 42.0 } else { 0.0 };\n"
         "                let button_levels = [button_widths(0), button_widths(1), button_widths(2)].map(|width| width + android_tools_width);",
         "reserve native ArtCraft menu space",
     )
     ribbon_text = exactly_once(
         ribbon_text,
+        "                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {\n"
         "                    // No document open (#1129): nothing to share, edit or comment on — but only",
-        "                    #[cfg(target_os = \"android\")]\n"
-        "                    artcraft_android_menu(ui);\n"
+        "                #[cfg(target_os = \"android\")]\n"
+        "                artcraft_android_menu(ui);\n"
+        "                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {\n"
         "                    // No document open (#1129): nothing to share, edit or comment on — but only",
-        "insert native ArtCraft ribbon menu",
+        "place WordCraft launcher icon menu at top left of tab strip",
     )
     ribbon.write_text(ribbon_text + Path(__file__).with_name("ribbon_android.rs.inc").read_text(), encoding="utf-8")
     source.write_text(patched, encoding="utf-8")

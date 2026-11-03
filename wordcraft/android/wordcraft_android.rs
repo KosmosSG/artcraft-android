@@ -40,6 +40,42 @@ pub struct Tools {
 }
 
 impl Tools {
+    /// Capture D/C/S while the save-changes prompt is active, at eframe's raw
+    /// input hook *before* the editor, focus navigation or popup can consume it.
+    /// The Android Activity bridge is an independent fallback for physical keys
+    /// that never appear in egui's input stream (GameActivity/IME routing).
+    pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let id = egui::Id::new("wordcraft.unsaved.dcs");
+        if !active {
+            ctx.data_mut(|d| d.remove::<u8>(id));
+            return;
+        }
+        let mut choice = None;
+        raw.events.retain(|event| {
+            match event {
+                egui::Event::Key { key, pressed, repeat, modifiers, .. } if !modifiers.any() => {
+                    let action = match key {
+                        egui::Key::D => 1, egui::Key::C => 2, egui::Key::S => 3, _ => 0,
+                    };
+                    if action == 0 { return true; }
+                    if *pressed && !*repeat && choice.is_none() {
+                        choice = Some(action);
+                    }
+                    false // Consume both down and up, never type into the canvas.
+                }
+                egui::Event::Text(text) if matches!(text.as_str(), "d" | "D" | "c" | "C" | "s" | "S") => false,
+                _ => true,
+            }
+        });
+        if let Some(action) = choice {
+            ctx.data_mut(|d| {
+                if d.get_temp::<u8>(id).is_none() {
+                    d.insert_temp(id, action);
+                }
+            });
+            ctx.request_repaint();
+        }
+    }
     pub fn unsaved_dialog(&self, active: bool, ctx: &egui::Context) {
         if !active { ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("wordcraft.unsaved.dcs"))); }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
@@ -51,7 +87,7 @@ impl Tools {
             result?.i()
         });
         if let Ok(action @ 1..=3) = result {
-            if active { ctx.data_mut(|d| d.insert_temp(egui::Id::new("wordcraft.unsaved.dcs"), action as u8)); }
+            if active { ctx.data_mut(|d| { let id = egui::Id::new("wordcraft.unsaved.dcs"); if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action as u8); } }); }
         }
         if active { ctx.request_repaint_after(std::time::Duration::from_millis(16)); }
     }
@@ -205,7 +241,7 @@ impl Tools {
                 }
             }
         }
-        for _ in 0..2 {
+        for _ in 0..8 {
             let Some(path) = self.pending_fonts.pop_front() else { break };
             let success = match app.run("font.add", serde_json::json!({"path": path})) {
                 Ok(_) => true,

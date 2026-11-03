@@ -445,35 +445,20 @@ def apply(root):
             #[cfg(target_os = "android")]
             let scroll_gain = if ui.input(|i| i.events.iter().any(|e|
                 matches!(e, egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, .. })
-            )) { if touch_pan_active { 1.65_f32 } else { 1.95_f32 } } else { 1.0 };
+            )) { if touch_pan_active { 1.65_f32 } else { 1.7_f32 } } else { 1.0 };
             #[cfg(not(target_os = "android"))]
             let scroll_gain = 1.0_f32;
             #[cfg(target_os = "android")]
             let frame_scroll = if !touch_pan_active && scroll_gain > 1.0 {
-                let key = scroll_id.with("deckcraft_trackpad_smooth");
-                let (old, last_input): (egui::Vec2, f64) = ui.data_mut(|d|
-                    d.get_temp(key)).unwrap_or((egui::Vec2::ZERO, 0.0));
-                let now = ui.input(|i| i.time);
-                // A trackpad may send large, uneven point-wheel bursts. Interpolate
-                // to touchscreen-like motion, then let the last 2–5 frames
-                // settle with bounded momentum. Do not synthesize page turns.
-                let input = wheel * scroll_gain;
-                let motion = if input != egui::Vec2::ZERO {
-                    old * 0.36 + input * 0.64
-                } else if now - last_input < 0.22 {
-                    old * 0.72
-                } else {
-                    egui::Vec2::ZERO
-                };
-                let next = if motion.length() < 0.65 { egui::Vec2::ZERO }
-                    else { egui::vec2(motion.x.clamp(-64.0, 64.0),
-                                      motion.y.clamp(-64.0, 64.0)) };
-                ui.data_mut(|d| d.insert_temp(key,
-                    (next, if input != egui::Vec2::ZERO { now } else { last_input })));
-                if next != egui::Vec2::ZERO {
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
-                }
-                next
+                // egui::smooth_scroll_delta already performs event-aware
+                // smoothing (trackpads are pass-through, wheel bursts eased).
+                // Android.11 layered another low-pass + synthetic momentum
+                // on top, adding visible input latency and repeated frames.
+                // Keep egui as the only smoothing stage, and cap anomalous
+                // trackpad spikes without injecting movement after lift-off.
+                let delta = wheel * scroll_gain;
+                egui::vec2(delta.x.clamp(-72.0, 72.0),
+                           delta.y.clamp(-72.0, 72.0))
             } else { wheel * scroll_gain };
             #[cfg(not(target_os = "android"))]
             let frame_scroll = wheel * scroll_gain;

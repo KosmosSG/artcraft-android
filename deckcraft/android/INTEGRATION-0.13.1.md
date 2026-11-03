@@ -238,3 +238,28 @@ review and are intentionally not attempted.
 
 Use locally disposable-key v2-signing test APK, no additional GitHub signing
 job, no permanent key, merge or public release before physical tablet test.
+
+## v0.14.1-android.12 — remove duplicate trackpad smoothing after owner tablet test (2026-11-03)
+
+HONOR MagicPad 4 owner tested Android.11: ordinary arrow caret motion, Shift+Arrow
+text selection, all earlier Ctrl+A/C/X/V/W, D/C/S and Escape, dark theme,
+touch pinch/pan, install and reduced APK size all WORK. Two-finger trackpad
+scroll still has slight lag and can bring up MagicOS's separate connected-device
+panel / global edge gesture (not controllable from DeckCraft after OS intercepts).
+
+Pinned official egui InputState::smooth_scroll_delta already includes scroll
+smoothing and has native trackpad pass-through. Android.11 additionally
+low-passed deltas (36% old+64% new) and synthesized up to 220ms of momentum:
+that unnecessary second filter may cause the reported latency. Android.12
+removes redundant trackpad smoothing and synthetic scroll-after-lift; uses
+native egui smooth_scroll_delta as the sole smoothing stage, trackpad pixel
+scale 1.7 (previous 1.95), cap atypical trackpad bursts to ±72px/frame.
+Direct two-finger touch scroll remains at 1.65 and pinch zoom untouched;
+no slide switching from touch pan. No Android gesture interception, system
+settings change, signing/release, toolbar/text, D/C/S or font modifications.
+
+Build and device test remain required: verify trackpad feels more responsive,
+with no unexpected extra momentum/slide changes, compare MagicOS overlay,
+pinch/pan, keyboard shortcuts, theme, APK size. MagicOS can claim reserved
+gestures; owners may optionally adjust HONOR Connect/MagicRing and Multi-Window
+dock settings with awareness of cross-device side effects.

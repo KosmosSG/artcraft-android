@@ -204,7 +204,13 @@ def launcher(android):
                 v016_android::report_shared(Ok(format!(
                     "Shared folder scan completed: {count} font files"
                 )));
-            } else if status != "cancel" {
+            } else if status == "cancel" {
+                // Release the pending state, otherwise a cancelled picker
+                // makes all later Refresh clicks look permanently busy.
+                v016_android::report_shared(Err(
+                    "Shared font folder selection cancelled".to_owned()
+                ));
+            } else {
                 v016_android::report_shared(Err(
                     value.get("message").and_then(serde_json::Value::as_str)
                         .unwrap_or("Shared font refresh failed").to_owned()

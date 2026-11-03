@@ -10,7 +10,12 @@ pub(crate) struct ShortcutPad {
     left_file: PathBuf,
     last_visible: bool,
     last_left: bool,
-    zoom_drag_y: f32,
+    zoom_angle: Option<f32>,
+    zoom_turn: f32,
+    held_alt: bool,
+    held_pan: bool,
+    last_alt: bool,
+    last_pan: bool,
 }
 impl ShortcutPad {
     pub(crate) fn new(data_dir: PathBuf) -> Self {
@@ -20,7 +25,29 @@ impl ShortcutPad {
         let left = left_file.is_file();
         menus::artcraft_pad_set_visible(visible);
         menus::artcraft_pad_set_left(left);
-        Self { visible_file, left_file, last_visible: visible, last_left: left, zoom_drag_y: 0.0 }
+        Self { visible_file, left_file, last_visible: visible, last_left: left,
+            zoom_angle: None, zoom_turn: 0.0,
+            held_alt: false, held_pan: false,
+            last_alt: false, last_pan: false }
+    }
+    /// Inject only transitions (press/release), never endless key repeats.
+    /// Holding Pan sends Space, like PhotoCraft's normal temporary Hand tool.
+    /// Holding Alt delivers the native AltLeft modifier to the current tool.
+    pub(crate) fn inject_controls(&mut self, raw: &mut egui::RawInput) {
+        for (held, old, key) in [
+            (self.held_alt, &mut self.last_alt, egui::Key::AltLeft),
+            (self.held_pan, &mut self.last_pan, egui::Key::Space),
+        ] {
+            if held == *old { continue; }
+            *old = held;
+            raw.events.push(egui::Event::Key {
+                key, physical_key: None, pressed: held, repeat: false,
+                modifiers: egui::Modifiers {
+                    alt: self.held_alt,
+                    ..egui::Modifiers::NONE
+                },
+            });
+        }
     }
     fn save_flag(path: &PathBuf, value: bool) {
         if value {
@@ -83,36 +110,51 @@ impl ShortcutPad {
                                 Self::action(app, ctx, if plus { "view.zoomIn" } else { "view.zoomOut" });
                             }
                             if gesture.dragged() {
-                                // A slow vertical swipe runs one zoom step at a
-                                // time, rather than repeatedly on every frame.
-                                let total = gesture.drag_delta().y;
-                                let difference = total - self.zoom_drag_y;
-                                if difference.abs() >= 24.0 {
-                                    Self::action(app, ctx, if difference < 0.0 {
-                                        "view.zoomIn"
-                                    } else {
-                                        "view.zoomOut"
-                                    });
-                                    self.zoom_drag_y = total;
+                                // The reference Shortcut Pad uses a *rotary* wheel:
+                                // clockwise zooms in, counter-clockwise zooms out.
+                                if let Some(pos) = gesture.interact_pointer_pos() {
+                                    let v = pos - center;
+                                    let angle = v.y.atan2(v.x);
+                                    if let Some(previous) = self.zoom_angle {
+                                        let turn = (angle - previous + std::f32::consts::PI)
+                                            .rem_euclid(std::f32::consts::TAU)
+                                            - std::f32::consts::PI;
+                                        self.zoom_turn += turn;
+                                        if self.zoom_turn.abs() >= 0.38 {
+                                            Self::action(app, ctx, if self.zoom_turn > 0.0 {
+                                                "view.zoomIn"
+                                            } else {
+                                                "view.zoomOut"
+                                            });
+                                            self.zoom_turn = 0.0;
+                                        }
+                                    }
+                                    self.zoom_angle = Some(angle);
                                 }
                             } else {
-                                self.zoom_drag_y = 0.0;
+                                self.zoom_angle = None;
+                                self.zoom_turn = 0.0;
                             }
                             ui.add_space(7.0);
-                            // These two controls are intentionally unavailable
-                            // until held-modifier and pan JNI are device-tested.
-                            ui.add_enabled(false, egui::Button::new("Alt"))
-                                .on_disabled_hover_text("Held modifier integration pending");
-                            ui.add_enabled(false, egui::Button::new("Pan"))
-                                .on_disabled_hover_text("Pan integration pending");
+                            let alt = ui.add_sized([66.0, 43.0],
+                                egui::Button::new("Alt"));
+                            self.held_alt = alt.is_pointer_button_down_on();
+                            let pan = ui.add_sized([66.0, 43.0],
+                                egui::Button::new("Pan"));
+                            self.held_pan = pan.is_pointer_button_down_on();
+                            if self.held_alt || self.held_pan { ctx.request_repaint(); }
                             // The reference port places screen mode and keyboard at
                             // the bottom of a full-height, 72px edge strip.
                             let content_height = ctx.content_rect().height();
                             ui.add_space((content_height - 560.0).max(20.0));
-                            ui.add_enabled(false, egui::Button::new("⛶  Screen"))
-                                .on_disabled_hover_text("Full-screen pad action pending NativeActivity verification");
-                            ui.add_enabled(false, egui::Button::new("⌨  Keyboard"))
-                                .on_disabled_hover_text("On-screen keyboard pad action pending IME verification");
+                            if ui.add_sized([66.0, 36.0],
+                                egui::Button::new("⛶ Screen")).clicked() {
+                                Self::action(app, ctx, "view.screenMode.cycle");
+                            }
+                            if ui.add_sized([66.0, 36.0],
+                                egui::Button::new("⌨ Keys")).clicked() {
+                                menus::artcraft_queue_pc_menu_action(17);
+                            }
                             // Hide/Show remains under Window → Shortcut Pad; no
                             // extra buttons should widen the reference-style strip.
                         });

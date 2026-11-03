@@ -2696,12 +2696,27 @@ fn android_main(android_app: android_activity::AndroidApp) {{
             .with_title("{title}")
             .with_drag_and_drop(true),
         android_app: Some(android_app),
+        // The Android build enables only the wgpu backend. Request it
+        // explicitly so a future feature change cannot silently choose glow.
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     }};
     let result = eframe::run_native(
         "{title}",
         options,
-        Box::new(move |_cc| {{
+        Box::new(move |cc| {{
+            // Log the actual Android Vulkan adapter. The default eframe
+            // wgpu configuration already uses a high-throughput surface.
+            if let Some(state) = &cc.wgpu_render_state {{
+                let info = state.adapter.get_info();
+                log::info!("DesignCraft GPU adapter: {{}} ({{:?}}, {{:?}})",
+                    info.name, info.device_type, info.backend);
+                if info.device_type == eframe::wgpu::DeviceType::Cpu {{
+                    log::warn!("DesignCraft wgpu is using a CPU adapter");
+                }}
+            }} else {{
+                log::warn!("DesignCraft wgpu adapter details unavailable at creation");
+            }}
             // Called from eframe's first Resumed. Keep document/session state
             // alive across later Paused/Resumed; eframe only recreates surfaces.
             {inner_decl} = {construct_expr};

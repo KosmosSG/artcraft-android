@@ -21,8 +21,8 @@ jobs:
     env:
       UPSTREAM_SHA: 5628de96f866185d8eb289b167b89691f213c0c3
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.20.0-android.1
-      VERSION_CODE: '16782337'
+      VERSION_NAME: 0.20.0-android.2
+      VERSION_CODE: '16782338'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -70,7 +70,7 @@ jobs:
           assert meta["package"]=="com.artcraft.vectorcraft"
           assert meta["build_targets"]==["aarch64-linux-android"]
           assert meta["application"]["activity"][0]["name"]==".VectorCraftActivity"
-          assert Path("android-port/assets/branding/vectorcraft/vc-glass-approved.png").is_file()
+          assert Path("android-port/assets/branding/vectorcraft/vc-owner-20261103.svg").is_file()
           print("PASS: independent production package and original artwork retained; permanent key forbidden")
           PY
       - uses: actions/setup-java@v4
@@ -121,10 +121,22 @@ jobs:
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
           python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
-          python3 android-port/tools/vectorcraft/verify_approved_icon.py android-port/assets/branding/vectorcraft/vc-glass-approved.png
+          # Owner supplied a NEW flat Vc artwork; the previous glossy approved
+          # icon is preserved for older releases but must not enter this candidate.
+          python3 android-port/tools/vectorcraft/render_owner_icon.py \
+            android-port/assets/branding/vectorcraft/vc-owner-20261103.svg \
+            "$RUNNER_TEMP/vectorcraft-test-icon.png"
+          python3 - "$RUNNER_TEMP/vectorcraft-test-icon.png" <<'PY'
+          from PIL import Image
+          import sys
+          icon=Image.open(sys.argv[1]).convert("RGBA")
+          assert icon.size==(1024,1024) and icon.getpixel((0,0))[3]==0
+          assert icon.getpixel((512,80))[:3]==(45,0,0)
+          orange=icon.getpixel((420,450))
+          assert orange[0]>180 and orange[1]>70 and orange[2]<80
+          print("PASS: owner dark-maroon/orange Vc artwork and transparent corners")
+          PY
           python3 android-port/tools/vectorcraft/adaptive_safe.py builder vectorcraft
-          python3 android-port/tools/vectorcraft/clean_launcher_icon.py \
-            android-port/assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vectorcraft-test-icon.png"
           python3 android-port/tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vectorcraft-test-icon.png"
           grep -Fq 'self.inner.raw_input_hook(ctx, raw);' builder/adapters/vectorcraft/src/lib.rs
       - name: Compile optimized ARM64 VectorCraft Android test APK (disposable builder key)
@@ -179,7 +191,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.20.0-android.1-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.20.0-android.2-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 3

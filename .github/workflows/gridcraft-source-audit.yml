@@ -145,6 +145,26 @@ jobs:
           print('PASS: relocated D/C/S and SAF-acknowledged close patch matches upstream v0.15.0 source')
           print('SOURCE ONLY: launcher, JNI bridge and compiled Android APK remain unverified')
           PY
+      - name: Verify touch/trackpad cell selection, fill handle and preserved swipe scrolling (source only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_touch_selection.py
+          python3 tools/gridcraft/port_v0150_touch_selection.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_touch_selection.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("upstream-gridcraft/crates/ui-egui/src/grid")
+          show=(root/"show.rs").read_text()
+          interaction=(root/"interact.rs").read_text()
+          assert "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in show and "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in interaction
+          assert "long_hold" in show and "on_fill_handle" in show
+          assert "app.grid.touch_pan = multi_touch ||" in show
+          assert 'gridcraft.android.touch_select' in show
+          assert 'let handle_size = if ctx.input(|i| i.any_touches()) { 44.0 } else { 9.0 };' in interaction
+          assert 'Drag::Select' in interaction and 'Drag::Fill' in interaction
+          print("PASS: GridCraft touch hold/drag and fill-handle selection guard, mouse drag, swipe scroll and two-finger gestures retained")
+          PY
       - name: End-to-end GridCraft v0.15 installer rehearsal using local clean clones (no network, no APK)
         shell: bash
         run: |
@@ -174,6 +194,10 @@ jobs:
           assert 'gridcraft_android_take_dcs(ui.ctx())' in modal
           assert 'native.or(from_egui)' in modal
           assert 'fn android_poll_save_close' in main
+          grid=(source/"grid/show.rs").read_text()
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in grid
+          assert 'app.grid.touch_pan = multi_touch ||' in grid
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in (source/"grid/interact.rs").read_text()
           assert (b/'tools/gridcraft_android/gridcraft_tools.rs').is_file()
           print('PASS: both GridCraft v0.15.0 source ports, Android generator hook, and SAF acknowledgement wired through the complete staging installer')
           print('No APK compiled; production signer and release remain untouched')

@@ -63,6 +63,10 @@ pub fn artcraft_queue_dialog_key(key: u8) {
 pub fn artcraft_take_dialog_key() -> u8 {
     ARTCRAFT_DIALOG_KEY.swap(0, std::sync::atomic::Ordering::Relaxed)
 }
+#[cfg(target_os = "android")]
+pub fn artcraft_discard_active(app: &crate::PhotocraftApp) -> bool {
+    app.discard.is_some()
+}
 ''')
     patch(host,
 '''        hardware_keys::recover_text_keys(
@@ -72,7 +76,7 @@ pub fn artcraft_take_dialog_key() -> u8 {
 '''        hardware_keys::recover_text_keys(
             raw, ctx, self.inner.ui.text_edit.is_some(),
         );
-        if self.inner.discard.is_some() {
+        if photocraft_ui_egui::menus::artcraft_discard_active(&self.inner) {
             // The modal owns these keys; even an IME Text("n") should
             // dismiss the modal instead of being consumed by old focus.
             for event in &raw.events {

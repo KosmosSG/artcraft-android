@@ -56,7 +56,7 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     icon_bytes = approved_icon.read_bytes()
     if not icon_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         raise RuntimeError("Approved Gc icon isn't a valid PNG")
-    if hashlib.sha256(icon_bytes).hexdigest() != "0b5b42a3b37c31a05af7697df8887c07e4682f29976b46b1721daf61ba14cdc6":
+    if hashlib.sha256(icon_bytes).hexdigest() != "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2":
         raise RuntimeError("Approved GridCraft Gc PNG changed: re-review launcher asset")
     menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
     if menu.count(MENU_MARKER) != 1 or 'ui.menu_button("GridCraft Tools"' not in menu:

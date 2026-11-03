@@ -1,0 +1,242 @@
+name: DeckCraft v0.14.1-android.17 original-certificate sign and publish ONCE
+
+# Owner explicitly requested public Android.17 release on 2026-11-03.
+# CI passed; Android.17 physical device verification was NOT yet reported.
+# This is the ONLY publication trigger and retains original certificate checks.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deckcraft-v0141-android17-permanent-publish-once.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: deckcraft-android17-original-certificate-one-release
+  cancel-in-progress: false
+
+jobs:
+  sign-verify-publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: deckcraft-v0.14.1-android.17
+      SOURCE_RUN_ID: '41661989509'
+      SOURCE_ARTIFACT_ID: '13244273253'
+      SOURCE_SHA: '54fbdd4088d0e835c7642fafe039a72c3993be72'
+      SOURCE_BRANCH: integration/deckcraft-features-20261031
+      SOURCE_ARTIFACT: DeckCraft-v0.14.1-android.17-ARM64-UNSIGNED-LinuxLab
+      SOURCE_APK: DeckCraft-v0.14.1-android.17-arm64-v8a-UNSIGNED.apk
+      APK: deckcraft-v0.14.1-android.17-arm64-v8a.apk
+      PACKAGE: com.artcraft.deckcraft
+      VERSION_NAME: 0.14.1-android.17
+      VERSION_CODE: '100000021'
+      ORIGINAL_CERT_SHA256: 7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
+
+    steps:
+      - name: Fail closed if this stable release or tag already exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists. Never replace a published APK."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists; refuse to move it."
+            exit 1
+          fi
+          echo "PASS: fresh tag and release only"
+
+      - name: Lock source to exact successful tested ARM64 integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          jq -e --arg sha "$SOURCE_SHA" --arg branch "$SOURCE_BRANCH" '
+             .status=="completed" and .conclusion=="success" and
+             .head_sha==$sha and .head_branch==$branch and
+             .name=="DeckCraft 0.14.1 Android integration unsigned (no release)"
+          ' <<<"$run" >/dev/null
+          artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID")"
+          jq -e --arg name "$SOURCE_ARTIFACT" --argjson source "$SOURCE_RUN_ID" '
+             .name==$name and (.expired|not) and
+             .workflow_run.id==$source
+          ' <<<"$artifact" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA" --jq '.sha')" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/deckcraft-source" verified-release
+          gh run download "$SOURCE_RUN_ID" -R "$GITHUB_REPOSITORY" \
+             -n "$SOURCE_ARTIFACT" -D "$RUNNER_TEMP/deckcraft-source"
+          cd "$RUNNER_TEMP/deckcraft-source"
+          test -s "$SOURCE_APK" && test -s SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          mapfile -d '' apks < <(find . -type f -name '*.apk' -print0)
+          test "${#apks[@]}" -eq 1
+          echo "PASS: immutable reviewed source APK and SHA256"
+
+      - name: Validate unsigned APK identity and Android ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$manager" || { echo "::error::Android SDK manager missing"; exit 1; }
+          "$manager" --sdk_root="$sdk" --install 'build-tools;35.0.0'
+          echo "BUILD_TOOLS=$sdk/build-tools/35.0.0" >> "$GITHUB_ENV"
+          input="$RUNNER_TEMP/deckcraft-source/$SOURCE_APK"
+          "$sdk/build-tools/35.0.0/zipalign" -c -P 16 4 "$input"
+          if "$sdk/build-tools/35.0.0/apksigner" verify "$input" >/dev/null 2>&1; then
+            echo "::error::Refusing to re-sign unexpected signed source APK"
+            exit 1
+          fi
+          "$sdk/build-tools/35.0.0/aapt" dump badging "$input" > "$RUNNER_TEMP/badging-source.txt"
+          grep -F "name='$PACKAGE'" "$RUNNER_TEMP/badging-source.txt"
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/badging-source.txt"
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/badging-source.txt"
+          python3 - "$input" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as f:
+              assert f.testzip() is None, "Corrupt APK"
+              items=f.namelist()
+              assert len(items)==len(set(items)),"Duplicate APK ZIP entry"
+              assert 'classes.dex' in items,"Missing Android bridge classes"
+              libs=[n for n in items if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs)
+              assert not any(n.lower().endswith((".p12",".jks",".keystore")) for n in items)
+          print("PASS: expected ARM64 native APK, DEX, package, version")
+          PY
+
+      - name: Sign with ORIGINAL DeckCraft certificate, not testing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          KEYPASS: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for required in KEYSTORE_B64 STOREPASS KEYALIAS KEYPASS; do
+              if [[ -z "${!required}" ]]; then
+                  echo "::error::Original DeckCraft signing secret $required unavailable"
+                  exit 1
+              fi
+          done
+          keyfile="$RUNNER_TEMP/deckcraft-original.p12"
+          certfile="$RUNNER_TEMP/deckcraft-original.pem"
+          trap 'rm -f "$keyfile" "$certfile"' EXIT
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keyfile"
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$keyfile" \
+            -alias "$KEYALIAS" -storepass:env STOREPASS > "$certfile"
+          actual="$(openssl x509 -in "$certfile" -outform DER | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "$ORIGINAL_CERT_SHA256" || {
+              echo "::error::Original signing certificate SHA-256 mismatch; STOP"
+              exit 1
+          }
+          "$BUILD_TOOLS/apksigner" sign --ks "$keyfile" --ks-type PKCS12 \
+             --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+             --v2-signing-enabled true --v4-signing-enabled false \
+             --out "verified-release/$APK" "$RUNNER_TEMP/deckcraft-source/$SOURCE_APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "verified-release/$APK" \
+             > "$RUNNER_TEMP/deckcraft-signer-report.txt"
+          python3 - "$RUNNER_TEMP/deckcraft-signer-report.txt" <<'PY'
+          import re,sys,os
+          report=open(sys.argv[1]).read()
+          assert any(f"Verified using v{x} scheme (APK Signature Scheme v{x}): true" in report
+                     for x in (2,3)), "APK v2/v3 signature failed"
+          found=re.findall(r'^Signer #(\d+) certificate SHA-256 digest: ([a-fA-F0-9:]+)\s*$',
+                           report,re.M)
+          assert len(found)==1 and found[0][0]=='1', "Unexpected certificate signers"
+          assert found[0][1].replace(':','').lower()==os.environ['ORIGINAL_CERT_SHA256']
+          print("PASS: exactly original DeckCraft certificate, valid v2/v3 APK")
+          PY
+          "$BUILD_TOOLS/aapt" dump badging "verified-release/$APK" \
+             > "$RUNNER_TEMP/badging-signed.txt"
+          grep -F "name='$PACKAGE'" "$RUNNER_TEMP/badging-signed.txt"
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/badging-signed.txt"
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/badging-signed.txt"
+          python3 - "$RUNNER_TEMP/deckcraft-source/$SOURCE_APK" "verified-release/$APK" <<'PY'
+          import sys,hashlib,zipfile
+          def payload(apk):
+              with zipfile.ZipFile(apk) as z:
+                  return {p:hashlib.sha256(z.read(p)).hexdigest() for p in z.namelist()
+                          if not p.upper().startswith("META-INF/")}
+          assert payload(sys.argv[1])==payload(sys.argv[2]),"Signing modified code or assets"
+          print("PASS: signed APK byte-identical application payload")
+          PY
+          printf '%s\n' "$actual" > verified-release/signing-certificate-sha256.txt
+          (cd verified-release && sha256sum "$APK" > SHA256SUMS.txt)
+
+      - name: Publish one immutable stable GitHub release for DeckCraft only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release appeared after preflight; refusing overwrite"
+            exit 1
+          fi
+          cat > verified-release/RELEASE-NOTES.md <<'NOTES'
+          ## DeckCraft v0.14.1-android.17 — Stable ARM64
+
+          CI-verified Android build, permanently signed with the EXISTING DeckCraft
+          release certificate (same as the prior published DeckCraft Android releases).
+          Device-level testing of the new Android.17 fixes has not yet been reported.
+
+          - Left-aligned Dk application menu (Import Fonts, Select Font Folder,
+            Refresh Fonts, Check for Updates, Startup Update Settings).
+          - GPU Diagnostics and About DeckCraft remain in the ordinary Help menu.
+          - Vulkan (WGPU) UI compositor with native GPU adapter reporting,
+            GPU slide texture cache optimization and original CPU raster fallback.
+          - Addresses selected-text Backspace deletion using the DeckCraft editing engine.
+          - Removes a trackpad canvas scroll displacement clamp to improve pan responsiveness;
+            on-device smoothness requires confirmation.
+          - Retains earlier trackpad/touch scrolling, arrow and Shift+arrow editing,
+            D/C/S unsaved-changes shortcuts, Escape, dark theme and approved Dk icon.
+          - Persistent Android SAF font import and folder refresh, recursive
+            scan limit of 5,000 font files and cumulative 4 GiB data budget.
+          - App-scoped GitHub release updater checks SHA256, signing certificate,
+            package, ABI and version before offering an Android installer.
+
+          Package: com.artcraft.deckcraft
+          Version: 0.14.1-android.17 (100000021)
+          Source commit: 54fbdd4088d0e835c7642fafe039a72c3993be72
+          Unsigned source GitHub Actions run: 41661989509
+
+          This release is **permanently signed**, unlike the temporary-key test
+          candidates. Android cannot update a temporary-key testing install
+          in place; back up your documents before uninstalling the test build.
+          Existing installs with the original DeckCraft certificate can update
+          normally if the installed version code is lower.
+          NOTES
+          gh release create "$TAG" \
+              "verified-release/$APK" \
+              verified-release/SHA256SUMS.txt \
+              verified-release/signing-certificate-sha256.txt \
+              verified-release/RELEASE-NOTES.md \
+              -R "$GITHUB_REPOSITORY" \
+              --target "$SOURCE_SHA" \
+              --title "DeckCraft v0.14.1-android.17 (ARM64, stable)" \
+              --notes-file verified-release/RELEASE-NOTES.md \
+              --latest=false
+          published="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")"
+          jq -e --arg tag "$TAG" --arg target "$SOURCE_SHA" \
+              '.tag_name==$tag and .draft==false and .prerelease==false and .target_commitish==$target' \
+              <<<"$published" >/dev/null
+          expected="$(cut -d' ' -f1 verified-release/SHA256SUMS.txt)"
+          jq -e --arg file "$APK" --arg digest "sha256:$expected" '
+            [.assets[] | select(.name==$file and .state=="uploaded" and .digest==$digest)] |
+            length==1
+          ' <<<"$published" >/dev/null
+          echo "SUCCESS: immutable stable DeckCraft release published with original certificate and asset digest"
+
+      - name: Purge signing key and temporary copies
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/deckcraft-original.p12" "$RUNNER_TEMP/deckcraft-original.pem"
+          rm -rf "$RUNNER_TEMP/deckcraft-source" verified-release
+          echo "Original keystore was never committed, uploaded or shared."

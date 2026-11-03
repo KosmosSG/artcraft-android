@@ -4,7 +4,7 @@ No full ARM64 rebuild, local Android SDK, signing keys, or network required.
 """
 import unittest
 from pathlib import Path
-from patch_compact_apk_v020 import UNUSED_DEPS, patch_source
+from patch_compact_apk_v020 import UNUSED_DEPS, APPCOMPAT_THEME, NATIVE_THEME, patch_source, patch_native_theme
 from patch_cached_system_fonts_v020 import OLD, apply
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +24,18 @@ class Android3OptimizationSourceTests(unittest.TestCase):
             self.assertNotIn(item, actual)
         self.assertIn("base\n", actual)
         self.assertIn("\nother", actual)
+
+    def test_compact_native_theme_uses_framework_noactionbar_style(self):
+        generated = f'<resources>\n{APPCOMPAT_THEME}\n<item name="android:windowFullscreen">true</item>\n<item name="android:windowBackground">@android:color/black</item>\n</resources>'
+        updated = patch_native_theme(generated)
+        self.assertIn(NATIVE_THEME, updated)
+        self.assertNotIn(APPCOMPAT_THEME, updated)
+        self.assertIn('android:windowFullscreen', updated)
+        self.assertIn('android:windowBackground', updated)
+        with self.assertRaises(ValueError):
+            patch_native_theme(updated)
+        with self.assertRaises(ValueError):
+            patch_native_theme('<resources/>')
 
     def test_compact_package_rejects_androidx_usage(self):
         with self.assertRaises(ValueError):

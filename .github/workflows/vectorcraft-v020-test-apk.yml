@@ -1,9 +1,14 @@
 name: VectorCraft v0.20 ARM64 disposable-key APK (TEST ONLY)
 
-# v0.20.0-android.3 optimized disposable-key test is running
-# in #41591662099. Manual-only from now on to preserve Actions minutes.
-# No permanent key, merge or public release.
+# One guarded re-test of optimized v0.20.0-android.3 following verified
+# AAPT parent-style failure in run #41591662099. Scoped to this workflow
+# edit only. Restore manual dispatch immediately after this run starts.
 on:
+  push:
+    branches:
+      - development/vectorcraft-v020-android14-20261102
+    paths:
+      - .github/workflows/vectorcraft-v020-test-apk.yml
   workflow_dispatch:
 
 permissions:

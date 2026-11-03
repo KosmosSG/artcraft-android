@@ -28,9 +28,13 @@ impl CanvasTouchGestures {
         let area = Self::canvas_region(raw.screen_rect.unwrap_or_else(|| ctx.content_rect()));
         let mut gesture = self.previous.is_some();
         for event in raw.events.clone() {
-            if let Event::Touch { id, phase, pos, force, .. } = event {
-                // Pen/eraser contact remains governed by the existing pen path.
-                if force.is_some() { continue; }
+            if let Event::Touch { id, phase, pos, .. } = event {
+                // IMPORTANT: egl/winit reports finger pressure as Some(0.0)
+                // (and often Some(nonzero)) on Android too. 'force.is_some()'
+                // is NOT a pen classifier; it disabled all finger twist rotation.
+                // Restrict to two touches within the canvas instead. An actual
+                // stylus/palm classifier must come from MotionEvent toolType
+                // and is tracked separately from this UI-only view transform.
                 match phase {
                     TouchPhase::Start => {
                         if area.contains(pos) && self.fingers.iter().all(|f| f.id != id)

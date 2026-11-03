@@ -26,6 +26,8 @@ class DeviceRetestGate(unittest.TestCase):
         self.assertIn("dcTakeToolAction", stage)
         self.assertIn("dc_tool_action(&self)", stage)
         self.assertIn("dcDialogAction.compareAndSet(0, action)", stage)
+        self.assertIn("if (dcDialogHeld.contains(code))", stage)
+        self.assertIn("Consume repeats as well as the matching key release", stage)
         self.assertIn("return true;", stage)
         self.assertIn("request_repaint_after(std::time::Duration::from_millis(80))", ui)
         self.assertIn("bridge.dc_tool_action()", ui)

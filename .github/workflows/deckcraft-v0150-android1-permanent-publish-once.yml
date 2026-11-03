@@ -221,8 +221,18 @@ jobs:
 
       - name: Publish one immutable stable GitHub release for DeckCraft only
         shell: bash
+        # The standard Actions integration token returned HTTP 403 on release creation
+        # after all app/signing gates passed in run 41742444529. Use the
+        # owner-provisioned DeckCraft-specific PAT already referenced by
+        # deckcraft-signing-bootstrap.yml. Never print or persist the token.
+        env:
+          GH_TOKEN: ${{ secrets.DECKCRAFT_SECRET_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::DeckCraft publication token unavailable; leave signed APK unpublished"
+            exit 1
+          fi
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::Release appeared after preflight; refusing overwrite"
             exit 1

@@ -72,19 +72,21 @@ impl ShortcutPad {
             // Keep a narrow, untitled edge dock like the reference tablet port.
             // This is a NativeActivity-compatible Area, not a floating settings
             // dialog. Full GameActivity touch capture/pen wheel is a later phase.
-            let anchor = if left { egui::Align2::LEFT_CENTER } else { egui::Align2::RIGHT_CENTER };
-            let offset = if left { [3.0, 0.0] } else { [-3.0, 0.0] };
+            // Reference fork uses app.edge_strip and edge_strip_rect,
+            // NOT a floating panel over the Properties sidebar.
+            // Only draw in the rect the upstream engine reserved.
+            let Some(strip) = app.edge_strip_rect else { return };
             egui::Area::new(egui::Id::new("artcraft_android_edge_pad"))
                 .order(egui::Order::Foreground)
-                .anchor(anchor, offset)
+                .fixed_pos(strip.min)
                 .movable(false)
                 .show(ctx, |ui| {
                     let frame = egui::Frame::new()
                         .fill(egui::Color32::from_rgb(54, 56, 62))
-                        .corner_radius(10.0)
-                        .inner_margin(6.0);
+                        .corner_radius(0.0)
+                        .inner_margin(egui::Margin::same(3));
                     frame.show(ui, |ui| {
-                        ui.set_width(72.0);
+                        ui.set_min_size(egui::vec2(strip.width() - 6.0, strip.height() - 6.0));
                         ui.vertical_centered(|ui| {
                             if ui.add_sized([66.0, 46.0], egui::Button::new("Undo")).clicked() {
                                 Self::action(app, ctx, "edit.undo");
@@ -143,10 +145,10 @@ impl ShortcutPad {
                                 egui::Button::new("Pan"));
                             self.held_pan = pan.is_pointer_button_down_on();
                             if self.held_alt || self.held_pan { ctx.request_repaint(); }
-                            // The reference port places screen mode and keyboard at
-                            // the bottom of a full-height, 72px edge strip.
-                            let content_height = ctx.content_rect().height();
-                            ui.add_space((content_height - 560.0).max(20.0));
+                            // Bottom keys stay inside the reserved sidebar, not a
+                            // floating Area over the document's Properties panel.
+                            let used = ui.cursor().min.y - strip.top();
+                            ui.add_space((strip.height() - used - 100.0).max(4.0));
                             if ui.add_sized([66.0, 36.0],
                                 egui::Button::new("⛶ Screen")).clicked() {
                                 Self::action(app, ctx, "view.screenMode.cycle");

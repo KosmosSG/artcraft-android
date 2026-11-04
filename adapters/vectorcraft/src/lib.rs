@@ -221,6 +221,20 @@ impl AndroidFileBridge {
         }).map_err(|e| e.to_string())
     }
 
+    // Called once when the native UI begins rendering. The Activity removes
+    // its branded startup cover after a short nonblocking presentation delay.
+    fn notify_native_ui_ready(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity,
+                jni_str!("vcNativeUiReady"), jni_sig!("()V"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     fn check_for_updates(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -1075,6 +1089,10 @@ impl eframe::App for VectorCraftAndroidApp {
         if !self.first_ui_logged {
             self.first_ui_logged = true;
             log::info!("VectorCraft startup diagnostic: first_ui={}ms (render/GPU presentation follows)", self.startup_instant.elapsed().as_millis());
+            if let Err(error) = self.bridge.notify_native_ui_ready() {
+                log::warn!("Could not dismiss VectorCraft startup cover: {error}");
+                // The Activity also has a 15-second fail-safe dismissal.
+            }
         }
         system_fonts::install_system_fonts(ui.ctx());
         vectorcraft_ui_egui::menus::set_android_preferences(self.touch_dock, self.startup_updates);

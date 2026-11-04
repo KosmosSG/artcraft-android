@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert '.fill(parent.visuals().panel_fill)' in mobile_toolbar
     assert 'ui.set_min_width((available_width - 14.0).max(0.0))' in mobile_toolbar
     assert 'parent.group(|ui|' not in mobile_toolbar
-    assert 'pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool' in mobile_toolbar
+    assert 'pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool' in mobile
     assert 'pub fn sync_toolbar_preference(&mut self, visible: bool)' in mobile_toolbar
     assert 'egui::Panel::bottom("pdfcraft_android_tools")' not in mobile_toolbar
     assert mobile_toolbar.index('ui.button("Import Font…")') < mobile_toolbar.index('ui.button("Check updates")')

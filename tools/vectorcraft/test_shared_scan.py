@@ -91,7 +91,7 @@ public class VectorScanTest {
    nodes.computeIfAbsent(parent,k->new ArrayList<>()).add(new String[]{id,name,dir?"directory":"font","32"});
    byte[] bytes=new byte[32];if(valid){bytes[0]='t';bytes[1]='t';bytes[2]='c';bytes[3]='f';}data.put(id,bytes);
  }
- static void check(boolean ok){if(!ok)throw new AssertionError();}
+ static void check(boolean ok){if(!ok)throw new AssertionError("JVM scan assertion at "+Thread.currentThread().getStackTrace()[2]);}
  public static void main(String[] args)throws Exception{
    VectorScanTest t=new VectorScanTest(new File(args[0]));
    File shared=new File(t.fonts(),"Shared");shared.mkdirs();
@@ -116,6 +116,7 @@ public class VectorScanTest {
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)/'VectorScanTest.java';p.write_text(harness+helpers+scanner+'\n}')
             subprocess.run(['javac',str(p)],check=True,capture_output=True)
-            subprocess.run(['java','-cp',folder,'VectorScanTest',str(Path(folder)/'cache')],check=True,capture_output=True)
+            run=subprocess.run(['java','-cp',folder,'VectorScanTest',str(Path(folder)/'cache')],capture_output=True,text=True)
+            self.assertEqual(run.returncode,0,"JVM shared-font scanner error:\\n"+run.stdout+"\\n"+run.stderr)
 
 if __name__=='__main__':unittest.main()

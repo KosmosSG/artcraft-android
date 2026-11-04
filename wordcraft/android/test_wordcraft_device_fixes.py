@@ -63,10 +63,13 @@ class WordCraftDeviceFixes(unittest.TestCase):
             '(*physical_key).unwrap_or(*key)',
             'egui::Event::Text(text) if allow_text_choice',
             'egui::Event::Ime(egui::ImeEvent::Commit(text)) if allow_text_choice',
-            'let allow_text_choice = active && !raw.modifiers.any();',
+            'let allow_text_choice = active && !text_modifiers.any();',
+            'egui::Event::ModifiersChanged(modifiers) => Some(*modifiers)',
+            'egui::Event::Key { modifiers, .. } => Some(*modifiers)',
             'WC_DCS_DIAG raw_choice=',
         ):
             self.assertIn(x, rust)
+        self.assertNotIn('raw.modifiers', rust)
         self.assertIn('wcDialogAction.compareAndSet(0, action)', java)
 
     def test_ctrl_shift_s_uses_existing_wordcraft_save_as_saf(self):

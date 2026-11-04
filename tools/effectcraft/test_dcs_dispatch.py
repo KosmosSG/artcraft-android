@@ -62,7 +62,7 @@ public class Harness extends Parent {
   check(h.ecPollPhysicalShortcut()==2);
   h.dispatchKeyEvent(event(45,1,0,true,0));
   check(h.ecPollPhysicalShortcut()==0);
-  check(!h.dispatchKeyEvent(event(51,0,0,false,0)));
+  check(h.dispatchKeyEvent(event(51,0,0,false,0)));
   check(h.ecPollPhysicalShortcut()==0);
  }
 }''')

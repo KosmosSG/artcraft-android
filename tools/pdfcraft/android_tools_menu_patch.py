@@ -15,6 +15,7 @@ marker = "ARTCRAFT_ANDROID_TOOLS_VISIBLE"
 if marker in text:
     expected = [
         'const ANDROID_TOOLS: &str = "view.android_tools";',
+        'PDFCRAFT_ANDROID_ICON_MENU',
         "self.menu_item(ANDROID_TOOLS, None)",
         "pub fn android_tools_visible(&self) -> bool",
         "pub fn set_android_tools_visible(&self, visible: bool)",
@@ -63,33 +64,35 @@ replace('            PANEL => self.choose_right_panel(panel(command)),',
         'true, std::sync::atomic::Ordering::AcqRel);\n'
         '            },')
 
-replace('    (ANDROID_TOOLS, "Android tools panel", None),',
-        '    (ANDROID_TOOLS, "Android tools panel", None),\n'
-        '    ("android.import_fonts", "Import Fonts…", None),\n'
-        '    ("android.shared_folder", "Shared fonts folder…", None),\n'
-        '    ("android.refresh_fonts", "Refresh shared fonts", None),\n'
-        '    ("android.tools_dialog", "Android tools…", None),')
-replace('        let help = list(HELP, &mut used);',
-        '        let mut help = list(HELP, &mut used);\n'
-        '        #[cfg(target_os = "android")] {\n'
-        '            help.push(Node::Separator);\n'
-        '            for id in ["android.import_fonts", "android.shared_folder", "android.refresh_fonts", "android.tools_dialog"] {\n'
-        '                help.push(self.menu_item(id, None));\n'
-        '            }\n'
-        '        }')
-replace('                NO_RECENT => false,',
-        '                NO_RECENT => false,\n'
-        '                "android.import_fonts" | "android.shared_folder" | "android.refresh_fonts" | "android.tools_dialog" => cfg!(target_os = "android"),')
-replace('            "file.open_recent" if index.is_some() => {',
-        '            #[cfg(target_os = "android")]\n'
-        '            "android.import_fonts" => { PDFCRAFT_ANDROID_HELP_REQUEST.store(1, std::sync::atomic::Ordering::Release); },\n'
-        '            #[cfg(target_os = "android")]\n'
-        '            "android.shared_folder" => { PDFCRAFT_ANDROID_HELP_REQUEST.store(2, std::sync::atomic::Ordering::Release); },\n'
-        '            #[cfg(target_os = "android")]\n'
-        '            "android.refresh_fonts" => { PDFCRAFT_ANDROID_HELP_REQUEST.store(3, std::sync::atomic::Ordering::Release); },\n'
-        '            #[cfg(target_os = "android")]\n'
-        '            "android.tools_dialog" => { PDFCRAFT_ANDROID_HELP_REQUEST.store(4, std::sync::atomic::Ordering::Release); },\n'
-        '            "file.open_recent" if index.is_some() => {')
+# Move PDFCraft Android actions from Help into clickable top-left approved icon.
+# Keep standard upstream Help and existing View toolbar fallback.
+replace('        let ctx = ui.ctx().clone();',
+        '''        // PDFCRAFT_ANDROID_ICON_MENU: approved logo at top-left, before File.
+        #[cfg(target_os = "android")]
+        {
+            let (rect, response) = ui.allocate_exact_size(
+                egui::vec2(28.0, 28.0), egui::Sense::click());
+            crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0));
+            let response = response.on_hover_text("PDFCraft Android settings");
+            let _ = egui::Popup::menu(&response).show(|ui| {
+                for (name, action) in [
+                    ("Import Fonts…", 1u8),
+                    ("Select Shared Font Folder…", 2),
+                    ("Refresh Fonts Folder", 3),
+                    ("Check updates", 4),
+                    ("Startup update check settings…", 5),
+                    ("GPU diagnostics…", 6),
+                    ("Android tools…", 7),
+                ] {
+                    if ui.button(name).clicked() {
+                        PDFCRAFT_ANDROID_HELP_REQUEST.store(
+                            action, std::sync::atomic::Ordering::Release);
+                        ui.close();
+                    }
+                }
+            });
+        }
+        let ctx = ui.ctx().clone();''')
 text += """
 // PDFCraft Android-only native View menu toggle. No desktop menu changes.
 #[cfg(target_os = "android")]

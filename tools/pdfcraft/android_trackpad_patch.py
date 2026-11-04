@@ -18,11 +18,18 @@ def patch(source: str) -> str:
          """    pdfcraft_touch_held: bool,
     // PDFCRAFT_ANDROID_TRACKPAD_SCROLL
     pdfcraft_trackpad_last: Option<PhysicalPosition<f64>>,
-    pdfcraft_trackpad_cursor: Option<PhysicalPosition<f64>>,""")
+    pdfcraft_trackpad_cursor: Option<PhysicalPosition<f64>>,
+    // PDFCRAFT_ANDROID_TRACKPAD_PINCH
+    pdfcraft_trackpad_origin: Option<(PhysicalPosition<f64>, f64)>,
+    pdfcraft_trackpad_spread: Option<f64>,
+    pdfcraft_trackpad_pinching: bool,""")
     swap("            pdfcraft_touch_held: false,",
          """            pdfcraft_touch_held: false,
             pdfcraft_trackpad_last: None,
-            pdfcraft_trackpad_cursor: None,""")
+            pdfcraft_trackpad_cursor: None,
+            pdfcraft_trackpad_origin: None,
+            pdfcraft_trackpad_spread: None,
+            pdfcraft_trackpad_pinching: false,""")
     swap("""                match motion_event.action() {
                     // Hover: the cursor moves without any button held.""",
          """                // Android SOURCE_TOUCHPAD is POSITION-class, not POINTER-class.
@@ -79,6 +86,18 @@ def patch(source: str) -> str:
                         let a = points[0]; let b = points[1];
                         let mid = PhysicalPosition { x: (a.x+b.x)/2.0, y: (a.y+b.y)/2.0 };
                         let old = self.pdfcraft_trackpad_last.replace(mid);
+                        let spread = ((a.x-b.x).powi(2)+(a.y-b.y).powi(2)).sqrt();
+                        let previous_spread = self.pdfcraft_trackpad_spread.replace(spread);
+                        let (origin, initial_spread) = *self.pdfcraft_trackpad_origin
+                            .get_or_insert((mid, spread));
+                        let translated = ((mid.x-origin.x).powi(2)+(mid.y-origin.y).powi(2)).sqrt();
+                        let expanded = (spread-initial_spread).abs();
+                        if !self.pdfcraft_trackpad_pinching
+                            && expanded > (initial_spread*0.04).max(12.0)
+                            && expanded > 1.2 * translated
+                        {
+                            self.pdfcraft_trackpad_pinching = true;
+                        }
                         if let Some(position) = self.pdfcraft_trackpad_cursor.or(Some(mid)) {
                             callback(event::Event::WindowEvent {
                                 window_id,
@@ -86,7 +105,20 @@ def patch(source: str) -> str:
                             }, self.window_target());
                         }
                         if motion_event.action() == MotionAction::Move {
-                            if let Some(last) = old {
+                            if self.pdfcraft_trackpad_pinching {
+                                if let Some(previous) = previous_spread.filter(|v| *v > 0.0) {
+                                    if spread > 0.0 {
+                                        callback(event::Event::WindowEvent {
+                                            window_id,
+                                            event: event::WindowEvent::PinchGesture {
+                                                device_id,
+                                                delta: (spread/previous).ln().clamp(-0.06, 0.06),
+                                                phase: event::TouchPhase::Moved,
+                                            },
+                                        }, self.window_target());
+                                    }
+                                }
+                            } else if let Some(last) = old {
                                 let delta = PhysicalPosition {
                                     x: (mid.x-last.x).clamp(-80.0, 80.0),
                                     y: (mid.y-last.y).clamp(-80.0, 80.0),
@@ -103,9 +135,12 @@ def patch(source: str) -> str:
                                 }
                             }
                         }
-                        return input_status; // Never select PDF text while trackpad scrolling.
+                        return input_status; // Never select PDF text during a trackpad gesture.
                     } else {
                         self.pdfcraft_trackpad_last = None;
+                        self.pdfcraft_trackpad_origin = None;
+                        self.pdfcraft_trackpad_spread = None;
+                        self.pdfcraft_trackpad_pinching = false;
                     }
                 }
 

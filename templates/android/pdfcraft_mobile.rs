@@ -269,6 +269,30 @@ impl Mobile {
         hide_requested
     }
     pub fn handle_menu(&mut self, action: u8) {
+        match action {
+            4 => {
+                self.panel_open = true;
+                self.fonts_open = false;
+                self.do_update_check();
+                return;
+            }
+            5 => {
+                self.panel_open = true;
+                self.fonts_open = false;
+                self.updates_open = true;
+                return;
+            }
+            6 => {
+                self.panel_open = true;
+                self.gpu_details_open = true;
+                return;
+            }
+            7 => {
+                self.panel_open = true;
+                return;
+            }
+            _ => {}
+        }
         let request = match action {
             1 => Some(Action::ImportFont),
             2 => Some(Action::SelectFolder),
@@ -297,6 +321,11 @@ impl Mobile {
                 ui.separator();
                 ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
             });
+            if self.gpu_details_open {
+                ui.separator();
+                ui.label(&self.renderer);
+                if ui.button("Hide GPU diagnostics").clicked() { self.gpu_details_open = false; }
+            }
             if self.fonts_open {
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {

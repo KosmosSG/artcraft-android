@@ -176,18 +176,18 @@ enum PdfTouchMode { Pending, Scroll, Pinch }
                     {
                         let travelled = ((mid.x-origin.x).powi(2) + (mid.y-origin.y).powi(2)).sqrt();
                         let expansion = (spread-original_spread).abs();
-                        if self.pdfcraft_touch_mode == PdfTouchMode::Pending {
-                            // Prefer stable two-finger navigation. A shaky
-                            // uneven swipe can alter finger spread: pinch only
-                            // after substantial relative separation change and
-                            // distinctly opposing movement (not minor jitter).
-                            if expansion > (original_spread * 0.20).max(52.0)
-                                && expansion > 2.5 * travelled
+                        // PDFCRAFT_ANDROID_BIDIRECTIONAL_PINCH
+                        // Android reports each finger separately. An inward pinch
+                        // may first pan, so allow a deliberate spread change in
+                        // either direction to switch Scroll -> Pinch.
+                        if self.pdfcraft_touch_mode != PdfTouchMode::Pinch {
+                            if expansion > (original_spread * 0.04).max(12.0)
+                                && expansion > 1.2 * travelled
                             {
                                 self.pdfcraft_touch_mode = PdfTouchMode::Pinch;
-                            } else if travelled > 6.0 {
-                                // Commit to pan promptly instead of waiting for
-                                // a large finger displacement: no "stuck then jump".
+                            } else if self.pdfcraft_touch_mode == PdfTouchMode::Pending
+                                && travelled > 6.0
+                            {
                                 self.pdfcraft_touch_mode = PdfTouchMode::Scroll;
                             }
                         }

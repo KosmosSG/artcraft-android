@@ -280,7 +280,7 @@ lock = json.loads(Path(sys.argv[1]).read_text())
 if (lock.get("schema_version") != 1
         or lock.get("official_upstream") != "storytold/designcraft"
         or lock.get("stable_tag") != "v0.17.0"
-        or lock.get("upstream_workspace_version") != "0.16.0"
+        or lock.get("upstream_workspace_version") != "0.17.0"
         or not re.fullmatch(r"[0-9a-f]{40}", lock.get("tag_commit", ""))):
     raise SystemExit("STOP: incompatible DesignCraft official v0.17 source lock")
 if lock.get("production_release_authorized") or lock.get("permanent_signing_authorized"):

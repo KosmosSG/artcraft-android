@@ -1,8 +1,8 @@
 """VectorCraft-only packaging optimization for the immutable reference builder.
 
 VectorCraftActivity extends android.app.NativeActivity. Both shipped Java sources
-use Android SDK classes, not AndroidX/AppCompat, Kotlin or GameActivity.
-Avoid shipping those unused Java/DEX resources in VectorCraft's test APK.
+use framework Android and the official lightweight AndroidX SplashScreen API.
+Avoid shipping AppCompat/GameActivity/Kotlin that the NativeActivity does not use.
 Keep extractNativeLibs=false (uncompressed/page-aligned .so for startup speed).
 Rust symbol stripping is selected by CARGO_PROFILE_RELEASE_STRIP=symbols in CI.
 """
@@ -20,16 +20,17 @@ UNUSED_DEPS = """dependencies {{
     implementation 'androidx.games:games-activity:4.4.0'
 }}"""
 COMPACT_DEPS = """dependencies {{
-    // VectorCraftActivity extends android.app.NativeActivity and uses only Android
-    // SDK APIs. The reference builder's Kotlin, AppCompat and GameActivity
-    // runtime dependencies are unnecessary for this application's APK.
+    // NativeActivity needs only AndroidX's small splash compat API for a
+    // real setKeepOnScreenCondition() while Vulkan prepares its first pixels.
+    // No AppCompat, Kotlin BOM or GameActivity.
+    implementation 'androidx.core:core-splashscreen:1.0.1'
 }}"""
 
 # The generated theme is shared with the GameActivity builder, which needs
 # AppCompat. The VectorCraft native launcher does NOT: its theme must use a
 # framework-defined ancestor, or AAPT fails after AppCompat is removed.
 APPCOMPAT_THEME = '<style name="Theme.Artcraft" parent="Theme.AppCompat.NoActionBar">'
-NATIVE_THEME = '<style name="Theme.Artcraft" parent="android:style/Theme.Material.NoActionBar">'
+NATIVE_THEME = '<style name="Theme.ArtcraftPost" parent="android:style/Theme.Material.NoActionBar">'
 
 
 def patch_native_theme(source: str) -> str:
@@ -37,16 +38,29 @@ def patch_native_theme(source: str) -> str:
         raise ValueError("Pinned builder AppCompat theme anchor changed; review required")
     if source.count(NATIVE_THEME):
         raise ValueError("Android native theme was already patched")
-    patched = source.replace(APPCOMPAT_THEME, NATIVE_THEME, 1)
-    # Android launches into this themed window before Java onCreate or the
-    # native Rust GPU exists. Black is otherwise visible for several seconds.
+    patched = source.replace(APPCOMPAT_THEME,
+        '<style name="Theme.Artcraft" parent="Theme.SplashScreen">', 1)
+    # AndroidX requires postSplashScreenTheme to switch away from the launch
+    # theme when the native activity draws. Use the framework no-actionbar
+    # post theme so AppCompat and GameActivity remain unnecessary.
     black = '<item name="android:windowBackground">@android:color/black</item>'
     if patched.count(black) != 1:
         raise ValueError("Pinned Android windowBackground anchor changed")
-    return patched.replace(black,
+    patched = patched.replace(black,
         '<item name="android:windowBackground">#2d0000</item>\n'
-        '        <item name="android:windowSplashScreenBackground">#2d0000</item>\n'
-        '        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>', 1)
+        '        <item name="windowSplashScreenBackground">#2d0000</item>\n'
+        '        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>\n'
+        '        <item name="postSplashScreenTheme">@style/Theme.ArtcraftPost</item>', 1)
+    closing = '    </style>\n</resources>'
+    if patched.count(closing) != 1:
+        raise ValueError("Pinned theme close changed; review required")
+    return patched.replace(closing,
+        '    </style>\n'
+        '    ' + NATIVE_THEME + '\n'
+        '        <item name="android:windowFullscreen">true</item>\n'
+        '        <item name="android:windowBackground">#2d0000</item>\n'
+        '        <item name="android:defaultFocusHighlightEnabled">false</item>\n'
+        '    </style>\n</resources>', 1)
 
 
 def patch_source(generated: str, java: str, extras: str, manifest: str) -> str:
@@ -55,7 +69,8 @@ def patch_source(generated: str, java: str, extras: str, manifest: str) -> str:
     if "native-activity" not in manifest:
         raise ValueError("Android adapter is no longer using NativeActivity")
     for label, data in (("Activity", java), ("Extras", extras)):
-        if "androidx." in data or "com.google.androidgamesdk." in data or "kotlin." in data:
+        checked = data.replace("androidx.core.splashscreen.SplashScreen", "")
+        if "androidx." in checked or "com.google.androidgamesdk." in checked or "kotlin." in checked:
             raise ValueError(f"{label} uses a dependency slated for removal")
     if generated.count(UNUSED_DEPS) != 1:
         raise ValueError("Pinned builder dependency declaration changed; review required")
@@ -80,7 +95,7 @@ def patch_builder(builder: Path, android_port: Path) -> None:
     if original.count(old) != 1:
         raise ValueError("Pinned VectorCraft Android theme anchor changed")
     staged.write_text(original.replace(old, 'theme = "@style/Theme.Artcraft"', 1))
-    print("PASS: VectorCraft native theme uses brand maroon launch background; unused AndroidX removed")
+    print("PASS: VectorCraft AndroidX SplashScreen keep condition, maroon post theme, no AppCompat/GameActivity")
 
 
 if __name__ == "__main__":

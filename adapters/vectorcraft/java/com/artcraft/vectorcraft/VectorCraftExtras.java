@@ -516,6 +516,7 @@ final class VectorCraftExtras {
             File shared = new File(fonts(), "Shared");
             if (!shared.isDirectory() && !shared.mkdirs())
                 throw new java.io.IOException("Cannot create Shared font cache");
+            int addedThisPass = 0;
             File[] ready = staging.listFiles();
             if (ready != null) for (File file : ready) {
                 String ext = extension(file.getName());
@@ -530,6 +531,7 @@ final class VectorCraftExtras {
                         java.nio.file.Files.move(file.toPath(), target.toPath());
                     }
                     p.added++;
+                    addedThisPass++;
                 } catch (Exception error) {
                     p.skipped++;
                     Log.w(TAG, "Cannot cache shared font " + file.getName(), error);
@@ -548,7 +550,7 @@ final class VectorCraftExtras {
                     + (p.truncated ? "; work queue capped at 10,000 entries" : "")
                     + (reachedLimit ? "; configured scan limit reached" : "");
             if (continueScan) {
-                report(id, "font_folder", "progress", summary + "; continuing in background…", 0);
+                report(id, "font_folder", "progress", summary + "; continuing in background…", addedThisPass);
                 // Automatic bounded chaining: no user refresh is required.
                 scanFontFolder(id, treeUri);
             } else {

@@ -43,47 +43,62 @@ def patch(source: str) -> str:
                     motion_event.source(), Source::Mouse | Source::MouseRelative
                 );
                 if touchpad_source || mouse_source {
-                    let points: Vec<_> = motion_event.pointers().map(|p| pointer_position(&p)).collect();
+                    // PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL: no per-move allocation.
+                    let mut pointers = motion_event.pointers();
+                    let first = pointers.next();
+                    let second = pointers.next();
+                    let first_position = first.as_ref().map(pointer_position);
+                    let second_position = second.as_ref().map(pointer_position);
+                    let point_count = motion_event.pointer_count();
                     if matches!(motion_event.action(),
                         MotionAction::HoverMove | MotionAction::HoverEnter | MotionAction::Move
-                    ) && points.len() == 1 {
-                        self.pdfcraft_trackpad_cursor = points.first().copied();
+                    ) && point_count == 1 {
+                        if mouse_source || self.pdfcraft_trackpad_cursor.is_none() {
+                            self.pdfcraft_trackpad_cursor = first_position;
+                        }
                     }
-                    let axes = motion_event.pointers().next().map(|pointer| {
+                    let axes = first.as_ref().map(|pointer| {
                         (pointer.axis_value(Axis::Vscroll), pointer.axis_value(Axis::Hscroll))
                     }).unwrap_or((0.0, 0.0));
-                    // Position-class SOURCE_TOUCHPAD ACTION_SCROLL would never reach
-                    // the pointer-class wheel arm; handle it explicitly.
-                    if touchpad_source && (motion_event.action() == MotionAction::Scroll
-                        || (motion_event.action() == MotionAction::Move && points.len() == 1
-                            && (axes.0 != 0.0 || axes.1 != 0.0)))
-                    {
-                        let pos = self.pdfcraft_trackpad_cursor.or_else(|| points.first().copied());
+                    let has_scroll_axes = axes.0.is_finite() && axes.1.is_finite()
+                        && (axes.0 != 0.0 || axes.1 != 0.0);
+                    let fractional_scroll = axes.0.fract() != 0.0
+                        || axes.1.fract() != 0.0;
+                    // Some HONOR two-finger trackpads report fractional
+                    // SOURCE_MOUSE VSCROLL/HSCROLL, not moving touch pointers.
+                    // Coarse physical mouse notches still use stock winit wheels.
+                    let precision_trackpad = touchpad_source
+                        || (mouse_source && (fractional_scroll || point_count >= 2));
+                    let axis_action = matches!(motion_event.action(),
+                        MotionAction::Scroll | MotionAction::Move);
+                    if precision_trackpad && has_scroll_axes && axis_action {
+                        let pos = self.pdfcraft_trackpad_cursor.or(first_position);
                         if let Some(position) = pos {
                             callback(event::Event::WindowEvent {
                                 window_id,
                                 event: event::WindowEvent::CursorMoved { device_id, position },
                             }, self.window_target());
                         }
-                        if axes.0 != 0.0 || axes.1 != 0.0 {
-                            callback(event::Event::WindowEvent {
-                                window_id,
-                                // egui-winit's PanGesture is a precise
-                                // trackpad scroll rather than a line-wheel.
-                                event: event::WindowEvent::PanGesture {
-                                    device_id,
-                                    delta: PhysicalPosition {
-                                        x: axes.1 * POINTS_PER_LINE,
-                                        y: axes.0 * POINTS_PER_LINE,
-                                    },
-                                    phase: event::TouchPhase::Moved,
+                        // PanGesture reaches egui as a *Point* wheel and
+                        // bypasses laggy eased line-wheel smoothing.
+                        callback(event::Event::WindowEvent {
+                            window_id,
+                            event: event::WindowEvent::PanGesture {
+                                device_id,
+                                delta: PhysicalPosition {
+                                    x: (axes.1 * POINTS_PER_LINE).clamp(-192.0, 192.0),
+                                    y: (axes.0 * POINTS_PER_LINE).clamp(-192.0, 192.0),
                                 },
-                            }, self.window_target());
-                        }
+                                phase: event::TouchPhase::Moved,
+                            },
+                        }, self.window_target());
+                        self.pdfcraft_trackpad_last = None;
+                        self.pdfcraft_trackpad_origin = None;
+                        self.pdfcraft_trackpad_spread = None;
+                        self.pdfcraft_trackpad_pinching = false;
                         return input_status;
                     }
-                    if points.len() >= 2 {
-                        let a = points[0]; let b = points[1];
+                    if let (Some(a), Some(b)) = (first_position, second_position) {
                         let mid = PhysicalPosition { x: (a.x+b.x)/2.0, y: (a.y+b.y)/2.0 };
                         let old = self.pdfcraft_trackpad_last.replace(mid);
                         let spread = ((a.x-b.x).powi(2)+(a.y-b.y).powi(2)).sqrt();
@@ -120,8 +135,8 @@ def patch(source: str) -> str:
                                 }
                             } else if let Some(last) = old {
                                 let delta = PhysicalPosition {
-                                    x: (mid.x-last.x).clamp(-80.0, 80.0),
-                                    y: (mid.y-last.y).clamp(-80.0, 80.0),
+                                    x: (mid.x-last.x).clamp(-160.0, 160.0),
+                                    y: (mid.y-last.y).clamp(-160.0, 160.0),
                                 };
                                 if delta.x != 0.0 || delta.y != 0.0 {
                                     callback(event::Event::WindowEvent {
@@ -160,5 +175,5 @@ def patch(source: str) -> str:
                             }, self.window_target());
                         }
                         let (vertical, horizontal) = motion_event""")
-    assert marker in source
+    assert marker in source and "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL" in source
     return source

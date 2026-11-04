@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.2'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.3'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.18.0-android.2'
+    assert cargo['package']['version'] == '0.18.0-android.3'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
@@ -92,6 +92,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert '"android.import_fonts"' not in menu
     assert 'PDFCRAFT_ANDROID_BIDIRECTIONAL_PINCH' in (root / 'tools/pdfcraft/android_input_patch.py').read_text()
     assert 'PDFCRAFT_ANDROID_TRACKPAD_PINCH' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
+    assert 'PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'ANDROID_TOOLS => Some(ARTCRAFT_ANDROID_TOOLS_VISIBLE.load(' in menu
     # The optional View toolbar and the separately approved stable Help dialog
     # are different interfaces. The Help dialog legitimately retains fonts_open.

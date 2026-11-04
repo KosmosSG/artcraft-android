@@ -26,6 +26,11 @@ class AndroidInputCompatibility(unittest.TestCase):
             "PdfTouchMode::SingleSelect",
             "std::time::Duration::from_millis(300)",
             "PDFCRAFT_ANDROID_TRACKPAD_SCROLL",
+            "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL",
+            "fractional_scroll",
+            "point_count >= 2",
+            "precision_trackpad = touchpad_source",
+            "has_scroll_axes && axis_action",
             "Source::Touchpad | Source::TouchNavigation",
             "PdfTouchMode::Scroll",
             "event::WindowEvent::PanGesture",
@@ -45,6 +50,8 @@ class AndroidInputCompatibility(unittest.TestCase):
         self.assertIn("self.pdfcraft_touch_held = false",patched)
         self.assertIn("return input_status;",patched)
         self.assertIn("MotionAction::Move",patched)
+        self.assertIn("MouseScrollDelta::LineDelta(horizontal, vertical)",patched)
+        self.assertNotIn("points: Vec<_> = motion_event.pointers()",patched)
 
 if __name__=="__main__":
     unittest.main()

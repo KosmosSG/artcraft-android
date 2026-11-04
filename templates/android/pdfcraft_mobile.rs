@@ -406,6 +406,27 @@ impl Mobile {
                             data.get("legacyAxes").and_then(Value::as_u64).unwrap_or(0)));
                         ui.monospace(data.get("last").and_then(Value::as_str)
                             .unwrap_or("No Java sample"));
+                        ui.separator();
+                        ui.heading("Adaptive cursor diagnostics");
+                        ui.label(format!("Android cursor requests: {}",
+                            data.get("cursorRequests").and_then(Value::as_u64).unwrap_or(0)));
+                        ui.label(format!("Android cursor applied: {}",
+                            data.get("cursorApplied").and_then(Value::as_u64).unwrap_or(0)));
+                        let kind = data.get("cursorType").and_then(Value::as_i64).unwrap_or(-1);
+                        let label = match kind {
+                            1000 => "Default arrow", 1002 => "Pointing hand",
+                            1008 => "Text I-beam", 1007 => "Crosshair",
+                            1014 | 1021 | 1022 | 1023 => "Resize arrow",
+                            -1 => "No cursor request received", _ => "Other native cursor",
+                        };
+                        ui.label(format!("Last requested cursor: {} ({})", label, kind));
+                        ui.label(format!("Target Android view: {}",
+                            data.get("cursorTarget").and_then(Value::as_str).unwrap_or("Unknown")));
+                        let err = data.get("cursorError").and_then(Value::as_str).unwrap_or("None");
+                        if err != "None" { ui.colored_label(egui::Color32::RED, err); }
+                        ui.label(egui::RichText::new(
+                            "Hover over PDFCraft buttons, then move into editable text. If requests stay at zero, egui's cursor bridge was not called. If requests rise but applied stays zero, the Android view/JNI bridge failed. If both rise but the cursor stays an arrow, the Android system may ignore the selected SurfaceView pointer icon."
+                        ).small());
                     }
                     Err(_) => { ui.monospace(&self.trackpad_java_status); }
                 }

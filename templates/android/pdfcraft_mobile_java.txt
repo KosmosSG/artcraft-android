@@ -28,6 +28,15 @@ private final java.util.concurrent.atomic.AtomicLong pdfWheelScrolls =
         new java.util.concurrent.atomic.AtomicLong();
 private volatile String pdfLastTrackpad = "No Java-dispatched trackpad events";
 private volatile long pdfLastTrackpadTime = 0L;
+// PDFCRAFT_ANDROID_CURSOR_FEEDBACK: observe native pointer requests and
+// Android SurfaceView applications without intercepting input or changing it.
+private final java.util.concurrent.atomic.AtomicLong pdfCursorRequests =
+        new java.util.concurrent.atomic.AtomicLong();
+private final java.util.concurrent.atomic.AtomicLong pdfCursorApplied =
+        new java.util.concurrent.atomic.AtomicLong();
+private volatile int pdfCursorLastType = -1;
+private volatile String pdfCursorTarget = "No pointer icon has been requested";
+private volatile String pdfCursorError = "None";
 
 @Override
 public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
@@ -70,6 +79,11 @@ public String pdfTrackpadStatus() {
         status.put("gestureAxes", pdfGestureScrolls.get());
         status.put("legacyAxes", pdfWheelScrolls.get());
         status.put("last", pdfLastTrackpad);
+        status.put("cursorRequests", pdfCursorRequests.get());
+        status.put("cursorApplied", pdfCursorApplied.get());
+        status.put("cursorType", pdfCursorLastType);
+        status.put("cursorTarget", pdfCursorTarget);
+        status.put("cursorError", pdfCursorError);
         return status.toString();
     } catch (Exception error) { return "{\"error\":\"diagnostics unavailable\"}"; }
 }
@@ -430,6 +444,8 @@ private volatile int pdfCursorRequested = -1;
 public void pdfApplyAdaptiveCursor(int type) {
     if (android.os.Build.VERSION.SDK_INT < 24 || pdfCursorRequested == type) return;
     pdfCursorRequested = type;
+    pdfCursorRequests.incrementAndGet();
+    pdfCursorLastType = type;
     runOnUiThread(() -> {
         if (pdfCursorRequested != type) return;
         try {
@@ -440,7 +456,12 @@ public void pdfApplyAdaptiveCursor(int type) {
             android.view.View target = findPdfAdaptiveSurface(decor, 0);
             if (target == null) target = decor;
             target.setPointerIcon(android.view.PointerIcon.getSystemIcon(this, type));
+            pdfCursorApplied.incrementAndGet();
+            pdfCursorTarget = target.getClass().getSimpleName();
+            pdfCursorError = "None";
         } catch (Exception error) {
+            pdfCursorError = error.getClass().getSimpleName()
+                    + ": " + String.valueOf(error.getMessage());
             android.util.Log.w(TAG, "Adaptive Cursor failed", error);
         }
     });

@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.8'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.9'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.18.0-android.8'
+    assert cargo['package']['version'] == '0.18.0-android.9'
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
@@ -111,6 +111,8 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'egui::Event::MouseWheel { unit, delta, .. }' in mobile
     assert 'egui::Event::Zoom(factor)' in mobile
     assert 'read_trackpad_status' in mobile
+    assert '"Adaptive cursor diagnostics"' in mobile
+    assert '"Android cursor requests: {}"' in mobile
     assert 'pub fn dialog(&mut self, ctx: &egui::Context)' in mobile
     assert 'panel_open: bool' in mobile and 'fonts_open: bool' in mobile
     assert 'toolbar_shown: false' in mobile
@@ -144,6 +146,9 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'public boolean dispatchGenericMotionEvent(android.view.MotionEvent event)' in bridge
     assert 'return super.dispatchGenericMotionEvent(event)' in bridge
     assert 'event.getAxisValue(50)' in bridge and 'event.getAxisValue(51)' in bridge
+    assert 'PDFCRAFT_ANDROID_CURSOR_FEEDBACK' in bridge
+    assert 'status.put("cursorRequests", pdfCursorRequests.get())' in bridge
+    assert 'status.put("cursorApplied", pdfCursorApplied.get())' in bridge
     assert 'public String pdfTrackpadStatus()' in bridge
     assert 'public void pdfApplyAdaptiveCursor(int type)' in bridge
     assert 'PDF_FONT_SCAN_MAX_BYTES = 4L * 1024 * 1024 * 1024' in bridge

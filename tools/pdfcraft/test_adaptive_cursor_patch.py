@@ -26,6 +26,9 @@ class CursorPortTests(unittest.TestCase):
                   'C::Progress | C::Wait | C::None => return None','jni_str!("pdfApplyAdaptiveCursor")'):
             self.assertIn(v,code)
         for v in ('PDFCRAFT_ANDROID_ADAPTIVE_CURSOR_JAVA',
+                  'PDFCRAFT_ANDROID_CURSOR_FEEDBACK',
+                  'pdfCursorRequests.incrementAndGet()',
+                  'pdfCursorApplied.incrementAndGet()',
                   'public void pdfApplyAdaptiveCursor(int type)',
                   'runOnUiThread(', 'findPdfAdaptiveSurface', 'setPointerIcon',
                   'android.view.SurfaceView'):

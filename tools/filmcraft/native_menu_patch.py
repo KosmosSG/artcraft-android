@@ -14,6 +14,17 @@ UPSTREAM_UPDATE_ENTRY = '    uic!("app.checkForUpdates", "Check for Updates…",
 COMMAND_ANCHOR = '    uic!("app.about", "About FilmCraft", ["Help"], None),'
 INVOKE_ANCHOR = '    if id == "edit.selectAll" && ('
 MENU_BAR_ANCHOR = '    let items = menu_items_with_focus(app, ui.ctx());'
+ANDROID_ICON_MENU_FILTER = '''    // Android-only: these actions live under the approved top-left Fc icon.
+    // Keep their registered command IDs and JNI dispatch; hide only duplicate
+    // File/Help menu rows. All desktop menus remain unchanged.
+    #[cfg(target_os = "android")]
+    let items: Vec<_> = items.into_iter().filter(|item| !matches!(
+        item.id.as_str(),
+        "android.filmcraft.importFont" | "android.filmcraft.sharedFonts" |
+        "android.filmcraft.refreshFonts" | "app.checkForUpdates" |
+        "android.filmcraft.startupUpdates"
+    )).collect();
+'''
 COMMAND_INSERT = '''    // FilmCraft Android only: native File and Help commands, not a floating toolbar.
     #[cfg(target_os = "android")]
     uic!("android.filmcraft.importFont", "Import Font…", ["File"], None),
@@ -85,7 +96,7 @@ def patch(s: str) -> str:
         raise RuntimeError("obsolete duplicate Android Check for Updates entry")
     s = once(s, COMMAND_ANCHOR, COMMAND_INSERT + COMMAND_ANCHOR, "menu registration")
     s = once(s, INVOKE_ANCHOR, INVOKE_INSERT + INVOKE_ANCHOR, "menu dispatch")
-    s = once(s, MENU_BAR_ANCHOR, MENU_BAR_INSERT + MENU_BAR_ANCHOR, "menu status")
+    s = once(s, MENU_BAR_ANCHOR, MENU_BAR_INSERT + MENU_BAR_ANCHOR + "\n" + ANDROID_ICON_MENU_FILTER, "menu status")
     return s
 
 
@@ -103,6 +114,8 @@ def self_test() -> None:
     assert all(f'Some({i})' in out for i in range(1, 8))
     assert "filmcraft.android.menu.action" in out
     assert "filmcraft.android.menu.status" in out
+    assert 'app.checkForUpdates" |' in out
+    assert "Android-only: these actions live under the approved top-left Fc icon" in out
     try:
         patch(out)
     except RuntimeError:

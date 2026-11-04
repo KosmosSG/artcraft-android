@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_menu_patch as menus
+import header_patch as header
 import verify_android_features_apk as apk_audit
 
 
@@ -24,6 +25,24 @@ class NativeUpdateMenuContractTests(unittest.TestCase):
         self.assertEqual(staged.count('uic!("app.checkForUpdates"'), 1)
         self.assertIn('"app.checkForUpdates" => Some(4),', staged)
         self.assertNotIn('uic!("android.filmcraft.checkUpdates"', staged)
+
+    def test_icon_popup_preserves_commands_and_removes_duplicates_from_file_help(self):
+        source = menus.UPSTREAM_UPDATE_ENTRY + "\n" + menus.COMMAND_ANCHOR + "\n" + menus.INVOKE_ANCHOR + "\n" + menus.MENU_BAR_ANCHOR + "\n"
+        staged = menus.patch(source)
+        for command in (
+            "android.filmcraft.importFont", "android.filmcraft.sharedFonts",
+            "android.filmcraft.refreshFonts", "app.checkForUpdates",
+            "android.filmcraft.startupUpdates"
+        ):
+            self.assertIn('"' + command + '"', staged)
+            self.assertIn('"' + command + '"', menus.ANDROID_ICON_MENU_FILTER)
+        for label in ("Import Font…", "Shared Font Folder…", "Refresh Imported Fonts",
+                      "Check for Updates…", "Check for Updates at Startup"):
+            self.assertIn(label, header.ANDROID_HOME)
+        self.assertIn("Mode::Import", header.ANDROID_HOME)
+        self.assertIn("android_approved_brand::paint", header.ANDROID_HOME)
+        self.assertIn("widgets.hovered.weak_bg_fill", header.MENU_STYLE)
+        header.self_test()
 
     def test_compiled_audit_requires_upstream_update_id_not_obsolete_id(self):
         self.assertIn(b"app.checkForUpdates", apk_audit.NATIVE_COMMANDS)

@@ -344,6 +344,8 @@ impl FilmcraftFeatures {
     }
 
     pub fn poll(&mut self, ctx: &egui::Context) {
+        // Current persisted startup-update preference for the Android Fc icon menu.
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("filmcraft.android.startup.enabled"), self.startup_updates));
         // Consume once; menu invocation may occur after our poll in the UI frame.
         let id = egui::Id::new("filmcraft.android.menu.action");
         let action = ctx.data_mut(|data| {

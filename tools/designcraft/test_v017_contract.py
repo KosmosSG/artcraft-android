@@ -29,6 +29,7 @@ class DesignCraftV017Contract(unittest.TestCase):
         self.assertIn('DESIGNCRAFT_V017', self.shell)
         self.assertIn('MODE" != "debug"', self.shell)
         self.assertIn('designcraft-v017.json', self.shell)
+        self.assertIn("git clone --depth 1 --branch v0.17.0", self.shell)
         self.assertIn('0.17.0-android.1', self.shell)
         self.assertIn('candidate_version = "0.17.0-android.1"', self.patch)
         self.assertIn('com.artcraft.designcraft.test', self.wf)

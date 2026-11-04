@@ -146,6 +146,9 @@ jobs:
           # Reuse unchanged system-font symlink layout across cold launches
           # without affecting native font fallbacks or SAF imported fonts.
           python3 android-port/tools/vectorcraft/patch_cached_system_fonts_v020.py builder
+          # Only this disposable candidate gets a separate application ID.
+          # Keep stable Java/JNI namespace, original Android source and signing key unchanged.
+          python3 android-port/tools/vectorcraft/patch_test_package_v021.py builder
           python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
           # Owner supplied a NEW flat Vc artwork; the previous glossy approved
           # icon is preserved for older releases but must not enter this candidate.
@@ -190,7 +193,7 @@ jobs:
           badging=Path("private-test/badging.txt").read_text()
           resources=Path("private-test/resources.txt").read_text()
           match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
-          assert match and match.groups()==("com.artcraft.vectorcraft",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
+          assert match and match.groups()==("com.artcraft.vectorcraft.test",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
           assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
           sig=Path("private-test/signature.txt").read_text()
           fingerprints=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
@@ -207,9 +210,9 @@ jobs:
               # individual ic_launcher files do NOT necessarily appear as ZIP names.
               assert "resources.arsc" in files, "Android compiled resources missing"
           assert "mipmap/ic_launcher" in resources or "drawable/ic_launcher" in resources, "Android launcher icon resource missing"
-          report={"package":match.group(1),"version_code":int(match.group(2)),"version_name":match.group(3),"test_certificate_sha256":fingerprints[0].lower(),"original_certificate_used":False,"apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),"install_mode":"must uninstall production first; back up documents and SAF access","device_checks":"pending"}
+          report={"package":match.group(1),"version_code":int(match.group(2)),"version_name":match.group(3),"test_certificate_sha256":fingerprints[0].lower(),"original_certificate_used":False,"apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),"install_mode":"separate test application ID; stable installation and its data stay untouched","device_checks":"pending"}
           Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
-          print("PASS: temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and monotonic version")
+          print("PASS: separate-install temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and version")
           PY
           cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)

@@ -10,3 +10,5 @@ Do not touch production keystore, stable release, signing, or publish a GitHub R
 Retry preflight only after revealing JVM scanner stderr (previous 41804327817 stopped before SDK/compiler).
 
 Corrected JVM test fixture: previously escaped newline hid scan invocation; scanner still bounded and automatic.
+
+JVM diagnostic pass: print first 201-font automatic batch result to isolate remaining assertion.

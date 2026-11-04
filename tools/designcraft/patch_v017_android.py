@@ -133,7 +133,23 @@ def patch_launcher(root: Path, android: Path):
     source = once(source, "        self.inner.ui(ui);",
         '''        v016_android::ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);
         self.inner.ui(ui);''', str(launcher))
+    source = once(
+        source,
+        "    apply_immersive_fullscreen(&android_app);",
+        """    // DesignCraft-only adaptive cursor: publish the Activity before first frame.
+    egui_winit::android_activity::set_activity(
+        android_app.activity_as_ptr() as *mut std::ffi::c_void
+    );
+    apply_immersive_fullscreen(&android_app);""",
+        "publish Android activity for adaptive cursor",
+    )
     launcher.write_text(source)
+    manifest = android / "Cargo.toml"
+    m = manifest.read_text()
+    m = once(m, "[dependencies]\\n", """[dependencies]
+egui-winit = { path = "../../vendor/egui-winit" }
+""", "DesignCraft's egui-winit adapter dependency")
+    manifest.write_text(m)
     shutil.copyfile(root / "tools/designcraft/v016_android.rs", android / "src/v016_android.rs")
 
     # Preserve the old release's writable font import layout.

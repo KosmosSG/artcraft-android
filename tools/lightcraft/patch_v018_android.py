@@ -151,7 +151,12 @@ def builder_changes(builder: Path) -> dict[Path, str]:
     # New builder already declares INTERNET: old permission patch would duplicate it.
     if script.count('name = "android.permission.INTERNET"') != 1:
         raise ValueError("STOP: Android builder INTERNET permission missing/duplicated")
-    if script.count('    "lightcraft": {') != 1:
+    # Other builder tables also contain a LightCraft entry; inspect only SAF_RECIPES.
+    saf_region = script.split("SAF_RECIPES = {", 1)
+    if len(saf_region) != 2:
+        raise ValueError("STOP: Android SAF recipe table is missing")
+    saf_region = saf_region[1].split('    "cadcraft": {', 1)[0]
+    if saf_region.count('    "lightcraft": {') != 1:
         raise ValueError("STOP: Android builder LightCraft SAF recipe drift")
     from patch_v017_builder import patch_source
     script = patch_source(script)

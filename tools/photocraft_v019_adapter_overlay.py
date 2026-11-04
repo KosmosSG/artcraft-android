@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 import subprocess
 
-UPSTREAM_SHA = "2df9f807702a935184041355a86405380bda8274"
+UPSTREAM_SHA = "327c4cc82e737a3e0af7c147a477126d77525495"
 
 
 def replace_once(path: Path, before: str, after: str) -> None:
@@ -154,7 +154,7 @@ pub fn artcraft_ai_tools_visible() -> bool {
     replace_once(
         adapter / "Cargo.toml",
         "version.workspace = true\n",
-        'version = "0.19.0-android.7"\n',
+        'version = "0.20.1-android.1"\n',
     )
 
     # New ArtCraft-owned overlay only; do not replace our shipped NativeActivity.

@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 import subprocess
 
-UPSTREAM="2df9f807702a935184041355a86405380bda8274"
+UPSTREAM="327c4cc82e737a3e0af7c147a477126d77525495"
 
 def patch(path,old,new):
     data=path.read_text(encoding="utf-8")

@@ -32,7 +32,7 @@ def patch(builder, app):
         mask.putdata([alpha if red > 150 and green > 60 and red > green * 1.3
                       else 0 for red, green, blue, alpha in work_icon.getdata()])
         work_icon.putalpha(mask)
-        tile_size = round(CANVAS_PX * 0.82)
+        tile_size = round(CANVAS_PX * 0.65)  # 72dp adaptive safe zone; roomy glyph margin
         glyph = work_icon.resize((tile_size, tile_size), Image.LANCZOS)
         foreground = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
         foreground.alpha_composite(glyph,
@@ -60,7 +60,30 @@ def patch(builder, app):
     else:
         stripped, _changed = _strip_background(work, pristine=pristine)
         foreground = _foreground(Image, stripped)'''.replace("APP_ID", app)
-    module.write_text(source.replace(NEEDLE, injected))
+    updated = source.replace(NEEDLE, injected)
+    if app == "vectorcraft":
+        # The builder's _write_legacy reads the full-sized original PNG again,
+        # so pad its generated mipmaps after that method has run. Both legacy
+        # and adaptive variants now keep generous distance from mask edges.
+        legacy = '    _write_legacy(source, pristine, res_dir)'
+        if updated.count(legacy) != 1:
+            raise ValueError("Pinned legacy icon writer changed; review required")
+        pad_legacy = '''    _write_legacy(source, pristine, res_dir)
+    if app == "vectorcraft" and explicit is not None:
+        # Keep the owner's rounded maroon Vc tile; avoid double-masking the
+        # adaptive foreground, which was generated independently above.
+        for density in DENSITIES:
+            icon_path = res_dir / f"mipmap-{density}" / "ic_launcher.png"
+            source_icon = Image.open(icon_path).convert("RGBA")
+            side = source_icon.width
+            tile_size = round(side * 0.78)
+            tile = source_icon.resize((tile_size, tile_size), Image.Resampling.LANCZOS)
+            padded = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+            padded.alpha_composite(tile,
+                ((side - tile_size) // 2, (side - tile_size) // 2))
+            padded.save(icon_path, format="PNG")'''
+        updated = updated.replace(legacy, pad_legacy, 1)
+    module.write_text(updated)
     print(f"PASS: approved {app} artwork padded for Android adaptive icon")
 
 if __name__ == "__main__":

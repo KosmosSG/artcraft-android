@@ -22,7 +22,8 @@ if marker in text:
         "ANDROID_TOOLS => Some(ARTCRAFT_ANDROID_TOOLS_VISIBLE.load(",
     ]
     assert all(x in text for x in expected), "Incomplete existing PDFCraft tools menu patch"
-    assert "PDFCRAFT_ANDROID_HELP_REQUEST" in text, "Approved Help menu bridge missing"\n    print("PASS: approved PDFCraft Help menu and optional View tool menu patched")
+    assert "PDFCRAFT_ANDROID_HELP_REQUEST" in text, "Approved Help menu bridge missing"
+    print("PASS: approved PDFCraft Help menu and optional View tool menu patched")
     sys.exit(0)
 
 def replace(old: str, new: str):

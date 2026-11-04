@@ -373,6 +373,9 @@ public final class VectorCraftActivity extends NativeActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
+            // Android may replace the native SurfaceView when returning from
+            // the picker/launcher: invalidate cached icon for the next frame.
+            nativePointerIconType = -1;
             applyImmersiveFullscreen();
             // Some Android keyboards return focus to the hidden EditText after
             // the SAF picker or another app. Never leave the hardware keys

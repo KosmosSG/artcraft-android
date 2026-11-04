@@ -51,7 +51,7 @@ class KeyboardProductionUpgradeTests(unittest.TestCase):
                        "self.bridge.end_type_editing()"):
             self.assertIn(marker, self.shell)
         for marker in ("public void vcEndTypeEditing()", "imeWanted = false;",
-                       "view.clearFocus();", "child.requestFocus()", "imeEvents.clear();"):
+                       "view.clearFocus();", "nativeSurface.requestFocus()", "imeEvents.clear();"):
             self.assertIn(marker, self.java)
         self.assertIn("return false;", self.java)  # invisible EditText hardware event passthrough
         self.assertIn("imePoll()", self.java)

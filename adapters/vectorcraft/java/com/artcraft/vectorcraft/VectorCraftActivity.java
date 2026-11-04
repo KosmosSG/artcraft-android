@@ -21,6 +21,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.window.SplashScreenView;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
@@ -78,6 +79,9 @@ public final class VectorCraftActivity extends NativeActivity {
     // only once the VectorCraft UI starts drawing; a timeout prevents lock-in if
     // the native process never reaches its first frame.
     private FrameLayout startupCover;
+    // Keep Android 12+ system splash above the native Vulkan surface until ready.
+    private SplashScreenView systemSplash;
+    private volatile boolean nativeEditorReady;
 
     void vcOfferExtraResult(String json) { results.offer(json); }
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
@@ -161,6 +165,28 @@ public final class VectorCraftActivity extends NativeActivity {
         }
     }
 
+    private void installSystemSplashHold() {
+        if (Build.VERSION.SDK_INT < 31) return;
+        try {
+            getSplashScreen().setOnExitAnimationListener(view -> {
+                systemSplash = view;
+                if (nativeEditorReady) finishSystemSplash();
+            });
+        } catch (RuntimeException error) {
+            Log.w(TAG, "System splash hold unavailable; using activity cover", error);
+        }
+    }
+
+    private void finishSystemSplash() {
+        SplashScreenView splash = systemSplash;
+        if (splash == null) return;
+        systemSplash = null;
+        splash.postDelayed(() -> {
+            try { splash.remove(); }
+            catch (RuntimeException error) { Log.w(TAG, "Splash view dismissal failed", error); }
+        }, 450);
+    }
+
     private int splashDp(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -200,7 +226,9 @@ public final class VectorCraftActivity extends NativeActivity {
 
     /** Called exactly once by Rust after its first editor UI traversal. */
     public void vcNativeUiReady() {
+        nativeEditorReady = true;
         runOnUiThread(() -> {
+            finishSystemSplash();
             FrameLayout cover = startupCover;
             if (cover != null) {
                 // Allow the just-submitted native frame to reach the GPU before
@@ -226,6 +254,7 @@ public final class VectorCraftActivity extends NativeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installSystemSplashHold();
         showStartupCover();
         applyImmersiveFullscreen();
         // The native surface view is attached after onCreate and can reset the window state:

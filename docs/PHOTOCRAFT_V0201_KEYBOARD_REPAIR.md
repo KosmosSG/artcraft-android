@@ -76,3 +76,29 @@ this candidate does not pretend to implement a complete IME-reset protocol.
    before/after tool states and routing lines without entering sensitive text.
 
 Physical behavior can be marked PASS only after the owner tests the exact APK.
+
+
+## Android.3 follow-up after owner video (4 November 2026)
+
+Android.2 failed the owner's Escape test: Type editing remained true and subsequent
+M/B/V letters were inserted as text. Earlier no-editor presses showed only the
+ambiguous `JNI received` counter, not a decoded DOWN. This establishes a failed
+candidate, not the exact Android action/repeat values.
+
+The Java repeat filter rejected every DOWN with nonzero repeatCount. Android.3
+uses a per-device/key/downTime gate: the first observed DOWN is delivered even
+if marked repeated, subsequent held repeats and duplicate callback routes are
+suppressed, and releases/focus changes retire the held state. It never invents a
+DOWN from a release. This covers a reproducible routing gap; whether MagicOS
+triggers that gap in the recording is still a hypothesis pending new diagnostics.
+
+Diagnostics now show DOWN/UP and repeat count in Java and Escape at the native,
+post-bridge, queued-editor and UI-tail stages even while typing. Other typed key
+names remain suppressed. `JNI polled` explicitly means queue records, not proof
+that a press was decoded. No typed text or document contents are logged.
+
+The exact Java gate passes 20 synthetic Escape/M cycles including a first-observed
+repeat, duplicate routes, missing release, stale release and focus reset. The
+existing five Rust routing tests are repeated by CI. Device Escape success is
+still NOT verified. Test a short sentence → Esc → M/B/V; if it fails, capture the
+new Escape lines. Keep the stable app; this remains a temporary-signed candidate.

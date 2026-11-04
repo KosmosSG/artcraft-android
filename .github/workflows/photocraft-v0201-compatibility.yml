@@ -1,0 +1,243 @@
+name: PhotoCraft official v0.19 Android compatibility (auto-build, NO RELEASE)
+
+# Independent review branch. Deliberately not on the auto-preview publisher allowlist.
+on:
+  push:
+    branches:
+      - feature/photocraft-v0201-android-test-20261104
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v0201-isolated-compatibility
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "2"
+      # Keep debug instrumentation but avoid shipping large symbol sections.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_DEV_STRIP: "symbols"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.20.1-android.1"
+      ARTCRAFT_TARGET_SDK: "35"
+      ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
+      UPSTREAM_TAG: "v0.20.1"
+      UPSTREAM_SHA: "327c4cc82e737a3e0af7c147a477126d77525495"
+      STABLE_SHA: "3af883c9db9d57d1b1641629707c2927176b484a"
+    steps:
+      - name: Checkout preserved owner-tested Android branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify v0.14.0-android.4 runtime remains identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feature/photocraft-v0201-android-test-20261104"
+          git fetch --no-tags --depth=1 origin "$STABLE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$STABLE_SHA"
+          python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
+          echo "The published production PhotoCraft app is unchanged."
+
+      - name: Check out exact latest official v0.20.1 source without changing project history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
+          python3 tools/photocraft_v019_preservation_gate.py --upstream source/photocraft
+          echo "Source pin: $UPSTREAM_SHA"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+
+      - name: Configure Android SDK 35 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Confirm Android winit IME API shim before expensive compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'ImeResetCompleted { request_id: u64 }' vendor/winit/src/event.rs
+          grep -Fq 'pub fn reset_ime_with_request(&self, _request_id: u64)' vendor/winit/src/window.rs
+          echo "Reviewed Android winit IME compatibility APIs present."
+
+      - name: Adapt v0.19 UI menus and ImportOptions (temporary checkout ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_v019_adapter_overlay.py
+          python3 tools/photocraft_v019_adapter_overlay.py \
+            --upstream source/photocraft \
+            --android-adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android5_input_overlay.py
+          python3 tools/photocraft_v019_android5_input_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android6_ui_overlay.py
+          python3 tools/photocraft_v019_android6_ui_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android7_input_overlay.py
+          python3 tools/photocraft_v019_android7_input_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs
+          grep -Fq 'touch_scroll.route(ctx, raw)' adapters/photocraft/src/lib.rs
+          grep -Fq 'mod shortcut_pad;' adapters/photocraft/src/lib.rs
+          grep -Fq 'artcraft_pad_visible' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pcCheckUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'hardware_keys::inject' adapters/photocraft/src/lib.rs
+          grep -Fq 'trackpad_wheel::route' adapters/photocraft/src/lib.rs
+          grep -Fq 'recover_text_keys' adapters/photocraft/src/lib.rs
+          grep -Fq 'dispatchGenericMotionEvent' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq '("file.artcraftImportFonts", "Import Font…", "Type")' tools/photocraft_v019_adapter_overlay.py
+          grep -Fq 'std::thread::Builder::new()' adapters/photocraft/src/android_fonts.rs
+          grep -Fq 'fn pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java || grep -Fq 'String pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'delayed_taps' adapters/photocraft/src/ui_touch_scroll.rs
+          grep -Fq 'artcraft_take_pc_menu_action' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'artcraft_pc_icon_menu' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'canvas_gesture.apply' adapters/photocraft/src/lib.rs
+          grep -Fq 'pub(crate) fn refresh' adapters/photocraft/src/android_fonts.rs
+          grep -Fq 'pcToggleStartupUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'artcraft_android_edge_pad' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'self.reserved' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'artcraft_queue_dialog_key' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'artcraft_take_dialog_key' source/photocraft/crates/ui-egui/src/dialogs/discard_ui.rs
+          grep -Fq 'AXIS_GESTURE_SCROLL_Y_DISTANCE' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'pcRequestFontImport' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'Paste token from Android clipboard' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
+          grep -Fq 'version = "0.20.1-android.1"' adapters/photocraft/Cargo.toml
+          echo 'Only disposable-runner source files were patched. Published release untouched.'
+
+      - name: Stage owner's blue Pc icon into disposable upstream checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON=source/photocraft/assets/app-icon/hicolor/256x256/apps/ai.storyteller.photocraft.png
+          test -d "$(dirname "$ICON")"
+          base64 --decode tools/photocraft_v019_pc_launcher.png.b64 > "$ICON"
+          echo "addd5c0eec37a85984e53981b811288cbc06ea238ed453e4381cb828b4c4e5a7  $ICON" | sha256sum --check --status
+          # Upstream title-bar mark embeds the SEPARATE 128px icon at compile time.
+          # Use the same owner-approved pixels for launcher and in-app logo.
+          BRAND=source/photocraft/assets/app-icon/hicolor/128x128/apps/ai.storyteller.photocraft.png
+          test -f "$BRAND"
+          cp -f "$ICON" "$BRAND"
+          cmp -s "$ICON" "$BRAND"
+          echo "Owner's Pc logo now matches in Android launcher and PhotoCraft title bar."
+          echo "Owner-provided Pc icon staged, SHA-256 verified; the stable launcher remains unchanged."
+
+      - name: Isolate temporary-signed candidate from owner's production PhotoCraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Modify the CI workspace copy only. The committed production Android
+          # adapter, signing identity and protected release tree are untouched.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("adapters/photocraft/Cargo.toml")
+          manifest = p.read_text()
+          changes = [
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate"', 1),
+              ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Test"', 2),
+          ]
+          for old, new, expected in changes:
+              count = manifest.count(old)
+              if count != expected:
+                  raise SystemExit(f"Refusing ambiguous test-package override: {old}: {count} != {expected}")
+              manifest = manifest.replace(old, new)
+          p.write_text(manifest)
+          import tomllib
+          data = tomllib.loads(manifest)
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate"
+          print("Separate com.artcraft.photocraft.candidate app: production package and keys untouched")
+          PY
+
+      - name: Compile debug-only upstream v0.19 Android compatibility candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build-system-generated local debug key is NOT the original PhotoCraft certificate.
+          # Never sign with a production key here; never publish any Releases.
+          bash build-debug.sh -photocraft
+          test -f output/photocraft-0.20.1-debug.apk
+          mv output/photocraft-0.20.1-debug.apk output/photocraft-0.20.1-android.1-debug.apk
+
+      - name: Print compiler failure summary for upstream v0.19 adaptation
+        if: failure()
+        shell: bash
+        run: |
+          echo "Compiler diagnostics; current candidate did not produce a verified APK."
+          if compgen -G 'logs/photocraft-debug*.log' > /dev/null; then
+            sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' logs/photocraft-debug*.log |
+              grep -En 'error(\[E[0-9]+\])?:|failed to|could not compile|no method named|no variant named' |
+              tail -n 80 || true
+          else
+            echo "No debug compiler log was produced."
+          fi
+
+      - name: Retain compiler diagnostics on failure (NO RELEASE)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0201-ARM64-COMPILER-DIAGNOSTICS
+          path: logs/photocraft-debug*.log
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Inspect compiled APK identity (candidate is NOT an in-place update)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' apks < <(find output -maxdepth 1 -name '*.apk' -type f -print0)
+          test "${#apks[@]}" -eq 1
+          APK="${apks[0]}"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          "$AAPT" dump badging "$APK" | grep '^package:'
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.20.1-android.1'"
+          sha256sum "$APK" | tee SHA256SUMS.txt
+          echo "UNTESTED disposable-key debug APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.20.1-android.1; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain debug test artifact ONLY (never publish)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.20.1-android.1-ARM64-ISOLATED-TEST-DISPOSABLE-KEY
+          path: |
+            output/*.apk
+            SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error

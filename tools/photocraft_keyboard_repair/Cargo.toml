@@ -1,0 +1,13 @@
+[package]
+name = "photocraft-keyboard-routing-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+egui = { version = "=0.37.0", default-features = false }
+
+[lib]
+path = "test_host.rs"

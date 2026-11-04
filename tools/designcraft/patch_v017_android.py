@@ -146,7 +146,7 @@ def patch_launcher(root: Path, android: Path):
     launcher.write_text(source)
     manifest = android / "Cargo.toml"
     m = manifest.read_text()
-    m = once(m, "[dependencies]\\n", """[dependencies]
+    m = once(m, "[dependencies]\n", """[dependencies]
 egui-winit = { path = "../../vendor/egui-winit" }
 """, "DesignCraft's egui-winit adapter dependency")
     manifest.write_text(m)

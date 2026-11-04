@@ -14,6 +14,16 @@ def patch(source: str) -> str:
         n=source.count(a)
         if n!=1:raise ValueError(f"PDFCraft touchpad overlay expected one {a[:75]!r}, got {n}")
         source=source.replace(a,b,1)
+    swap("        let redraw_flag = SharedFlag::new();",
+         """        // PDFCRAFT_ANDROID_GESTURE_AXES_34: request the Android 14+
+        // hardware trackpad scroll-distance axes, as well as legacy
+        // mouse wheel axes. NativeActivity may expose them without opt-in,
+        // while GameActivity requires explicit enablement.
+        android_app.enable_motion_axis(Axis::Vscroll);
+        android_app.enable_motion_axis(Axis::Hscroll);
+        android_app.enable_motion_axis(Axis::from(50u32));
+        android_app.enable_motion_axis(Axis::from(51u32));
+        let redraw_flag = SharedFlag::new();""")
     swap("    pdfcraft_touch_held: bool,",
          """    pdfcraft_touch_held: bool,
     // PDFCRAFT_ANDROID_TRACKPAD_SCROLL
@@ -64,14 +74,41 @@ def patch(source: str) -> str:
                         && (axes.0 != 0.0 || axes.1 != 0.0);
                     let fractional_scroll = axes.0.fract() != 0.0
                         || axes.1.fract() != 0.0;
+                    // Android 14+ (API 34) CLASSIFICATION_TWO_FINGER_SWIPE
+                    // usually comes as SOURCE_MOUSE + TOOL_TYPE_FINGER
+                    // with ONE pointer and ACTION_MOVE, carrying dedicated
+                    // AXIS_GESTURE_SCROLL_{X,Y}_DISTANCE (50, 51).
+                    // This is *not* AXIS_VSCROLL and was silently ignored by
+                    // all previous PDFCraft trackpad patches.
+                    let gesture_axes = first.as_ref().map(|pointer| (
+                        pointer.axis_value(Axis::from(50u32)),
+                        pointer.axis_value(Axis::from(51u32)),
+                    )).unwrap_or((0.0, 0.0));
+                    let has_gesture_scroll = gesture_axes.0.is_finite()
+                        && gesture_axes.1.is_finite()
+                        && (gesture_axes.0 != 0.0 || gesture_axes.1 != 0.0);
                     // Some HONOR two-finger trackpads report fractional
                     // SOURCE_MOUSE VSCROLL/HSCROLL, not moving touch pointers.
                     // Coarse physical mouse notches still use stock winit wheels.
-                    let precision_trackpad = touchpad_source
+                    let precision_trackpad = touchpad_source || has_gesture_scroll
                         || (mouse_source && (fractional_scroll || point_count >= 2));
                     let axis_action = matches!(motion_event.action(),
                         MotionAction::Scroll | MotionAction::Move);
-                    if precision_trackpad && has_scroll_axes && axis_action {
+                    if precision_trackpad && (has_scroll_axes || has_gesture_scroll) && axis_action {
+                        // Android scroll-distance axes are physical display
+                        // pixels, with the opposite sign from winit PanGesture.
+                        // Chrome's Android bridge likewise negates these axes.
+                        let delta = if has_gesture_scroll {
+                            PhysicalPosition {
+                                x: (-gesture_axes.0).clamp(-256.0, 256.0),
+                                y: (-gesture_axes.1).clamp(-256.0, 256.0),
+                            }
+                        } else {
+                            PhysicalPosition {
+                                x: (axes.1 * POINTS_PER_LINE).clamp(-192.0, 192.0),
+                                y: (axes.0 * POINTS_PER_LINE).clamp(-192.0, 192.0),
+                            }
+                        };
                         let pos = self.pdfcraft_trackpad_cursor.or(first_position);
                         if let Some(position) = pos {
                             callback(event::Event::WindowEvent {
@@ -85,10 +122,7 @@ def patch(source: str) -> str:
                             window_id,
                             event: event::WindowEvent::PanGesture {
                                 device_id,
-                                delta: PhysicalPosition {
-                                    x: (axes.1 * POINTS_PER_LINE).clamp(-192.0, 192.0),
-                                    y: (axes.0 * POINTS_PER_LINE).clamp(-192.0, 192.0),
-                                },
+                                delta,
                                 phase: event::TouchPhase::Moved,
                             },
                         }, self.window_target());
@@ -176,4 +210,6 @@ def patch(source: str) -> str:
                         }
                         let (vertical, horizontal) = motion_event""")
     assert marker in source and "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL" in source
+    assert "PDFCRAFT_ANDROID_GESTURE_AXES_34" in source
+    assert "Axis::from(50u32)" in source and "Axis::from(51u32)" in source
     return source

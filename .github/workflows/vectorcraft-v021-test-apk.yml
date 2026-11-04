@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.2 ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.3 ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.21.0-android.2
-      VERSION_CODE: '16783362'
+      VERSION_NAME: 0.21.0-android.3
+      VERSION_CODE: '16783363'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -104,6 +104,7 @@ jobs:
           rm -rf builder/adapters/vectorcraft
           cp -a android-port/adapters/vectorcraft builder/adapters/vectorcraft
           python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder
+          python3 android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py builder
           python3 android-port/tools/vectorcraft/patch_android_about_updates.py builder
           python3 android-port/tools/vectorcraft/patch_android_unsaved_shortcuts_v020.py builder/source/vectorcraft
           # The builder replaces upstream android-activity and winit during the full APK build.
@@ -128,6 +129,9 @@ jobs:
           print("PASS: v0.21 MIME filters and input hook fixed in builder-owned Android adapter")
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          # Android.3: the real Vc mark is the clickable top-left menu,
+          # native launch window is brand maroon, and icon safe-zone padding
+          # applies to both Android adaptive and legacy mipmaps.
           # VectorCraft NativeActivity needs no AppCompat, Kotlin or
           # GameActivity. Do not pull them into the final DEX/resources.
           python3 android-port/tools/vectorcraft/patch_compact_apk_v020.py builder android-port
@@ -239,7 +243,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.2-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.3-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

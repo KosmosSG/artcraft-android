@@ -17,6 +17,63 @@ private final ConcurrentLinkedQueue<String> pdfFontResults = new ConcurrentLinke
 private final ConcurrentLinkedQueue<String> pdfUpdateResults = new ConcurrentLinkedQueue<>();
 private final ExecutorService pdfBackground = Executors.newSingleThreadExecutor();
 
+// PDFCRAFT_ANDROID_TRACKPAD_DIAGNOSTICS: observation only, never consume
+// an input event. A NativeActivity's native InputQueue may bypass Java
+// dispatch, so zero Java events alone does NOT mean there were no gestures.
+private final java.util.concurrent.atomic.AtomicLong pdfGenericMotions =
+        new java.util.concurrent.atomic.AtomicLong();
+private final java.util.concurrent.atomic.AtomicLong pdfGestureScrolls =
+        new java.util.concurrent.atomic.AtomicLong();
+private final java.util.concurrent.atomic.AtomicLong pdfWheelScrolls =
+        new java.util.concurrent.atomic.AtomicLong();
+private volatile String pdfLastTrackpad = "No Java-dispatched trackpad events";
+private volatile long pdfLastTrackpadTime = 0L;
+
+@Override
+public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+    // Always forward exactly as before, regardless of diagnostics.
+    if (event != null) {
+        int action = event.getActionMasked();
+        int source = event.getSource();
+        boolean trackpadClass = (source & android.view.InputDevice.SOURCE_MOUSE)
+                == android.view.InputDevice.SOURCE_MOUSE
+                || (source & android.view.InputDevice.SOURCE_TOUCHPAD)
+                == android.view.InputDevice.SOURCE_TOUCHPAD
+                || (source & android.view.InputDevice.SOURCE_TOUCH_NAVIGATION)
+                == android.view.InputDevice.SOURCE_TOUCH_NAVIGATION;
+        if (trackpadClass && (action == android.view.MotionEvent.ACTION_SCROLL
+                || action == android.view.MotionEvent.ACTION_MOVE
+                || action == android.view.MotionEvent.ACTION_HOVER_MOVE)) {
+            pdfGenericMotions.incrementAndGet();
+            float x = event.getAxisValue(50); // API 34 GESTURE_SCROLL_X_DISTANCE
+            float y = event.getAxisValue(51); // API 34 GESTURE_SCROLL_Y_DISTANCE
+            float h = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
+            float v = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
+            if (x != 0 || y != 0) pdfGestureScrolls.incrementAndGet();
+            if (v != 0 || h != 0) pdfWheelScrolls.incrementAndGet();
+            long now = android.os.SystemClock.elapsedRealtime();
+            // Bound diagnostic string formatting to 4 Hz. Event counters remain exact.
+            if (now - pdfLastTrackpadTime >= 250) {
+                pdfLastTrackpadTime = now;
+                pdfLastTrackpad = String.format(java.util.Locale.US,
+                        "source=0x%X action=%d pointers=%d gestureX=%.2f gestureY=%.2f wheelH=%.2f wheelV=%.2f",
+                        source, action, event.getPointerCount(), x, y, h, v);
+            }
+        }
+    }
+    return super.dispatchGenericMotionEvent(event);
+}
+public String pdfTrackpadStatus() {
+    try {
+        JSONObject status = new JSONObject();
+        status.put("javaEvents", pdfGenericMotions.get());
+        status.put("gestureAxes", pdfGestureScrolls.get());
+        status.put("legacyAxes", pdfWheelScrolls.get());
+        status.put("last", pdfLastTrackpad);
+        return status.toString();
+    } catch (Exception error) { return "{\"error\":\"diagnostics unavailable\"}"; }
+}
+
 public String pdfFontPoll() { return pdfFontResults.poll(); }
 public String pdfUpdatePoll() { return pdfUpdateResults.poll(); }
 public boolean pdfStartupUpdateEnabled() {

@@ -2723,6 +2723,11 @@ impl eframe::App for AndroidShell {{
             if shell.count(needle) != 1:
                 raise SystemExit("PDFCraft native shell API drift: " + needle)
             shell = shell.replace(needle, replacement, 1)
+        # Diagnostics observe pre-consumption egui events, never change them.
+        hook = "        self.handle_clipboard_shortcuts(raw);"
+        if shell.count(hook) != 1:
+            raise SystemExit("PDFCraft raw input diagnostics hook changed")
+        shell = shell.replace(hook, hook + "\n        self.pdf_mobile.observe_raw_input(raw);", 1)
     # Install fonts before the first pass. Some apps (figcraft) lay out text with a named font family
     # ("semibold") that only exists after their theme installs the fonts, and egui applies `set_fonts`
     # at the *next* pass: installing from the app's own first frame is one pass too late, so the frame

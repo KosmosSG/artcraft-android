@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.4'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.5'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.18.0-android.4'
+    assert cargo['package']['version'] == '0.18.0-android.5'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
@@ -46,6 +46,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'ctrl_shortcuts_without_separate_modifier_key_event' in (root/'templates/android/pdfcraft_modifiers.rs').read_text()
     assert 'shell.pdf_mobile.set_renderer(description)' in native
     assert 'self.pdf_mobile.dialog(ui.ctx())' in native
+    assert 'self.pdf_mobile.observe_raw_input(raw);' in native
     assert 'self.pdf_mobile.handle_menu(self.inner.take_android_tools_request())' in native
     assert 'renderer: eframe::Renderer::Wgpu' in native
     assert 'Hardware GPU reported' in native
@@ -89,6 +90,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
     assert '"Import Fonts…"' in menu and '"Check updates"' in menu
     assert '"Startup update check settings…"' in menu
+    assert '"Trackpad diagnostics…"' in menu
     assert '"android.import_fonts"' not in menu
     assert 'PDFCRAFT_ANDROID_BIDIRECTIONAL_PINCH' in (root / 'tools/pdfcraft/android_input_patch.py').read_text()
     assert 'PDFCRAFT_ANDROID_TRACKPAD_PINCH' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
@@ -99,6 +101,10 @@ with tempfile.TemporaryDirectory() as folder:
     # are different interfaces. The Help dialog legitimately retains fonts_open.
     assert 'pub fn handle_menu(&mut self, action: u8)' in mobile
     assert 'self.do_update_check();' in mobile and 'self.gpu_details_open = true;' in mobile
+    assert 'PDFCRAFT_ANDROID_EGUI_SCROLL_DIAGNOSTICS' in mobile
+    assert 'egui::Event::MouseWheel { unit, delta, .. }' in mobile
+    assert 'egui::Event::Zoom(factor)' in mobile
+    assert 'read_trackpad_status' in mobile
     assert 'pub fn dialog(&mut self, ctx: &egui::Context)' in mobile
     assert 'panel_open: bool' in mobile and 'fonts_open: bool' in mobile
     assert 'toolbar_shown: false' in mobile
@@ -128,6 +134,11 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDF_RELEASES_MAX_PAGES = 3' in bridge
     assert 'pdfToolbarVisible()' in bridge and 'pdfSetToolbarVisible(boolean visible)' in bridge
     assert 'PDF_TOOLBAR_VISIBILITY_PREF' in bridge
+    assert 'PDFCRAFT_ANDROID_TRACKPAD_DIAGNOSTICS' in bridge
+    assert 'public boolean dispatchGenericMotionEvent(android.view.MotionEvent event)' in bridge
+    assert 'return super.dispatchGenericMotionEvent(event)' in bridge
+    assert 'event.getAxisValue(50)' in bridge and 'event.getAxisValue(51)' in bridge
+    assert 'public String pdfTrackpadStatus()' in bridge
     assert 'PDF_FONT_SCAN_MAX_BYTES = 4L * 1024 * 1024 * 1024' in bridge
     assert 'PDF_FONT_SCAN_MAX_FILES = 5000' in bridge
     assert 'PDF_FONT_SCAN_MAX_FOLDERS = 10000' in bridge

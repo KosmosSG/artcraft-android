@@ -13,6 +13,12 @@ pub struct Mobile {
     panel_open: bool,
     fonts_open: bool,
     gpu_details_open: bool,
+    trackpad_details_open: bool,
+    trackpad_scroll_events: u64,
+    trackpad_zoom_events: u64,
+    trackpad_last_native: String,
+    trackpad_java_status: String,
+    trackpad_last_poll: Option<std::time::Instant>,
     updates_open: bool,
     toolbar_shown: bool,
     font_status: String,
@@ -26,7 +32,11 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
-            app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, gpu_details_open: false, updates_open: false, toolbar_shown: false,
+            app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, gpu_details_open: false,
+            trackpad_details_open: false, trackpad_scroll_events: 0, trackpad_zoom_events: 0,
+            trackpad_last_native: "No egui scroll/zoom events yet".into(),
+            trackpad_java_status: "No Java input diagnostic sample yet".into(),
+            trackpad_last_poll: None, updates_open: false, toolbar_shown: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, checking: false, startup_check: false, first_frame: true,
@@ -153,6 +163,17 @@ impl Mobile {
         }
     }
     pub fn poll(&mut self, ctx: &egui::Context) {
+        if self.trackpad_details_open {
+            let due = self.trackpad_last_poll.is_none_or(|last| {
+                last.elapsed() >= std::time::Duration::from_millis(500)
+            });
+            if due {
+                self.trackpad_last_poll = Some(std::time::Instant::now());
+                self.trackpad_java_status = self.read_trackpad_status()
+                    .unwrap_or_else(|error| format!("Java diagnostics: {error}"));
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        }
         if self.first_frame {
             self.first_frame = false;
             if self.startup_check { self.do_update_check(); }
@@ -192,6 +213,38 @@ impl Mobile {
                 }
             }
         }
+    }
+    // PDFCRAFT_ANDROID_EGUI_SCROLL_DIAGNOSTICS: inspect egui input before
+    // the upstream canvas consumes it. Never alter, consume or delay events.
+    pub fn observe_raw_input(&mut self, raw: &egui::RawInput) {
+        if !self.trackpad_details_open { return; }
+        for event in &raw.events {
+            match event {
+                egui::Event::MouseWheel { unit, delta, .. } => {
+                    self.trackpad_scroll_events += 1;
+                    self.trackpad_last_native = format!(
+                        "egui wheel #{}: {:?}, x={:.2}, y={:.2}",
+                        self.trackpad_scroll_events, unit, delta.x, delta.y);
+                }
+                egui::Event::Zoom(factor) => {
+                    self.trackpad_zoom_events += 1;
+                    self.trackpad_last_native = format!(
+                        "egui zoom #{}: {:.3}x", self.trackpad_zoom_events, factor);
+                }
+                _ => {}
+            }
+        }
+    }
+    fn read_trackpad_status(&self) -> Result<String, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pdfTrackpadStatus"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            let text = JString::cast_local(env, value)?;
+            Ok(text.try_to_string(env)?.into())
+        }).map_err(|err| err.to_string())
     }
     pub fn set_renderer(&mut self, description: String) { self.renderer = description; }
     /// Optional native View > Android tools panel. Hidden means NO egui widget
@@ -291,6 +344,13 @@ impl Mobile {
                 self.panel_open = true;
                 return;
             }
+            8 => {
+                self.panel_open = true;
+                self.fonts_open = false;
+                self.trackpad_details_open = true;
+                self.trackpad_last_poll = None;
+                return;
+            }
             _ => {}
         }
         let request = match action {
@@ -325,6 +385,39 @@ impl Mobile {
                 ui.separator();
                 ui.label(&self.renderer);
                 if ui.button("Hide GPU diagnostics").clicked() { self.gpu_details_open = false; }
+            }
+            if self.trackpad_details_open {
+                ui.separator();
+                ui.heading("Trackpad diagnostics");
+                ui.label("While this window is open, try two-finger scrolling on the physical trackpad.");
+                ui.label(format!("egui scroll events received: {}", self.trackpad_scroll_events));
+                ui.label(format!("egui pinch/zoom events received: {}", self.trackpad_zoom_events));
+                ui.monospace(&self.trackpad_last_native);
+                match serde_json::from_str::<Value>(&self.trackpad_java_status) {
+                    Ok(data) => {
+                        ui.label(format!(
+                            "Java generic motion events: {}",
+                            data.get("javaEvents").and_then(Value::as_u64).unwrap_or(0)));
+                        ui.label(format!(
+                            "Android 14+ gesture-axis events: {}",
+                            data.get("gestureAxes").and_then(Value::as_u64).unwrap_or(0)));
+                        ui.label(format!(
+                            "Legacy wheel-axis events: {}",
+                            data.get("legacyAxes").and_then(Value::as_u64).unwrap_or(0)));
+                        ui.monospace(data.get("last").and_then(Value::as_str)
+                            .unwrap_or("No Java sample"));
+                    }
+                    Err(_) => { ui.monospace(&self.trackpad_java_status); }
+                }
+                ui.label(egui::RichText::new(
+                    "Java counters only see events delivered through the Activity. NativeActivity may route others directly to its native input queue. The egui counters show events actually delivered to the editor. Zero Java events alone is inconclusive."
+                ).small());
+                ui.label(egui::RichText::new(
+                    "Try a two-finger gesture over the document, then compare both counters and send a screenshot. Diagnostics are local to this session; no data is uploaded."
+                ).small());
+                if ui.button("Hide trackpad diagnostics").clicked() {
+                    self.trackpad_details_open = false;
+                }
             }
             if self.fonts_open {
                 ui.separator();

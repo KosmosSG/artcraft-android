@@ -83,6 +83,7 @@ replace('        let ctx = ui.ctx().clone();',
                     ("Startup update check settings…", 5),
                     ("GPU diagnostics…", 6),
                     ("Android tools…", 7),
+                    ("Trackpad diagnostics…", 8),
                 ] {
                     if ui.button(name).clicked() {
                         PDFCRAFT_ANDROID_HELP_REQUEST.store(

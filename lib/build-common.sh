@@ -2171,6 +2171,11 @@ icon = "@mipmap/ic_launcher"
     # PDFCraft Android prerelease name applies to the launcher crate alone.
     # Do not bump the upstream workspace's internally pinned crate versions.
     if app == "pdfcraft":
+        dep_anchor = "egui = { workspace = true }\n"
+        if manifest.count(dep_anchor) != 1:
+            raise SystemExit("PDFCraft Adaptive Cursor dependency drift")
+        manifest = manifest.replace(dep_anchor,
+            dep_anchor + 'egui-winit = { path = "../../vendor/egui-winit" }\n', 1)
         display_version = __import__("os").environ.get("PDFCRAFT_ANDROID_VERSION_NAME", "")
         if display_version:
             if not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+-android[.][1-9][0-9]*", display_version):
@@ -2714,7 +2719,7 @@ impl eframe::App for AndroidShell {{
         checks = [
             ("    probe: InputProbe,", "    probe: InputProbe,\n    pdf_mobile: pdfcraft_mobile::Mobile,"),
             ("        let ime = ime_bridge::ime::ImeBridge::new(&app);",
-             "        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
+             "        egui_winit::pdfcraft_adaptive_cursor::set_activity(app.activity_as_ptr() as usize);\n        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
             ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.handle_menu(self.inner.take_android_tools_request());\n        self.pdf_mobile.poll(ctx);\n        self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());"),
             ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        self.inner.ui(ui, frame);\n        self.pdf_mobile.dialog(ui.ctx());"),
@@ -2904,6 +2909,9 @@ echo "Vendoring the Android-compatible egui-winit for $TITLE (system clipboard v
 mkdir -p "$SRC/vendor"
 rm -rf "$SRC/vendor/egui-winit"
 cp -a "$ROOT/vendor/egui-winit" "$SRC/vendor/egui-winit"
+if [[ "$APP" == "pdfcraft" ]]; then
+    python3 "$ROOT/tools/pdfcraft/adaptive_cursor_patch.py" "$SRC/vendor/egui-winit"
+fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib

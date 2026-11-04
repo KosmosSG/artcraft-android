@@ -9,7 +9,9 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
 
 pub struct Mobile {
     app: AndroidApp,
-    renderer: String,\n    panel_open: bool,\n    fonts_open: bool,
+    renderer: String,
+    panel_open: bool,
+    fonts_open: bool,
     gpu_details_open: bool,
     updates_open: bool,
     toolbar_shown: bool,
@@ -143,7 +145,8 @@ impl Mobile {
         if self.checking { return; }
         self.update_url = None;
         self.update_status = "Checking published PDFCraft Android releases…".into();
-        self.updates_open = true;\n        self.panel_open = true;
+        self.updates_open = true;
+        self.panel_open = true;
         match self.request(Action::CheckUpdates) {
             Ok(()) => self.checking = true,
             Err(error) => self.update_status = format!("Update checker unavailable: {error}"),

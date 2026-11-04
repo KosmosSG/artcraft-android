@@ -60,7 +60,7 @@ class GridCraftV0150ReviewTests(unittest.TestCase):
                 ("com.artcraft.gridcraft.candidate", 16781056, "0.15.0-android.1"))
             self.assertEqual(
                 generate("gridcraft", "0.15.0", {"package": "com.artcraft.gridcraft"}, 16781056),
-                ("com.artcraft.gridcraft", 16781056, "0.15.0"))
+                ("com.artcraft.gridcraft", 16781056, "0.15.0-android.1"))
             self.assertEqual(
                 generate("photocraft", "0.15.0", {"package": "com.artcraft.gridcraft.candidate"}, 16781056),
                 ("com.artcraft.gridcraft.candidate", 16781056, "0.15.0"))

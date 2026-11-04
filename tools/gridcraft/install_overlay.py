@@ -41,7 +41,7 @@ def stage_trackpad_primary_button(builder: Path):
 
 
 def stage_candidate_android_version(builder: Path):
-    """Set GridCraft candidate's Android versionName without changing upstream or versionCode."""
+    """Set only GridCraft candidate/production Android versionName, preserving versionCode."""
     generator = builder / "lib/android_project.py"
     source = generator.read_text()
     anchor = '        build_gradle(android_meta["package"], min_sdk, target_sdk, code, version)'
@@ -52,7 +52,7 @@ def stage_candidate_android_version(builder: Path):
         '        build_gradle(android_meta["package"], min_sdk, target_sdk, code,\n'
         '                     "0.15.0-android.1" if app == "gridcraft"\n'
         '                     and version == "0.15.0"\n'
-        '                     and android_meta["package"] == "com.artcraft.gridcraft.candidate"\n'
+        '                     and android_meta["package"] in ("com.artcraft.gridcraft.candidate", "com.artcraft.gridcraft")\n'
         '                     else version)', 1)
     compile(revised, str(generator), "exec")
     generator.write_text(revised)

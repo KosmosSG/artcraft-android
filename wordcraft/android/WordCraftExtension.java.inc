@@ -394,6 +394,8 @@
     private volatile boolean wcDialogActive;
     private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();
     public boolean wcTakeNewDocument() { return wcNewDocument.getAndSet(0) != 0; }
+    private final java.util.concurrent.atomic.AtomicInteger wcSaveAs = new java.util.concurrent.atomic.AtomicInteger();
+    public boolean wcTakeSaveAs() { return wcSaveAs.getAndSet(0) != 0; }
     private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
     public int wcUnsavedDialog(boolean active) {
         boolean justOpened = active && !wcDialogActive;
@@ -423,6 +425,17 @@
             int code = event.getKeyCode();
             if (wcDialogKeys.contains(code)) {
                 if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(code);
+                return true;
+            }
+            // Hardware Ctrl+Shift+S: enqueue for native UI/SAF Save As.
+            if (!wcDialogActive && code == android.view.KeyEvent.KEYCODE_S
+                    && event.isCtrlPressed() && event.isShiftPressed()
+                    && !event.isAltPressed() && !event.isMetaPressed()) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    wcSaveAs.set(1);
+                    Log.i(TAG, "WC_SHORTCUT_DIAG java_ctrl_shift_s");
+                }
                 return true;
             }
             // Ctrl+N may be consumed by Android before egui's keyboard shortcuts.

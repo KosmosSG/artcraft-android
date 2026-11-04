@@ -1,4 +1,4 @@
-"""WordCraft android.2 acceptance-guard tests for source-level wiring.
+"""WordCraft android.4 acceptance-guard tests for source-level wiring.
 
 These tests catch accidental loss of the requested icon, raw D/C/S intercept
 and font scan limits. Device interactions still require MagicPad testing.
@@ -48,12 +48,49 @@ class WordCraftDeviceFixes(unittest.TestCase):
         for k in ("D", "C", "S"):
             self.assertIn('egui::Key::' + k, s)
         self.assertIn('raw.events.retain', s)
-        self.assertIn('if !modifiers.any()', s)
+        self.assertIn('if active && !modifiers.any()', s)
         self.assertIn('if d.get_temp::<u8>(id).is_none()', s)
         self.assertIn('ctx.request_repaint();', s)
         java = text(JAVA)
         self.assertIn('wcDialogAction.compareAndSet(0, action)', java)
         self.assertIn('if (!active) { wcDialogAction.set(0); return 0; }', java)
+
+    def test_physical_dcs_text_and_ime_fallback_during_modal(self):
+        rust = text(RUST)
+        java = text(JAVA)
+        for x in (
+            'egui::Event::Key { key, physical_key, pressed, repeat, modifiers, .. }',
+            '(*physical_key).unwrap_or(*key)',
+            'egui::Event::Text(text) if allow_text_choice',
+            'egui::Event::Ime(egui::ImeEvent::Commit(text)) if allow_text_choice',
+            'let allow_text_choice = active && !raw.modifiers.any();',
+            'WC_DCS_DIAG raw_choice=',
+        ):
+            self.assertIn(x, rust)
+        self.assertIn('wcDialogAction.compareAndSet(0, action)', java)
+
+    def test_ctrl_shift_s_uses_existing_wordcraft_save_as_saf(self):
+        rust = text(RUST)
+        java = text(JAVA)
+        for x in (
+            '!active && actual_key == egui::Key::S',
+            'modifiers.ctrl && modifiers.shift',
+            '!modifiers.alt && !modifiers.mac_cmd',
+            'wordcraft.shortcut.save_as',
+            'self.call_bool("wcTakeSaveAs")',
+            'app.has_document()',
+            'app.save_as_dialog();',
+            'WC_SHORTCUT_DIAG raw_ctrl_shift_s',
+        ):
+            self.assertIn(x, rust)
+        for x in (
+            'public boolean wcTakeSaveAs()',
+            '!wcDialogActive && code == android.view.KeyEvent.KEYCODE_S',
+            'event.isCtrlPressed() && event.isShiftPressed()',
+            'wcSaveAs.set(1)',
+        ):
+            self.assertIn(x, java)
+        self.assertNotIn('app.run("file.saveAs", serde_json::json!({}))', rust)
 
     def test_shared_scan_caps_5000_files_and_4_gib_and_stays_async(self):
         s = text(JAVA)
@@ -114,10 +151,10 @@ class WordCraftDeviceFixes(unittest.TestCase):
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.3", s)
-        self.assertIn('100014003', s)
+        self.assertIn("0.14.0-android.4", s)
+        self.assertIn('100014004', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.2", s)
+        self.assertNotIn("0.14.0-android.3", s)
 
 
 if __name__ == "__main__":

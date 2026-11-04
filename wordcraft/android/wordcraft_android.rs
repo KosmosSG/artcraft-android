@@ -86,35 +86,68 @@ impl Tools {
         ctx.request_repaint();
     }
 
+    /// MagicOS may report hardware letters as Key, Text or IME Commit.
+    /// Intercept only unmodified D/C/S while Save Changes is showing;
+    /// Ctrl+Shift+S is a separate nonmodal Save As shortcut.
     pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
         let id = egui::Id::new("wordcraft.unsaved.dcs");
         if !active {
             ctx.data_mut(|d| d.remove::<u8>(id));
-            return;
         }
+        let allow_text_choice = active && !raw.modifiers.any();
         let mut choice = None;
-        raw.events.retain(|event| {
-            match event {
-                egui::Event::Key { key, pressed, repeat, modifiers, .. } if !modifiers.any() => {
-                    let action = match key {
+        let mut save_as = false;
+        raw.events.retain(|event| match event {
+            egui::Event::Key { key, physical_key, pressed, repeat, modifiers, .. } => {
+                let actual_key = (*physical_key).unwrap_or(*key);
+                if !active && actual_key == egui::Key::S
+                    && modifiers.ctrl && modifiers.shift
+                    && !modifiers.alt && !modifiers.mac_cmd
+                {
+                    if *pressed && !*repeat { save_as = true; }
+                    return false; // Consume down and up without modifying document text.
+                }
+                if active && !modifiers.any() {
+                    let action = match actual_key {
                         egui::Key::D => 1, egui::Key::C => 2, egui::Key::S => 3, _ => 0,
                     };
-                    if action == 0 { return true; }
-                    if *pressed && !*repeat && choice.is_none() {
-                        choice = Some(action);
+                    if action != 0 {
+                        if *pressed && !*repeat && choice.is_none() { choice = Some(action); }
+                        return false;
                     }
-                    false // Consume both down and up, never type into the canvas.
                 }
-                egui::Event::Text(text) if matches!(text.as_str(), "d" | "D" | "c" | "C" | "s" | "S") => false,
-                _ => true,
+                true
             }
+            egui::Event::Text(text) if allow_text_choice => {
+                let action = match text.as_str() {
+                    "d" | "D" => 1, "c" | "C" => 2, "s" | "S" => 3, _ => 0,
+                };
+                if action == 0 { return true; }
+                if choice.is_none() { choice = Some(action); }
+                false
+            }
+            egui::Event::Ime(egui::ImeEvent::Commit(text)) if allow_text_choice => {
+                let action = match text.as_str() {
+                    "d" | "D" => 1, "c" | "C" => 2, "s" | "S" => 3, _ => 0,
+                };
+                if action == 0 { return true; }
+                if choice.is_none() { choice = Some(action); }
+                false
+            }
+            egui::Event::Text(text) if active && choice.is_some()
+                && matches!(text.as_str(), "d" | "D" | "c" | "C" | "s" | "S") => false,
+            _ => true,
         });
         if let Some(action) = choice {
+            log::info!("WC_DCS_DIAG raw_choice={action}");
             ctx.data_mut(|d| {
-                if d.get_temp::<u8>(id).is_none() {
-                    d.insert_temp(id, action);
-                }
+                if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action); }
             });
+            ctx.request_repaint();
+        }
+        if save_as {
+            log::info!("WC_SHORTCUT_DIAG raw_ctrl_shift_s");
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("wordcraft.shortcut.save_as"), true));
             ctx.request_repaint();
         }
     }
@@ -230,6 +263,21 @@ impl Tools {
     }
 
     pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        // Drain both native and Activity fallbacks; one dialog if both saw a key.
+        let raw_save_as = ctx.data_mut(|d|
+            d.remove_temp::<bool>(egui::Id::new("wordcraft.shortcut.save_as"))
+        ).unwrap_or(false);
+        let java_save_as = self.call_bool("wcTakeSaveAs").unwrap_or(false);
+        if raw_save_as || java_save_as {
+            if app.has_document() {
+                app.save_as_dialog(); // Preserve upstream Android SAF Save As flow.
+                self.status = "Save As opened (Ctrl+Shift+S)".to_owned();
+            } else {
+                self.status = "Open or create a document before Save As".to_owned();
+                app.status(self.status.clone());
+            }
+            ctx.request_repaint();
+        }
         if self.call_bool("wcTakeNewDocument").unwrap_or(false) {
             match app.run("file.new", serde_json::json!({})) {
                 Ok(_) => self.status = "New document requested".into(),

@@ -109,24 +109,15 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
         }
     }
     let shared_actions = designcraft_ui_egui::menus::take_android_shared_actions();''')
-    edit(toolbar_file,
-         '''                ui.separator();
-                let gpu = GPU_STATUS.lock()''',
-         '''                ui.separator();
-                if ui.button("Check updates").clicked() {
-                    if let Err(error) = bridge.dc_update_action(3) {
-                        app.status_error("Check updates", error);
-                    }
-                    ui.close();
-                }
-                if ui.button("Startup update check…").clicked() {
-                    if let Err(error) = bridge.dc_update_action(4) {
-                        app.status_error("Startup update check", error);
-                    }
-                    ui.close();
-                }
-                ui.separator();
-                let gpu = GPU_STATUS.lock()''')
+    # Android.2 already routes both update actions from the top-left Dc menu.
+    # The legacy Android Tools toolbar is intentionally absent; check the
+    # action/bridge contract instead of trying to reinsert duplicate buttons.
+    dc_menu = toolbar_file.read_text()
+    for action, code in (('Check Updates', 'bridge.dc_update_action(3)'),
+                         ('Startup Update Check', 'bridge.dc_update_action(4)')):
+        if dc_menu.count(action) != 1 or dc_menu.count(code) != 1:
+            raise ValueError(f"Dc menu updater action not wired exactly once: {action}")
+
 
     java_dir = android / "java" / Path(*package.split("."))
     java_file = java_dir / "DesignCraftActivity.java"

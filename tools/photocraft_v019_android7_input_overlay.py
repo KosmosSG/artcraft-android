@@ -422,6 +422,27 @@ pub fn artcraft_discard_active(app: &crate::PhotocraftApp) -> bool {
             try {
 ''')
 
+    # Android.10: verified on HONOR MagicPad 4 diagnostics: after Type
+    # editing ends, imeWanted=false but hidden EditText.hasFocus()=true.
+    # clearFocus alone is insufficient without another focus target.
+    # Remove focusability while the IME is hidden. imeShow explicitly
+    # restores both focusability flags when a new text session starts.
+    patch(act,
+'''                view.clearFocus();
+                // Drop the scratch buffer between sessions so it cannot grow without bound.
+''',
+'''                // A 1x1 offscreen EditText can immediately reclaim focus on
+                // Android if it is the only focusable child. While not editing
+                // it must not capture the physical shortcut keyboard.
+                view.clearFocus();
+                view.setFocusableInTouchMode(false);
+                view.setFocusable(false);
+                // Drop the scratch buffer between sessions so it cannot grow without bound.
+''')
+    assert 'view.setFocusableInTouchMode(false)' in act.read_text()
+    assert 'view.setFocusable(false)' in act.read_text()
+    print("Android.10: make hidden Gboard EditText non-focusable after Type/IME closes")
+
     assert "artcraft_type_ime_was_active" in host.read_text()
     assert 'jni_str!("imeHide")' in host.read_text()
     assert "A newer imeShow() superseded this hide." in act.read_text()

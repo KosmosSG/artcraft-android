@@ -61,6 +61,7 @@ def main():
         EditText host = imeView;
         return "Window focus: " + hasWindowFocus()
             + " | Hidden EditText focus: " + (host != null && host.hasFocus())
+            + " | Hidden EditText focusable: " + (host != null && host.isFocusable())
             + " | IME requested: " + imeWanted;
     }
     private void pcKeyDiagCapture(KeyEvent e, String route) {
@@ -333,6 +334,26 @@ impl eframe::App for PhotoCraftAndroidApp {
             self.pc_keyboard_diag.events.clear();
         }
         match pc_action {
+''')
+
+    # Distinguish command lookup failures from a physical key that already
+    # reached the app. Only static command names are displayed.
+    patch(host,
+'''                if let Err(error) = photocraft_ui_egui::menus::invoke(
+                    &mut self.inner, ctx, command, serde_json::json!({})
+                ) {
+                    log::warn!("Tool shortcut: {error}");
+                }
+''',
+'''                match photocraft_ui_egui::menus::invoke(
+                    &mut self.inner, ctx, command, serde_json::json!({})
+                ) {
+                    Ok(_) => self.pc_keyboard_diag.push(format!("Tool command OK: {command}")),
+                    Err(error) => {
+                        self.pc_keyboard_diag.push(format!("Tool command FAILED: {command}"));
+                        log::warn!("Tool shortcut: {error}");
+                    }
+                }
 ''')
 
     for expected in ("pcKeyDiagSetEnabled", "pcKeyDiagPoll", "pcKeyDiagState",

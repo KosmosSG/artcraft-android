@@ -310,18 +310,12 @@ impl eframe::App for PhotoCraftAndroidApp {
         // The in-app Pc mark is a menu launcher; act only after upstream
 ''') if False else None  # The original UI body is altered by the prior pad overlay.
 
-    # Draw after the host has handled the Pc action, without touching upstream
-    # text selection or command dispatch. This runs even with the modal active.
+    # Render immediately before the verified Pc action match. Newly toggled
+    # diagnostics appear next UI frame; closing X disables Java capture.
     patch(host,
-'''            _ => {}
-        }
-    }
-
-    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+'''        match pc_action {
 ''',
-'''            _ => {}
-        }
-        if self.pc_keyboard_diag.visible
+'''        if self.pc_keyboard_diag.visible
             && self.pc_keyboard_diag.last_state_check.is_none_or(|at|
                 at.elapsed() >= std::time::Duration::from_millis(250))
         {
@@ -338,9 +332,7 @@ impl eframe::App for PhotoCraftAndroidApp {
             let _ = self.bridge.pc_diag_set_enabled(false);
             self.pc_keyboard_diag.events.clear();
         }
-    }
-
-    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        match pc_action {
 ''')
 
     for expected in ("pcKeyDiagSetEnabled", "pcKeyDiagPoll", "pcKeyDiagState",

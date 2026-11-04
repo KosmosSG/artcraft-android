@@ -28,15 +28,36 @@ def once(text: str, old: str, new: str, label: str) -> str:
 
 
 def legacy_payload(label: str) -> tuple[str, str]:
-    """Extract the EXACT approved builder patch from the published Android baseline."""
-    legacy = ast.parse((SUITE / "tools/lightcraft/apply_android_fixes.py").read_text())
-    for node in ast.walk(legacy):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "replace_once":
-            continue
-        if len(node.args) == 4 and isinstance(node.args[3], ast.Constant) and node.args[3].value == label:
-            a, b = node.args[1:3]
-            if isinstance(a, ast.Constant) and isinstance(b, ast.Constant):
-                return a.value, b.value
+    """Resolve literal string expressions in the protected old script, without executing it."""
+    tree = ast.parse((SUITE / "tools/lightcraft/apply_android_fixes.py").read_text())
+    fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "apply")
+    env: dict[str, str] = {}
+
+    def literal(node: ast.AST) -> str:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name) and node.id in env:
+            return env[node.id]
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return literal(node.left) + literal(node.right)
+        raise ValueError("STOP: published LightCraft replacement is not a static string")
+
+    for statement in fn.body:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+            try:
+                env[statement.targets[0].id] = literal(statement.value)
+            except ValueError:
+                pass
+        for call in ast.walk(statement):
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                    and call.func.id == "replace_once" and len(call.args) == 4):
+                continue
+            try:
+                found_label = literal(call.args[3])
+            except ValueError:
+                continue
+            if found_label == label:
+                return literal(call.args[1]), literal(call.args[2])
     raise ValueError(f"STOP: cannot find approved LightCraft patch: {label}")
 
 
@@ -156,6 +177,7 @@ def main() -> None:
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--builder", type=Path, required=True)
     p.add_argument("--suite", type=Path, default=SUITE)
+    p.add_argument("--apply", action="store_true", help="Modify only local upstream and builder COPIES")
     args = p.parse_args()
     validate(args.source, args.builder, args.suite)
     modifications = {**source_changes(args.source), **builder_changes(args.builder)}
@@ -175,17 +197,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # --apply is opt-in; all other invocations are validation-only.
-    import sys
-    apply = "--apply" in sys.argv
-    if apply:
-        sys.argv.remove("--apply")
-    # Local explicit marker for the normal argparse handler.
-    old_parse = argparse.ArgumentParser.parse_args
-    if apply:
-        def parse_with_apply(self, *args, **kwargs):
-            result = old_parse(self, *args, **kwargs)
-            result.apply = True
-            return result
-        argparse.ArgumentParser.parse_args = parse_with_apply
     main()

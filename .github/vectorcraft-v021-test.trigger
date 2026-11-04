@@ -7,3 +7,5 @@ Run Python and JVM test gates before Android SDK/Rust; do not compile if any fai
 Use only com.artcraft.vectorcraft.test with disposable test signer. No production key, no signing approval, no GitHub Release publication.
 
 Recheck source guards: migrated offset scan and native activity AndroidX splash test declarations. No permanent signing.
+
+Replacement Android.5 build: correct android.view.PixelCopy Java SDK 35 import; assert javap availability prior to ARM64 Rust compilation. Retain disposable test signing and preserve approved features.

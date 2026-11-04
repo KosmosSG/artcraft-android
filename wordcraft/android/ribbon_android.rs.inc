@@ -14,9 +14,11 @@ fn artcraft_android_menu(ui: &mut Ui) {
             ui.ctx().data_mut(|d| d.insert_temp(icon_id, texture.clone()));
             texture
         });
+    // No egui button frame: the original launcher artwork is the entire icon.
+    // It remains an accessible clickable menu trigger without the outlined square.
     let button = ui.add(egui::Button::image(
         egui::Image::new((texture.id(), egui::vec2(24.0, 24.0)))
-    )).on_hover_text("WordCraft • ArtCraft tools");
+    ).frame(false)).on_hover_text("WordCraft • ArtCraft tools");
     egui::Popup::menu(&button).show(|ui| {
         ui.set_min_width(270.0);
         let refreshing = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_font_busy"))).unwrap_or(false);

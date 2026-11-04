@@ -36,6 +36,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('include_bytes!("wordcraft-android-menu-icon.rgba")', menu)
         self.assertIn('egui::ColorImage::from_rgba_unmultiplied([40, 40], rgba)', menu)
         self.assertIn('egui::Button::image', menu)
+        self.assertIn(').frame(false)).on_hover_text', menu)
         self.assertNotIn('egui::ImageButton::new', menu)
         self.assertIn('egui::Popup::menu(&button)', menu)
         self.assertNotIn('ui.menu_button("ArtCraft"', menu)
@@ -74,13 +75,49 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('for _ in 0..8 {', text(RUST))
         self.assertIn('5,000 files / 4 GiB maximum', text(RIBBON))
 
+    def test_two_finger_trackpad_scroll_is_native_precise_and_not_touchscreen(self):
+        java = text(JAVA)
+        rust = text(RUST)
+        build = text(BUILD)
+        for line in (
+            'dispatchGenericMotionEvent(android.view.MotionEvent event)',
+            'event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL',
+            'android.view.InputDevice.SOURCE_TOUCHPAD',
+            'android.view.InputDevice.SOURCE_MOUSE',
+            'android.view.MotionEvent.AXIS_HSCROLL',
+            'android.view.MotionEvent.AXIS_VSCROLL',
+            'getScaledHorizontalScrollFactor()',
+            'getScaledVerticalScrollFactor()',
+            'wcTakeTrackpadScroll()',
+            'synchronized (wcScrollLock)',
+            'return super.dispatchGenericMotionEvent(event);',
+        ):
+            self.assertIn(line, java)
+        for line in (
+            'pub fn inject_trackpad_scroll(',
+            'self.call_string("wcTakeTrackpadScroll")',
+            'let scale = ctx.pixels_per_point();',
+            'egui::Event::PointerMoved',
+            'egui::Event::MouseWheel {',
+            'egui::MouseWheelUnit::Point',
+            'egui::MouseWheelSource::Trackpad',
+            'egui::TouchPhase::Move',
+            'ctx.request_repaint();',
+        ):
+            self.assertIn(line, rust)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);', build)
+        self.assertIn("wc_trackpad_scroll = ", build)
+        # No JNI bridge is created for other apps; no fake touchscreen drag events.
+        self.assertIn("if app == 'wordcraft' else ''", build)
+        self.assertNotIn("egui::Event::Touch {", rust)
+
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.2", s)
-        self.assertIn('100014002', s)
+        self.assertIn("0.14.0-android.3", s)
+        self.assertIn('100014003', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.1", s)
+        self.assertNotIn("0.14.0-android.2", s)
 
 
 if __name__ == "__main__":

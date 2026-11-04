@@ -44,6 +44,48 @@ impl Tools {
     /// input hook *before* the editor, focus navigation or popup can consume it.
     /// The Android Activity bridge is an independent fallback for physical keys
     /// that never appear in egui's input stream (GameActivity/IME routing).
+
+    /// Convert Java ACTION_SCROLL on the MagicPad trackpad into egui's native
+    /// precise scroll event, preserving the WordCraft upstream 1:1 canvas path.
+    /// Touchscreen gesture events and buttons pass through unchanged.
+    pub fn inject_trackpad_scroll(
+        &self,
+        ctx: &egui::Context,
+        raw: &mut egui::RawInput,
+        modifiers: egui::Modifiers,
+    ) {
+        let Ok(Some(sample)) = self.call_string("wcTakeTrackpadScroll") else {
+            return;
+        };
+        let mut values = sample.split(',');
+        let parse = |value: Option<&str>| value.and_then(|s| s.parse::<f32>().ok());
+        let (Some(dx), Some(dy), Some(x), Some(y)) = (
+            parse(values.next()), parse(values.next()),
+            parse(values.next()), parse(values.next()),
+        ) else {
+            return;
+        };
+        if values.next().is_some() || ![dx, dy, x, y].iter().all(|n| n.is_finite()) {
+            return;
+        }
+        let scale = ctx.pixels_per_point();
+        if !scale.is_finite() || scale <= 0.0 || (dx == 0.0 && dy == 0.0) {
+            return;
+        }
+        // Android MotionEvent positions are in device pixels. Advancing the
+        // cursor before the wheel makes WordCraft scroll the hovered canvas,
+        // even if Android never emitted a winit CursorMoved for this trackpad.
+        raw.events.push(egui::Event::PointerMoved(egui::pos2(x / scale, y / scale)));
+        raw.events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(dx / scale, dy / scale),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Trackpad,
+            modifiers,
+        });
+        ctx.request_repaint();
+    }
+
     pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
         let id = egui::Id::new("wordcraft.unsaved.dcs");
         if !active {

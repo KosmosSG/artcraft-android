@@ -119,7 +119,7 @@ def main() -> None:
     patched = exactly_once(
         patched,
         "        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
-        "{wc_raw_dcs}        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
+        "{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
         "intercept D/C/S physical keys before app input processing",
     )
     patched = exactly_once(
@@ -130,6 +130,7 @@ def main() -> None:
         "    wc_new_init = ', wc: wc_tools' if app == 'wordcraft' else ''\n"
         "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_trackpad_scroll = '        self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
         "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui);\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",

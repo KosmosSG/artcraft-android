@@ -331,6 +331,65 @@
         });
     }
 
+
+    // Physical trackpad / mouse-wheel to document canvas bridge. Stock Android
+    // winit receives finger touches but ignores ACTION_SCROLL for pointer sources.
+    // Capture both axes here, without swallowing touches, drag, Android back
+    // gestures or any non-scroll event. Native reads one coalesced value per frame.
+    private final Object wcScrollLock = new Object();
+    private float wcScrollX;
+    private float wcScrollY;
+    private float wcScrollPointerX;
+    private float wcScrollPointerY;
+
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
+            int source = event.getSource();
+            boolean trackpadOrMouse =
+                    (source & android.view.InputDevice.SOURCE_MOUSE) == android.view.InputDevice.SOURCE_MOUSE
+                    || (source & android.view.InputDevice.SOURCE_TOUCHPAD) == android.view.InputDevice.SOURCE_TOUCHPAD;
+            if (trackpadOrMouse) {
+                float horizontal = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL);
+                float vertical = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL);
+                if (Float.isFinite(horizontal) && Float.isFinite(vertical)
+                        && (horizontal != 0.0f || vertical != 0.0f)) {
+                    android.view.ViewConfiguration config = android.view.ViewConfiguration.get(this);
+                    // Android scroll factors are physical pixels per axis unit.
+                    // Rust converts these to egui points using the live viewport scale.
+                    float dx = horizontal * config.getScaledHorizontalScrollFactor();
+                    float dy = vertical * config.getScaledVerticalScrollFactor();
+                    if (Float.isFinite(dx) && Float.isFinite(dy)) {
+                        synchronized (wcScrollLock) {
+                            wcScrollX += dx;
+                            wcScrollY += dy;
+                            wcScrollPointerX = event.getX();
+                            wcScrollPointerY = event.getY();
+                        }
+                        // Let GameActivity's input queue wake the native event loop.
+                        // It currently ignores ACTION_SCROLL; Rust consumes our bridge
+                        // only once and translates it to an egui Point wheel event.
+                        super.dispatchGenericMotionEvent(event);
+                        return true;
+                    }
+                }
+            }
+        }
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    public String wcTakeTrackpadScroll() {
+        synchronized (wcScrollLock) {
+            if (wcScrollX == 0.0f && wcScrollY == 0.0f) return null;
+            String message = Float.toString(wcScrollX) + ","
+                    + Float.toString(wcScrollY) + ","
+                    + Float.toString(wcScrollPointerX) + ","
+                    + Float.toString(wcScrollPointerY);
+            wcScrollX = 0.0f;
+            wcScrollY = 0.0f;
+            return message;
+        }
+    }
+
     private final java.util.concurrent.atomic.AtomicInteger wcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean wcDialogActive;
     private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();

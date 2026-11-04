@@ -753,6 +753,10 @@ struct VectorCraftAndroidApp {
     bridge: AndroidFileBridge,
     picks: Arc<PickState>,
     fonts: FontUiState,
+    // Index copied fonts off the rendering/UI thread; never call text.rescanFonts
+    // synchronously after a SAF batch (4 GiB / 5000-font libraries can block).
+    font_index_result: Option<std::sync::mpsc::Receiver<usize>>,
+    font_reindex_pending: bool,
     font_feedback_open: bool,
     android_tools_open: bool,
     touch_dock: bool,
@@ -916,10 +920,46 @@ impl eframe::App for VectorCraftAndroidApp {
         // Deliver picker answers before the app's own logic runs, so `picks::poll` resumes the
         // entry that asked in this same frame.
         if poll_answers(&self.picks, &self.bridge, ctx, &mut self.fonts) {
-            // VectorCraft's built-in rescan refreshes available text faces and redraws type.
-            if let Err(error) = self.inner.run("text.rescanFonts", serde_json::json!({})) {
-                log::warn!("Android font rescan failed: {error}");
-                self.fonts.shared_status = format!("Fonts copied, but rescan failed: {error}");
+            // The original direct text.rescanFonts command loads hundreds of faces
+            // on the UI thread and freezes the editor after a large SAF batch.
+            self.font_reindex_pending = true;
+        }
+        if let Some(rx) = self.font_index_result.as_ref() {
+            match rx.try_recv() {
+                Ok(faces) => {
+                    self.font_index_result = None;
+                    self.fonts.shared_status = format!(
+                        "{} Background font catalog refreshed ({} faces).",
+                        self.fonts.shared_status, faces);
+                    ctx.request_repaint();
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) =>
+                    ctx.request_repaint_after(std::time::Duration::from_millis(160)),
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.font_index_result = None;
+                    log::warn!("Android font catalog background task disconnected");
+                }
+            }
+        }
+        if self.font_index_result.is_none() && self.font_reindex_pending {
+            self.font_reindex_pending = false;
+            let (tx, rx) = std::sync::mpsc::channel();
+            match std::thread::Builder::new().name("vectorcraft-font-index".into())
+                .spawn(move || {
+                    // Rebuild the shared FontDb catalog without holding the egui
+                    // rendering thread. New font families appear on the next paint.
+                    let faces = vectorcraft_text::FontDb::global().load_system_fonts();
+                    let _ = tx.send(faces);
+                }) {
+                Ok(_) => {
+                    self.font_index_result = Some(rx);
+                    ctx.request_repaint_after(std::time::Duration::from_millis(160));
+                }
+                Err(error) => {
+                    log::warn!("Could not start background font catalog: {error}");
+                    self.fonts.shared_status = format!(
+                        "Fonts cached; background catalog unavailable: {error}");
+                }
             }
         }
         if self.updates.checking {
@@ -1418,6 +1458,8 @@ fn android_main(android_app: AndroidApp) {
                 bridge: app_bridge.clone_for_services(),
                 picks: app_picks.clone(),
                 fonts: std::mem::take(&mut initial_fonts),
+                font_index_result: None,
+                font_reindex_pending: false,
                 font_feedback_open: false,
                 android_tools_open: false,
                 touch_dock,

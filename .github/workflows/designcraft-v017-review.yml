@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n lib/build-common.sh
-          python3 -m py_compile tools/designcraft/patch_v017_android.py tools/designcraft/patch_v017_interactions.py tools/designcraft/overlay_winit_android_mouse.py tools/designcraft/install_v017_updater.py
+          python3 -m py_compile tools/designcraft/patch_v017_android.py tools/designcraft/patch_v017_interactions.py tools/designcraft/overlay_winit_android_mouse.py tools/designcraft/overlay_v017_cursor.py tools/designcraft/install_v017_updater.py
           BASELINE=652f1475ff02fc7c7dc6b1652f2d36404d931838
           git merge-base --is-ancestor "$BASELINE" HEAD || { echo "Wrong approved DesignCraft baseline ancestry"; exit 1; }
           git diff --exit-code "$BASELINE" HEAD -- tools/designcraft/support/ tools/approved-branding/ || { echo "Published font/updater/brand sources unexpectedly changed"; exit 1; }

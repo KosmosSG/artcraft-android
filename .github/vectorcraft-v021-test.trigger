@@ -7,3 +7,5 @@ Changes:
 4. Preserve previously approved launcher/menu, keyboard, dialog shortcuts, shared font BFS with 5000/4GiB, updater.
 Run lightweight source/JVM tests BEFORE expensive Android SDK + ARM64 compilation.
 Build only com.artcraft.vectorcraft.test; use fresh disposable key; never permanent sign/publish or overwrite stable APK.
+
+Retry: updated old Android.5 test version marker and verified JNI bridge methods are in VectorCraftActivity, not VectorCraftExtras. No behavioral code changes.

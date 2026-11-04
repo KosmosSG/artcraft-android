@@ -62,7 +62,7 @@ class VectorCraftAndroid6Guards(unittest.TestCase):
     def test_only_test_apk_permitted(self):
         workflow=(ROOT/".github/workflows/vectorcraft-v021-test-apk.yml").read_text()
         for marker in ("VERSION_NAME: 0.21.0-android.7",
-                       "VERSION_CODE: '16783366'",
+                       "VERSION_CODE: '16783367'",
                        "patch_smooth_menu_scroll_v021.py builder",
                        "com.artcraft.vectorcraft.test",
                        "Delete disposable builder signing materials"):

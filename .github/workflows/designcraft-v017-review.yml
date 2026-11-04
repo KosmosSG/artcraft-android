@@ -102,15 +102,7 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
           echo "$BADGING" | grep -q "name='com.artcraft.designcraft.test'"
           echo "$BADGING" | grep -q "versionName='0.17.0-android.1'"
-          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: UNVERIFIED-DesignCraft-v0.17.0-android.1-DEBUG-arm64-not-for-updates
-          path: output/designcraft-*-debug.apk
-          retention-days: 3
-          if-no-files-found: error
-
+          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
           if unzip -Z1 "$APK" | grep -Eq '^lib/(armeabi|x86)/'; then
             echo "Unexpected non-ARM64 native library in test APK"
             exit 1

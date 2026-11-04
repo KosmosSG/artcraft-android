@@ -11,8 +11,8 @@ import subprocess
 import sys
 
 BASELINE_COMMIT = "3af883c9db9d57d1b1641629707c2927176b484a"
-UPSTREAM_TAG = "v0.19.0"
-UPSTREAM_COMMIT = "2df9f807702a935184041355a86405380bda8274"
+UPSTREAM_TAG = "v0.20.1"
+UPSTREAM_COMMIT = "327c4cc82e737a3e0af7c147a477126d77525495"
 OWNER_APP_ID = "com.artcraft.photocraft"
 OWNER_V2_SIGNER = "EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936"
 
@@ -26,7 +26,8 @@ PRESERVED_PATHS = (
     "templates/android/system_fonts.rs",
     "templates/android/saf_bridge.rs",
     "templates/android/SafActivity.java",
-    "lib/build-common.sh",
+    # The build bridge has branch-only launcher verification changes.
+    # Check its required safeguards below, but do not require byte identity.
 )
 CHECKS = {
     "adapters/photocraft/Cargo.toml": (
@@ -44,6 +45,7 @@ CHECKS = {
     "adapters/photocraft/prepare.sh": ("system_fonts.rs", "ime_bridge.rs"),
     "templates/android/ime_bridge.rs": ("ImeBridge",),
     "tools/photocraft_ai_fontscan_4g_stage.py": ("4",),
+    "lib/build-common.sh": ("verify_android_bridge", "MAIN", "PhotoCraft"),
 }
 def die(message: str) -> None:
     raise SystemExit("FAIL PhotoCraft preservation gate: " + message)
@@ -76,7 +78,7 @@ def check_upstream(path: Path) -> None:
         capture_output=True, text=True, check=True,
     )
     if result.stdout.strip() != UPSTREAM_COMMIT:
-        die("upstream checkout does not match official pinned v0.19.0 commit")
+        die("upstream checkout does not match official pinned v0.20.1 commit")
     manifest = path / "Cargo.toml"
     if not manifest.exists():
         die("upstream checkout has no workspace manifest")

@@ -26,7 +26,7 @@ class Android3OptimizationSourceTests(unittest.TestCase):
         self.assertIn("\nother", actual)
 
     def test_compact_native_theme_uses_framework_noactionbar_style(self):
-        generated = f'<resources>\n{APPCOMPAT_THEME}\n<item name="android:windowFullscreen">true</item>\n<item name="android:windowBackground">@android:color/black</item>\n</resources>'
+        generated = f'<resources>\n{APPCOMPAT_THEME}\n<item name="android:windowFullscreen">true</item>\n<item name="android:windowBackground">@android:color/black</item>\n    </style>\n</resources>'
         updated = patch_native_theme(generated)
         self.assertIn(NATIVE_THEME, updated)
         self.assertNotIn(APPCOMPAT_THEME, updated)

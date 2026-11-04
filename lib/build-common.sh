@@ -19,6 +19,7 @@ Options:
   -appname=<name>     Override the display name (default: app's built-in title)
   -packagename=<pkg>  Override the Android package (default: com.artcraft.<app>)
   -appicon=<path>     Use a custom launcher icon PNG (default: app's own icon)
+  -designcraft-v017   Use pinned official DesignCraft v0.17.0 source (review builds only)
   -h, --help          Show this help
 
 App names:
@@ -50,6 +51,7 @@ fi
 APPNAME=""
 PACKAGENAME=""
 APPICON=""
+DESIGNCRAFT_V017=false
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         -h|--help)
@@ -66,6 +68,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -appicon=*)
             APPICON="${1#-appicon=}"
+            shift
+            ;;
+        -designcraft-v017)
+            DESIGNCRAFT_V017=true
             shift
             ;;
         -*)
@@ -106,6 +112,14 @@ case "$APP" in
     *) echo "Unsupported app: $APP" >&2; usage; exit 2 ;;
 esac
 if [[ -n "$APPNAME" ]]; then TITLE="$APPNAME"; fi
+if [[ "$DESIGNCRAFT_V017" == true && "$APP" != "designcraft" ]]; then
+    echo "The -designcraft-v017 source lock is only available for DesignCraft." >&2
+    exit 2
+fi
+if [[ "$DESIGNCRAFT_V017" == true && "$MODE" != "debug" ]]; then
+    echo "The v0.17.0 source integration is review-only; production/release signing is blocked. Use build-debug.sh." >&2
+    exit 2
+fi
 
 SRC="source/$APP"
 REPO="https://github.com/storytold/$APP.git"
@@ -255,6 +269,26 @@ if command -v rustup >/dev/null 2>&1 && ! rustup target list --installed | grep 
 fi
 
 say 3 "Fetching official source for $TITLE..."
+# Opt-in source provenance gate for isolated v0.17 integration. Never reset a
+# user's existing checkout, and never silently upgrade it to an unreviewed commit.
+DESIGNCRAFT_LOCKED_COMMIT=""
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    DESIGNCRAFT_LOCKED_COMMIT="$(python3 - "$ROOT/configs/upstream/designcraft-v017.json" <<'PY'
+import json, re, sys
+from pathlib import Path
+lock = json.loads(Path(sys.argv[1]).read_text())
+if (lock.get("schema_version") != 1
+        or lock.get("official_upstream") != "storytold/designcraft"
+        or lock.get("stable_tag") != "v0.17.0"
+        or lock.get("upstream_workspace_version") != "0.17.0"
+        or not re.fullmatch(r"[0-9a-f]{40}", lock.get("tag_commit", ""))):
+    raise SystemExit("STOP: incompatible DesignCraft official v0.17 source lock")
+if lock.get("production_release_authorized") or lock.get("permanent_signing_authorized"):
+    raise SystemExit("STOP: source review lock must not authorize release or signing")
+print(lock["tag_commit"])
+PY
+)" || fail "Could not verify the DesignCraft v0.17.0 source-lock configuration."
+fi
 if [[ -e "$SRC" ]]; then
     [[ -d "$SRC/.git" ]] || fail "$SRC exists but is not a Git checkout. Move it aside manually before retrying."
     ORIGIN="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
@@ -262,11 +296,24 @@ if [[ -e "$SRC" ]]; then
         "https://github.com/storytold/$APP") ;;
         *) fail "$SRC has unexpected origin '$ORIGIN'; refusing to reuse or overwrite it." ;;
     esac
+    if [[ "$DESIGNCRAFT_V017" == true ]]; then
+        ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Could not identify the existing DesignCraft checkout."
+        [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
+            fail "Existing DesignCraft source is at $ACTUAL_SOURCE_SHA, not pinned v0.17.0 ($DESIGNCRAFT_LOCKED_COMMIT). Preserve it: run this in a separate clean builder checkout, or review its migration manually."
+    fi
     echo "Reusing existing source checkout (including your Android port changes)."
     echo "Commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     echo "Source is not automatically reset or updated."
 else
-    git clone --depth 1 "$REPO" "$SRC"
+    if [[ "$DESIGNCRAFT_V017" == true ]]; then
+        git clone --depth 1 --branch v0.17.0 "$REPO" "$SRC" || fail "Unable to fetch the pinned official DesignCraft v0.17.0 tag."
+        ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Cannot identify the cloned upstream source."
+        [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
+            fail "DesignCraft tag did not resolve to the audited source commit. No Android build will proceed."
+        echo "Verified official DesignCraft v0.17.0 source at $ACTUAL_SOURCE_SHA (no publication authorized)."
+    else
+        git clone --depth 1 "$REPO" "$SRC"
+    fi
 fi
 
 # Upstream `main` is normally green, but a regression can sit there for a while (the upstream
@@ -332,7 +379,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "24"
+GENERATOR_VERSION = "25" if app == "designcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -1571,12 +1618,22 @@ PERSIST_RECIPES = {
         if let Ok(prefs) = serde_json::from_slice::<@ENGINE@::Prefs>(&bytes) {
             inner.session.prefs = prefs;
         }
+    }
+    // Recover unsaved work from a previous interrupted run. This is scoped to
+    // DesignCraft's own app-private directory, not the user's SAF originals.
+    let recovery_root = dir.join("Recovery");
+    if let Ok(run_dir) = @ENGINE@::recovery::run_dir(&recovery_root) {
+        inner.session.recovery_dir = Some(run_dir);
+        let _ = inner.session.execute("file.recovery.open", &serde_json::json!({}));
     }''',
         "save": '''if let Ok(bytes) = serde_json::to_vec_pretty(&inner.ui) {
         persist_write(dir, "ui.json", &bytes);
     }
     if let Ok(bytes) = serde_json::to_vec_pretty(&inner.session.prefs) {
         persist_write(dir, "prefs.json", &bytes);
+    }
+    if inner.session.recovery_dir.is_some() && inner.session.documents().iter().any(|d| d.is_dirty()) {
+        let _ = inner.session.execute("file.recovery.save", &serde_json::json!({}));
     }''',
     },
     "lightcraft": {
@@ -1910,6 +1967,13 @@ else:
 # in a tiny struct that forwards `logic`/`ui`. Emit the same wrapper here.
 has_eframe_app = bool(re.search(r"impl\s+eframe::App\s+for\s+" + re.escape(app_type) + r"\b", ui_text))
 has_raw_hook = bool(re.search(r"pub fn raw_input_hook\b", ui_text))
+# Current DesignCraft (v0.17) takes both egui::Context and RawInput, while
+# earlier versions and other apps only accepted RawInput. Inspect the source
+# signature when generating the shell so one Android adapter supports both.
+raw_hook_has_ctx = bool(re.search(
+    r"pub\s+fn\s+raw_input_hook\s*\(\s*&mut\s+self\s*,\s*\w+\s*:\s*&egui::Context\s*,",
+    ui_text,
+))
 if not re.search(r"\bServices\b|\bNoServices\b", construct) and "Services" not in ui_root and not spec:
     raise SystemExit(f"The UI crate does not visibly export Services; a custom adapter is required for {app}.")
 
@@ -2126,7 +2190,11 @@ icon = "@mipmap/ic_launcher"
         inner_logic = "let _ = frame;\n        self.inner.logic(ctx);"
         inner_ui = "let _ = frame;\n        self.inner.ui(ui);"
         if has_raw_hook:
-            inner_hook = "let _ = ctx;\n        self.inner.raw_input_hook(raw);"
+            inner_hook = (
+                "self.inner.raw_input_hook(ctx, raw);"
+                if raw_hook_has_ctx
+                else "let _ = ctx;\n        self.inner.raw_input_hook(raw);"
+            )
         else:
             inner_hook = "let _ = (ctx, raw);"
 
@@ -2601,7 +2669,73 @@ impl eframe::App for AndroidShell {{
         else "Box::new(move |_cc| Ok(Box::new(shell)))"
     )
 
-    if saf:
+    if saf and app == "designcraft":
+        # Only data services can be prepared before run_native. The actual UI
+        # app and AndroidShell are constructed by eframe::AppCreator on the
+        # first Resumed, after eframe creates the live Android window.
+        # eframe 0.37 owns egui-winit::State and the wgpu surface lifecycle:
+        # do not duplicate its Resumed/Suspended handlers in this app.
+        entry = f'''//! Generated lifecycle-safe Android launcher for DesignCraft.
+//! eframe owns Resumed/Suspended and recreates/destroys the wgpu surface.
+
+{use_block}{platform}{saf_block}{shell}
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(android_app: android_activity::AndroidApp) {{
+    log::info!("{{ARTCRAFT_ANDROID_SHELL_MARKER}} ready ({{}}, {{}})", saf::SAF_MARKER, ime_bridge::ime::IME_MARKER);
+    apply_immersive_fullscreen(&android_app);
+{persist_env_call}    system_fonts::install_font_env(&android_app);
+    // Creating a SAF bridge does NOT acquire ANativeWindow/EGL/wgpu resources.
+    let saf_bridge = saf::Bridge::new(&android_app);
+    saf_bridge.request_storage_permission();
+    let saf_state = saf_new_state();
+    let saf_inbox = SafInbox::default();
+{saf_setup}    let shell_app = android_app.clone();
+    let options = eframe::NativeOptions {{
+        viewport: egui::ViewportBuilder::default()
+            .with_title("{title}")
+            .with_drag_and_drop(true),
+        android_app: Some(android_app),
+        // The Android build enables only the wgpu backend. Request it
+        // explicitly so a future feature change cannot silently choose glow.
+        renderer: eframe::Renderer::Wgpu,
+        ..Default::default()
+    }};
+    let result = eframe::run_native(
+        "{title}",
+        options,
+        Box::new(move |cc| {{
+            // Log the actual Android Vulkan adapter. The default eframe
+            // wgpu configuration already uses a high-throughput surface.
+            if let Some(state) = &cc.wgpu_render_state {{
+                let info = state.adapter.get_info();
+                log::info!("DesignCraft GPU adapter: {{}} ({{:?}}, {{:?}})",
+                    info.name, info.device_type, info.backend);
+                v016_android::set_gpu_adapter(format!(
+                    "{{}} / {{:?}} / {{:?}}", info.name, info.backend, info.device_type
+                ));
+                if info.device_type == eframe::wgpu::DeviceType::Cpu {{
+                    log::warn!("DesignCraft wgpu is using a CPU adapter");
+                }}
+            }} else {{
+                log::warn!("DesignCraft wgpu adapter details unavailable at creation");
+                v016_android::set_gpu_adapter("WGPU adapter unavailable".to_owned());
+            }}
+            // Called from eframe's first Resumed. Keep document/session state
+            // alive across later Paused/Resumed; eframe only recreates surfaces.
+            {inner_decl} = {construct_expr};
+{post_construct}            let shell = AndroidShell::new(
+                inner, shell_app, saf_bridge, saf_state, saf_inbox,
+            );
+            Ok(Box::new(shell))
+        }}),
+    );
+    if let Err(error) = result {{
+        log::error!("{title} Android exited with an error: {{error}}");
+    }}
+}}
+'''
+    elif saf:
         entry = f'''//! Generated Android launcher for {title}.
 //! Starts the app's egui UI with Android Storage Access Framework (SAF) file services plus the
 //! shared Android platform shell (immersive fullscreen and the Ctrl/Alt modifier-key fix).
@@ -2738,7 +2872,10 @@ PY
 # `aarch64-linux-android`. Vendor the builder's Android-compatible copy (a stub backend that
 # resolves dialogs to "cancelled") and patch it into the workspace so the launcher builds. Real
 # open/save on Android needs a platform adapter (see adapters/README.md).
-if grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
+# DesignCraft v0.17.0 uses rfd indirectly via craft-dialogs; its crates need
+# the vendored Android backend even when source files contain no direct `rfd::` call.
+# Keep the existing conditional detection unchanged for all other apps.
+if [[ "$DESIGNCRAFT_V017" == true ]] || grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
     echo "Vendoring an Android-compatible rfd for $TITLE (native file dialogs become no-ops)..."
     mkdir -p "$SRC/vendor"
     rm -rf "$SRC/vendor/rfd"
@@ -2795,9 +2932,33 @@ fi
 # longer masquerade as touch) and patch it into the workspace. PDFCraft already ships a
 # forked winit on the same upstream base: only its Android backend directory is
 # overwritten, so its non-Android customizations and its existing patch entry survive.
+# DesignCraft 0.16 pins the Storytold winit fork with IME-reset extensions that
+# egui-winit 0.37 requires. Replacing it with our older 0.30.13 vendored
+# winit removes ImeResetCompleted/reset_ime_with_request and breaks compilation.
+# Base this *review-only* build on the exact upstream fork, then overlay only
+# the suite's Android mouse, touchpad and wheel event conversion.
 echo "Vendoring the mouse/scroll-aware winit for $TITLE..."
 mkdir -p "$SRC/vendor"
-if [[ -d "$SRC/vendor/winit" ]]; then
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    DESIGNCRAFT_WINIT_REV="a517b3846ee8457d84ee4975110bfda6797c44dc"
+    rm -rf "$SRC/vendor/winit"
+    git init -q "$SRC/vendor/winit" || fail "Cannot initialize pinned Storytold winit checkout."
+    git -C "$SRC/vendor/winit" fetch --quiet --depth 1 https://github.com/storytold/winit.git "$DESIGNCRAFT_WINIT_REV" \
+        || fail "Cannot fetch the exact DesignCraft v0.17.0 winit fork; refusing to substitute an older crate."
+    git -C "$SRC/vendor/winit" checkout -q --detach FETCH_HEAD \
+        || fail "Cannot checkout DesignCraft's pinned winit fork."
+    [[ "$(git -C "$SRC/vendor/winit" rev-parse HEAD)" == "$DESIGNCRAFT_WINIT_REV" ]] \
+        || fail "Pinned DesignCraft winit commit mismatch."
+    grep -q 'ImeResetCompleted' "$SRC/vendor/winit/src/event.rs" \
+        || fail "Pinned winit fork lacks the egui-winit 0.37 IME event."
+    grep -q 'reset_ime_with_request' "$SRC/vendor/winit/src/window.rs" \
+        || fail "Pinned winit fork lacks the egui-winit 0.37 IME window API."
+    python3 "$ROOT/tools/designcraft/overlay_winit_android_mouse.py" \
+        "$ROOT/vendor/winit/src/platform_impl/android/mod.rs" \
+        "$SRC/vendor/winit/src/platform_impl/android/mod.rs" \
+        || fail "Cannot carry over Android mouse/scroll input onto pinned winit fork."
+    rm -rf "$SRC/vendor/winit/.git"
+elif [[ -d "$SRC/vendor/winit" ]]; then
     rm -rf "$SRC/vendor/winit/src/platform_impl/android"
     cp -a "$ROOT/vendor/winit/src/platform_impl/android" "$SRC/vendor/winit/src/platform_impl/android"
 else
@@ -2864,6 +3025,13 @@ rm -rf "$SRC/vendor"/*/target
 
 
 
+# Only the isolated DesignCraft v0.17 debug path receives the reviewed UI
+# compatibility overlay. Other ArtCraft app builds stay byte-for-byte intact.
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    python3 "$ROOT/tools/designcraft/patch_v017_android.py" "$ROOT" "$SRC" "$ANDROID_DIR" \
+        || fail "Could not stage approved DesignCraft v0.17 Android UI and icon parity."
+fi
+
 say 5 "Preparing a builder-owned signing key..."
 KEY="keys/artcraft-builder.jks"
 KEY_PASSWORD_FILE="keys/.keystore-password"
@@ -2908,6 +3076,14 @@ PY
 fi
 
 say 6 "Building $TITLE ($MODE)..."
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    # Quota-conscious experimental arm64: keep the debuggable APK format and
+    # disposable signing key while removing most of the native debug bloat.
+    # No functionality, asset, or architecture is removed.
+    export CARGO_PROFILE_DEV_DEBUG=0
+    export CARGO_PROFILE_DEV_STRIP=debuginfo
+    export CARGO_PROFILE_DEV_OPT_LEVEL=s
+fi
 mkdir -p "build/$APP/target" output logs
 export CARGO_TARGET_DIR="$ROOT/build/$APP/target"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -2943,6 +3119,11 @@ else:
     print("0.0.0")
 PY
 )"
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    # The source workspace remains v0.17.0; this is the separate ArtCraft
+    # Android testing revision shown in filenames and Android app settings.
+    APP_VERSION="0.17.0-android.1"
+fi
 
 # FigCraft and DeckCraft set `CRAFT_FONTS_DIR = "../craft-fonts"` (relative) in .cargo/config.toml.
 # cargo-subcommand, which cargo-apk uses to locate the workspace, canonicalizes that path and aborts

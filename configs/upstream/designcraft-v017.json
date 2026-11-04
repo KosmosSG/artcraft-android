@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "application": "designcraft",
+  "official_upstream": "storytold/designcraft",
+  "stable_tag": "v0.17.0",
+  "tag_commit": "e79d682e02dc66f14370958b193bfa46072b2f41",
+  "upstream_workspace_version": "0.17.0",
+  "published_at_utc": "2026-11-03T00:59:11Z",
+  "android_base_branch": "designcraft-v0.12.0-android.9 (protected release); isolated overlay derived from v0.16 review",
+  "integration_status": "v017-isolated-preservation-review-not-device-verified",
+  "android_source_port_complete": false,
+  "android_build_verified": false,
+  "permanent_signing_authorized": false,
+  "production_release_authorized": false,
+  "stable_android_release": "designcraft-v0.12.0-android.9",
+  "test_package": "com.artcraft.designcraft.test",
+  "test_version": "0.17.0-android.1"
+}

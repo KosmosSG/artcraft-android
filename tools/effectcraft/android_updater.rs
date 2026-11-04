@@ -6,6 +6,8 @@ use std::sync::mpsc;
 pub struct Updater {
     app: AndroidApp,
     started: bool,
+    restore_editor_after_picker: bool,
+    picker_returned: bool,
     fonts: mpsc::Sender<(String, bool)>,
     reports: mpsc::Receiver<String>,
 }
@@ -100,7 +102,7 @@ impl Updater {
                 }
             }
         });
-        Self { app: app.clone(), started: false, fonts: sender, reports }
+        Self { app: app.clone(), started: false, restore_editor_after_picker: false, picker_returned: false, fonts: sender, reports }
     }
 
     fn font_path(&self) -> Result<Option<String>, String> {
@@ -137,6 +139,11 @@ impl Updater {
         for _ in 0..8 {
             match self.font_path() {
                 Ok(Some(path)) => {
+                    if path == "picker-return|" {
+                        self.picker_returned = true;
+                        ctx.request_repaint();
+                        continue;
+                    }
                     // The manual marker comes only from the Java file picker; saved
                     // fonts and background shared-folder refreshes stay quiet.
                     let (manual, path) = match path.strip_prefix("manual|") {
@@ -159,7 +166,16 @@ impl Updater {
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
 
-    pub fn ui(&mut self, ctx: &egui::Context) {
+    pub fn ui(&mut self, ctx: &egui::Context, start_screen: &mut bool) {
+        if self.picker_returned {
+            self.picker_returned = false;
+            // Only return to the editor if the editor was open before the picker.
+            if self.restore_editor_after_picker {
+                *start_screen = false;
+                ctx.request_repaint();
+            }
+            self.restore_editor_after_picker = false;
+        }
         macro_rules! dispatch {
             ($key:literal, $method:literal) => {
                 if ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new($key))).unwrap_or(false) {
@@ -170,7 +186,12 @@ impl Updater {
         dispatch!("artcraft.effectcraft.check_updates_requested", "ecCheckForUpdates");
         dispatch!("artcraft.effectcraft.update_settings_requested", "ecStartupUpdateSettings");
         dispatch!("artcraft.effectcraft.import_font", "ecImportFont");
-        dispatch!("artcraft.effectcraft.select_fonts", "ecSelectSharedFonts");
+        if ctx.data_mut(|d| d.remove_temp::<bool>(
+            egui::Id::new("artcraft.effectcraft.select_fonts"))).unwrap_or(false) {
+            self.restore_editor_after_picker = !*start_screen;
+            self.picker_returned = false;
+            if let Err(e) = action!(self, "ecSelectSharedFonts") { self.message(&e); }
+        }
         dispatch!("artcraft.effectcraft.refresh_fonts", "ecRefreshFonts");
     }
 }

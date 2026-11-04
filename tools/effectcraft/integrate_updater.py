@@ -30,41 +30,9 @@ def once(src, old, new, label):
         raise SystemExit(f"STOP: {label} changed (expected once, found {n})")
     return src.replace(old, new, 1)
 
-m = menu.read_text()
-anchor = menu_anchor
-injected = anchor + """
-                        #[cfg(target_os = "android")]
-                        if label == "Help" {
-                            ui.separator();
-                            if ui.button("Check for Updates").clicked() {
-                                ui.ctx().data_mut(|d| d.insert_temp(
-                                    egui::Id::new("artcraft.effectcraft.check_updates_requested"), true));
-                                ui.close();
-                            }
-                            if ui.button("Startup Update Settings").clicked() {
-                                ui.ctx().data_mut(|d| d.insert_temp(
-                                    egui::Id::new("artcraft.effectcraft.update_settings_requested"), true));
-                                ui.close();
-                            }
-                        }
-                        #[cfg(target_os = "android")]
-                        if label == "Window" {
-                            ui.separator();
-                            ui.menu_button("Fonts", |ui| {
-                                for (title, key) in [
-                                    ("Import Font (TTF/OTF/TTC)…", "artcraft.effectcraft.import_font"),
-                                    ("Select Shared Font Folder…", "artcraft.effectcraft.select_fonts"),
-                                    ("Refresh Shared Fonts", "artcraft.effectcraft.refresh_fonts"),
-                                ] {
-                                    if ui.button(title).clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(key), true));
-                                        ui.close();
-                                    }
-                                }
-                            });
-                        }"""
-m = once(m, anchor, injected, "EffectCraft Help menu")
-menu.write_text(m)
+# Keep upstream File / Window / Help unchanged; use the existing top-left Ec icon.
+from menu_corner import patch_header
+patch_header(root / "source/effectcraft")
 
 j = java.read_text().rstrip()
 if not j.endswith("}") or "ecCheckForUpdates" in j:
@@ -193,7 +161,7 @@ after = '''    if app == "effectcraft":
         replace_ec("        self.inner.logic(ctx, frame);",
                    "        self.updates.poll(ctx);\\\\n        self.inner.logic(ctx, frame);")
         replace_ec("        self.inner.ui(ui, frame);",
-                   "        self.inner.android_capture_unsaved_dcs(ui.ctx());\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.inner.ui(ui, frame);\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.updates.ui(ui.ctx());")
+                   "        self.inner.android_capture_unsaved_dcs(ui.ctx());\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.inner.ui(ui, frame);\\\\n        self.updates.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\\\n        self.updates.ui(ui.ctx(), &mut self.inner.ui.start_screen);")
         replace_ec('        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\\n        // Normalize the keyboard event before egui and app text-edit guards.\\n        for event in &mut raw.events {\\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\\n                    *key = egui::Key::Escape;\\n                    *physical_key = Some(egui::Key::Escape);\\n                }\\n            }\\n        }\\n        if raw.events.iter().any(|event| matches!(event,\\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\\n                if !modifiers.any())) {\\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\\n        }\\n')
         replace_ec('        self.inner.ui(ui, frame);', '        let android_escape = ui.ctx().data_mut(|d|\\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && self.inner.session.state.text_edit.is_some()\\n            {\\n            if let Err(error) = self.inner.session.execute("text.endEdit", serde_json::json!({})) {\\n                log::warn!("Android text exit: {error}");\\n            }\\n            ui.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });\\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\\n        }\\n        self.inner.ui(ui, frame);\\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\\n            && ui.ctx().text_edit_focused() {\\n            ui.memory_mut(|m| {\\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\\n            });\\n        }\\n')
         shutil.copy2(root / "tools/effectcraft/android_updater.rs",

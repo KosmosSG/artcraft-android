@@ -1,0 +1,65 @@
+name: LightCraft v0.18.0 source and Android API preflight (NO APK)
+on:
+  push:
+    branches:
+      - feature/lightcraft-v0180-android-test-20261104
+    paths:
+      - '.github/workflows/lightcraft-v018-preflight.yml'
+      - 'configs/upstream/lightcraft-v018.json'
+      - 'tools/lightcraft/verify_v018_contract.py'
+      - 'tools/lightcraft/patch_v017_builder.py'
+      - 'tools/lightcraft/test_patch_v017_builder.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightcraft-v018-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lightweight-preflight:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout protected LightCraft Android integration branch
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Checkout immutable upstream v0.18.0 commit
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: 32d569ad5d19a6b55cf8d5c077127faa0f44a83b
+          path: source
+          persist-credentials: false
+      - name: Checkout reviewed Android SAF reference builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Offline syntax, safe create-new patch unit tests and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile suite/tools/lightcraft/verify_v018_contract.py suite/tools/lightcraft/patch_v017_builder.py
+          python3 -m unittest discover -s suite/tools/lightcraft -p 'test_patch_v017_builder.py' -v
+          python3 suite/tools/lightcraft/verify_v018_contract.py source builder suite --report lightcraft-v018-source-compatibility.json
+          {
+            echo '### LightCraft v0.18.0 source and SAF compatibility preflight'
+            echo 'Read-only lightweight checks. This is NOT an Android API port or installable APK.'
+            echo 'No Rust/ARM64 compilation, private signing, production merge or release.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Record source review without publishing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lightcraft-v0180-source-compatibility-NO-APK
+          path: lightcraft-v018-source-compatibility.json
+          retention-days: 7
+          if-no-files-found: warn

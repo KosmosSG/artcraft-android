@@ -101,6 +101,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Catch Java SDK mismatches before the expensive ARM64 Rust build.
+          grep -Fq 'import android.view.PixelCopy;' android-port/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          ! grep -Fq 'import android.graphics.PixelCopy;' android-port/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          javap -classpath "$ANDROID_HOME/platforms/android-35/android.jar" android.view.PixelCopy >/dev/null
+          echo "PASS: SDK 35 PixelCopy import and class verified"
           rm -rf builder/adapters/vectorcraft
           cp -a android-port/adapters/vectorcraft builder/adapters/vectorcraft
           python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder

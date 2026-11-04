@@ -23,6 +23,8 @@ class BuilderDependencyPinTests(unittest.TestCase):
         self.assertIn('if [[ "$APP" != "filmcraft" ]]; then\n' + module.EGUI_START, output)
         self.assertIn('if [[ "$APP" != "filmcraft" ]]; then\n' + module.WINIT_START, output)
         self.assertIn("PYFILMCRAFTDEPS", output)
+        self.assertIn('port_android_mouse_winit.py', output)
+        self.assertIn('"$ROOT/vendor/winit/src/platform_impl/android/mod.rs"', output)
         self.assertIn(module.LAUNCHER_EGUI_NEW, output)
         self.assertNotIn(module.LAUNCHER_EGUI_OLD, output)
         # Confirm other ArtCraft apps still use the pinned builder's 0.36.

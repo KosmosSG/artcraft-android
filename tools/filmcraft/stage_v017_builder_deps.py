@@ -43,6 +43,10 @@ for name, pin in expected.items():
         raise SystemExit(f"STOP: unexpected FilmCraft {name} override: {patches.get(name)!r}")
 print("PASS: FilmCraft v0.17.0 retains official egui-winit and winit git pins")
 PYFILMCRAFTDEPS
+    # The upstream pinned winit leaves mouse hover unimplemented.
+    # Preserve its version/IME API; backport only reviewed builder Android mouse
+    # events into the *disposable* checkout, then use a local Cargo path patch.
+    python3 "$ROOT/tools/filmcraft/port_android_mouse_winit.py" "$ROOT/$SRC" "$ROOT/vendor/winit/src/platform_impl/android/mod.rs"
 fi
 """
 

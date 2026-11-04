@@ -23,11 +23,12 @@ def stage_trial_metadata(builder_root: Path) -> None:
     """After prepare_candidate.py: change disposable build metadata only."""
     path = Path(builder_root) / "lib/build-common.sh"
     source = path.read_text(encoding="utf-8")
-    source = replace_exact(
-        source,
-        '''version_line = f'version = "{app_version}-android.3"' if app == "effectcraft" else "version.workspace = true"''',
-        '''version_line = f'version = "{app_version}-android.3"' if app == "effectcraft" else "version.workspace = true"''',
-    )
+    # The original EffectCraft packager already writes android.3. Check it without
+    # rewriting the identical string, so the fail-closed replacement guard still
+    # catches drift in actual version-code changes.
+    expected_version = '''version_line = f'version = "{app_version}-android.3"' if app == "effectcraft" else "version.workspace = true"'''
+    if source.count(expected_version) != 1:
+        raise RuntimeError("STOP: EffectCraft packager version drift")
     source = replace_exact(source, "version_code = 16781315", f"version_code = {TEST_VERSION_CODE}")
     path.write_text(source, encoding="utf-8")
 

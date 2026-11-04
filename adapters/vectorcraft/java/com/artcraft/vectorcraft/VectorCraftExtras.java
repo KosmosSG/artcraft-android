@@ -179,6 +179,7 @@ final class VectorCraftExtras {
                     .putInt(TREE_SCAN_OFFSET, 0)
                     .putLong(TREE_SCAN_BYTES, 0L)
                     .putInt(TREE_SCAN_ADDED, 0).apply();
+            clearScanState(); // Explicit folder selection starts a new BFS scan.
             scanFontFolder(id, uri);
         } catch (Exception error) {
             report(id, kind, "error", error.toString(), 0);
@@ -299,162 +300,265 @@ final class VectorCraftExtras {
         }
     }
 
+
+    // A durable breadth-first work queue, not an offset into a repeated recursive
+    // walk. Every document ID is enqueued at most once, and folder cursor order
+    // changes do not affect subsequent batches or resumed scans.
+    private static final int FONT_SCAN_STATE_VERSION = 1;
+    private static final int MAX_WORK_ITEMS = MAX_FONTS + MAX_FOLDERS;
+    private static final int MAX_DIRECTORIES_PER_PASS = 32;
+    private static final String SCAN_STATE_NAME = "shared-font-scan-v1.bin";
+
+    private static final class ScanEntry {
+        final String documentId;
+        final String name;
+        final boolean directory;
+        final long reportedSize;
+        ScanEntry(String id, String name, boolean directory, long size) {
+            this.documentId = id;
+            this.name = name;
+            this.directory = directory;
+            this.reportedSize = size;
+        }
+    }
+
+    private static final class ScanProgress {
+        final String uri;
+        final ArrayDeque<ScanEntry> queue = new ArrayDeque<>();
+        final HashSet<String> scheduled = new HashSet<>();
+        int attempted, folders, added, skipped;
+        long bytes;
+        boolean truncated;
+        ScanProgress(String uri, String rootId) {
+            this.uri = uri;
+            queue.addLast(new ScanEntry(rootId, "", true, -1L));
+            scheduled.add("D:" + rootId);
+        }
+    }
+
+    private File scanStateFile() { return new File(files(), SCAN_STATE_NAME); }
+
+    private void clearScanState() {
+        File state = scanStateFile();
+        if (state.exists() && !state.delete()) Log.w(TAG, "Could not reset font scan checkpoint");
+    }
+
+    private ScanProgress loadScanState(Uri treeUri) throws Exception {
+        File state = scanStateFile();
+        String uri = treeUri.toString();
+        if (!state.isFile()) return new ScanProgress(uri, DocumentsContract.getTreeDocumentId(treeUri));
+        try (java.io.DataInputStream input = new java.io.DataInputStream(
+                new java.io.BufferedInputStream(new FileInputStream(state)))) {
+            if (input.readInt() != FONT_SCAN_STATE_VERSION || !uri.equals(input.readUTF())) {
+                return new ScanProgress(uri, DocumentsContract.getTreeDocumentId(treeUri));
+            }
+            ScanProgress saved = new ScanProgress(uri, DocumentsContract.getTreeDocumentId(treeUri));
+            saved.queue.clear();
+            saved.scheduled.clear();
+            saved.attempted = input.readInt();
+            saved.folders = input.readInt();
+            saved.added = input.readInt();
+            saved.skipped = input.readInt();
+            saved.bytes = input.readLong();
+            saved.truncated = input.readBoolean();
+            int n = input.readInt();
+            if (n < 0 || n > MAX_WORK_ITEMS) throw new java.io.IOException("Invalid queue length");
+            for (int i = 0; i < n; i++) {
+                saved.queue.addLast(new ScanEntry(input.readUTF(), input.readUTF(), input.readBoolean(), input.readLong()));
+            }
+            n = input.readInt();
+            if (n < 0 || n > MAX_WORK_ITEMS * 2) throw new java.io.IOException("Invalid seen-set length");
+            for (int i = 0; i < n; i++) saved.scheduled.add(input.readUTF());
+            return saved;
+        } catch (java.io.IOException corrupted) {
+            Log.w(TAG, "Unusable shared font checkpoint; starting a new scan", corrupted);
+            return new ScanProgress(uri, DocumentsContract.getTreeDocumentId(treeUri));
+        }
+    }
+
+    private void saveScanState(ScanProgress progress) throws Exception {
+        File state = scanStateFile();
+        File temp = new File(files(), SCAN_STATE_NAME + ".tmp");
+        try (java.io.DataOutputStream output = new java.io.DataOutputStream(
+                new java.io.BufferedOutputStream(new FileOutputStream(temp)))) {
+            output.writeInt(FONT_SCAN_STATE_VERSION);
+            output.writeUTF(progress.uri);
+            output.writeInt(progress.attempted);
+            output.writeInt(progress.folders);
+            output.writeInt(progress.added);
+            output.writeInt(progress.skipped);
+            output.writeLong(progress.bytes);
+            output.writeBoolean(progress.truncated);
+            output.writeInt(progress.queue.size());
+            for (ScanEntry e : progress.queue) {
+                output.writeUTF(e.documentId);
+                output.writeUTF(e.name);
+                output.writeBoolean(e.directory);
+                output.writeLong(e.reportedSize);
+            }
+            output.writeInt(progress.scheduled.size());
+            for (String seen : progress.scheduled) output.writeUTF(seen);
+        }
+        try {
+            java.nio.file.Files.move(temp.toPath(), state.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+            java.nio.file.Files.move(temp.toPath(), state.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     private void scanFontFolder(long id, Uri treeUri) {
-        fontIo.execute(() -> {
-            File staging = new File(files(), "pending-shared-fonts-" + UUID.randomUUID());
-            try {
-                boolean granted = false;
-                for (android.content.UriPermission permission :
-                        activity.getContentResolver().getPersistedUriPermissions()) {
-                    if (treeUri.equals(permission.getUri()) && permission.isReadPermission()) {
-                        granted = true; break;
-                    }
+        // Single executor serializes all SAF operations and all checkpoint writes.
+        fontIo.execute(() -> scanFontBatch(id, treeUri));
+    }
+
+    private void scanFontBatch(long id, Uri treeUri) {
+        File staging = new File(files(), "pending-shared-fonts-" + UUID.randomUUID());
+        try {
+            boolean granted = false;
+            for (android.content.UriPermission permission :
+                    activity.getContentResolver().getPersistedUriPermissions()) {
+                if (treeUri.equals(permission.getUri()) && permission.isReadPermission()) {
+                    granted = true;
+                    break;
                 }
-                if (!granted) throw new SecurityException("Shared folder access expired; select again");
-                if (!staging.mkdirs()) throw new java.io.IOException("Cannot create font staging folder");
-                int count = 0, skipped = 0, folders = 0, attempted = 0, discovered = 0;
-                int startOffset = Math.max(0, activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                        .getInt(TREE_SCAN_OFFSET, 0));
-                if (startOffset >= MAX_FONTS) {
-                    report(id, "font_folder", "ok",
-                        "Already indexed the maximum 5,000 font files. Select the folder again to begin a fresh scan.", 0);
-                    return;
-                }
-                long previousBytes = Math.max(0L, activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                        .getLong(TREE_SCAN_BYTES, 0L));
-                if (previousBytes >= MAX_SCAN_BYTES) {
-                    report(id, "font_folder", "error",
-                            "4 GiB shared-font scan limit reached. Select the folder again to start a new scan; existing fonts are kept.", 0);
-                    return;
-                }
-                int previousAdded = Math.max(0, activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                        .getInt(TREE_SCAN_ADDED, 0));
-                long[] budget = {0L, previousBytes};
-                boolean limited = false;
-                ArrayDeque<String> pending = new ArrayDeque<>();
-                HashSet<String> seen = new HashSet<>();
-                pending.add(DocumentsContract.getTreeDocumentId(treeUri));
-                while (!pending.isEmpty() && attempted < MAX_FONTS_PER_PASS && folders < MAX_FOLDERS
-                        && budget[0] < MAX_SCAN_BATCH_BYTES && budget[1] < MAX_SCAN_BYTES) {
-                    String parent = pending.removeFirst();
-                    if (!seen.add(parent)) continue;
-                    folders++;
-                    Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parent);
+            }
+            if (!granted) throw new SecurityException("Shared folder access expired; select again");
+            if (!staging.mkdirs()) throw new java.io.IOException("Cannot create font staging folder");
+
+            ScanProgress p = loadScanState(treeUri);
+            long[] budget = {0L, p.bytes};
+            int filesThisPass = 0, foldersThisPass = 0;
+            while (!p.queue.isEmpty() && filesThisPass < MAX_FONTS_PER_PASS
+                    && foldersThisPass < MAX_DIRECTORIES_PER_PASS
+                    && p.attempted < MAX_FONTS && p.folders < MAX_FOLDERS
+                    && budget[0] < MAX_SCAN_BATCH_BYTES && budget[1] < MAX_SCAN_BYTES) {
+                ScanEntry entry = p.queue.removeFirst();
+                if (entry.directory) {
+                    foldersThisPass++;
+                    p.folders++;
+                    Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, entry.documentId);
                     try (Cursor cursor = activity.getContentResolver().query(children,
                             new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                                     DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                                     DocumentsContract.Document.COLUMN_MIME_TYPE,
                                     DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
-                        if (cursor == null) { skipped++; continue; }
-                        while (cursor.moveToNext() && attempted < MAX_FONTS_PER_PASS
-                                && budget[0] < MAX_SCAN_BATCH_BYTES && budget[1] < MAX_SCAN_BYTES) {
+                        if (cursor == null) { p.skipped++; continue; }
+                        while (cursor.moveToNext()) {
                             String documentId = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
                             if (documentId == null || name == null) continue;
-                            if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                                if (seen.size() + pending.size() < MAX_FOLDERS)
-                                    pending.addLast(documentId);
-                                else limited = true;
+                            boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime);
+                            if (!directory && extension(name) == null) continue;
+                            String key = (directory ? "D:" : "F:") + documentId;
+                            if (p.scheduled.contains(key)) continue;
+                            if (p.scheduled.size() >= MAX_WORK_ITEMS) {
+                                p.truncated = true;
                                 continue;
                             }
-                            String ext = extension(name);
-                            if (ext == null) continue;
-                            if (++discovered <= startOffset) continue;
-                            attempted++;
-                            if (!cursor.isNull(3)) {
-                                long bytes = cursor.getLong(3);
-                                // SAF providers may legitimately report UNKNOWN_SIZE
-                                // (null, zero or -1); inspect these by streaming with
-                                // the existing 64 MiB per-font hard cap instead.
-                                if (bytes > MAX_FONT || bytes > MAX_SCAN_BYTES - budget[1]) {
-                                    skipped++;
-                                    limited = true;
-                                    continue;
-                                }
-                                if (bytes > 0 && bytes > MAX_SCAN_BATCH_BYTES - budget[0]) {
-                                    // A valid font that does not fit THIS batch must
-                                    // be retried in the next batch, not silently lost.
-                                    attempted--;
-                                    discovered--;
-                                    limited = true;
-                                    break;
-                                }
-                            }
-                            Uri document = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
-                            String nameHash = UUID.nameUUIDFromBytes(
-                                    documentId.getBytes(StandardCharsets.UTF_8)).toString();
-                            File target = new File(staging, "font-" + nameHash + ext);
-                            try {
-                                copyValidated(activity.getContentResolver().openInputStream(document), target, budget);
-                                count++;
-                            } catch (Exception badFont) {
-                                skipped++;
-                                Log.w(TAG, "Skipping unreadable shared font " + name, badFont);
-                            }
+                            p.scheduled.add(key);
+                            long size = cursor.isNull(3) ? -1L : cursor.getLong(3);
+                            p.queue.addLast(new ScanEntry(documentId, name, directory, size));
                         }
                     } catch (SecurityException security) {
                         throw security;
-                    } catch (Exception unreadableFolder) {
-                        skipped++;
-                        Log.w(TAG, "Could not scan shared font subfolder", unreadableFolder);
+                    } catch (Exception badFolder) {
+                        p.skipped++;
+                        Log.w(TAG, "Unable to enumerate shared font folder " + entry.documentId, badFolder);
                     }
+                    continue;
                 }
-                limited |= !pending.isEmpty() || attempted >= MAX_FONTS_PER_PASS
-                        || budget[0] >= MAX_SCAN_BATCH_BYTES || folders >= MAX_FOLDERS
-                        || budget[1] >= MAX_SCAN_BYTES;
-                int nextOffset = Math.min(MAX_FONTS, startOffset + attempted);
-                // Persist continuation state *after* the file merge so that a
-                // process restart cannot advance the scan past uncached fonts.
-                // These values are written below, together with totalAdded.
-                // Merge valid discoveries without evicting existing fonts when a provider,
-                // bad font or scan limit makes this refresh partial.
-                File shared = new File(fonts(), "Shared");
-                if (!shared.isDirectory() && !shared.mkdirs())
-                    throw new java.io.IOException("Cannot create Shared font cache");
-                int added = 0, existing = 0;
-                File[] ready = staging.listFiles();
-                if (ready != null) for (File file : ready) {
-                    String ext = extension(file.getName());
-                    File target = new File(shared, "font-" + fontDigest(file) + ext);
-                    if (target.exists()) { existing++; continue; }
-                    try {
-                        try { java.nio.file.Files.move(file.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE); }
-                        catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
-                            java.nio.file.Files.move(file.toPath(), target.toPath());
-                        }
-                        added++;
-                    } catch (Exception error) { skipped++; Log.w(TAG, "Cannot cache shared font", error); }
+
+                // A known-size file that cannot fit this pass is put back at
+                // the head and retried with a fresh batch byte allowance.
+                if (entry.reportedSize > 0
+                        && entry.reportedSize <= MAX_FONT
+                        && entry.reportedSize > MAX_SCAN_BATCH_BYTES - budget[0]) {
+                    p.queue.addFirst(entry);
+                    break;
                 }
-                int totalAdded = previousAdded + added;
-                boolean continueScan = limited && attempted > 0
-                        && nextOffset < MAX_FONTS && budget[1] < MAX_SCAN_BYTES;
-                activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE).edit()
-                        .putInt(TREE_SCAN_OFFSET, continueScan ? nextOffset : 0)
-                        .putLong(TREE_SCAN_BYTES, continueScan ? budget[1] : 0L)
-                        .putInt(TREE_SCAN_ADDED, continueScan ? totalAdded : 0).apply();
-                String message = "Scan: " + nextOffset + " font files processed across batches, "
-                        + folders + " folders in this pass; cached " + totalAdded
-                        + " new fonts so far; skipped " + skipped + " in this pass"
-                        + "; read " + (budget[1] / (1024 * 1024)) + " MiB / 4096 MiB"
-                        + (nextOffset >= MAX_FONTS ? "; 5000-font limit reached" : "")
-                        + (budget[1] >= MAX_SCAN_BYTES ? "; 4 GiB limit reached" : "")
-                        + (continueScan ? "; automatically continuing in background…" :
-                            ". Existing fonts preserved; catalog will refresh once finished.");
-                if (continueScan) {
-                    report(id, "font_folder", "progress", message, 0);
-                    // Single-worker queue serializes batches and limits staging
-                    // to 128 files / 64 MiB. No per-frame or UI-thread folder walk.
-                    scanFontFolder(id, treeUri);
-                } else {
-                    report(id, "font_folder", "ok", message, totalAdded);
+                filesThisPass++;
+                p.attempted++;
+                if (entry.reportedSize > MAX_FONT
+                        || entry.reportedSize > MAX_SCAN_BYTES - budget[1]) {
+                    p.skipped++;
+                    continue;
                 }
-            } catch (Exception error) {
-                report(id, "font_folder", "error", error.toString(), 0);
-            } finally {
-                deleteTree(staging);
+                Uri document = DocumentsContract.buildDocumentUriUsingTree(treeUri, entry.documentId);
+                String nameHash = UUID.nameUUIDFromBytes(
+                        entry.documentId.getBytes(StandardCharsets.UTF_8)).toString();
+                File target = new File(staging, "font-" + nameHash + extension(entry.name));
+                long before = budget[0];
+                try {
+                    // Unknown-size SAF files (0/-1/null) are validated from
+                    // their actual TTF/OTF/TTC header while streaming.
+                    copyValidated(activity.getContentResolver().openInputStream(document), target, budget);
+                } catch (Exception unreadableFont) {
+                    String why = String.valueOf(unreadableFont.getMessage());
+                    if (why.contains("Safe font-scan batch budget reached")
+                            && before > 0 && entry.reportedSize <= 0) {
+                        p.queue.addFirst(entry);
+                        p.attempted--;
+                        filesThisPass--;
+                        break;
+                    }
+                    p.skipped++;
+                    Log.w(TAG, "Skipped unreadable font " + entry.name, unreadableFont);
+                }
             }
-        });
+            p.bytes = budget[1];
+
+            // Merge into the previously approved private font cache; never
+            // evict older fonts because a partial SAF scan is incomplete.
+            File shared = new File(fonts(), "Shared");
+            if (!shared.isDirectory() && !shared.mkdirs())
+                throw new java.io.IOException("Cannot create Shared font cache");
+            File[] ready = staging.listFiles();
+            if (ready != null) for (File file : ready) {
+                String ext = extension(file.getName());
+                if (ext == null) continue;
+                File target = new File(shared, "font-" + fontDigest(file) + ext);
+                if (target.exists()) continue;
+                try {
+                    try {
+                        java.nio.file.Files.move(file.toPath(), target.toPath(),
+                                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                    } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                        java.nio.file.Files.move(file.toPath(), target.toPath());
+                    }
+                    p.added++;
+                } catch (Exception error) {
+                    p.skipped++;
+                    Log.w(TAG, "Cannot cache shared font " + file.getName(), error);
+                }
+            }
+
+            boolean reachedLimit = p.attempted >= MAX_FONTS || p.folders >= MAX_FOLDERS
+                    || p.bytes >= MAX_SCAN_BYTES;
+            boolean continueScan = !p.queue.isEmpty() && !reachedLimit;
+            if (continueScan) saveScanState(p);
+            else clearScanState();
+
+            String summary = "Indexed " + p.attempted + " / 5000 font files; "
+                    + p.folders + " folders; cached " + p.added + " new fonts; skipped " + p.skipped
+                    + "; read " + (p.bytes / (1024 * 1024)) + " / 4096 MiB"
+                    + (p.truncated ? "; work queue capped at 10,000 entries" : "")
+                    + (reachedLimit ? "; configured scan limit reached" : "");
+            if (continueScan) {
+                report(id, "font_folder", "progress", summary + "; continuing in background…", 0);
+                // Automatic bounded chaining: no user refresh is required.
+                scanFontFolder(id, treeUri);
+            } else {
+                report(id, "font_folder", "ok", summary + "; font catalog updating.", p.added);
+            }
+        } catch (Exception error) {
+            report(id, "font_folder", "error", error.toString(), 0);
+        } finally {
+            deleteTree(staging);
+        }
     }
 
     private static void deleteTree(File folder) {

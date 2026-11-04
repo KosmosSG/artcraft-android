@@ -351,6 +351,33 @@ mod tests {
     use super::*;
     use egui::{Event, Key, Modifiers, RawInput};
 
+    #[test]
+    fn focus_regain_clears_ctrl_even_if_ime_swallowed_key_up() {
+        let mut state = AndroidModifiers::default();
+        apply(&mut state, vec![key(Key::ControlLeft, true)]);
+        assert!(state.modifiers().ctrl);
+        let events = apply(&mut state, vec![Event::WindowFocused(true), key(Key::T, true)]);
+        assert_eq!(state.modifiers(), Modifiers::NONE);
+        assert!(matches!(events.last(), Some(Event::Key { key: Key::T, modifiers, .. })
+            if !modifiers.ctrl && !modifiers.command));
+    }
+
+    #[test]
+    fn popup_easing_does_not_touch_canvas_wheel_events() {
+        let ctx = egui::Context::default();
+        let mut smoother = AndroidMenuScrollSmoother::default();
+        let original = Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -3.0),
+            modifiers: Modifiers::NONE,
+            source: egui::MouseWheelSource::Unknown,
+        };
+        let mut raw = RawInput { events: vec![original], ..Default::default() };
+        smoother.apply(&ctx, &mut raw);
+        assert!(matches!(&raw.events[0], Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line, .. }));
+    }
+
     fn key(key: Key, pressed: bool) -> Event {
         Event::Key { key, physical_key: Some(key), pressed, repeat: false, modifiers: Modifiers::NONE }
     }

@@ -43,6 +43,7 @@ class VectorCraftAndroid4Guards(unittest.TestCase):
                        "MAX_FONTS_PER_PASS = 128",
                        "MAX_SCAN_BATCH_BYTES = 64L * 1024 * 1024",
                        "TREE_SCAN_ADDED", "putInt(TREE_SCAN_ADDED",
+                       "int nextOffset = Math.min(MAX_FONTS, startOffset + attempted);",
                        "report(id, \"font_folder\", \"progress\"",
                        "scanFontFolder(id, treeUri);",
                        "bytes > 0 && bytes > MAX_SCAN_BATCH_BYTES - budget[0]",

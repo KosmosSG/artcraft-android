@@ -40,7 +40,7 @@ mod ime_bridge;
 
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
-use android_modifiers::{AndroidModifiers, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
+use android_modifiers::{AndroidModifiers, AndroidMenuScrollSmoother, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -777,6 +777,7 @@ struct VectorCraftAndroidApp {
     updates: UpdateDialogState,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
+    menu_scroll: AndroidMenuScrollSmoother,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -1141,6 +1142,9 @@ impl eframe::App for VectorCraftAndroidApp {
         // only point wheels as Trackpad to enable the tested upstream egui
         // smooth-scroll physics (matching PhotoCraft), not discrete wheels.
         classify_android_precision_scroll(raw);
+        // The long Window/Effect popup lists can receive large batched wheel
+        // steps from Android trackpads. Ease ONLY those menu deltas at ~60Hz.
+        self.menu_scroll.apply(ctx, raw);
         self.inner.raw_input_hook(raw);
     }
 
@@ -1508,6 +1512,7 @@ fn android_main(android_app: AndroidApp) {
                 },
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
+                menu_scroll: AndroidMenuScrollSmoother::default(),
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

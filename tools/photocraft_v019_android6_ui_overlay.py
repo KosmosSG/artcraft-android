@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import argparse
 
-EXPECTED = "2df9f807702a935184041355a86405380bda8274"
+EXPECTED = "327c4cc82e737a3e0af7c147a477126d77525495"
 
 def replace(path: Path, old: str, new: str) -> None:
     content = path.read_text(encoding="utf-8")

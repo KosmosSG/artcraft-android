@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: suite
+          fetch-depth: 0  # Needed for the protected baseline ancestry check.
           persist-credentials: false
       - name: Checkout immutable official LightCraft v0.18.0
         uses: actions/checkout@v4

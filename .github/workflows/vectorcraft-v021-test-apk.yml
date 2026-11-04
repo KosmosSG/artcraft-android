@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.7 ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.8 ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.21.0-android.7
-      VERSION_CODE: '16783367'
+      VERSION_NAME: 0.21.0-android.8
+      VERSION_CODE: '16783368'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -252,7 +252,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.7-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.8-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

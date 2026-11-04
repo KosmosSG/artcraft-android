@@ -790,6 +790,7 @@ struct VectorCraftAndroidApp {
     staged_sweep_at: Option<std::time::Instant>,
     startup_instant: std::time::Instant,
     first_ui_logged: bool,
+    first_painted_frame_probe_sent: bool,
 }
 
 /// Read the files the system asked this app to open (an `ACTION_VIEW`/`ACTION_SEND` it is registered
@@ -1141,9 +1142,14 @@ impl eframe::App for VectorCraftAndroidApp {
         if !self.first_ui_logged {
             self.first_ui_logged = true;
             log::info!("VectorCraft startup diagnostic: first_ui={}ms (render/GPU presentation follows)", self.startup_instant.elapsed().as_millis());
+            // First traversal happens before the Vulkan frame. Schedule another
+            // paint: only the following UI pass may ask Java to confirm real
+            // native SurfaceView pixels, never initialization alone.
+            ui.ctx().request_repaint();
+        } else if !self.first_painted_frame_probe_sent {
+            self.first_painted_frame_probe_sent = true;
             if let Err(error) = self.bridge.notify_native_ui_ready() {
-                log::warn!("Could not dismiss VectorCraft startup cover: {error}");
-                // The Activity also has a 15-second fail-safe dismissal.
+                log::warn!("Cannot request first native-frame confirmation: {error}");
             }
         }
         system_fonts::install_system_fonts(ui.ctx());
@@ -1504,6 +1510,7 @@ fn android_main(android_app: AndroidApp) {
                 staged_sweep_at: Some(std::time::Instant::now() + std::time::Duration::from_secs(30)),
                 startup_instant,
                 first_ui_logged: false,
+                first_painted_frame_probe_sent: false,
             }))
         }),
     );

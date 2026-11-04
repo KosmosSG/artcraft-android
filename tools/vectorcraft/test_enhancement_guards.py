@@ -63,7 +63,7 @@ class VectorCraftEnhancementGuards(unittest.TestCase):
         for marker in ("vectorcraft-text", "android.permission.INTERNET", "com.artcraft.vectorcraft"):
             with self.subTest(marker=marker):
                 self.assertIn(marker, manifest)
-        for marker in ("vectorcraft_text::set_app_font_dir", '"text.rescanFonts"',
+        for marker in ("vectorcraft_text::set_app_font_dir", "FontDb::global().load_system_fonts()",
                        "vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
                        "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
                        "edit.keyboardShortcuts", "touch_dock.enabled",

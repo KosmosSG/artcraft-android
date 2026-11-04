@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: lightcraft-v018-arm64-test
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   lightcraft-only:
@@ -136,7 +136,7 @@ jobs:
           "$SDK/build-tools/35.0.0/aapt" dump badging "$APK" > candidate-badging.txt
           grep -Eq "^package: name='com.artcraft.lightcraft.test' versionCode='[0-9]+' versionName='0.18.0-android.1'" candidate-badging.txt
           grep -Fq 'launchable-activity:' candidate-badging.txt
-          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\\.so$'
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
           python3 - "$APK" candidate-certificate.txt <<'PY'
           import pathlib,re,sys,zipfile
           apk,certificate=sys.argv[1:]

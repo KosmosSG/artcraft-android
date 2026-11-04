@@ -7,6 +7,7 @@ on:
       - '.github/workflows/lightcraft-v018-preflight.yml'
       - 'configs/upstream/lightcraft-v018.json'
       - 'tools/lightcraft/verify_v018_contract.py'
+      - 'tools/lightcraft/patch_v018_android.py'
       - 'tools/lightcraft/patch_v017_builder.py'
       - 'tools/lightcraft/test_patch_v017_builder.py'
   workflow_dispatch:
@@ -50,9 +51,24 @@ jobs:
           python3 -m py_compile suite/tools/lightcraft/verify_v018_contract.py suite/tools/lightcraft/patch_v017_builder.py
           python3 -m unittest discover -s suite/tools/lightcraft -p 'test_patch_v017_builder.py' -v
           python3 suite/tools/lightcraft/verify_v018_contract.py source builder suite --report lightcraft-v018-source-compatibility.json
+          python3 -m py_compile suite/tools/lightcraft/patch_v018_android.py
+          python3 suite/tools/lightcraft/patch_v018_android.py --source source --builder builder --suite suite
+          python3 suite/tools/lightcraft/patch_v018_android.py --source source --builder builder --suite suite --apply
+          # Work only in temporary checkouts: the stable source and all other apps stay untouched.
+          git -C source diff --name-only > lightcraft-v018-source-changes.txt
+          git -C builder diff --name-only > lightcraft-v018-builder-changes.txt
+          grep -Fxq 'crates/ui-egui/src/dialogs.rs' lightcraft-v018-source-changes.txt
+          grep -Fxq 'crates/ui-egui/src/menus/run.rs' lightcraft-v018-source-changes.txt
+          grep -Fxq 'lib/build-common.sh' lightcraft-v018-builder-changes.txt
+          grep -Fxq 'lib/app_icons.py' lightcraft-v018-builder-changes.txt
+          test "$(wc -l < lightcraft-v018-source-changes.txt)" -eq 4
+          test "$(wc -l < lightcraft-v018-builder-changes.txt)" -eq 2
+          grep -Fq 'LIGHTCRAFT_V017_WRITE_NEW_PRIVATE_ONLY' builder/lib/build-common.sh
+          grep -Fq 'artcraft.lightcraft.check_updates_requested' source/crates/ui-egui/src/menus/run.rs
+          grep -Fq 'artcraft.lightcraft.include_preview' source/crates/ui-egui/src/dialogs.rs
           {
             echo '### LightCraft v0.18.0 source and SAF compatibility preflight'
-            echo 'Read-only lightweight checks. This is NOT an Android API port or installable APK.'
+            echo 'Source checks and isolated Android source/builder patch simulation. NO installable APK.'
             echo 'No Rust/ARM64 compilation, private signing, production merge or release.'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Record source review without publishing

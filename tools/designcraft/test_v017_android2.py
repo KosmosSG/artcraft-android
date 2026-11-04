@@ -45,6 +45,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn('bridge.dc_escape_action()', self.native)
         self.assertIn('bridge.dc_close_action()', self.native)
         self.assertIn("designcraft.unsaved.dcs", self.native)
+        self.assertIn('text.exitToFrame', self.native)
 
     def test_launcher_icon_replaces_android_top_level_menu(self):
         self.assertIn('include_image!("dc-launcher-icon.png")', self.native)

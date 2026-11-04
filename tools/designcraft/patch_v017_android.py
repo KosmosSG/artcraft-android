@@ -222,7 +222,9 @@ def main():
     launcher(android)
     java_source(root, android)
     install_icons(root, src, android)
-    print("DesignCraft v0.17: Android font import, modal D/C/S and branding staged")
+    from install_v017_updater import apply as install_updater
+    install_updater(root, src, android)
+    print("DesignCraft v0.17: Android font import, modal D/C/S, updater and branding staged")
 
 if __name__ == "__main__":
     main()

@@ -32,7 +32,11 @@ def patch(root: Path) -> None:
     if d.kind == crate::unsaved::KIND && !after_panel && !rejected
         && !egui::Popup::is_any_open(ctx)
     {
-        let pressed = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+        // A physical Ctrl+W can leave Ctrl latched across the IME handoff.
+        // consume_key(NONE) rejects the following D/C/S if modifiers linger.
+        // Accept the key press only in the Save Changes dialog, and never
+        // steal keystrokes from an active egui text-edit field.
+        let pressed = |key| !ctx.text_edit_focused() && ctx.input(|i| i.key_pressed(key));
         if pressed(egui::Key::C) || pressed(egui::Key::Escape) {
             cancel = true;
         } else if pressed(egui::Key::D) {

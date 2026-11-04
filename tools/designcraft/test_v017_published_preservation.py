@@ -50,7 +50,7 @@ class DesignCraftV017PublishedPreservation(unittest.TestCase):
         self.assertIn('app.artcraftCheckUpdates', self.updater)
         self.assertIn('app.artcraftStartupCheck', self.updater)
         self.assertIn('getPackageName()', (ROOT / "tools/designcraft/support/update_methods.java").read_text())
-        self.assertIn('certificate_sha256', self.policy)
+        self.assertIn('CERT.equals(certificate)', self.policy)
         self.assertIn('install_v017_updater import apply', self.patch)
 
     def test_other_app_and_production_safety(self):

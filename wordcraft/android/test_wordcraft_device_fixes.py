@@ -25,7 +25,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         ast.parse(s)
         self.assertIn('wc_raw_dcs = ', s)
         self.assertIn('self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw)', s)
-        self.assertIn('{wc_raw_dcs}        self.handle_clipboard_shortcuts(raw);', s)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);', s)
 
     def test_approved_icon_is_derived_from_launcher_and_not_unrelated_asset(self):
         s = text(BUILD)

@@ -28,9 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 public class VectorScanTest {
- static final long MAX_FONT=64L*1024*1024,MAX_SCAN_BYTES=4L*1024*1024*1024,MAX_SCAN_BATCH_BYTES=256L*1024*1024;
- static final int MAX_FONTS=5000,MAX_FOLDERS=5000,MAX_FONTS_PER_PASS=256;
- static final String TAG="test", PREFS="font_prefs", TREE_SCAN_OFFSET="font_scan_offset";
+ static final long MAX_FONT=64L*1024*1024,MAX_SCAN_BYTES=4L*1024*1024*1024,MAX_SCAN_BATCH_BYTES=64L*1024*1024;
+ static final int MAX_FONTS=5000,MAX_FOLDERS=5000,MAX_FONTS_PER_PASS=128;
+ static final String TAG="test", PREFS="font_prefs", TREE_SCAN_OFFSET="font_scan_offset",TREE_SCAN_BYTES="font_scan_bytes";
  static class Log { static void w(String tag,String text) {} static void w(String tag,String text,Exception e) {} }
  static class Uri {
    String id; Uri(String id){this.id=id;}
@@ -61,10 +61,13 @@ public class VectorScanTest {
  }
  class Prefs {
    final Map<String,Integer> ints = new HashMap<>();
+   final Map<String,Long> longs = new HashMap<>();
    int getInt(String key, int fallback){return ints.getOrDefault(key,fallback);}
+   long getLong(String key, long fallback){return longs.getOrDefault(key,fallback);}
    Editor edit(){return new Editor();}
    class Editor {
      Editor putInt(String key,int n){ints.put(key,n);return this;}
+     Editor putLong(String key,long n){longs.put(key,n);return this;}
      void apply(){}
    }
  }
@@ -105,7 +108,9 @@ public class VectorScanTest {
    VectorScanTest many=new VectorScanTest(new File(args[0],"many"));
    for(int i=0;i<201;i++)many.add("root","font"+i,"font"+i+".ttf",false,true);
    many.scanFontFolder(3,new Uri("root"));
-   check("ok".equals(many.status) && many.message.contains("201 font files"));
+   check("ok".equals(many.status) && many.message.contains("128 font files"));
+   many.scanFontFolder(4,new Uri("root"));
+   check("ok".equals(many.status) && many.message.contains("73 font files"));
  }
 '''
         with tempfile.TemporaryDirectory() as folder:

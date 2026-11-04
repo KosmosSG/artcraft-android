@@ -1,0 +1,108 @@
+name: DesignCraft v0.17 Android isolated review (debug only)
+
+on:
+  push:
+    branches:
+      - feature/designcraft-v017-android-test-20261104
+    paths:
+      - lib/build-common.sh
+      - configs/upstream/designcraft-v017.json
+      - tools/designcraft/**
+      - .github/workflows/designcraft-v017-review.yml
+  # Do not auto-spend GitHub Actions minutes on every PR refresh.
+  # Routine review-branch commits trigger skipped jobs (no runner minutes).
+  # Explicit opt-in: include [designcraft-ci] for source checks, or
+  # [designcraft-debug] for checks plus ARM64 debug compilation.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: designcraft-v017-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    # Opt-in only: ordinary commits consume no runner minutes.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[designcraft-ci]') || contains(github.event.head_commit.message, '[designcraft-debug]')
+    name: Safe source and Android feature checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify shell syntax, upstream pin and preserved app features
+        run: |
+          set -euo pipefail
+          bash -n lib/build-common.sh
+          python3 -m unittest discover -s tools/designcraft -p 'test_v017_*.py' -v
+          if test -f tools/suite_feature_parity.py; then
+            python3 tools/suite_feature_parity.py
+          else
+            echo "INFO: Suite parity audit is on main, not yet in this older stacked branch; required before merge."
+          fi
+          if test -f tools/release_gate_audit.py; then
+            python3 tools/release_gate_audit.py
+          else
+            echo "INFO: Release gate audit is on main, not yet in this older stacked branch; required before merge."
+          fi
+
+  debug-arm64:
+    name: Experimental ARM64 compile (NOT a release)
+    needs: source-contract
+    # Compile only on explicit opt-in; a successful edit is not a build request.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[designcraft-debug]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Bootstrap Android command-line tools and pinned SDK/NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018'
+      - name: Confirm Android SDK/NDK and prepare build dependencies
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/designcraft-venv"
+          "$RUNNER_TEMP/designcraft-venv/bin/pip" install pillow
+          echo "$RUNNER_TEMP/designcraft-venv/bin" >> "$GITHUB_PATH"
+          test -d "$ANDROID_HOME/platforms/android-35" || { echo "Android SDK 35 is missing"; exit 1; }
+          NDK_PATH="$ANDROID_HOME/ndk/27.2.12479018"
+          if test ! -d "$NDK_PATH"; then
+            echo "Installing pinned Android NDK 27.2 for the isolated review runner."
+            command -v sdkmanager
+            sdkmanager --install 'ndk;27.2.12479018'
+          fi
+          test -d "$NDK_PATH" || { echo "Android NDK 27.2 installation did not complete"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+      - name: Compile pinned DesignCraft v0.17.0 Android debug candidate
+        timeout-minutes: 40
+        run: bash build-debug.sh -designcraft -designcraft-v017 -packagename=com.artcraft.designcraft.test -appname='DesignCraft Test'
+      - name: Check output and checksum (not production certification)
+        run: |
+          set -euo pipefail
+          find output -maxdepth 1 -type f -name 'designcraft-*-debug.apk' -print
+          find output -maxdepth 1 -type f -name 'designcraft-*-debug.apk' -exec sha256sum {} \;
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: UNVERIFIED-DesignCraft-v0.17.0-android.1-DEBUG-arm64-not-for-updates
+          path: output/designcraft-*-debug.apk
+          retention-days: 3
+          if-no-files-found: error

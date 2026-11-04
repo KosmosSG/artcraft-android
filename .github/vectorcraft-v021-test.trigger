@@ -9,3 +9,5 @@ This revision targets demonstrated keyboard input issues and wheel event batchin
 - Preserve approved 5000 font / 4GiB background SAF scanner, launcher, updater and menus.
 - Full source-level and JVM gates BEFORE expensive Android SDK/native build.
 - Only separate com.artcraft.vectorcraft.test test package, ARM64, disposable signing. No permanent signing, release or stable changes.
+
+Retry preflight: guard now expects actual nativeSurface.requestFocus and versionCode 16783367; no behavior changes.

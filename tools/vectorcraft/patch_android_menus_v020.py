@@ -8,7 +8,7 @@ closed rather than producing a partially working Android app.
 from pathlib import Path
 import argparse
 
-VERSION = 'version = "0.20.0"'
+SUPPORTED_VERSIONS = ('version = "0.20.0"', 'version = "0.21.0"')
 
 
 def insert_once(source: str, old: str, new: str, label: str) -> str:
@@ -20,8 +20,8 @@ def insert_once(source: str, old: str, new: str, label: str) -> str:
 def patch(builder: Path) -> None:
     upstream = builder / "source/vectorcraft"
     manifest = (upstream / "Cargo.toml").read_text()
-    if manifest.count(VERSION) != 1:
-        raise RuntimeError("Only reviewed upstream VectorCraft v0.20.0 is supported")
+    if sum(manifest.count(v) for v in SUPPORTED_VERSIONS) != 1:
+        raise RuntimeError("Only reviewed upstream VectorCraft v0.20.0 or v0.21.0 is supported")
     root = upstream / "crates/ui-egui/src"
     menus = root / "menus.rs"
     run = root / "menus/run.rs"

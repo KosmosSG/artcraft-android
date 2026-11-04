@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.PixelCopy;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -17,11 +19,14 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.SurfaceView;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.window.SplashScreenView;
+import androidx.core.splashscreen.SplashScreen;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
@@ -80,8 +85,10 @@ public final class VectorCraftActivity extends NativeActivity {
     // the native process never reaches its first frame.
     private FrameLayout startupCover;
     // Keep Android 12+ system splash above the native Vulkan surface until ready.
-    private SplashScreenView systemSplash;
     private volatile boolean nativeEditorReady;
+    private final Handler splashHandler = new Handler(Looper.getMainLooper());
+    private long firstFrameProbeStartMs;
+    private boolean firstFrameProbePending;
 
     void vcOfferExtraResult(String json) { results.offer(json); }
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
@@ -165,26 +172,64 @@ public final class VectorCraftActivity extends NativeActivity {
         }
     }
 
-    private void installSystemSplashHold() {
-        if (Build.VERSION.SDK_INT < 31) return;
-        try {
-            getSplashScreen().setOnExitAnimationListener(view -> {
-                systemSplash = view;
-                if (nativeEditorReady) finishSystemSplash();
-            });
-        } catch (RuntimeException error) {
-            Log.w(TAG, "System splash hold unavailable; using activity cover", error);
+    // PixelCopy of the actual native SurfaceView, rather than a Rust UI
+    // callback, proves the GPU has presented pixels. A failed/empty copy is
+    // retried asynchronously so we never block the Android main thread.
+    private SurfaceView findNativeSurface(View node) {
+        if (node instanceof SurfaceView) return (SurfaceView) node;
+        if (node instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) node;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                SurfaceView child = findNativeSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
         }
+        return null;
     }
 
-    private void finishSystemSplash() {
-        SplashScreenView splash = systemSplash;
-        if (splash == null) return;
-        systemSplash = null;
-        splash.postDelayed(() -> {
-            try { splash.remove(); }
-            catch (RuntimeException error) { Log.w(TAG, "Splash view dismissal failed", error); }
-        }, 450);
+    private void probeFirstPresentedFrame() {
+        if (nativeEditorReady || firstFrameProbePending) return;
+        if (System.currentTimeMillis() - firstFrameProbeStartMs > 16000L) {
+            // Fail open to a usable editor, but log the missing first-frame
+            // proof for future GPU diagnostics instead of claiming success.
+            Log.w(TAG, "First native frame not confirmed by PixelCopy in 16s");
+            nativeEditorReady = true;
+            dismissStartupCover();
+            return;
+        }
+        SurfaceView surface = findNativeSurface(getWindow().getDecorView());
+        if (surface == null || !surface.getHolder().getSurface().isValid()
+                || surface.getWidth() < 2 || surface.getHeight() < 2) {
+            splashHandler.postDelayed(this::probeFirstPresentedFrame, 90);
+            return;
+        }
+        firstFrameProbePending = true;
+        Bitmap pixels = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+        PixelCopy.request(surface, pixels, result -> {
+            firstFrameProbePending = false;
+            boolean visiblePixels = false;
+            if (result == PixelCopy.SUCCESS) {
+                for (int y = 0; y < 8 && !visiblePixels; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        int c = pixels.getPixel(x, y);
+                        if (Color.red(c) > 20 || Color.green(c) > 20 || Color.blue(c) > 20) {
+                            visiblePixels = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            pixels.recycle();
+            if (visiblePixels) {
+                Log.i(TAG, "VectorCraft native SurfaceView first painted frame confirmed");
+                nativeEditorReady = true;
+                // androidx setKeepOnScreenCondition now returns false on next
+                // draw, without the black flash seen when Rust only initialized.
+                dismissStartupCover();
+            } else {
+                splashHandler.postDelayed(this::probeFirstPresentedFrame, 90);
+            }
+        }, splashHandler);
     }
 
     private int splashDp(int dp) {
@@ -226,18 +271,10 @@ public final class VectorCraftActivity extends NativeActivity {
 
     /** Called exactly once by Rust after its first editor UI traversal. */
     public void vcNativeUiReady() {
-        nativeEditorReady = true;
+        // JNI is a signal to START checking; it is not presentation proof.
         runOnUiThread(() -> {
-            finishSystemSplash();
-            FrameLayout cover = startupCover;
-            if (cover != null) {
-                // Allow the just-submitted native frame to reach the GPU before
-                // removing the overlay; no wait on the UI or graphics thread.
-                // The native first-ui callback precedes actual Vulkan present.
-                // Keep the branded cover briefly so slow first GPU swaps cannot
-                // expose a black SurfaceView between Java startup and the editor.
-                cover.postDelayed(this::dismissStartupCover, 800);
-            }
+            if (firstFrameProbeStartMs == 0) firstFrameProbeStartMs = System.currentTimeMillis();
+            probeFirstPresentedFrame();
         });
     }
 
@@ -253,8 +290,10 @@ public final class VectorCraftActivity extends NativeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Must install BEFORE NativeActivity.super.onCreate initializes Rust.
+        SplashScreen splash = SplashScreen.installSplashScreen(this);
+        splash.setKeepOnScreenCondition(() -> !nativeEditorReady);
         super.onCreate(savedInstanceState);
-        installSystemSplashHold();
         showStartupCover();
         applyImmersiveFullscreen();
         // The native surface view is attached after onCreate and can reset the window state:

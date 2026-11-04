@@ -150,6 +150,207 @@ pub fn artcraft_discard_active(app: &crate::PhotocraftApp) -> bool {
         }
         return super.dispatchGenericMotionEvent(event);
 ''')
+
+    # Android.8 HOTKEY REGRESSION: include all officially supported Photoshop
+    # tool shortcut letters. Android.7 only forwarded V/T/B/Y/N/C and skipped
+    # M (Rectangular Marquee) and most of the other toolbar bindings.
+    # Preserve original event dispatch and never read or log typed text.
+    hardware = opt.adapter/"src/hardware_keys.rs"
+    patch(hardware,
+'''fn mapped_key(code: u32) -> Option<egui::Key> {
+    Some(match code {
+        111 => egui::Key::Escape, // Android KEYCODE_ESCAPE
+        50 => egui::Key::V,
+        48 => egui::Key::T,
+        30 => egui::Key::B,
+        53 => egui::Key::Y,
+        42 => egui::Key::N,
+        31 => egui::Key::C,
+        51 => egui::Key::W,
+        32 => egui::Key::D,
+        47 => egui::Key::S,
+        66 => egui::Key::Enter,
+        _ => return None,
+    })
+}
+''',
+'''fn mapped_key(code: u32) -> Option<egui::Key> {
+    // Android KeyEvent KEYCODE_A..KEYCODE_Z are consecutive (29..=54).
+    // Forward only key identity; Android-owned text / IME content stays private.
+    Some(match code {
+        29 => egui::Key::A, 30 => egui::Key::B,
+        31 => egui::Key::C, 32 => egui::Key::D,
+        33 => egui::Key::E, 34 => egui::Key::F,
+        35 => egui::Key::G, 36 => egui::Key::H,
+        37 => egui::Key::I, 38 => egui::Key::J,
+        39 => egui::Key::K, 40 => egui::Key::L,
+        41 => egui::Key::M, 42 => egui::Key::N,
+        43 => egui::Key::O, 44 => egui::Key::P,
+        45 => egui::Key::Q, 46 => egui::Key::R,
+        47 => egui::Key::S, 48 => egui::Key::T,
+        49 => egui::Key::U, 50 => egui::Key::V,
+        51 => egui::Key::W, 52 => egui::Key::X,
+        53 => egui::Key::Y, 54 => egui::Key::Z,
+        66 => egui::Key::Enter,
+        111 => egui::Key::Escape,
+        _ => return None,
+    })
+}
+''')
+
+    # An OEM keyboard may deliver letter input as Text only. Do not turn
+    # letters into tools inside a text field; a modal discard prompt is the
+    # exception, and only its three explicit answers are eligible there.
+    patch(hardware,
+'''    raw: &mut egui::RawInput, ctx: &egui::Context, inline_text_edit: bool,
+) {
+    if inline_text_edit || ctx.text_edit_focused() { return; }
+''',
+'''    raw: &mut egui::RawInput, ctx: &egui::Context, inline_text_edit: bool,
+    discard_prompt_active: bool,
+) {
+    if !discard_prompt_active && (inline_text_edit || ctx.text_edit_focused()) {
+        return;
+    }
+''')
+    patch(hardware,
+'''        let key = match text.as_str().to_ascii_lowercase().as_str() {
+            "v" => egui::Key::V, "t" => egui::Key::T,
+            "b" => egui::Key::B, "y" => egui::Key::Y,
+            "n" => egui::Key::N, "c" => egui::Key::C,
+            "d" => egui::Key::D, "s" => egui::Key::S,
+            _ => continue,
+        };
+''',
+'''        let key = match text.as_str().to_ascii_lowercase().as_str() {
+            "a" => egui::Key::A, "b" => egui::Key::B,
+            "c" => egui::Key::C, "d" => egui::Key::D,
+            "e" => egui::Key::E, "g" => egui::Key::G,
+            "h" => egui::Key::H, "i" => egui::Key::I,
+            "j" => egui::Key::J, "k" => egui::Key::K,
+            "l" => egui::Key::L, "m" => egui::Key::M,
+            "n" => egui::Key::N, "o" => egui::Key::O,
+            "p" => egui::Key::P, "r" => egui::Key::R,
+            "s" => egui::Key::S, "t" => egui::Key::T,
+            "u" => egui::Key::U, "v" => egui::Key::V,
+            "w" => egui::Key::W, "y" => egui::Key::Y,
+            "z" => egui::Key::Z,
+            _ => continue,
+        };
+        if discard_prompt_active && !matches!(key, egui::Key::Y | egui::Key::N | egui::Key::C) {
+            continue;
+        }
+''')
+    patch(host,
+'''        hardware_keys::recover_text_keys(
+            raw, ctx, self.inner.ui.text_edit.is_some(),
+        );
+''',
+'''        hardware_keys::recover_text_keys(
+            raw, ctx, self.inner.ui.text_edit.is_some(),
+            photocraft_ui_egui::menus::artcraft_discard_active(&self.inner),
+        );
+''')
+
+    # Extend the pre-existing, verified direct tool-command fallback. The
+    # upstream shortcut handler still owns custom remaps and Shift cycling.
+    # Do not select a tool while a modal dialog or inline editor owns focus.
+    patch(host,
+'''                if !modifiers.ctrl && !modifiers.alt && !modifiers.shift
+                    && self.inner.ui.text_edit.is_none() {
+                    self.artcraft_tool_pending = match key {
+                        egui::Key::V => Some("tools.select.move"),
+                        egui::Key::T => Some("tools.select.type"),
+                        egui::Key::B => Some("tools.select.brush"),
+                        _ => self.artcraft_tool_pending,
+                    };
+                }
+''',
+'''                if !modifiers.ctrl && !modifiers.alt && !modifiers.shift
+                    && self.inner.ui.text_edit.is_none()
+                    && !ctx.text_edit_focused()
+                    && !photocraft_ui_egui::menus::artcraft_discard_active(&self.inner) {
+                    self.artcraft_tool_pending = match key {
+                        egui::Key::V => Some("tools.select.move"),
+                        egui::Key::M => Some("tools.select.rectMarquee"),
+                        egui::Key::L => Some("tools.select.lasso"),
+                        egui::Key::W => Some("tools.select.magicWand"),
+                        egui::Key::C => Some("tools.select.crop"),
+                        egui::Key::I => Some("tools.select.eyedropper"),
+                        egui::Key::B => Some("tools.select.brush"),
+                        egui::Key::E => Some("tools.select.eraser"),
+                        egui::Key::G => Some("tools.select.gradient"),
+                        egui::Key::T => Some("tools.select.type"),
+                        egui::Key::H => Some("tools.select.hand"),
+                        egui::Key::R => Some("tools.select.rotateView"),
+                        egui::Key::Z => Some("tools.select.zoom"),
+                        egui::Key::J => Some("tools.select.spotHealing"),
+                        egui::Key::S => Some("tools.select.cloneStamp"),
+                        egui::Key::Y => Some("tools.select.historyBrush"),
+                        egui::Key::O => Some("tools.select.dodge"),
+                        egui::Key::P => Some("tools.select.pen"),
+                        egui::Key::A => Some("tools.select.pathSelection"),
+                        egui::Key::U => Some("tools.select.rectangle"),
+                        egui::Key::K => Some("tools.select.frame"),
+                        _ => self.artcraft_tool_pending,
+                    };
+                }
+''')
+
+    # The Android activity filters physical key codes, not typed strings. It
+    # must match Rust's full allowlist and capture OEM pre-IME key delivery
+    # without consuming the native key event or its editing behavior.
+    patch(act,
+'''        if (code != KeyEvent.KEYCODE_ESCAPE && code != KeyEvent.KEYCODE_V
+                && code != KeyEvent.KEYCODE_T && code != KeyEvent.KEYCODE_B
+                && code != KeyEvent.KEYCODE_Y && code != KeyEvent.KEYCODE_N
+                && code != KeyEvent.KEYCODE_C && code != KeyEvent.KEYCODE_W
+                && code != KeyEvent.KEYCODE_D && code != KeyEvent.KEYCODE_S
+                && code != KeyEvent.KEYCODE_ENTER) return;
+''',
+'''        if ((code < KeyEvent.KEYCODE_A || code > KeyEvent.KEYCODE_Z)
+                && code != KeyEvent.KEYCODE_ESCAPE
+                && code != KeyEvent.KEYCODE_ENTER) return;
+''')
+    patch(act,
+'''                @Override
+                public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    pcRememberHardwareKey(event);
+''',
+'''                @Override
+                public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+                    // Some tablet IMEs intercept Y/N/C and tool letters before
+                    // Activity.dispatchKeyEvent. This records the original
+                    // key once and leaves the Android IME lifecycle untouched.
+                    pcRememberHardwareKey(event);
+                    return super.onKeyPreIme(keyCode, event);
+                }
+
+                @Override
+                public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    pcRememberHardwareKey(event);
+''')
+    patch(act,
+'''    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+''',
+'''    @Override
+    public boolean dispatchKeyShortcutEvent(KeyEvent event) {
+        // Preserve Ctrl shortcuts even when an OEM routes them separately.
+        pcRememberHardwareKey(event);
+        return super.dispatchKeyShortcutEvent(event);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+''')
+    # All direct/Java injection hooks must be present before the costly build.
+    assert "egui::Key::M => Some(\"tools.select.rectMarquee\")" in host.read_text()
+    assert "discard_prompt_active" in hardware.read_text()
+    assert "onKeyPreIme" in act.read_text()
+    assert "dispatchKeyShortcutEvent" in act.read_text()
+    print("Android.8: full tool-letter physical shortcuts and Y/N/C modal pre-IME routing staged")
+
     print("Android.7: dedicated Shortcut Pad strip, Android 14+ gesture axes and modal dialog hotkeys staged")
 
 if __name__=="__main__":

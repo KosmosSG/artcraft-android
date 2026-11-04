@@ -6,3 +6,5 @@ Automatically continue existing 128-file/64MiB bounded scan batches in one worke
 Treat SAF unknown file sizes (0/-1/null) as streamable with hard per-file budget; preserve cached fonts, progress spinner and async catalog.
 Run preflight Python and JVM tests first; stop if tests fail; only one ARM64 disposable-key signed artifact (com.artcraft.vectorcraft.test).
 Do not touch production keystore, stable release, signing, or publish a GitHub Release.
+
+Retry preflight only after revealing JVM scanner stderr (previous 41804327817 stopped before SDK/compiler).

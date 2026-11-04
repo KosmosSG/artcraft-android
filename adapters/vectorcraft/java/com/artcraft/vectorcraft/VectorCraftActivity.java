@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.Bitmap;
 import android.view.PixelCopy;
 import android.net.Uri;
@@ -89,6 +90,7 @@ public final class VectorCraftActivity extends NativeActivity {
     private final Handler splashHandler = new Handler(Looper.getMainLooper());
     private long firstFrameProbeStartMs;
     private boolean firstFrameProbePending;
+    private int verifiedNativeFrames;
 
     void vcOfferExtraResult(String json) { results.offer(json); }
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
@@ -204,27 +206,33 @@ public final class VectorCraftActivity extends NativeActivity {
             return;
         }
         firstFrameProbePending = true;
-        Bitmap pixels = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
+        // Sample enough of the SurfaceView to distinguish a flat, dark GPU
+        // clear colour from the actual drawn editor (text, panes, artboard).
+        Bitmap pixels = Bitmap.createBitmap(24, 16, Bitmap.Config.ARGB_8888);
         PixelCopy.request(surface, pixels, result -> {
             firstFrameProbePending = false;
-            boolean visiblePixels = false;
+            int bright = 0, dark = 0;
             if (result == PixelCopy.SUCCESS) {
-                for (int y = 0; y < 8 && !visiblePixels; y++) {
-                    for (int x = 0; x < 8; x++) {
-                        int c = pixels.getPixel(x, y);
-                        if (Color.red(c) > 20 || Color.green(c) > 20 || Color.blue(c) > 20) {
-                            visiblePixels = true;
-                            break;
-                        }
+                for (int y = 0; y < pixels.getHeight(); y++) {
+                    for (int x = 0; x < pixels.getWidth(); x++) {
+                        int pixel = pixels.getPixel(x, y);
+                        int r = Color.red(pixel), g = Color.green(pixel), b = Color.blue(pixel);
+                        int value = Math.max(r, Math.max(g, b));
+                        if (value >= 110 && Math.min(r, Math.min(g, b)) >= 50) bright++;
+                        if (value <= 65) dark++;
                     }
                 }
             }
             pixels.recycle();
-            if (visiblePixels) {
-                Log.i(TAG, "VectorCraft native SurfaceView first painted frame confirmed");
+            // A single dark pixel isn't proof of an editor frame. The native
+            // clear pass also has RGB >20; require light AND dark UI details,
+            // confirmed in two consecutive copies, before exposing Vulkan.
+            boolean meaningfulFrame = result == PixelCopy.SUCCESS
+                    && bright >= 3 && dark >= 3;
+            verifiedNativeFrames = meaningfulFrame ? verifiedNativeFrames + 1 : 0;
+            if (verifiedNativeFrames >= 2) {
+                Log.i(TAG, "VectorCraft painted frame verified twice via PixelCopy");
                 nativeEditorReady = true;
-                // androidx setKeepOnScreenCondition now returns false on next
-                // draw, without the black flash seen when Rust only initialized.
                 dismissStartupCover();
             } else {
                 splashHandler.postDelayed(this::probeFirstPresentedFrame, 90);
@@ -238,7 +246,7 @@ public final class VectorCraftActivity extends NativeActivity {
 
     private void showStartupCover() {
         FrameLayout cover = new FrameLayout(this);
-        cover.setBackgroundColor(Color.rgb(25, 5, 9));
+        cover.setBackgroundColor(Color.rgb(45, 0, 0));
         cover.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
 
         LinearLayout contents = new LinearLayout(this);
@@ -290,6 +298,9 @@ public final class VectorCraftActivity extends NativeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Match the Android window theme immediately, including any interval
+        // before NativeActivity attaches its Vulkan SurfaceView.
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(45, 0, 0)));
         // Must install BEFORE NativeActivity.super.onCreate initializes Rust.
         SplashScreen splash = SplashScreen.installSplashScreen(this);
         splash.setKeepOnScreenCondition(() -> !nativeEditorReady);

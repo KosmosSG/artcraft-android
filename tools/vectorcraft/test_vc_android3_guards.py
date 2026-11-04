@@ -53,8 +53,8 @@ class VectorCraftAndroid3Guards(unittest.TestCase):
             "MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024",
             "MAX_FONTS_PER_PASS = 128",
             "MAX_SCAN_BATCH_BYTES = 64L * 1024 * 1024",
-            "TREE_SCAN_BYTES", "getLong(TREE_SCAN_BYTES",
-            "putLong(TREE_SCAN_BYTES",
+            "SCAN_STATE_NAME", "loadScanState(treeUri)",
+            "saveScanState(p)",
             "takePersistableUriPermission",
         ):
             self.assertIn(requirement, extras)

@@ -2,6 +2,7 @@
 use android_activity::AndroidApp;
 use jni::{jni_sig, jni_str, JavaVM, objects::{JObject, JString, JValue}};
 use std::sync::mpsc;
+use effectcraft_ui_egui::EffectcraftApp;
 
 pub struct Updater {
     app: AndroidApp,
@@ -27,6 +28,36 @@ macro_rules! action {
 }
 
 impl Updater {
+    /// Pull explicit physical Ctrl+W/Q from Android before UI text-focus filters.
+    /// Invoke the same guarded upstream menu commands; never bypass unsaved prompts.
+    pub fn keyboard_shortcuts(&self, inner: &mut EffectcraftApp, ctx: &egui::Context) {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let actions = vm.attach_current_thread(|env| -> jni::errors::Result<Vec<i32>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let mut actions = Vec::new();
+            for _ in 0..8 {
+                let result = env.call_method(&*activity, jni_str!("ecPollPhysicalShortcut"),
+                    jni_sig!("()I"), &[]);
+                if result.is_err() { env.exception_clear(); }
+                let code = result?.i()?;
+                if code == 0 { break; }
+                actions.push(code);
+            }
+            Ok(actions)
+        });
+        match actions {
+            Ok(actions) => for code in actions {
+                if inner.dialog.is_some() { continue; }
+                let command = match code { 1 => "file.close", 2 => "app.quit", _ => continue };
+                if let Err(error) = effectcraft_ui_egui::menus::invoke(inner, ctx,
+                    command, serde_json::json!({})) {
+                    log::warn!("Physical Android shortcut {command}: {error}");
+                }
+            },
+            Err(error) => log::warn!("Physical Android shortcut bridge: {error}"),
+        }
+    }
     pub fn unsaved_dialog(&self, active: bool, ctx: &egui::Context) {
         if !active { ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("effectcraft.unsaved.dcs"))); }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };

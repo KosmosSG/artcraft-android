@@ -24,12 +24,14 @@ class DispatchBehavior(unittest.TestCase):
             (root/'android/view').mkdir(parents=True)
             (root/'android/view/KeyEvent.java').write_text('''package android.view;
 public class KeyEvent {
- public static final int ACTION_DOWN=0,ACTION_UP=1,KEYCODE_D=32,KEYCODE_C=31,KEYCODE_S=47,KEYCODE_ESCAPE=111,FLAG_SOFT_KEYBOARD=2;
- int key,action,repeat,flags; boolean modified;
- public KeyEvent(int k,int a,int r,boolean m,int f){key=k;action=a;repeat=r;modified=m;flags=f;}
+ public static final int ACTION_DOWN=0,ACTION_UP=1,KEYCODE_D=32,KEYCODE_C=31,KEYCODE_S=47,KEYCODE_ESCAPE=111,KEYCODE_W=51,KEYCODE_Q=45,FLAG_SOFT_KEYBOARD=2;
+ int key,action,repeat,flags; boolean modified; boolean ctrl;
+ public KeyEvent(int k,int a,int r,boolean m,int f){key=k;action=a;repeat=r;modified=m;flags=f;ctrl=m;}
  public int getKeyCode(){return key;} public int getAction(){return action;}
  public int getRepeatCount(){return repeat;} public int getFlags(){return flags;}
  public boolean hasNoModifiers(){return !modified;} public boolean isSystem(){return false;}
+ public boolean isCtrlPressed(){return ctrl;} public boolean isShiftPressed(){return false;}
+ public boolean isAltPressed(){return false;} public boolean isMetaPressed(){return false;}
 }''')
             (root/'Harness.java').write_text('''import android.view.KeyEvent;
 class Parent { int forwarded=0; public boolean dispatchKeyEvent(KeyEvent e){forwarded++;return false;}
@@ -50,6 +52,18 @@ public class Harness extends Parent {
   h.dispatchKeyEvent(event(31,0,0,false,0)); check(h.ecUnsavedDialog(true)==2);
   h.dispatchKeyEvent(event(31,1,0,false,0)); h.dispatchKeyEvent(event(47,0,0,false,0)); check(h.ecUnsavedDialog(true)==3);
   check(h.imeWanted && h.hides==0);
+  h.ecUnsavedDialog(false);
+  check(h.dispatchKeyEvent(event(51,0,0,true,0)));
+  check(h.ecPollPhysicalShortcut()==1);
+  check(h.dispatchKeyEvent(event(51,0,1,true,0)));
+  check(h.ecPollPhysicalShortcut()==0);
+  check(h.dispatchKeyEvent(event(51,1,0,true,0)));
+  check(h.dispatchKeyEvent(event(45,0,0,true,0)));
+  check(h.ecPollPhysicalShortcut()==2);
+  h.dispatchKeyEvent(event(45,1,0,true,0));
+  check(h.ecPollPhysicalShortcut()==0);
+  check(!h.dispatchKeyEvent(event(51,0,0,false,0)));
+  check(h.ecPollPhysicalShortcut()==0);
  }
 }''')
             subprocess.run(['javac','android/view/KeyEvent.java','Harness.java'],cwd=root,check=True,capture_output=True)

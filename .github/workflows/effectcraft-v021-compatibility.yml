@@ -121,15 +121,15 @@ jobs:
           test ! -e keys/.keystore-password
           cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
           python3 tools/approved-branding/approved_branding.py install . effectcraft
-          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v021test2 -appname=EffectCraft-v021-Test -appicon=source/effectcraft/ec-approved-512.png
+          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v021test3 -appname=EffectCraft-v021-Test -appicon=source/effectcraft/ec-approved-512.png
           test -s output/effectcraft-0.21.0.apk
           mkdir -p candidate
-          cp output/effectcraft-0.21.0.apk candidate/EffectCraft-v0.21.0-android.2-TEST-arm64-v8a.apk
+          cp output/effectcraft-0.21.0.apk candidate/EffectCraft-v0.21.0-android.3-TEST-arm64-v8a.apk
       - name: Verify test-only package, version, ABI, and disposable signing
         shell: bash
         run: |
           set -euo pipefail
-          APK=candidate/EffectCraft-v0.21.0-android.2-TEST-arm64-v8a.apk
+          APK=candidate/EffectCraft-v0.21.0-android.3-TEST-arm64-v8a.apk
           SDK="$ANDROID_HOME/build-tools/35.0.0"
           "$SDK/apksigner" verify --verbose --print-certs "$APK" > candidate/certificate.txt
           if grep -iq '10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577' candidate/certificate.txt; then
@@ -137,14 +137,14 @@ jobs:
             exit 1
           fi
           "$SDK/aapt" dump badging "$APK" > candidate/badging.txt
-          grep -F "name='com.artcraft.effectcraft.v021test2'" candidate/badging.txt
-          grep -F "versionName='0.21.0-android.2'" candidate/badging.txt
-          grep -F "versionCode='16820002'" candidate/badging.txt
+          grep -F "name='com.artcraft.effectcraft.v021test3'" candidate/badging.txt
+          grep -F "versionName='0.21.0-android.3'" candidate/badging.txt
+          grep -F "versionCode='16820003'" candidate/badging.txt
           "$SDK/zipalign" -c -P 16 -v 4 "$APK"
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, zipfile
-          apk = Path('candidate/EffectCraft-v0.21.0-android.2-TEST-arm64-v8a.apk')
+          apk = Path('candidate/EffectCraft-v0.21.0-android.3-TEST-arm64-v8a.apk')
           with zipfile.ZipFile(apk) as z:
               names=z.namelist()
               libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
@@ -154,8 +154,8 @@ jobs:
           (apk.parent/'SHA256SUMS.txt').write_text(digest+'  '+apk.name+'\n')
           (apk.parent/'verification.json').write_text(json.dumps({
               'upstream_tag':'v0.21.0','upstream_sha':'7870b5916ae0749d497d880989683bf2946d6c8b',
-              'package':'com.artcraft.effectcraft.v021test2',
-              'versionName':'0.21.0-android.2','versionCode':16820002,
+              'package':'com.artcraft.effectcraft.v021test3',
+              'versionName':'0.21.0-android.3','versionCode':16820003,
               'apk_sha256':digest,'production_signing_verified':False,
               'device_tested':False,'eligible_for_release':False
           },indent=2))
@@ -164,7 +164,7 @@ jobs:
       - name: Upload private Actions test artifact (never a GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: EffectCraft-v0.21.0-Android2-TEMPORARY-TEST-ONLY
+          name: EffectCraft-v0.21.0-Android3-TEMPORARY-TEST-ONLY
           path: candidate/
           retention-days: 3
           if-no-files-found: error

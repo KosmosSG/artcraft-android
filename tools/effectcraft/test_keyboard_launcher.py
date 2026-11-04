@@ -23,6 +23,11 @@ class KeyboardLauncher(unittest.TestCase):
                 self.assertIn("event.getRepeatCount() == 0", java)
                 self.assertIn("return super.dispatchKeyEvent(event);", java)
                 self.assertIn("surface.requestFocus()", java)
+                self.assertIn("ecPollPhysicalShortcut()", java)
+                self.assertIn("ecConsumePhysicalShortcut(event)", java)
+                self.assertIn("ecConsumeDialogKey(event)", java)
+                self.assertIn("imeHide();", java)
+
                 if base == "NativeActivity":
                     self.assertNotIn("super.onKeyDown", java)
                     self.assertNotIn("super.onKeyUp", java)

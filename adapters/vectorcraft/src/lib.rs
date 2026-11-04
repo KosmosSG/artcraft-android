@@ -1051,6 +1051,10 @@ impl eframe::App for VectorCraftAndroidApp {
                 Err(error) => log::warn!("Type Ctrl+W editor finish failed: {error}"),
             }
             if exited {
+                // Releasing the IME focus can swallow the physical Ctrl key-up.
+                // Do not let the previous Ctrl+W modifier block future V/T/P.
+                self.modifiers = AndroidModifiers::default();
+                raw.events.push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
                 ctx.memory_mut(|memory| {
                     if let Some(id) = memory.focused() { memory.surrender_focus(id); }
                 });
@@ -1086,6 +1090,8 @@ impl eframe::App for VectorCraftAndroidApp {
                         Err(error) => log::warn!("Type editor Escape failed: {error}"),
                     }
                     if handled {
+                        self.modifiers = AndroidModifiers::default();
+                        raw.events.push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
                         // The Type tool has exited. Release stale egui text-field focus
                         // as well as Android's hidden IME host so V/T/P can work while
                         // the selected text object's contextual task bar stays visible.

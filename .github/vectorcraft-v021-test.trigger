@@ -5,3 +5,5 @@ Font fix: persistent BFS queue of SAF document IDs / nested folders with atomic 
 Report each batch for background Rust FontDb updates without UI blocking. Preserve previous fonts and approved Vc icon, menu, keyboard, updater controls and stable data.
 Run Python and JVM test gates before Android SDK/Rust; do not compile if any fail.
 Use only com.artcraft.vectorcraft.test with disposable test signer. No production key, no signing approval, no GitHub Release publication.
+
+Recheck source guards: migrated offset scan and native activity AndroidX splash test declarations. No permanent signing.

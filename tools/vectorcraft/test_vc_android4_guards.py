@@ -12,6 +12,8 @@ class VectorCraftAndroid4Guards(unittest.TestCase):
     def test_androidx_splash_stays_until_pixelcopy_confirms_native_surface(self):
         java=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
         theme=(ROOT/"tools/vectorcraft/patch_compact_apk_v020.py").read_text()
+        self.assertIn("import android.view.PixelCopy;",java)
+        self.assertNotIn("import android.graphics.PixelCopy;",java)
         for marker in (
             "import androidx.core.splashscreen.SplashScreen",
             "SplashScreen.installSplashScreen(this)",

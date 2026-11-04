@@ -14,7 +14,7 @@ class SharedScan(unittest.TestCase):
         self.assertNotIn('Incomplete shared font scan; previous fonts preserved',s)
         for token in ('MAX_FONTS = 5000','MAX_FOLDERS = 5000','MAX_FONT = 64L',
                       'MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024','fontDigest(file)',
-                      'Previous fonts kept; refreshing font catalog', '"ttcf".equals(s)'):
+                      'Existing fonts preserved; catalog will refresh once finished.', '"ttcf".equals(s)'):
             self.assertIn(token,s)
 
     @unittest.skipUnless(shutil.which('javac'),'JVM required in private CI')
@@ -30,7 +30,7 @@ import java.util.*;
 public class VectorScanTest {
  static final long MAX_FONT=64L*1024*1024,MAX_SCAN_BYTES=4L*1024*1024*1024,MAX_SCAN_BATCH_BYTES=64L*1024*1024;
  static final int MAX_FONTS=5000,MAX_FOLDERS=5000,MAX_FONTS_PER_PASS=128;
- static final String TAG="test", PREFS="font_prefs", TREE_SCAN_OFFSET="font_scan_offset",TREE_SCAN_BYTES="font_scan_bytes";
+ static final String TAG="test", PREFS="font_prefs", TREE_SCAN_OFFSET="font_scan_offset",TREE_SCAN_BYTES="font_scan_bytes",TREE_SCAN_ADDED="font_total_added";
  static class Log { static void w(String tag,String text) {} static void w(String tag,String text,Exception e) {} }
  static class Uri {
    String id; Uri(String id){this.id=id;}
@@ -99,7 +99,7 @@ public class VectorScanTest {
    t.add("root","nested","nested",true,false);
    t.add("nested","broken","broken.ttf",false,false);
    t.add("nested","good","good.TTC",false,true);
-   t.scanFontFolder(1,new Uri("root"));
+   t.nodes.get("nested").get(1)[3]="0"; // SAF unknown size: valid font must still load\n   t.scanFontFolder(1,new Uri("root"));
    check("ok".equals(t.status) && t.reported==1 && t.message.contains("skipped 1"));
    check(Files.exists(old) && shared.list().length==2);
    t.scanFontFolder(2,new Uri("root"));
@@ -108,9 +108,9 @@ public class VectorScanTest {
    VectorScanTest many=new VectorScanTest(new File(args[0],"many"));
    for(int i=0;i<201;i++)many.add("root","font"+i,"font"+i+".ttf",false,true);
    many.scanFontFolder(3,new Uri("root"));
-   check("ok".equals(many.status) && many.message.contains("128 font files"));
+   check("ok".equals(many.status) && many.message.contains("201 font files processed"));
    many.scanFontFolder(4,new Uri("root"));
-   check("ok".equals(many.status) && many.message.contains("73 font files"));
+   check("ok".equals(many.status) && many.message.contains("201 font files processed"));
  }
 '''
         with tempfile.TemporaryDirectory() as folder:

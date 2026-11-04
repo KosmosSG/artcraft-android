@@ -1,0 +1,179 @@
+name: LightCraft v0.18.0 Android.1 ARM64 TEST ONLY (DISPOSABLE SIGNING)
+
+on:
+  push:
+    branches:
+      - feature/lightcraft-v0180-android-test-20261104
+    paths:
+      - '.github/workflows/lightcraft-v018-arm64-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightcraft-v018-arm64-test
+  cancel-in-progress: false
+
+jobs:
+  lightcraft-only:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      RUSTFLAGS: '-C strip=debuginfo'
+    steps:
+      - name: Checkout protected ArtCraft Android baseline-derived branch
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          persist-credentials: false
+      - name: Checkout immutable official LightCraft v0.18.0
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: 32d569ad5d19a6b55cf8d5c077127faa0f44a83b
+          path: source
+          persist-credentials: false
+      - name: Checkout reviewed Android reference builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Reconfirm source and feature protection before costly toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = '32d569ad5d19a6b55cf8d5c077127faa0f44a83b'
+          git -C suite merge-base --is-ancestor 7496af6c95e4bf6c1a1be6586838801f193ed749 HEAD
+          python3 -m unittest discover -s suite/tools/lightcraft -p 'test_patch_v017_builder.py' -v
+          python3 suite/tools/lightcraft/verify_v018_contract.py source builder suite
+          python3 suite/tools/lightcraft/patch_v018_android.py --source source --builder builder --suite suite
+          test -s suite/assets/lightcraft/lc-user-approved.png
+      - name: Preserve approved LightCraft source/UI, SAF and launcher icon in disposable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/patch_v018_android.py --source source --builder builder --suite suite --apply
+          # Version is changed only inside the disposable upstream checkout; no released source is edited.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("source/Cargo.toml")
+          content = p.read_text()
+          old = 'version = "0.18.0"'
+          if content.count(old) != 1:
+              raise SystemExit("STOP: expected one upstream workspace version anchor")
+          p.write_text(content.replace(old, 'version = "0.18.0-android.1"', 1))
+          PY
+          grep -Fq 'version = "0.18.0-android.1"' source/Cargo.toml
+          grep -Fq 'LIGHTCRAFT_V017_WRITE_NEW_PRIVATE_ONLY' builder/lib/build-common.sh
+          grep -Fq 'artcraft.lightcraft.check_updates_requested' source/crates/ui-egui/src/menus/run.rs
+          grep -Fq 'artcraft.lightcraft.include_preview' source/crates/ui-egui/src/dialogs.rs
+      - name: Android release-style build toolchain (no permanent keystores)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Rust 1.95 ARM64
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - name: Install APK icon renderer
+        run: python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Cache Rust crates and compiled build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-ndk
+            builder/build/lightcraft/target
+          key: lightcraft-v018-arm64-rust195-20261104
+      - name: Android SDK ARM64 dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          MANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$MANAGER"
+          echo "$(dirname "$MANAGER")" >> "$GITHUB_PATH"
+          "$MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Install cargo-ndk if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v cargo-ndk || cargo install cargo-ndk --locked
+      - name: Build LightCraft only — isolated test ID and disposable key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builder/source
+          mv source builder/source/lightcraft
+          test "$(git -C builder/source/lightcraft rev-parse HEAD)" = '32d569ad5d19a6b55cf8d5c077127faa0f44a83b'
+          # No permanent-signing secrets, no production certificate, no release publishing.
+          bash builder/build.sh -lightcraft \
+            -packagename=com.artcraft.lightcraft.test \
+            -appname='LightCraft TEST' \
+            "-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-approved.png"
+      - name: Verify APK package, version, ARM64, signature and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='builder/output/lightcraft-0.18.0-android.1.apk'
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          "$SDK/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate-certificate.txt
+          "$SDK/build-tools/35.0.0/aapt" dump badging "$APK" > candidate-badging.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft.test' versionCode='[0-9]+' versionName='0.18.0-android.1'" candidate-badging.txt
+          grep -Fq 'launchable-activity:' candidate-badging.txt
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\\.so$'
+          python3 - "$APK" candidate-certificate.txt <<'PY'
+          import pathlib,re,sys,zipfile
+          apk,certificate=sys.argv[1:]
+          lines=pathlib.Path(certificate).read_text()
+          previous="b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4"
+          cert=re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", lines)
+          if not cert:
+              raise SystemExit("STOP: cannot independently verify temporary signer certificate")
+          fingerprint=cert.group(1).replace(":","").lower()
+          if fingerprint == previous:
+              raise SystemExit("STOP: unexpected production certificate")
+          with zipfile.ZipFile(apk) as z:
+              n=z.namelist()
+              if not any(x.startswith("lib/arm64-v8a/") and x.endswith(".so") for x in n):
+                  raise SystemExit("STOP: native ARM64 library missing")
+              if not any(x.endswith(".dex") for x in n):
+                  raise SystemExit("STOP: Android Java Activity missing")
+          PY
+          mkdir -p verified
+          cp "$APK" verified/LightCraft-v0.18.0-android.1-arm64-v8a-TEMP-SIGNED.apk
+          sha256sum verified/*.apk > verified/SHA256SUMS.txt
+          stat -c '%s' verified/*.apk > verified/APK_SIZE_BYTES.txt
+          cp candidate-certificate.txt candidate-badging.txt verified/
+          {
+            echo '### LightCraft v0.18.0-android.1 — disposable-signing test candidate'
+            echo 'Target: HONOR MagicPad 4, ARM64 only'
+            echo 'Package: com.artcraft.lightcraft.test (separate from production)'
+            echo 'Baseline: lightcraft-v0.11.0-android.8 SHA 7496af6c95e4bf6c1a1be6586838801f193ed749'
+            echo 'Source: storytold/lightcraft v0.18.0 SHA 32d569ad5d19a6b55cf8d5c077127faa0f44a83b'
+            echo 'Production signing: NEVER USED. Release publication: NOT AUTHORIZED.'
+            echo 'Device functional validation: PENDING.'
+            cat verified/SHA256SUMS.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload TEST APK only — never publish release
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-v0.18.0-android.1-TEMP-SIGNED-ARM64-TEST
+          path: verified/
+          retention-days: 14
+          if-no-files-found: error

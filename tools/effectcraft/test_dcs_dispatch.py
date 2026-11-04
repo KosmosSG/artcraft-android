@@ -51,7 +51,7 @@ public class Harness extends Parent {
   h.dispatchKeyEvent(event(47,0,0,false,2)); check(h.forwarded==3); check(h.ecUnsavedDialog(true)==0);
   h.dispatchKeyEvent(event(31,0,0,false,0)); check(h.ecUnsavedDialog(true)==2);
   h.dispatchKeyEvent(event(31,1,0,false,0)); h.dispatchKeyEvent(event(47,0,0,false,0)); check(h.ecUnsavedDialog(true)==3);
-  check(h.imeWanted && h.hides==0);
+  check(!h.imeWanted && h.hides>=1);
   h.ecUnsavedDialog(false);
   check(h.dispatchKeyEvent(event(51,0,0,true,0)));
   check(h.ecPollPhysicalShortcut()==1);

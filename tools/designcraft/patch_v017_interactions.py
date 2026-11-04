@@ -282,6 +282,24 @@ def launcher(android):
             }).map_err(|e| e.to_string())
         }
 
+        pub fn dc_escape_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeEscapeAction"),
+                    jni_sig!("()I"), &[])?.i()
+            }).map_err(|e| e.to_string())
+        }
+
+        pub fn dc_close_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeCloseAction"),
+                    jni_sig!("()I"), &[])?.i()
+            }).map_err(|e| e.to_string())
+        }
+
         pub fn dc_tool_action(&self) -> Result<i32, String> {
             self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
                 let ptr = self.app.activity_as_ptr() as jni::sys::jobject;

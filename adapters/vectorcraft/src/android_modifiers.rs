@@ -48,10 +48,15 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
                 kept.push(event);
             }
             egui::Event::Text(_) if state.modifiers().command => {}
-            egui::Event::WindowFocused(false) => {
+            egui::Event::WindowFocused(focused) => {
+                // Android's keyboard focus can move from the native SurfaceView
+                // to the invisible EditText/SAF picker without delivering a
+                // physical Ctrl/Alt key-up. Clear sticky modifier state on both
+                // focus transitions; the next actual key-down reconstructs it.
                 *state = AndroidModifiers::default();
                 kept.push(egui::Event::ModifiersChanged(state.modifiers()));
                 kept.push(event);
+                let _ = focused; // retain the original focus event unchanged.
             }
             _ => kept.push(event),
         }

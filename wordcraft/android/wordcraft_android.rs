@@ -89,6 +89,29 @@ impl Tools {
     /// MagicOS may report hardware letters as Key, Text or IME Commit.
     /// Intercept only unmodified D/C/S while Save Changes is showing;
     /// Ctrl+Shift+S is a separate nonmodal Save As shortcut.
+
+    // Translate stable two-finger touchscreen movement to precise canvas pan.
+    // Preserve native touch/pinch input, so zoom and selection still work.
+    pub fn inject_touch_pan(&self, ctx: &egui::Context, raw: &mut egui::RawInput, modifiers: egui::Modifiers) {
+        let Ok(Some(sample)) = self.call_string("wcTakeTwoFingerPan") else { return };
+        let parts: Vec<_> = sample.split(',').collect();
+        if parts.len() != 4 { return; }
+        let Ok(values) = parts.iter().map(|v| v.parse::<f32>()).collect::<Result<Vec<_>, _>>() else { return };
+        let scale = ctx.pixels_per_point();
+        if !scale.is_finite() || scale <= 0.0 || !values.iter().all(|n| n.is_finite()) { return; }
+        let (dx, dy, x, y) = (values[0], values[1], values[2], values[3]);
+        if dx == 0.0 && dy == 0.0 { return; }
+        raw.events.push(egui::Event::PointerMoved(egui::pos2(x / scale, y / scale)));
+        raw.events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(dx / scale, dy / scale),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Trackpad,
+            modifiers,
+        });
+        ctx.request_repaint();
+    }
+
     pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
         let id = egui::Id::new("wordcraft.unsaved.dcs");
         if !active {
@@ -105,9 +128,21 @@ impl Tools {
         let allow_text_choice = active && !text_modifiers.any();
         let mut choice = None;
         let mut save_as = false;
+        let mut quit = false;
         raw.events.retain(|event| match event {
             egui::Event::Key { key, physical_key, pressed, repeat, modifiers, .. } => {
                 let actual_key = (*physical_key).unwrap_or(*key);
+                if active && actual_key == egui::Key::Escape && !modifiers.any() {
+                    if *pressed && !*repeat && choice.is_none() { choice = Some(2); }
+                    return false; // Esc means Cancel, never Don't Save.
+                }
+                if !active && actual_key == egui::Key::Q
+                    && modifiers.ctrl && !modifiers.shift
+                    && !modifiers.alt && !modifiers.mac_cmd
+                {
+                    if *pressed && !*repeat { quit = true; }
+                    return false;
+                }
                 if !active && actual_key == egui::Key::S
                     && modifiers.ctrl && modifiers.shift
                     && !modifiers.alt && !modifiers.mac_cmd
@@ -151,6 +186,11 @@ impl Tools {
             ctx.data_mut(|d| {
                 if d.get_temp::<u8>(id).is_none() { d.insert_temp(id, action); }
             });
+            ctx.request_repaint();
+        }
+        if quit {
+            log::info!("WC_SHORTCUT_DIAG raw_ctrl_q");
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("wordcraft.shortcut.quit"), true));
             ctx.request_repaint();
         }
         if save_as {
@@ -271,6 +311,15 @@ impl Tools {
     }
 
     pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        let raw_quit = ctx.data_mut(|d|
+            d.remove_temp::<bool>(egui::Id::new("wordcraft.shortcut.quit"))
+        ).unwrap_or(false);
+        let java_quit = self.call_bool("wcTakeQuit").unwrap_or(false);
+        if raw_quit || java_quit {
+            // Upstream quit() checks for unsaved data and opens D/C/S when needed.
+            if app.quit() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+            ctx.request_repaint();
+        }
         // Drain both native and Activity fallbacks; one dialog if both saw a key.
         let raw_save_as = ctx.data_mut(|d|
             d.remove_temp::<bool>(egui::Id::new("wordcraft.shortcut.save_as"))

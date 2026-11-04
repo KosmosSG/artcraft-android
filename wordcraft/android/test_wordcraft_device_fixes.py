@@ -1,4 +1,4 @@
-"""WordCraft android.4 acceptance-guard tests for source-level wiring.
+"""WordCraft android.5 acceptance-guard tests for source-level wiring.
 
 These tests catch accidental loss of the requested icon, raw D/C/S intercept
 and font scan limits. Device interactions still require MagicPad testing.
@@ -25,7 +25,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         ast.parse(s)
         self.assertIn('wc_raw_dcs = ', s)
         self.assertIn('self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw)', s)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);', s)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);', s)
 
     def test_approved_icon_is_derived_from_launcher_and_not_unrelated_asset(self):
         s = text(BUILD)
@@ -52,7 +52,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('if d.get_temp::<u8>(id).is_none()', s)
         self.assertIn('ctx.request_repaint();', s)
         java = text(JAVA)
-        self.assertIn('wcDialogAction.compareAndSet(0, action)', java)
+        self.assertIn('wcDialogAction.compareAndSet(0, choice)', java)
         self.assertIn('if (!active) { wcDialogAction.set(0); return 0; }', java)
 
     def test_physical_dcs_text_and_ime_fallback_during_modal(self):
@@ -70,7 +70,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         ):
             self.assertIn(x, rust)
         self.assertNotIn('raw.modifiers', rust)
-        self.assertIn('wcDialogAction.compareAndSet(0, action)', java)
+        self.assertIn('wcDialogAction.compareAndSet(0, choice)', java)
 
     def test_ctrl_shift_s_uses_existing_wordcraft_save_as_saf(self):
         rust = text(RUST)
@@ -88,8 +88,8 @@ class WordCraftDeviceFixes(unittest.TestCase):
             self.assertIn(x, rust)
         for x in (
             'public boolean wcTakeSaveAs()',
-            '!wcDialogActive && code == android.view.KeyEvent.KEYCODE_S',
-            'event.isCtrlPressed() && event.isShiftPressed()',
+            '!wcDialogActive && event.isCtrlPressed()',
+            'event.isShiftPressed() && key == android.view.KeyEvent.KEYCODE_S',
             'wcSaveAs.set(1)',
         ):
             self.assertIn(x, java)
@@ -145,19 +145,75 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'ctx.request_repaint();',
         ):
             self.assertIn(line, rust)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);', build)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);', build)
         self.assertIn("wc_trackpad_scroll = ", build)
         # No JNI bridge is created for other apps; no fake touchscreen drag events.
         self.assertIn("if app == 'wordcraft' else ''", build)
         self.assertNotIn("egui::Event::Touch {", rust)
 
+
+    def test_modal_esc_and_hardware_ime_paths_cancel_without_discarding(self):
+        java, rust, build = text(JAVA), text(RUST), text(BUILD)
+        for marker in (
+            'public boolean wcHandleHardwareShortcut(android.view.KeyEvent event)',
+            'wcHandleHardwareShortcut(event)',
+            'public boolean wcHandleImeChoice(CharSequence text)',
+            'wcDialogAction.compareAndSet(0, choice)',
+            'key == android.view.KeyEvent.KEYCODE_ESCAPE ? 2 : 0',
+            'WC_DCS_DIAG physical_choice=',
+        ):
+            self.assertIn(marker, java)
+        self.assertIn('wcHandleImeChoice(text)', build)
+        self.assertIn('wcHandleHardwareShortcut(event)', build)
+        self.assertIn('wcDialogKeys.contains(key)', java)
+        self.assertIn('active && actual_key == egui::Key::Escape', rust)
+        self.assertIn('choice = Some(2)', rust)
+        self.assertIn('if (!active) { wcDialogAction.set(0); return 0; }', java)
+
+    def test_ctrl_q_asks_before_quitting_unsaved_documents(self):
+        java, rust = text(JAVA), text(RUST)
+        self.assertIn('key == android.view.KeyEvent.KEYCODE_Q', java)
+        self.assertIn('public boolean wcTakeQuit()', java)
+        self.assertIn('wcQuit.set(1)', java)
+        self.assertIn('!active && actual_key == egui::Key::Q', rust)
+        self.assertIn('self.call_bool("wcTakeQuit")', rust)
+        self.assertIn('if app.quit()', rust)
+        self.assertIn('egui::ViewportCommand::Close', rust)
+        self.assertNotIn('android.os.Process.killProcess', java)
+
+    def test_two_finger_touchscreen_pan_preserves_pinch_zoom(self):
+        java, rust, build = text(JAVA), text(RUST), text(BUILD)
+        for marker in (
+            'dispatchTouchEvent(android.view.MotionEvent event)',
+            'event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)',
+            'event.getPointerCount() == 2',
+            'android.view.MotionEvent.ACTION_POINTER_DOWN',
+            'android.view.MotionEvent.ACTION_MOVE',
+            'wcTouchLastSpan * .025f',
+            'return super.dispatchTouchEvent(event);',
+            'public String wcTakeTwoFingerPan()',
+        ):
+            self.assertIn(marker, java)
+        self.assertIn('self.call_string("wcTakeTwoFingerPan")', rust)
+        self.assertIn('pub fn inject_touch_pan(', rust)
+        self.assertIn('wc_touch_pan = ', build)
+        self.assertIn('{wc_trackpad_scroll}{wc_touch_pan}', build)
+        self.assertNotIn('egui::Event::Touch {', rust)
+
+    def test_copy_a_to_b_uses_system_clipboard_on_copy_and_paste(self):
+        build = text(BUILD)
+        self.assertIn('egui::OutputCommand::CopyText(text)', build)
+        self.assertIn('android_clipboard_set(&self.app, &copy)', build)
+        self.assertIn('self.handle_clipboard_shortcuts(raw)', build)
+        self.assertNotIn('android_clipboard_set(&self.app, "")', build)
+
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.4", s)
-        self.assertIn('100014004', s)
+        self.assertIn("0.14.0-android.5", s)
+        self.assertIn('100014005', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.3", s)
+        self.assertNotIn("0.14.0-android.4", s)
 
 
 if __name__ == "__main__":

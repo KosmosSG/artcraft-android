@@ -99,6 +99,28 @@ def main() -> None:
         "        }\n",
         "route the WordCraft SAF tree picker",
     )
+    # Hidden EditText and InputConnection sometimes receive a physical key
+    # instead of the Activity; intercept there before the IME consumes it.
+    java = exactly_once(
+        java, "                        public boolean sendKeyEvent(KeyEvent event) {\n",
+        "                        public boolean sendKeyEvent(KeyEvent event) {\n"
+        "                            if (wcHandleHardwareShortcut(event)) return true;\n",
+        "WordCraft keyboard InputConnection")
+    java = exactly_once(
+        java, "                        public boolean commitText(CharSequence text, int newCursorPosition) {\n",
+        "                        public boolean commitText(CharSequence text, int newCursorPosition) {\n"
+        "                            if (wcHandleImeChoice(text)) return true;\n",
+        "WordCraft IME commit")
+    java = exactly_once(
+        java, "                public boolean onKeyDown(int keyCode, KeyEvent event) {\n",
+        "                public boolean onKeyDown(int keyCode, KeyEvent event) {\n"
+        "                    if (wcHandleHardwareShortcut(event)) return true;\n",
+        "WordCraft IME keydown")
+    java = exactly_once(
+        java, "                public boolean onKeyUp(int keyCode, KeyEvent event) {\n",
+        "                public boolean onKeyUp(int keyCode, KeyEvent event) {\n"
+        "                    if (wcHandleHardwareShortcut(event)) return true;\n",
+        "WordCraft IME keyup")
     if not java.endswith("}\n"):
         raise SystemExit("Unexpected Activity template closing brace")
     extension = Path(__file__).with_name("WordCraftExtension.java.inc").read_text(encoding="utf-8")
@@ -119,7 +141,7 @@ def main() -> None:
     patched = exactly_once(
         patched,
         "        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
-        "{wc_raw_dcs}{wc_trackpad_scroll}        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
+        "{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
         "intercept D/C/S physical keys before app input processing",
     )
     patched = exactly_once(
@@ -131,7 +153,8 @@ def main() -> None:
         "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_trackpad_scroll = '        self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
-        "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_touch_pan = '        self.wc.inject_touch_pan(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n        if let Some(copy) = ui.ctx().output(|o| o.commands.iter().rev().find_map(|c| match c { egui::OutputCommand::CopyText(text) => Some(text.clone()), _ => None })) { android_clipboard_set(&self.app, &copy); }\\n' if app == 'wordcraft' else ''\n"
         "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui);\\n        ' if app == 'wordcraft' else ''\n"
         "    shell = f'''",
         "initialize WordCraft-only shell fields",

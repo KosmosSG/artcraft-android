@@ -390,12 +390,69 @@
         }
     }
 
+
+    // Two-finger touchscreen canvas pan; do not swallow native touch/pinch.
+    private final Object wcTouchPanLock = new Object();
+    private boolean wcTouchPairActive;
+    private float wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
+    private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event != null && event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)) {
+            synchronized (wcTouchPanLock) {
+                int action = event.getActionMasked();
+                if (event.getPointerCount() == 2
+                        && (action == android.view.MotionEvent.ACTION_POINTER_DOWN
+                            || action == android.view.MotionEvent.ACTION_MOVE)) {
+                    float x = (event.getX(0) + event.getX(1)) * .5f;
+                    float y = (event.getY(0) + event.getY(1)) * .5f;
+                    float span = (float) Math.hypot(event.getX(1) - event.getX(0),
+                                                     event.getY(1) - event.getY(0));
+                    if (Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(span)) {
+                        if (wcTouchPairActive && action == android.view.MotionEvent.ACTION_MOVE) {
+                            float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
+                            if (Math.abs(span - wcTouchLastSpan) < Math.max(6f, wcTouchLastSpan * .025f)
+                                    && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
+                                wcTouchPanX += dx;
+                                wcTouchPanY += dy;
+                                wcTouchPanCenterX = x;
+                                wcTouchPanCenterY = y;
+                            }
+                        }
+                        wcTouchPairActive = true;
+                        wcTouchLastX = x;
+                        wcTouchLastY = y;
+                        wcTouchLastSpan = span;
+                    }
+                } else if (action == android.view.MotionEvent.ACTION_POINTER_UP
+                        || action == android.view.MotionEvent.ACTION_UP
+                        || action == android.view.MotionEvent.ACTION_CANCEL
+                        || event.getPointerCount() != 2) {
+                    wcTouchPairActive = false;
+                }
+            }
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    public String wcTakeTwoFingerPan() {
+        synchronized (wcTouchPanLock) {
+            if (wcTouchPanX == 0f && wcTouchPanY == 0f) return null;
+            String value = wcTouchPanX + "," + wcTouchPanY + ","
+                         + wcTouchPanCenterX + "," + wcTouchPanCenterY;
+            wcTouchPanX = wcTouchPanY = 0f;
+            return value;
+        }
+    }
+
     private final java.util.concurrent.atomic.AtomicInteger wcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean wcDialogActive;
     private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();
     public boolean wcTakeNewDocument() { return wcNewDocument.getAndSet(0) != 0; }
     private final java.util.concurrent.atomic.AtomicInteger wcSaveAs = new java.util.concurrent.atomic.AtomicInteger();
     public boolean wcTakeSaveAs() { return wcSaveAs.getAndSet(0) != 0; }
+    private final java.util.concurrent.atomic.AtomicInteger wcQuit = new java.util.concurrent.atomic.AtomicInteger();
+    public boolean wcTakeQuit() { return wcQuit.getAndSet(0) != 0; }
     private final java.util.HashSet<Integer> wcDialogKeys = new java.util.HashSet<>();
     public int wcUnsavedDialog(boolean active) {
         boolean justOpened = active && !wcDialogActive;
@@ -420,46 +477,63 @@
         if (action != 0) Log.i(TAG, "WC_DCS_DIAG delivered=" + action);
         return action;
     }
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
-            int code = event.getKeyCode();
-            if (wcDialogKeys.contains(code)) {
-                if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(code);
-                return true;
-            }
-            // Hardware Ctrl+Shift+S: enqueue for native UI/SAF Save As.
-            if (!wcDialogActive && code == android.view.KeyEvent.KEYCODE_S
-                    && event.isCtrlPressed() && event.isShiftPressed()
-                    && !event.isAltPressed() && !event.isMetaPressed()) {
-                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
-                        && event.getRepeatCount() == 0) {
-                    wcSaveAs.set(1);
-                    Log.i(TAG, "WC_SHORTCUT_DIAG java_ctrl_shift_s");
-                }
-                return true;
-            }
-            // Ctrl+N may be consumed by Android before egui's keyboard shortcuts.
-            // Queue its command for the UI thread, never run the editor on the Java thread.
-            if (!wcDialogActive && code == android.view.KeyEvent.KEYCODE_N
-                    && event.isCtrlPressed() && !event.isAltPressed()
-                    && !event.isMetaPressed()) {
-                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
-                        && event.getRepeatCount() == 0) wcNewDocument.set(1);
-                return true;
-            }
-            int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
-            if (action != 0 && event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
-                Log.i(TAG, "WC_DCS_DIAG key=" + action + " dialogActive=" + wcDialogActive + " modifiers=" + event.getMetaState());
-            if (wcDialogActive && action != 0 && event.hasNoModifiers()) {
-                // Intercept the entire key gesture, not just ACTION_DOWN.
-                // Keep one pending choice until Rust consumes it.
+    // Intercepts the IME path where physical D/C/S never reach GameActivity.
+    public boolean wcHandleImeChoice(CharSequence text) {
+        if (!wcDialogActive || text == null || text.length() != 1) return false;
+        char c = Character.toLowerCase(text.charAt(0));
+        int choice = c == 'd' ? 1 : c == 'c' ? 2 : c == 's' ? 3 : 0;
+        if (choice == 0) return false;
+        wcDialogAction.compareAndSet(0, choice);
+        Log.i(TAG, "WC_DCS_DIAG ime_choice=" + choice);
+        return true;
+    }
+
+    // Called by Activity, invisible EditText and its InputConnection. Never
+    // intercept a normal letter unless the unsaved-changes dialog is open.
+    public boolean wcHandleHardwareShortcut(android.view.KeyEvent event) {
+        if (event == null) return false;
+        int key = event.getKeyCode();
+        if (wcDialogKeys.contains(key)) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(key);
+            return true;
+        }
+        if (wcDialogActive && event.hasNoModifiers()) {
+            int choice = key == android.view.KeyEvent.KEYCODE_D ? 1
+                    : key == android.view.KeyEvent.KEYCODE_C ? 2
+                    : key == android.view.KeyEvent.KEYCODE_S ? 3
+                    : key == android.view.KeyEvent.KEYCODE_ESCAPE ? 2 : 0;
+            if (choice != 0) {
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                    wcDialogKeys.add(code);
-                    if (event.getRepeatCount() == 0) wcDialogAction.compareAndSet(0, action);
+                    wcDialogKeys.add(key);
+                    if (event.getRepeatCount() == 0) {
+                        wcDialogAction.compareAndSet(0, choice);
+                        Log.i(TAG, "WC_DCS_DIAG physical_choice=" + choice);
+                    }
                 }
                 return true;
             }
         }
+        if (!wcDialogActive && event.isCtrlPressed()
+                && !event.isAltPressed() && !event.isMetaPressed()) {
+            int cmd = 0;
+            if (event.isShiftPressed() && key == android.view.KeyEvent.KEYCODE_S) cmd = 1;
+            else if (!event.isShiftPressed() && key == android.view.KeyEvent.KEYCODE_N) cmd = 2;
+            else if (!event.isShiftPressed() && key == android.view.KeyEvent.KEYCODE_Q) cmd = 3;
+            if (cmd != 0) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    if (cmd == 1) wcSaveAs.set(1);
+                    if (cmd == 2) wcNewDocument.set(1);
+                    if (cmd == 3) wcQuit.set(1);
+                    Log.i(TAG, "WC_SHORTCUT_DIAG physical_command=" + cmd);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
 
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (wcHandleHardwareShortcut(event)) return true;
         return super.dispatchKeyEvent(event);
     }

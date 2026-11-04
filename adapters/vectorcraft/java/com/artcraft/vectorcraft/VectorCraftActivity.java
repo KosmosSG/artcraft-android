@@ -293,6 +293,15 @@ public final class VectorCraftActivity extends NativeActivity {
         // Must install BEFORE NativeActivity.super.onCreate initializes Rust.
         SplashScreen splash = SplashScreen.installSplashScreen(this);
         splash.setKeepOnScreenCondition(() -> !nativeEditorReady);
+        // Fail open rather than trapping the user behind the system splash
+        // if Rust crashes before the JNI probe or a SurfaceView never draws.
+        splashHandler.postDelayed(() -> {
+            if (!nativeEditorReady) {
+                Log.w(TAG, "No rendered frame after 20s; releasing splash fallback");
+                nativeEditorReady = true;
+                dismissStartupCover();
+            }
+        }, 20000);
         super.onCreate(savedInstanceState);
         showStartupCover();
         applyImmersiveFullscreen();

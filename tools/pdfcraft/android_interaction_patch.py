@@ -151,32 +151,15 @@ change(app,
         // ARTCRAFT_ANDROID_REPEAT_KEYS: upstream tool_keys() now uses precise
         // editor focus; avoid a second H/V consumer after shortcuts().
 """)
+# PDFCRAFT_ANDROID_TOUCH_HINT_REMOVED: instruction text used to draw an
+# always-on floating overlay over PDF documents. Gesture recognition remains
+# in the pinned Android winit adapter; neither touch nor selection is changed.
 canvas=src/"crates/ui-egui/src/canvas.rs"
-change(canvas,
-"""    let navigation_enabled = app.dialog.is_none() && app.close_request.is_none() && !app.palette_open && ui.is_enabled() && ui.input(|i| i.focused);""",
-"""    // ARTCRAFT_ANDROID_TOUCH_HINT: finger users have no hover tooltip.
-    #[cfg(target_os = "android")]
-    // Avoid borrowing all of `app` while `app.views[index]` is mutably borrowed.
-    // Read disjoint dialog state directly; equivalent to the modal gate here.
-    if app.quick_tool == QuickTool::Select
-        && app.close_request.is_none()
-        && app.dialog.is_none()
-        && !app.palette_open
-    {
-        let origin = ui.min_rect().min + egui::vec2(16.0, 12.0);
-        egui::Area::new(egui::Id::new("pdfcraft-touch-select-hint"))
-            .fixed_pos(origin)
-            .order(egui::Order::Tooltip)
-            .interactable(false)
-            .show(ui.ctx(), |hint| {
-                egui::Frame::group(hint.style())
-                    .fill(hint.visuals().panel_fill)
-                    .show(hint, |hint| {
-                        hint.small("Touch: swipe to scroll • hold and drag to select");
-                    });
-            });
-    }
-    let navigation_enabled = app.dialog.is_none() && app.close_request.is_none() && !app.palette_open && ui.is_enabled() && ui.input(|i| i.focused);""")
+canvas_text=canvas.read_text()
+assert "let navigation_enabled = app.dialog.is_none()" in canvas_text, (
+    "PDFCraft canvas navigation anchor changed; inspect upstream")
+assert "pdfcraft-touch-select-hint" not in canvas_text, (
+    "Unexpected legacy Android touch hint was retained")
 
 # PDFCRAFT_ANDROID_DCS_MODAL_FALLBACK: the upstream shortcut phase runs
 # before the modal is rendered; read keys at the displayed modal too.
@@ -210,4 +193,4 @@ change(prompts,
     }
 }""")
 
-print("PASS: PDFCraft D/C/S modal fallback, V/H keys and touch selection hint")
+print("PASS: PDFCraft D/C/S modal fallback and V/H keys; Android floating touch hint removed")

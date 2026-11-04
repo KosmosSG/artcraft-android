@@ -62,22 +62,9 @@ pub fn take_android_tools_toggle() -> bool {
     p=base/"menus.rs"
     edit(p,'pub use run::take_android_font_import;',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',"UI action exports")
-    p=base/"menus/tables.rs"
-    a='            "ui:app.artcraftImportFont",\n            "-",'
-    edit(p,a,'            "ui:app.artcraftImportFont",\n            "ui:app.artcraftSelectSharedFonts",\n            "ui:app.artcraftRefreshSharedFonts",\n            "-",',"Type actions")
-    edit(p,'    (\n        "Help",\n        &[','''    (
-        "Android",
-        &[
-            "ui:app.artcraftImportFont",
-            "ui:app.artcraftSelectSharedFonts",
-            "ui:app.artcraftRefreshSharedFonts",
-            "-",
-            "ui:app.artcraftToggleAndroidTools",
-        ],
-    ),
-    (
-        "Help",
-        &[''',"main Android menu")
+    # Android commands remain registered for keyboard/updater compatibility.
+    # Android-specific menu rows are consolidated under the approved Dc icon
+    # in v016_android.rs; do not create a duplicate top-level Android menu.
     p=base/"dialogs.rs";s=p.read_text()
     a='let action = ctx.input(|i| i.events.iter().find_map(|event| match event {'
     s=put_once(s,a,'''let action = ctx.data_mut(|d| d.remove_temp::<u8>(

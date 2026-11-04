@@ -15,6 +15,8 @@ script = (root / 'lib/build-common.sh').read_text()
 # Regression guard: pinned upstream v0.18.0 must receive the Android IME-reset
 # winit overlay; a skipped guard compiled but failed at egui-winit previously.
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.18.0"' in script, 'v0.18 IME winit overlay was skipped by builder'
+assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.18.0" ) ]]; then' in script, 'v0.18 Android arboard compatibility guard missing'
+
 
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY", script, re.S)
 patch = next(b for b in blocks if 'src, app, title =' in b)

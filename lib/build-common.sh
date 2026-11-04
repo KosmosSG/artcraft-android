@@ -3042,17 +3042,17 @@ if entry not in s:
 PY
 fi
 
-# Official PDFCraft v0.17.0 can resolve arboard 3.7.0 from the upstream lock even
+# Official PDFCraft v0.17.0/v0.18.0 can resolve arboard 3.7.0 from the upstream lock even
 # when our existing Android JNI-backed arboard 3.6.1 is [patch.crates-io].
 # That 3.7 crate has no Android platform and fails with missing platform::Clipboard.
 # Select the already reviewed Android JNI implementation for this *candidate only*;
 # never silently replace it with a stub or bypass clipboard tests. Cargo will fail
 # closed if a newer upstream dependency actually requires arboard >=3.7.
-if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_REF:-}" == "v0.17.0" ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" ) ]]; then
     grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
-        fail "PDFCraft Android clipboard patch missing; refusing v0.17 build"
+        fail "PDFCraft Android clipboard patch missing; refusing pinned v0.17/v0.18 build"
     cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||
-        fail "Cannot resolve PDFCraft v0.17 against reviewed Android arboard 3.6.1"
+        fail "Cannot resolve PDFCraft pinned upstream against reviewed Android arboard 3.6.1"
     cargo tree --manifest-path "$SRC/Cargo.toml" --target aarch64-linux-android -i arboard |
         grep -F 'arboard v3.6.1 (' |
         grep -F 'vendor/arboard' >/dev/null ||

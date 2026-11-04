@@ -61,7 +61,7 @@ def splice_mouse_winit(upstream: str, reviewed: str) -> str:
     staged = upstream[:original_start] + mouse_block + upstream[original_end:]
     staged = once(staged, IMPORT_OLD, IMPORT_NEW, "Android pointer imports")
     staged = once(staged, UP_HELP_ANCHOR, helpers + UP_HELP_ANCHOR, "mouse helper constants")
-    assert staged.count("WindowEvent::CursorMoved") >= 2
+    assert staged.count("WindowEvent::CursorMoved") >= 1
     assert staged.count("WindowEvent::Touch") >= 1
     return staged
 

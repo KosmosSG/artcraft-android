@@ -1,11 +1,9 @@
-VectorCraft v0.21.0-android.5 — source-gated ARM64 test APK only
-Owner-approved Android-only continuation of stable-feature-preserving v0.21.0 integration.
-Black startup fix: AndroidX core-splashscreen 1.0.1, setKeepOnScreenCondition until JNI after first native paint requests Java PixelCopy confirmation of nonblack SurfaceView pixels; 20-second fail-safe.
-Font fix: persistent BFS queue of SAF document IDs / nested folders with atomic checkpoint; 128-font, 64 MiB batches chained automatically; up to 5000 file IDs and 4 GiB data; unknown SAF sizes validated by font header.
-Report each batch for background Rust FontDb updates without UI blocking. Preserve previous fonts and approved Vc icon, menu, keyboard, updater controls and stable data.
-Run Python and JVM test gates before Android SDK/Rust; do not compile if any fail.
-Use only com.artcraft.vectorcraft.test with disposable test signer. No production key, no signing approval, no GitHub Release publication.
-
-Recheck source guards: migrated offset scan and native activity AndroidX splash test declarations. No permanent signing.
-
-Replacement Android.5 build: correct android.view.PixelCopy Java SDK 35 import; assert javap availability prior to ARM64 Rust compilation. Retain disposable test signing and preserve approved features.
+VectorCraft v0.21.0-android.6 — one disposable-key-signed ARM64 regression test.
+Owner video 2026-11-04: physical trackpad long menu scrolling is jerky; startup still perceived to expose black/native interval; some fonts still missing.
+Changes:
+1. Keep AndroidX splash and approved Vc brand maroon window background.
+2. PixelCopy native SurfaceView requires 2 consecutive frames with both bright/light and dark UI detail (not cleared GPU surface) before hiding splash.
+3. Android-only egui long menus: stable popup scroll state, 0.78 physical-wheel multiplier, 16ms repaint cadence when egui reports scrolling; retain existing Vulkan renderer.
+4. Preserve previously approved launcher/menu, keyboard, dialog shortcuts, shared font BFS with 5000/4GiB, updater.
+Run lightweight source/JVM tests BEFORE expensive Android SDK + ARM64 compilation.
+Build only com.artcraft.vectorcraft.test; use fresh disposable key; never permanent sign/publish or overwrite stable APK.

@@ -352,55 +352,81 @@ pub fn ui(
         // SAF scanning happens asynchronously; continue polling and repainting.
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
     }
-    if !SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
-        return;
-    }
+    // Always show the approved Dc launcher icon at the far left, including when
+    // the accessory status toolbar is hidden. Android-specific actions are
+    // consolidated here; the standard upstream document menus remain intact.
     egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.menu_button("Android Tools ▾", |ui| {
-                if ui.button("Import Font (TTF/OTF/TTC)…").clicked() {
-                    if let Err(e) = request_import(bridge, state) {
-                        app.status_error("Import Font", e);
+            egui::menu::menu_custom_button(
+                ui,
+                egui::Button::image_and_text(
+                    egui::include_image!("dc-launcher-icon.png"), "▾"
+                ),
+                |ui| {
+                    if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {
+                        if let Err(e) = request_import(bridge, state) {
+                            app.status_error("Import Font", e);
+                        }
+                        ui.close();
                     }
-                    ui.close();
-                }
-                if ui.button("Select Shared Font Folder…").clicked() {
-                    if let Err(e) = request_shared(bridge, state, false) {
-                        app.status_error("Select Shared Font Folder", e);
+                    if ui.button("Select Shared Font Folder…").clicked() {
+                        if let Err(e) = request_shared(bridge, state, false) {
+                            app.status_error("Select Shared Font Folder", e);
+                        }
+                        ui.close();
                     }
-                    ui.close();
-                }
-                if ui.button("Refresh Shared Fonts").clicked() {
-                    if let Err(e) = request_shared(bridge, state, true) {
-                        app.status_error("Refresh Shared Fonts", e);
+                    if ui.button("Refresh Shared Fonts").clicked() {
+                        if let Err(e) = request_shared(bridge, state, true) {
+                            app.status_error("Refresh Shared Fonts", e);
+                        }
+                        ui.close();
                     }
-                    ui.close();
-                }
-                if ui.button("Reload Font Catalog").clicked() {
-                    if let Err(e) = app.run("font.reload", serde_json::json!({})) {
-                        app.status_error("Reload Font Catalog", e);
+                    if ui.button("Reload Font Catalog").clicked() {
+                        if let Err(e) = app.run("font.reload", serde_json::json!({})) {
+                            app.status_error("Reload Font Catalog", e);
+                        }
+                        ui.close();
                     }
-                    ui.close();
+                    ui.separator();
+                    if ui.button("Check Updates").clicked() {
+                        if let Err(e) = bridge.dc_update_action(3) {
+                            app.status_error("Check updates", e);
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Startup Update Check…").clicked() {
+                        if let Err(e) = bridge.dc_update_action(4) {
+                            app.status_error("Startup update check", e);
+                        }
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.menu_button("Android Tools", |ui| {
+                        let visible = SHOW_ANDROID_TOOLS.load(Ordering::Relaxed);
+                        if ui.button(if visible { "Hide Tools / Status" } else { "Show Tools / Status" }).clicked() {
+                            SHOW_ANDROID_TOOLS.store(!visible, Ordering::Relaxed);
+                            ui.ctx().request_repaint();
+                            ui.close();
+                        }
+                        let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                        ui.label(if gpu.is_empty() {
+                            "GPU: WGPU initialization pending".to_owned()
+                        } else {
+                            format!("GPU: {gpu}")
+                        });
+                        ui.label("Ctrl+W → D/C/S • Esc exits typing");
+                        ui.label("V/T/H/Z/A/P/N/F/M/B tools");
+                    });
                 }
+            );
+            if SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
                 ui.separator();
-                let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                ui.label(if gpu.is_empty() {
-                    "GPU: WGPU initialization pending".to_owned()
+                let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                if status.is_empty() {
+                    ui.label("Shared Fonts • Keyboard");
                 } else {
-                    format!("GPU: {gpu}")
-                });
-                ui.label("Ctrl+W → D / C / S; Esc exits typing; V/T tools");
-            });
-            ui.separator();
-            if ui.small_button("Hide Tools").clicked() {
-                SHOW_ANDROID_TOOLS.store(false, Ordering::Relaxed);
-                ui.ctx().request_repaint();
-            }
-            let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            if status.is_empty() {
-                ui.label("Shared Fonts • Keyboard");
-            } else {
-                ui.label(status);
+                    ui.label(status);
+                }
             }
         });
     });

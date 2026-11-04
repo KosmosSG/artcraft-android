@@ -1,5 +1,6 @@
 name: GridCraft v0.15.0-android.1 optimized original-key production release (owner approved, once)
 # Owner approved after successfully testing GridCraft candidate run 41687171682 on HONOR MagicPad 4.
+# Follow-up audit: optimized build succeeded, update AAPT launcher-resource validation.
 # Only this workflow file and this exact message can start the release job.
 on:
   push:
@@ -166,7 +167,17 @@ jobs:
               assert 'classes.dex' in names
               assert any(p.startswith('lib/arm64-v8a/') and p.endswith('.so') for p in names)
               assert all(p.startswith('lib/arm64-v8a/') for p in names if p.startswith('lib/') and p.endswith('.so'))
-              assert any('ic_launcher' in p for p in names)
+              # Release packaging may minify ZIP entry names while keeping
+              # AndroidManifest launcher references valid. Resolve the actual
+              # resources from aapt badging rather than a literal filename.
+              import re
+              from pathlib import Path
+              badge=Path('production-input/badging.txt').read_text()
+              icons=re.findall(r"application-icon-\\d+:'([^']+)'", badge)
+              if not icons:
+                  icons=re.findall(r"application:.*? icon='([^']+)'", badge)
+              assert icons, 'Missing launcher icon in Android package metadata'
+              assert all(icon in names for icon in icons), 'Launcher icon resource missing from APK ZIP'
               assert not any(p.endswith(('.jks','.p12','.keystore')) for p in names)
           PY
           count="$(wc -c < "$apk")"

@@ -200,6 +200,63 @@ pub fn classify_android_precision_scroll(raw: &mut egui::RawInput) -> usize {
     tagged
 }
 
+/// Frame-paced menu scrolling for Android's physical trackpad.
+///
+/// Android sometimes batches multiple short wheel steps into one frame. Eguis
+/// rendering is already Vulkan accelerated, but a large batched delta makes
+/// a long menu appear to jump. Spread *only popup-menu* wheel deltas across
+/// repaint frames; leave canvas and touch-drag gestures unchanged.
+#[derive(Default)]
+pub struct AndroidMenuScrollSmoother {
+    pending: egui::Vec2,
+    modifiers: egui::Modifiers,
+}
+
+impl AndroidMenuScrollSmoother {
+    pub fn apply(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if !egui::Popup::is_any_open(ctx) {
+            self.pending = egui::Vec2::ZERO;
+            return;
+        }
+        let mut retained = Vec::with_capacity(raw.events.len() + 1);
+        for event in raw.events.drain(..) {
+            match event {
+                egui::Event::MouseWheel { unit, delta, modifiers, source }
+                    if matches!(source, egui::MouseWheelSource::Trackpad | egui::MouseWheelSource::Unknown)
+                    && matches!(unit, egui::MouseWheelUnit::Point | egui::MouseWheelUnit::Line) =>
+                {
+                    // A discrete line is approximately 16 logical points on
+                    // Android. Treating it as a point delta permits easing.
+                    let factor = if matches!(unit, egui::MouseWheelUnit::Line) { 16.0 } else { 1.0 };
+                    self.pending += delta * factor;
+                    self.pending.x = self.pending.x.clamp(-240.0, 240.0);
+                    self.pending.y = self.pending.y.clamp(-240.0, 240.0);
+                    self.modifiers = modifiers;
+                }
+                other => retained.push(other),
+            }
+        }
+        let step = egui::vec2(
+            (self.pending.x * 0.40).clamp(-42.0, 42.0),
+            (self.pending.y * 0.40).clamp(-42.0, 42.0),
+        );
+        if step.length_sq() > 0.04 {
+            self.pending -= step;
+            retained.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: step,
+                modifiers: self.modifiers,
+                source: egui::MouseWheelSource::Trackpad,
+            });
+            // Keep painting for inertia even when Android sends no new event.
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        } else {
+            self.pending = egui::Vec2::ZERO;
+        }
+        raw.events = retained;
+    }
+}
+
 /// Minimal event counters for tablet debugging; never retain actual typed text.
 #[derive(Default)]
 pub struct KeyboardDiagnostics {

@@ -49,9 +49,10 @@ final class VectorCraftExtras {
     private static final long MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024;
     // Avoid copying and immediately indexing multi-GiB font libraries in one
     // frame on a tablet. Continue deterministically on Refresh Shared Fonts.
-    private static final int MAX_FONTS_PER_PASS = 256;
-    private static final long MAX_SCAN_BATCH_BYTES = 256L * 1024 * 1024;
+    private static final int MAX_FONTS_PER_PASS = 128; // Keep storage-provider batches short.
+    private static final long MAX_SCAN_BATCH_BYTES = 64L * 1024 * 1024; // Max copied per refresh.
     private static final String TREE_SCAN_OFFSET = "shared_font_next_offset";
+    private static final String TREE_SCAN_BYTES = "shared_font_scanned_bytes"; // 64-bit cumulative 4 GiB allowance.
     private static final String RELEASES_API =
             "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
     private static final String RELEASE_PREFIX =
@@ -174,7 +175,8 @@ final class VectorCraftExtras {
             activity.getContentResolver().takePersistableUriPermission(uri, grant);
             activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE).edit()
                     .putString(TREE_URI_KEY, uri.toString())
-                    .putInt(TREE_SCAN_OFFSET, 0).apply();
+                    .putInt(TREE_SCAN_OFFSET, 0)
+                    .putLong(TREE_SCAN_BYTES, 0L).apply();
             scanFontFolder(id, uri);
         } catch (Exception error) {
             report(id, kind, "error", error.toString(), 0);
@@ -213,7 +215,11 @@ final class VectorCraftExtras {
             while ((n = from.read(block)) != -1) {
                 total += n;
                 budget[0] += n;
-                if (budget[0] > MAX_SCAN_BYTES) throw new java.io.IOException("Scan reached 4 GiB limit");
+                if (budget.length > 1) {
+                    budget[1] += n;
+                    if (budget[1] > MAX_SCAN_BYTES)
+                        throw new java.io.IOException("Scan reached cumulative 4 GiB limit");
+                }
                 if (budget[0] > MAX_SCAN_BATCH_BYTES) throw new java.io.IOException("Safe font-scan batch budget reached");
                 if (total > MAX_FONT) throw new java.io.IOException("Font exceeds 64 MiB limit");
                 to.write(block, 0, n);
@@ -308,13 +314,20 @@ final class VectorCraftExtras {
                 int startOffset = Math.max(0, activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
                         .getInt(TREE_SCAN_OFFSET, 0));
                 if (startOffset >= MAX_FONTS) startOffset = 0;
-                long[] budget = {0};
+                long previousBytes = Math.max(0L, activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+                        .getLong(TREE_SCAN_BYTES, 0L));
+                if (previousBytes >= MAX_SCAN_BYTES) {
+                    report(id, "font_folder", "error",
+                            "4 GiB shared-font scan limit reached. Select the folder again to start a new scan; existing fonts are kept.", 0);
+                    return;
+                }
+                long[] budget = {0L, previousBytes};
                 boolean limited = false;
                 ArrayDeque<String> pending = new ArrayDeque<>();
                 HashSet<String> seen = new HashSet<>();
                 pending.add(DocumentsContract.getTreeDocumentId(treeUri));
                 while (!pending.isEmpty() && attempted < MAX_FONTS_PER_PASS && folders < MAX_FOLDERS
-                        && budget[0] < MAX_SCAN_BATCH_BYTES) {
+                        && budget[0] < MAX_SCAN_BATCH_BYTES && budget[1] < MAX_SCAN_BYTES) {
                     String parent = pending.removeFirst();
                     if (!seen.add(parent)) continue;
                     folders++;
@@ -326,7 +339,7 @@ final class VectorCraftExtras {
                                     DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
                         if (cursor == null) { skipped++; continue; }
                         while (cursor.moveToNext() && attempted < MAX_FONTS_PER_PASS
-                                && budget[0] < MAX_SCAN_BATCH_BYTES) {
+                                && budget[0] < MAX_SCAN_BATCH_BYTES && budget[1] < MAX_SCAN_BYTES) {
                             String documentId = cursor.getString(0);
                             String name = cursor.getString(1);
                             String mime = cursor.getString(2);
@@ -344,7 +357,8 @@ final class VectorCraftExtras {
                             if (!cursor.isNull(3)) {
                                 long bytes = cursor.getLong(3);
                                 if (bytes <= 0 || bytes > MAX_FONT
-                                        || bytes > MAX_SCAN_BATCH_BYTES - budget[0]) {
+                                        || bytes > MAX_SCAN_BATCH_BYTES - budget[0]
+                                        || bytes > MAX_SCAN_BYTES - budget[1]) {
                                     skipped++;
                                     limited = true;
                                     continue;
@@ -370,10 +384,12 @@ final class VectorCraftExtras {
                     }
                 }
                 limited |= !pending.isEmpty() || attempted >= MAX_FONTS_PER_PASS
-                        || budget[0] >= MAX_SCAN_BATCH_BYTES || folders >= MAX_FOLDERS;
+                        || budget[0] >= MAX_SCAN_BATCH_BYTES || folders >= MAX_FOLDERS
+                        || budget[1] >= MAX_SCAN_BYTES;
                 int nextOffset = limited ? Math.min(MAX_FONTS, startOffset + attempted) : 0;
                 activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE).edit()
-                        .putInt(TREE_SCAN_OFFSET, nextOffset).apply();
+                        .putInt(TREE_SCAN_OFFSET, nextOffset)
+                        .putLong(TREE_SCAN_BYTES, limited ? budget[1] : 0L).apply();
                 // Merge valid discoveries without evicting existing fonts when a provider,
                 // bad font or scan limit makes this refresh partial.
                 File shared = new File(fonts(), "Shared");
@@ -396,7 +412,10 @@ final class VectorCraftExtras {
                 report(id, "font_folder", "ok",
                         "Scan: " + attempted + " font files, " + folders + " folders; cached " + added
                         + "; existing " + existing + "; skipped " + skipped
-                        + (limited ? "; safe batch complete — select Refresh Shared Fonts for next batch" : "")
+                        + "; indexed through " + nextOffset + " of " + MAX_FONTS + " maximum fonts"
+                        + "; scanned " + (budget[1] / (1024 * 1024)) + " MiB / 4096 MiB limit"
+                        + (budget[1] >= MAX_SCAN_BYTES ? "; cumulative 4 GiB limit reached" :
+                            limited ? "; safe batch complete — select Refresh Shared Fonts for next batch" : "")
                         + ". Previous fonts kept; refreshing font catalog only when new fonts were added.", added);
             } catch (Exception error) {
                 report(id, "font_folder", "error", error.toString(), 0);

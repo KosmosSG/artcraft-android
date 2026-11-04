@@ -20,6 +20,7 @@ UNUSED_DEPS = """dependencies {{
     implementation 'androidx.games:games-activity:4.4.0'
 }}"""
 COMPACT_DEPS = """dependencies {{
+    // VectorCraftActivity extends android.app.NativeActivity.
     // NativeActivity needs only AndroidX's small splash compat API for a
     // real setKeepOnScreenCondition() while Vulkan prepares its first pixels.
     // No AppCompat, Kotlin BOM or GameActivity.

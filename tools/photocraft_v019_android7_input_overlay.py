@@ -349,6 +349,84 @@ pub fn artcraft_discard_active(app: &crate::PhotocraftApp) -> bool {
     assert "discard_prompt_active" in hardware.read_text()
     assert "onKeyPreIme" in act.read_text()
     assert "dispatchKeyShortcutEvent" in act.read_text()
+    # Android.9: the hidden Java EditText must stop owning the PHYSICAL keyboard
+    # after the upstream Type session is committed. On some tablet/Gboard
+    # configurations, a stale IME view keeps taking M/V/T/B and Y/N/C even
+    # though the canvas is no longer in Type edit mode. Do not release another
+    # egui text field's focus, and NEVER commit or discard document contents.
+    patch(host,
+'''    artcraft_tool_pending: Option<&'static str>,
+''',
+'''    artcraft_tool_pending: Option<&'static str>,
+    artcraft_type_ime_was_active: bool,
+''')
+    patch(host,
+'''                artcraft_tool_pending: None,
+''',
+'''                artcraft_tool_pending: None,
+                artcraft_type_ime_was_active: false,
+''')
+    patch(host,
+'''        self.inner.logic(ctx, frame);
+''',
+'''        self.inner.logic(ctx, frame);
+        // The custom Type layer keeps its text in the document, not in the
+        // invisible EditText. Once editing has ended, release Android IME focus
+        // so the next physical tool key can reach NativeActivity again.
+        // Do not dismiss an unrelated currently focused egui input widget.
+        if self.artcraft_type_ime_was_active
+            && self.inner.ui.text_edit.is_none()
+            && !ctx.text_edit_focused()
+        {
+            if let Err(error) = self.bridge.hide_native_keyboard() {
+                log::warn!("PhotoCraft type editor IME focus release: {error}");
+            }
+        }
+        self.artcraft_type_ime_was_active = self.inner.ui.text_edit.is_some();
+''')
+    patch(host,
+'''    fn show_native_keyboard(&self) -> Result<(), String> {
+''',
+'''    fn hide_native_keyboard(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("imeHide"), jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn show_native_keyboard(&self) -> Result<(), String> {
+''')
+
+    # A hide runnable queued just before a new text editor opens must not
+    # dismiss that NEW editor's keyboard (Gboard may schedule view actions).
+    patch(act,
+'''    public void imeHide() {
+        imeWanted = false;
+        final EditText view = imeView;
+        if (view == null) {
+            return;
+        }
+        runOnUiThread(() -> {
+            try {
+''',
+'''    public void imeHide() {
+        imeWanted = false;
+        final EditText view = imeView;
+        if (view == null) {
+            return;
+        }
+        runOnUiThread(() -> {
+            if (imeWanted) return; // A newer imeShow() superseded this hide.
+            try {
+''')
+
+    assert "artcraft_type_ime_was_active" in host.read_text()
+    assert 'jni_str!("imeHide")' in host.read_text()
+    assert "A newer imeShow() superseded this hide." in act.read_text()
+    print("Android.9: release hidden Gboard EditText focus on Type-mode exit; preserve active UI text inputs")
+
     print("Android.8: full tool-letter physical shortcuts and Y/N/C modal pre-IME routing staged")
 
     print("Android.7: dedicated Shortcut Pad strip, Android 14+ gesture axes and modal dialog hotkeys staged")

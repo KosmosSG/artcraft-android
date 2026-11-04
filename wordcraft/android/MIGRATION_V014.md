@@ -91,3 +91,7 @@ Android application already passes these tests.
 - Android.2 adds WordCraft-only raw-key D/C/S intercept before editor processing, in addition to existing Java physical-key dispatch and v0.14 dialog handler. Preserves Save/Don't Save/Cancel button actions; clears stale JNI action on modal close.
 - Recursive shared SAF font scan: 5,000 recognized fonts, aggregate 4 GiB file data, up to 20,000 folders, with a 256 MiB per-file safety limit, streamed 64 KiB at a time and asynchronously staged. Font load processes up to 8 files per frame. Actual free app-private storage must be adequate. No blanket filesystem permission or signing-key changes.
 - Scope: draft PR117 only, temporary-signed candidate `0.14.0-android.2`. Do not merge, publish or use original certificate until explicit user approval after testing.
+
+### 2026-11-04: egui v0.37 icon-button compile fix
+
+- CI [#41605782234](https://github.com/KosmosSG/artcraft-android/actions/runs/41605782234) passed static D/C/S, icon and 5,000-font / 4 GiB checks, but Rust failed with `E0433` because egui v0.37 removed the old `egui::ImageButton` widget. The **pinned Storytold egui 0.37 source** provides `egui::Button::image` in `crates/egui/src/widgets/button.rs`. Use that supported widget with the existing approved icon texture and popup; update regression to reject the removed `ImageButton` name. No other feature or signing changes. An ARM64 build and MagicPad test are still required.

@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.Bitmap;
 import android.view.PixelCopy;
+import android.view.PointerIcon;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -91,6 +92,7 @@ public final class VectorCraftActivity extends NativeActivity {
     private long firstFrameProbeStartMs;
     private boolean firstFrameProbePending;
     private int verifiedNativeFrames;
+    private volatile int nativePointerIconType = -1;
 
     void vcOfferExtraResult(String json) { results.offer(json); }
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
@@ -177,6 +179,37 @@ public final class VectorCraftActivity extends NativeActivity {
     // PixelCopy of the actual native SurfaceView, rather than a Rust UI
     // callback, proves the GPU has presented pixels. A failed/empty copy is
     // retried asynchronously so we never block the Android main thread.
+    /**
+     * Adaptive cursor bridge, selectively ported from the ArtCraft Builder
+     * v0.2.0 PointerIcon mapping. Called by Rust only when the hovered cursor
+     * changes; always touch Android Views on the main thread.
+     *
+     * The NativeActivity surface is the pointer target, not the invisible
+     * EditText, startup cover, or a parent FrameLayout. Android's dispatcher
+     * resolves a hovered child's PointerIcon before consulting its parent.
+     */
+    public void vcSetAdaptivePointerIcon(int pointerType) {
+        if (android.os.Build.VERSION.SDK_INT < 24 || pointerType < 0) return;
+        if (pointerType == nativePointerIconType) return;
+        nativePointerIconType = pointerType;
+        runOnUiThread(() -> {
+            try {
+                SurfaceView nativeSurface = findNativeSurface(getWindow().getDecorView());
+                if (nativeSurface != null) {
+                    nativeSurface.setPointerIcon(
+                        PointerIcon.getSystemIcon(this, nativePointerIconType));
+                } else {
+                    // Native surface is not ready yet; allow a later frame
+                    // to retry rather than caching a change that never applied.
+                    nativePointerIconType = -1;
+                }
+            } catch (RuntimeException error) {
+                nativePointerIconType = -1;
+                Log.w(TAG, "VectorCraft adaptive cursor could not be applied", error);
+            }
+        });
+    }
+
     private SurfaceView findNativeSurface(View node) {
         if (node instanceof SurfaceView) return (SurfaceView) node;
         if (node instanceof ViewGroup) {

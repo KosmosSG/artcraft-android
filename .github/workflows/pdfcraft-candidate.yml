@@ -143,7 +143,26 @@ jobs:
           p.write_text(json.dumps(data, indent=2)+"\n")
           PY
           python3 tools/approved-branding/approved_branding.py install . pdfcraft
-          bash build.sh -pdfcraft -appname=PdfCraft -appicon=assets/pdfcraft/approved-icon.webp
+          # The baseline launcher generator still requires its legacy input path.
+          # Stage *exact* published stable branding assets, never regenerate or
+          # replace owner-approved artwork with a reconstructed SVG.
+          python3 - <<'PY'
+          import hashlib, json, shutil
+          from pathlib import Path
+          root = Path("tools/approved-branding/assets")
+          manifest = json.loads((root / "manifest.json").read_text())
+          master = root / manifest["filename"]
+          foreground = root / "res/drawable-xxxhdpi/ic_launcher_foreground.png"
+          assert hashlib.sha256(master.read_bytes()).hexdigest() == manifest["source_sha256"]
+          rel = foreground.relative_to(root).as_posix()
+          assert hashlib.sha256(foreground.read_bytes()).hexdigest() == manifest["resources"][rel]
+          dest = Path("assets/pdfcraft")
+          dest.mkdir(exist_ok=True)
+          shutil.copyfile(master, dest / "approved-icon.png")
+          shutil.copyfile(foreground, dest / "approved-foreground.png")
+          assert (dest / "approved-foreground.png").read_bytes() == foreground.read_bytes()
+          PY
+          bash build.sh -pdfcraft -appname=PdfCraft -appicon=assets/pdfcraft/approved-icon.png
           test -f output/pdfcraft-0.18.0.apk
           mv output/pdfcraft-0.18.0.apk output/pdfcraft-0.18.0-android.1.apk
           python3 tools/approved-branding/verify_apk.py . approved-icon-candidate

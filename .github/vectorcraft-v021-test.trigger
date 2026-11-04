@@ -12,3 +12,5 @@ Retry preflight only after revealing JVM scanner stderr (previous 41804327817 st
 Corrected JVM test fixture: previously escaped newline hid scan invocation; scanner still bounded and automatic.
 
 JVM diagnostic pass: print first 201-font automatic batch result to isolate remaining assertion.
+
+Correct final cumulative scan progress counter; JVM 201-font scan should now report 201, not zero.

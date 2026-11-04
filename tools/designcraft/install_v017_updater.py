@@ -69,15 +69,20 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     edit(menu_file,
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle, take_android_update_action};')
+    # Android.2 consolidates actions under the user-approved top-left Dc icon.
+    # Do not reinsert update controls into the removed top-level Android menu.
+    # Native dc_update_action() below powers both Dc dropdown actions.
     table_file = ui_root / "menus/tables.rs"
-    edit(table_file,
-         '''            "ui:app.artcraftToggleAndroidTools",
-        ],''',
-         '''            "ui:app.artcraftToggleAndroidTools",
-            "-",
-            "ui:app.artcraftCheckUpdates",
-            "ui:app.artcraftStartupCheck",
-        ],''')
+    table_source = table_file.read_text()
+    if '"Android",\n' in table_source or '"ui:app.artcraftToggleAndroidTools"' in table_source:
+        raise ValueError("Unexpected old Android top-level menu; review before patching")
+    dc_menu = (android / "src/v016_android.rs").read_text()
+    for label in ("dc-launcher-icon.png", "Check Updates", "Startup Update Check",
+                  "Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
+                  "Reload Font Catalog", "Android Tools"):
+        if label not in dc_menu:
+            raise ValueError(f"Missing approved Dc launcher menu action: {label}")
+
 
     bridge_file = android / "src/lib.rs"
     edit(bridge_file,

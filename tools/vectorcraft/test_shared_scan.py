@@ -99,7 +99,8 @@ public class VectorScanTest {
    t.add("root","nested","nested",true,false);
    t.add("nested","broken","broken.ttf",false,false);
    t.add("nested","good","good.TTC",false,true);
-   t.nodes.get("nested").get(1)[3]="0"; // SAF unknown size: valid font must still load\n   t.scanFontFolder(1,new Uri("root"));
+   t.nodes.get("nested").get(1)[3]="0"; // SAF unknown size: valid font must still load
+   t.scanFontFolder(1,new Uri("root"));
    check("ok".equals(t.status) && t.reported==1 && t.message.contains("skipped 1"));
    check(Files.exists(old) && shared.list().length==2);
    t.scanFontFolder(2,new Uri("root"));

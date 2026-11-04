@@ -430,6 +430,15 @@ impl FontUiState {
         let font_import = self.pending_import == Some(id);
         let font_folder = self.pending_shared == Some(id);
         if !font_import && !font_folder { return None; }
+        if font_folder && value.get("status").and_then(serde_json::Value::as_str) == Some("progress") {
+            // A worker batch finished but scanning is still in progress.
+            // Keep the one request pending and its spinner visible until
+            // the final "ok"/"error" event; no expensive catalog rescan yet.
+            self.shared_status = value.get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Scanning shared fonts in background…").into();
+            return Some(false);
+        }
         let success = value.get("status").and_then(serde_json::Value::as_str) == Some("ok");
         let message = value.get("message").and_then(serde_json::Value::as_str)
             .unwrap_or(if success { "Fonts loaded" } else { "Could not load fonts" });

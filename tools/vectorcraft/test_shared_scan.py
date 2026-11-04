@@ -109,6 +109,7 @@ public class VectorScanTest {
    VectorScanTest many=new VectorScanTest(new File(args[0],"many"));
    for(int i=0;i<201;i++)many.add("root","font"+i,"font"+i+".ttf",false,true);
    many.scanFontFolder(3,new Uri("root"));
+   System.err.println("SCAN-201-FIRST status="+many.status+", report="+many.reported+", message="+many.message);
    check("ok".equals(many.status) && many.message.contains("201 font files processed"));
    many.scanFontFolder(4,new Uri("root"));
    check("ok".equals(many.status) && many.message.contains("201 font files processed"));

@@ -403,7 +403,7 @@ final class VectorCraftExtras {
                 limited |= !pending.isEmpty() || attempted >= MAX_FONTS_PER_PASS
                         || budget[0] >= MAX_SCAN_BATCH_BYTES || folders >= MAX_FOLDERS
                         || budget[1] >= MAX_SCAN_BYTES;
-                int nextOffset = limited ? Math.min(MAX_FONTS, startOffset + attempted) : 0;
+                int nextOffset = Math.min(MAX_FONTS, startOffset + attempted);
                 // Persist continuation state *after* the file merge so that a
                 // process restart cannot advance the scan past uncached fonts.
                 // These values are written below, together with totalAdded.

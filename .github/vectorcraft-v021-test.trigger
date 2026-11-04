@@ -9,3 +9,5 @@ Run lightweight source/JVM tests BEFORE expensive Android SDK + ARM64 compilatio
 Build only com.artcraft.vectorcraft.test; use fresh disposable key; never permanent sign/publish or overwrite stable APK.
 
 Retry: updated old Android.5 test version marker and verified JNI bridge methods are in VectorCraftActivity, not VectorCraftExtras. No behavioral code changes.
+
+Retry Android.6: preserve upstream Android ScrollSource::ALL menu touch drag while applying trackpad smoothing to the already-patched widget.

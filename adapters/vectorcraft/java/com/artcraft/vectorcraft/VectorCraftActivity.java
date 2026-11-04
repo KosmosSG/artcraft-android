@@ -205,7 +205,10 @@ public final class VectorCraftActivity extends NativeActivity {
             if (cover != null) {
                 // Allow the just-submitted native frame to reach the GPU before
                 // removing the overlay; no wait on the UI or graphics thread.
-                cover.postDelayed(this::dismissStartupCover, 350);
+                // The native first-ui callback precedes actual Vulkan present.
+                // Keep the branded cover briefly so slow first GPU swaps cannot
+                // expose a black SurfaceView between Java startup and the editor.
+                cover.postDelayed(this::dismissStartupCover, 800);
             }
         });
     }

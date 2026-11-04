@@ -1,7 +1,5 @@
-"""Guard VectorCraft android.4 fixes before expensive ARM64 compilation.
-
-The official v0.21.0 renderer is unchanged, and Android-only code must retain
-all tested keyboard, pointer, icon, update and font features from android.3.
+"""VectorCraft-specific source guards: approved Android behavior, AndroidX splash,
+persistent BFS font scanning, updater, keyboard and test-only signing.
 """
 from pathlib import Path
 import unittest
@@ -10,66 +8,67 @@ from patch_compact_apk_v020 import APPCOMPAT_THEME, patch_native_theme
 
 ROOT=Path(__file__).resolve().parents[2]
 
-
 class VectorCraftAndroid4Guards(unittest.TestCase):
-    def test_maintain_system_splash_until_native_editor_ready(self):
+    def test_androidx_splash_stays_until_pixelcopy_confirms_native_surface(self):
         java=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
         theme=(ROOT/"tools/vectorcraft/patch_compact_apk_v020.py").read_text()
-        for marker in ("import android.window.SplashScreenView",
-                       "getSplashScreen().setOnExitAnimationListener",
-                       "nativeEditorReady = true",
-                       "if (nativeEditorReady) finishSystemSplash();",
-                       "finishSystemSplash();",
-                       "splash.remove();",
-                       "showStartupCover();"):
+        for marker in (
+            "import androidx.core.splashscreen.SplashScreen",
+            "SplashScreen.installSplashScreen(this)",
+            "setKeepOnScreenCondition(() -> !nativeEditorReady)",
+            "PixelCopy.request(surface, pixels",
+            "probeFirstPresentedFrame();",
+            "nativeEditorReady = true",
+            "showStartupCover();",
+        ):
             self.assertIn(marker,java)
-        self.assertIn("android:windowSplashScreenBackground",theme)
-        self.assertIn("android:windowSplashScreenAnimatedIcon",theme)
-        self.assertIn("#2d0000",theme)
+        for marker in ("windowSplashScreenBackground", "windowSplashScreenAnimatedIcon",
+                       "postSplashScreenTheme", "core-splashscreen:1.0.1"):
+            self.assertIn(marker,theme)
 
-    def test_generated_android_splash_xml_is_well_formed(self):
+    def test_splash_resources_well_formed_and_switch_to_post_theme(self):
         base='<resources>'+APPCOMPAT_THEME+'<item name="android:windowBackground">@android:color/black</item></style></resources>'
         xml=patch_native_theme(base)
         ET.fromstring(xml)
-        self.assertIn('<item name="android:windowSplashScreenBackground">#2d0000</item>',xml)
-        self.assertIn('<item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>',xml)
+        self.assertIn('<item name="windowSplashScreenBackground">#2d0000</item>',xml)
+        self.assertIn('<item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>',xml)
+        self.assertIn('<item name="postSplashScreenTheme">@style/Theme.ArtcraftPost</item>',xml)
+        self.assertIn('parent="android:style/Theme.Material.NoActionBar"',xml)
         self.assertNotIn(r'\\n',xml)
 
-    def test_auto_background_font_batches_and_safe_progress_updates(self):
+    def test_bfs_persistence_unknown_sizes_and_incremental_async_fonts(self):
         extras=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
         shell=(ROOT/"adapters/vectorcraft/src/lib.rs").read_text()
-        for marker in ("MAX_FONTS = 5000",
-                       "MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024",
-                       "MAX_FONTS_PER_PASS = 128",
-                       "MAX_SCAN_BATCH_BYTES = 64L * 1024 * 1024",
-                       "TREE_SCAN_ADDED", "putInt(TREE_SCAN_ADDED",
-                       "int nextOffset = Math.min(MAX_FONTS, startOffset + attempted);",
-                       "report(id, \"font_folder\", \"progress\"",
-                       "scanFontFolder(id, treeUri);",
-                       "bytes > 0 && bytes > MAX_SCAN_BATCH_BYTES - budget[0]",
-                       "attempted--;",
-                       "Existing fonts preserved"):
+        for marker in (
+            "MAX_FONTS = 5000",
+            "MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024",
+            "MAX_FONTS_PER_PASS = 128",
+            "MAX_SCAN_BATCH_BYTES = 64L * 1024 * 1024",
+            "class ScanProgress", "ArrayDeque<ScanEntry>",
+            "saveScanState(p)", "loadScanState(treeUri)",
+            'report(id, "font_folder", "progress"',
+            "scanFontFolder(id, treeUri);",
+            "entry.reportedSize <= 0",
+            "p.queue.addFirst(entry);",
+            "addedThisPass",
+        ):
             self.assertIn(marker,extras)
-        self.assertNotIn("if (bytes <= 0",extras)
         self.assertIn('Some("progress")',shell)
-        self.assertIn("return Some(false);",shell)
+        self.assertIn("return Some(added > 0);",shell)
         self.assertIn('name("vectorcraft-font-index"',shell)
 
-    def test_stable_features_and_disposable_signing_retained(self):
+    def test_preserve_android_features_and_disposable_signing(self):
         workflow=(ROOT/".github/workflows/vectorcraft-v021-test-apk.yml").read_text()
         java=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
-        for marker in ("vcRequestFontImport", "vcRequestFontFolder",
-                       "vcRefreshFontFolder", "vcCheckForUpdates",
-                       "vcPollUpdateResult", "vcOpenUpdatePage",
+        for marker in ("vcRequestFontImport", "vcRequestFontFolder", "vcRefreshFontFolder",
+                       "vcCheckForUpdates", "vcPollUpdateResult", "vcOpenUpdatePage",
                        "applyImmersiveFullscreen"):
             self.assertIn(marker,java)
         for marker in ("ORIGINAL_CERT:", "Delete disposable builder signing materials",
-                       "com.artcraft.vectorcraft.test",
-                       "0.21.0-android.4"):
+                       "com.artcraft.vectorcraft.test", "0.21.0-android.5"):
             self.assertIn(marker,workflow)
         self.assertNotIn("gh release create",workflow)
         self.assertNotIn("softprops/action-gh-release",workflow)
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     unittest.main()

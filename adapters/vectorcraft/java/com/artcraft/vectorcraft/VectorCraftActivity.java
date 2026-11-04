@@ -5,15 +5,18 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -24,6 +27,9 @@ import android.view.inputmethod.InputConnectionWrapper;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -66,6 +72,12 @@ public final class VectorCraftActivity extends NativeActivity {
 
     // Optional PhotoCraft-style features, isolated from the existing open/save bridge.
     private final VectorCraftExtras extras = new VectorCraftExtras(this);
+
+    // Android's native surface can remain black while Rust and the GPU initialize.
+    // This lightweight splash uses the SAME approved launcher icon and is removed
+    // only once the VectorCraft UI starts drawing; a timeout prevents lock-in if
+    // the native process never reaches its first frame.
+    private FrameLayout startupCover;
 
     void vcOfferExtraResult(String json) { results.offer(json); }
     public void vcRequestFontImport(long id) { extras.requestFontImport(id); }
@@ -149,9 +161,69 @@ public final class VectorCraftActivity extends NativeActivity {
         }
     }
 
+    private int splashDp(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void showStartupCover() {
+        FrameLayout cover = new FrameLayout(this);
+        cover.setBackgroundColor(Color.rgb(25, 5, 9));
+        cover.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+
+        LinearLayout contents = new LinearLayout(this);
+        contents.setOrientation(LinearLayout.VERTICAL);
+        contents.setGravity(Gravity.CENTER);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.mipmap.ic_launcher);
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        contents.addView(icon, new LinearLayout.LayoutParams(splashDp(112), splashDp(112)));
+
+        TextView label = new TextView(this);
+        label.setText("VectorCraft");
+        label.setTextColor(Color.WHITE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 21);
+        label.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams title = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        title.topMargin = splashDp(12);
+        contents.addView(label, title);
+
+        cover.addView(contents, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        startupCover = cover;
+        getWindow().addContentView(cover, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Safety fallback: never leave the splash covering a working app.
+        cover.postDelayed(this::dismissStartupCover, 15000);
+    }
+
+    /** Called exactly once by Rust after its first editor UI traversal. */
+    public void vcNativeUiReady() {
+        runOnUiThread(() -> {
+            FrameLayout cover = startupCover;
+            if (cover != null) {
+                // Allow the just-submitted native frame to reach the GPU before
+                // removing the overlay; no wait on the UI or graphics thread.
+                cover.postDelayed(this::dismissStartupCover, 350);
+            }
+        });
+    }
+
+    private void dismissStartupCover() {
+        FrameLayout cover = startupCover;
+        if (cover == null) return;
+        startupCover = null;
+        android.view.ViewParent parent = cover.getParent();
+        if (parent instanceof ViewGroup) {
+            ((ViewGroup) parent).removeView(cover);
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        showStartupCover();
         applyImmersiveFullscreen();
         // The native surface view is attached after onCreate and can reset the window state:
         // re-apply once the first layout pass runs.

@@ -1,10 +1,32 @@
 """EffectCraft-only hardware Ctrl and D/C/S modal keyboard bridge regressions."""
 from pathlib import Path
 import unittest
+import ast
 
 ROOT = Path(__file__).parent
 
 class ShortcutWiring(unittest.TestCase):
+    def test_generated_launcher_python_remains_parseable(self):
+        # This catches the exact failure from Actions #41823706603:
+        # Rust text.endEdit/log strings were nested in a Python double-quoted
+        # generator literal and broke the generated build-common.sh heredoc.
+        source = (ROOT / "integrate_updater.py").read_text()
+        tree = ast.parse(source)
+        generated = [
+            node.value.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+            and "Changes apply solely to the fully rendered EffectCraft launcher." in node.value.value
+        ]
+        self.assertEqual(len(generated), 1)
+        # The integration replaces double escaped newlines before staging.
+        code = generated[0].replace(chr(92) * 2 + "n", chr(92) + "n")
+        ast.parse("def builder():\\n" + code)
+        self.assertIn('execute("text.endEdit"', code)
+        self.assertIn('log::warn!("EffectCraft modal text commit:', code)
+
     def test_capture_before_ui_dialog_and_text_edit_close(self):
         build = (ROOT / "integrate_updater.py").read_text()
         order = [

@@ -15,6 +15,7 @@ class VectorCraftAndroid6Guards(unittest.TestCase):
             "#[cfg(target_os = \"android\")]",
             '.id_salt("vectorcraft-android-smooth-menu")',
             ".wheel_scroll_multiplier(egui::vec2(1.0, 0.78))",
+            "scroll_source(egui::containers::scroll_area::ScrollSource::ALL)",
             "input.is_scrolling()",
             "request_repaint_after(std::time::Duration::from_millis(16))",
             "area.show(ui, add_contents).inner"

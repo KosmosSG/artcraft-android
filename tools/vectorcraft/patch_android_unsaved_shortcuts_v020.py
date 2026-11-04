@@ -17,8 +17,8 @@ def once(source: str, anchor: str, replacement: str, label: str) -> str:
 
 def patch(root: Path) -> None:
     manifest = (root / "Cargo.toml").read_text()
-    if manifest.count('version = "0.20.0"') != 1:
-        raise RuntimeError("Unsupported upstream for v0.20 Save Changes patch")
+    if sum(manifest.count('version = "' + v + '"') for v in ('0.20.0', '0.21.0')) != 1:
+        raise RuntimeError("Unsupported upstream for reviewed v0.20/v0.21 Save Changes patch")
     path = root / "crates/ui-egui/src/dialogs.rs"
     source = path.read_text()
     key = '''    if spec.ok.is_some() && ok_enabled && !after_panel && !rejected && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {

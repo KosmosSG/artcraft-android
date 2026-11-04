@@ -9,6 +9,9 @@ on:
       - tools/effectcraft/integrate_updater.py
       - tools/effectcraft/menu_corner.py
       - tools/effectcraft/test_corner_menu.py
+      - tools/effectcraft/test_keyboard_launcher.py
+      - tools/effectcraft/test_dcs_dispatch.py
+      - tools/effectcraft/test_android_shortcut_runtime.py
       - tools/effectcraft/v020_compat.py
       - tools/effectcraft/test_v020_compat.py
       - tools/effectcraft/v021_compat.py

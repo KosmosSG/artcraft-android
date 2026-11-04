@@ -48,10 +48,12 @@ class VectorCraftAndroid6Guards(unittest.TestCase):
             "class ScanProgress", "loadScanState(treeUri)",
             "saveScanState(p)", "scanFontFolder(id, treeUri)",
             'report(id, "font_folder", "progress"',
-            "vcRequestFontImport", "vcRequestFontFolder",
-            "vcCheckForUpdates", "vcPollUpdateResult",
         ):
             self.assertIn(marker,java)
+        activity=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+        for marker in ("vcRequestFontImport", "vcRequestFontFolder",
+                       "vcCheckForUpdates", "vcPollUpdateResult"):
+            self.assertIn(marker,activity)
         for marker in ("font_reindex_pending", "notify_native_ui_ready",
                        "classify_android_precision_scroll", "startup_updates"):
             self.assertIn(marker,adapter)

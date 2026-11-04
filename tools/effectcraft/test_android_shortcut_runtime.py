@@ -23,7 +23,7 @@ class ShortcutWiring(unittest.TestCase):
         self.assertEqual(len(generated), 1)
         # The integration replaces double escaped newlines before staging.
         code = generated[0].replace(chr(92) * 2 + "n", chr(92) + "n")
-        ast.parse("def builder():\\n" + code)
+        ast.parse("def builder():" + chr(10) + code)
         self.assertIn('execute("text.endEdit"', code)
         self.assertIn('log::warn!("EffectCraft modal text commit:', code)
 

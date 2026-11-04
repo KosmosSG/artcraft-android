@@ -5,6 +5,8 @@ all tested keyboard, pointer, icon, update and font features from android.3.
 """
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
+from patch_compact_apk_v020 import APPCOMPAT_THEME, patch_native_theme
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -24,6 +26,14 @@ class VectorCraftAndroid4Guards(unittest.TestCase):
         self.assertIn("android:windowSplashScreenBackground",theme)
         self.assertIn("android:windowSplashScreenAnimatedIcon",theme)
         self.assertIn("#2d0000",theme)
+
+    def test_generated_android_splash_xml_is_well_formed(self):
+        base='<resources>'+APPCOMPAT_THEME+'<item name="android:windowBackground">@android:color/black</item></style></resources>'
+        xml=patch_native_theme(base)
+        ET.fromstring(xml)
+        self.assertIn('<item name="android:windowSplashScreenBackground">#2d0000</item>',xml)
+        self.assertIn('<item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>',xml)
+        self.assertNotIn(r'\\n',xml)
 
     def test_auto_background_font_batches_and_safe_progress_updates(self):
         extras=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()

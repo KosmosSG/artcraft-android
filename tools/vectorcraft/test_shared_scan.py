@@ -14,14 +14,14 @@ class SharedScan(unittest.TestCase):
         self.assertNotIn('Incomplete shared font scan; previous fonts preserved',s)
         for token in ('MAX_FONTS = 5000','MAX_FOLDERS = 5000','MAX_FONT = 64L',
                       'MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024','fontDigest(file)',
-                      'Existing fonts preserved; catalog will refresh once finished.', '"ttcf".equals(s)'):
+                      'font catalog updating.', '"ttcf".equals(s)'):
             self.assertIn(token,s)
 
     @unittest.skipUnless(shutil.which('javac'),'JVM required in private CI')
     def test_bad_file_does_not_abort_valid_fonts_or_erase_previous_cache(self):
         s=JAVA.read_text()
         helpers=s[s.index('    private static String extension('):s.index('    private void importFont(')]
-        scanner=s[s.index('    private void scanFontFolder('):s.index('    void checkForUpdates()')]
+        scanner=s[s.index('    // A durable breadth-first work queue'):s.index('    void checkForUpdates()')]
         harness=r'''
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +36,7 @@ public class VectorScanTest {
    String id; Uri(String id){this.id=id;}
    public boolean equals(Object o){return o instanceof Uri && ((Uri)o).id.equals(id);}
    public int hashCode(){return id.hashCode();}
+   public String toString(){return id;}
  }
  static class android {static class content {static class UriPermission {
    Uri getUri(){return new Uri("root");} boolean isReadPermission(){return true;}
@@ -110,9 +111,9 @@ public class VectorScanTest {
    for(int i=0;i<201;i++)many.add("root","font"+i,"font"+i+".ttf",false,true);
    many.scanFontFolder(3,new Uri("root"));
    System.err.println("SCAN-201-FIRST status="+many.status+", report="+many.reported+", message="+many.message);
-   check("ok".equals(many.status) && many.message.contains("201 font files processed"));
+   check("ok".equals(many.status) && many.message.contains("Indexed 201 / 5000 font files"));
    many.scanFontFolder(4,new Uri("root"));
-   check("ok".equals(many.status) && many.message.contains("201 font files processed"));
+   check("ok".equals(many.status) && many.message.contains("Indexed 201 / 5000 font files"));
  }
 '''
         with tempfile.TemporaryDirectory() as folder:

@@ -48,7 +48,7 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
                 kept.push(event);
             }
             egui::Event::Text(_) if state.modifiers().command => {}
-            egui::Event::WindowFocused(focused) => {
+            egui::Event::WindowFocused(_) => {
                 // Android's keyboard focus can move from the native SurfaceView
                 // to the invisible EditText/SAF picker without delivering a
                 // physical Ctrl/Alt key-up. Clear sticky modifier state on both
@@ -56,7 +56,6 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
                 *state = AndroidModifiers::default();
                 kept.push(egui::Event::ModifiersChanged(state.modifiers()));
                 kept.push(event);
-                let _ = focused; // retain the original focus event unchanged.
             }
             _ => kept.push(event),
         }
@@ -221,7 +220,7 @@ impl AndroidMenuScrollSmoother {
         let mut retained = Vec::with_capacity(raw.events.len() + 1);
         for event in raw.events.drain(..) {
             match event {
-                egui::Event::MouseWheel { unit, delta, modifiers, source }
+                egui::Event::MouseWheel { unit, delta, modifiers, source, .. }
                     if matches!(source, egui::MouseWheelSource::Trackpad | egui::MouseWheelSource::Unknown)
                     && matches!(unit, egui::MouseWheelUnit::Point | egui::MouseWheelUnit::Line) =>
                 {
@@ -245,6 +244,7 @@ impl AndroidMenuScrollSmoother {
             retained.push(egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
                 delta: step,
+                phase: egui::TouchPhase::Move,
                 modifiers: self.modifiers,
                 source: egui::MouseWheelSource::Trackpad,
             });
@@ -369,6 +369,7 @@ mod tests {
         let original = Event::MouseWheel {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, -3.0),
+            phase: egui::TouchPhase::Move,
             modifiers: Modifiers::NONE,
             source: egui::MouseWheelSource::Unknown,
         };

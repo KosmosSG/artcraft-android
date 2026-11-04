@@ -37,7 +37,7 @@ public class KeyEvent {
 class Parent { int forwarded=0; public boolean dispatchKeyEvent(KeyEvent e){forwarded++;return false;}
  public boolean onKeyDown(int c,KeyEvent e){forwarded++;return false;} public boolean onKeyUp(int c,KeyEvent e){forwarded++;return false;} }
 public class Harness extends Parent {
- boolean imeWanted=true; int hides=0; void imeHide(){hides++;imeWanted=false;} void artcraftRestoreCanvasFocus(){}
+ boolean imeWanted=true; int hides=0; void imeHide(){hides++;imeWanted=false;} void artcraftRestoreCanvasFocus(){}\n void runOnUiThread(Runnable r){r.run();}
 ''' + body + '''
  static KeyEvent event(int k,int a,int r,boolean m,int f){return new KeyEvent(k,a,r,m,f);}
  static void check(boolean b){if(!b) throw new AssertionError();}

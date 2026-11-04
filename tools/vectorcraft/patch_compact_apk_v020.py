@@ -37,7 +37,14 @@ def patch_native_theme(source: str) -> str:
         raise ValueError("Pinned builder AppCompat theme anchor changed; review required")
     if source.count(NATIVE_THEME):
         raise ValueError("Android native theme was already patched")
-    return source.replace(APPCOMPAT_THEME, NATIVE_THEME, 1)
+    patched = source.replace(APPCOMPAT_THEME, NATIVE_THEME, 1)
+    # Android launches into this themed window before Java onCreate or the
+    # native Rust GPU exists. Black is otherwise visible for several seconds.
+    black = '<item name="android:windowBackground">@android:color/black</item>'
+    if patched.count(black) != 1:
+        raise ValueError("Pinned Android windowBackground anchor changed")
+    return patched.replace(black,
+        '<item name="android:windowBackground">#2d0000</item>', 1)
 
 
 def patch_source(generated: str, java: str, extras: str, manifest: str) -> str:
@@ -62,7 +69,16 @@ def patch_builder(builder: Path, android_port: Path) -> None:
     updated = patch_source(source, java.read_text(), extras.read_text(), manifest.read_text())
     updated = patch_native_theme(updated)
     generated.write_text(updated)
-    print("PASS: VectorCraft NativeActivity with framework Material.NoActionBar theme; unused AndroidX removed")
+    # The production adapter still names the original framework theme; only
+    # this disposable candidate selects the generated brand-coloured theme.
+    # Do not modify the committed stable app or its production manifest.
+    staged = builder / "adapters/vectorcraft/Cargo.toml"
+    original = staged.read_text()
+    old = 'theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"'
+    if original.count(old) != 1:
+        raise ValueError("Pinned VectorCraft Android theme anchor changed")
+    staged.write_text(original.replace(old, 'theme = "@style/Theme.Artcraft"', 1))
+    print("PASS: VectorCraft native theme uses brand maroon launch background; unused AndroidX removed")
 
 
 if __name__ == "__main__":

@@ -14,13 +14,17 @@ class NativeTouchAndTools(unittest.TestCase):
 if __name__=="__main__": unittest.main()
 
 class SaveAndNavigationRegression(unittest.TestCase):
-    def test_dcs_repeat_focus_and_touch_hint(self):
+    def test_dcs_repeat_focus_and_hidden_touch_hint(self):
         s=(ROOT/"tools"/"pdfcraft"/"android_interaction_patch.py").read_text()
         for marker in ("ARTCRAFT_ANDROID_DCS", "Key::D", "Key::C", "Key::S",
                        "ARTCRAFT_ANDROID_REPEAT_TOOL_KEYS", "ctx.text_edit_focused()",
-                       "ARTCRAFT_ANDROID_TOUCH_HINT", "Touch: swipe to scroll",
+                       "PDFCRAFT_ANDROID_TOUCH_HINT_REMOVED",
                        "PDFCRAFT_ANDROID_DCS_MODAL_FALLBACK",
                        "PDFCRAFT_ANDROID_REPEAT_VH",
                        "PDFCRAFT_ANDROID_VH_EVENT_FALLBACK",
                        "egui::ImeEvent::Commit(text)"):
             self.assertIn(marker,s)
+        # Floating text is intentionally absent; actual Android touch/selection
+        # code remains covered by the separate adapter and winit tests.
+        self.assertNotIn('hint.small("Touch: swipe to scroll',s)
+        self.assertNotIn('egui::Area::new(egui::Id::new("pdfcraft-touch-select-hint"))',s)

@@ -14,6 +14,12 @@ backups/
 # Held by lib/build-common.sh while a build is running (one build at a time)
 .artcraft-build.lock
 
+# Gradle JDK the builder downloads when no suitable one is installed (lib/build-common.sh)
+.cache/
+
+# Android SDK the builder downloads when the machine has none (lib/build-common.sh)
+android-sdk/
+
 # Python bytecode caches
 __pycache__/
 *.pyc
@@ -21,3 +27,6 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local reversible snapshots (not part of the project)
+.backups/

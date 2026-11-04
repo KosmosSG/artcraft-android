@@ -5,7 +5,7 @@
 // destination URI. This module is the Rust side: it drives the picker over JNI and polls answers
 // once per frame. The upstream ArtCraft crates are never modified.
 //
-// ARTCRAFT_ANDROID_SAF_BRIDGE_V2
+// ARTCRAFT_ANDROID_SAF_BRIDGE_V3
 mod saf {
     use android_activity::AndroidApp;
     use jni::{
@@ -19,7 +19,7 @@ mod saf {
 
     /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
     /// including the SAF file bridge — is the one running.
-    pub const SAF_MARKER: &str = "ARTCRAFT_ANDROID_SAF_BRIDGE_V2";
+    pub const SAF_MARKER: &str = "ARTCRAFT_ANDROID_SAF_BRIDGE_V3";
 
     /// How long a synchronous picker waits for the user before giving up (the app carries on as if
     /// the dialog was cancelled; the SAF picker itself has no timeout).
@@ -103,6 +103,10 @@ mod saf {
         }
 
         pub fn request_open(&self, id: u64, multiple: bool) -> Result<(), String> {
+            self.request_open_with_extensions(id, multiple, "")
+        }
+
+        pub fn request_open_with_extensions(&self, id: u64, multiple: bool, extensions: &str) -> Result<(), String> {
             self.vm
                 .attach_current_thread(|env| -> jni::errors::Result<()> {
                     // AndroidApp returns an unowned global ref. Do not delete it when this wrapper drops.
@@ -110,12 +114,27 @@ mod saf {
                     // SAFETY: AndroidApp retains this global Activity reference; as_cast_raw borrows it
                     // without taking ownership or attempting to delete the reference.
                     let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
-                    env.call_method(
-                        &*activity,
-                        jni_str!("safRequestOpen"),
-                        jni_sig!("(JZ)V"),
-                        &[JValue::Long(id as i64), JValue::Bool(multiple)],
-                    )?;
+                    if !extensions.is_empty() {
+                        let ext_name = env.new_string(extensions)?;
+                        let ext_obj = JObject::from(ext_name);
+                        env.call_method(
+                            &*activity,
+                            jni_str!("safRequestOpen"),
+                            jni_sig!("(JZLjava/lang/String;)V"),
+                            &[
+                                JValue::Long(id as i64),
+                                JValue::Bool(multiple),
+                                JValue::Object(&ext_obj),
+                            ],
+                        )?;
+                    } else {
+                        env.call_method(
+                            &*activity,
+                            jni_str!("safRequestOpen"),
+                            jni_sig!("(JZ)V"),
+                            &[JValue::Long(id as i64), JValue::Bool(multiple)],
+                        )?;
+                    }
                     Ok(())
                 })
                 .map_err(|e| e.to_string())
@@ -149,6 +168,35 @@ mod saf {
                     let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
                     env.call_method(&*activity, jni_str!("safRequestFolder"), jni_sig!("(J)V"), &[JValue::Long(id as i64)])?;
                     Ok(())
+                })
+                .map_err(|e| e.to_string())
+        }
+
+        /// Hand a generated PDF to Android's print system (the native print spooler). Java answers
+        /// synchronously — `"OK"` once the print dialog has been queued on the main thread, or
+        /// `"ERROR: …"` when no print service exists — so the caller gets its receipt (or failure)
+        /// inside the same frame while the dialog itself opens asynchronously.
+        pub fn print_document(&self, title: &str, pdf: &[u8]) -> Result<String, String> {
+            self.vm
+                .attach_current_thread(|env| -> jni::errors::Result<String> {
+                    let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                    // SAFETY: AndroidApp retains this global Activity reference; as_cast_raw borrows it.
+                    let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                    let title_obj = JObject::from(env.new_string(title)?);
+                    let bytes_obj = JObject::from(env.byte_array_from_slice(pdf)?);
+                    let value = env
+                        .call_method(
+                            &*activity,
+                            jni_str!("printDocument"),
+                            jni_sig!("(Ljava/lang/String;[B)Ljava/lang/String;"),
+                            &[JValue::Object(&title_obj), JValue::Object(&bytes_obj)],
+                        )?
+                        .l()?;
+                    if value.is_null() {
+                        return Ok(String::new());
+                    }
+                    let value = JString::cast_local(env, value)?;
+                    value.try_to_string(env)
                 })
                 .map_err(|e| e.to_string())
         }
@@ -204,6 +252,37 @@ mod saf {
                     let value = JString::cast_local(env, value)?;
                     let value: String = value.try_to_string(env)?;
                     Ok(Some(value))
+                })
+                .map_err(|e| e.to_string())
+        }
+
+        /// How many files the system (or a drop) handed us that the shell has not opened yet.
+        /// Asked without taking anything off the queue, so the frame that opens the file still
+        /// finds it there. The shell's watcher thread uses it to wake an idle app (egui runs a
+        /// frame only when something asks it to, so a file that arrives while the app sits
+        /// untouched would otherwise wait for the next touch).
+        pub fn intent_pending(&self) -> Result<usize, String> {
+            self.vm
+                .attach_current_thread(|env| -> jni::errors::Result<usize> {
+                    let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                    // SAFETY: AndroidApp retains this global Activity reference; as_cast_raw borrows it
+                    // without taking ownership or attempting to delete the reference.
+                    let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                    let value = match env.call_method(
+                        &*activity,
+                        jni_str!("intentPending"),
+                        jni_sig!("()I"),
+                        &[],
+                    ) {
+                        Ok(value) => value.i()?,
+                        Err(error) => {
+                            // A missing `intentPending` leaves a pending NoSuchMethodError on the shared
+                            // JNI thread (which the SAF bridge also uses); clear it before returning.
+                            env.exception_clear();
+                            return Err(error);
+                        }
+                    };
+                    Ok(value.max(0) as usize)
                 })
                 .map_err(|e| e.to_string())
         }
@@ -294,6 +373,46 @@ mod saf {
             self.wait_answer(id, timeout)
         }
 
+        /// Blocking picker for a **worker thread**, while the frame thread keeps pumping the event
+        /// loop. Unlike [`Self::pick_blocking`], nothing here parks the frame thread: the app's
+        /// window/surface lifecycle (`Suspended`/`Resumed`) is delivered normally, so the renderer
+        /// tears down and rebuilds its surface around the picker instead of keeping a stale one
+        /// (which panics with `ERROR_NATIVE_WINDOW_IN_USE_KHR` on resume). Because the frame thread
+        /// is alive, the glue's lifecycle callbacks complete on their own — `NonblockingCallbacks`
+        /// must NOT be enabled here, and input is left to the frame thread's own iterator.
+        pub fn pick_blocking_worker(&self, id: u64, save_name: Option<&str>, timeout: Duration) -> Result<PickAnswer, String> {
+            match save_name {
+                Some(name) => self.request_save(id, name)?,
+                None => self.request_open(id, false)?,
+            }
+            self.wait_answer_worker(id, timeout)
+        }
+
+        fn wait_answer_worker(&self, id: u64, timeout: Duration) -> Result<PickAnswer, String> {
+            let deadline = Instant::now() + timeout;
+            loop {
+                for raw in self.drain()? {
+                    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { continue };
+                    if value.get("id").and_then(serde_json::Value::as_u64) != Some(id) {
+                        continue;
+                    }
+                    return match value.get("status").and_then(serde_json::Value::as_str).unwrap_or("error") {
+                        "ok" => Ok(PickAnswer::Paths(picker_paths(&value))),
+                        "cancel" => Ok(PickAnswer::Cancelled),
+                        _ => Err(value
+                            .get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("the Android file picker failed")
+                            .to_owned()),
+                    };
+                }
+                if Instant::now() >= deadline {
+                    return Err("the Android file picker did not answer".to_owned());
+                }
+                std::thread::sleep(Duration::from_millis(15));
+            }
+        }
+
         fn wait_answer(&self, id: u64, timeout: Duration) -> Result<PickAnswer, String> {
             let deadline = Instant::now() + timeout;
             loop {
@@ -367,38 +486,98 @@ mod saf {
     /// and pushes it to the destination URI whenever it changes on disk. Used by hosts whose file
     /// API is path-based (the app writes the file without a write hook to intercept). The file
     /// stays in app-private storage, so later saves to the same path sync too.
+    ///
+    /// A path-based app may not write the exact staged path it was handed: it can add or replace
+    /// the extension after the pick (GridCraft saves "Book" as "Book.xlsx"). The whole family of
+    /// files sharing the staged file's stem is watched, so that write is committed too — the Java
+    /// side resolves such a sibling back to the chosen document. Files already there when the pick
+    /// happened are remembered, so they are never pushed into a new document.
     #[derive(Default)]
     pub struct SaveMirror {
-        entries: Mutex<HashMap<u64, (String, u64, u64)>>,
+        entries: Mutex<HashMap<String, Tracked>>,
     }
 
+    #[derive(Default)]
+    struct Tracked {
+        path: String,
+        /// Last-known stamp of every staged path already seen for this pick.
+        stamps: HashMap<String, (u64, u64)>,
+        /// When the stem family was last listed. Listing every frame would read the whole staged
+        /// directory 60 times a second; a sibling written by the app is still found within a frame
+        /// or two.
+        scanned: Option<Instant>,
+    }
+
+    /// How often the staged directory is listed for new files sharing the tracked stem.
+    const SCAN_INTERVAL: Duration = Duration::from_millis(200);
+
     impl SaveMirror {
-        /// Watch `path` (a staged save destination) for writes.
-        pub fn track(&self, id: u64, path: &str) {
-            let (mtime, size) = file_stamp(path);
-            self.entries
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .insert(id, (path.to_owned(), mtime, size));
+        /// Watch `path` (a staged save or open destination) for writes.
+        pub fn track(&self, _id: u64, path: &str) {
+            let mut entries = self.entries.lock().unwrap_or_else(|error| error.into_inner());
+            if let Some(existing) = entries.get_mut(path) {
+                for candidate in family(path) {
+                    existing.stamps.entry(candidate.clone()).or_insert_with(|| file_stamp(&candidate));
+                }
+                return;
+            }
+            let mut tracked = Tracked { path: path.to_owned(), ..Tracked::default() };
+            for candidate in family(path) {
+                tracked.stamps.insert(candidate.clone(), file_stamp(&candidate));
+            }
+            tracked.scanned = Some(Instant::now());
+            entries.insert(path.to_owned(), tracked);
         }
 
         /// Commit every tracked file whose contents changed since the last sync.
         pub fn sync(&self, bridge: &Bridge) {
             let mut entries = self.entries.lock().unwrap_or_else(|error| error.into_inner());
-            for (_id, (path, mtime, size)) in entries.iter_mut() {
-                let (now_mtime, now_size) = file_stamp(path);
-                if (now_mtime, now_size) == (*mtime, *size) {
-                    continue;
+            for tracked in entries.values_mut() {
+                if tracked.scanned.is_none_or(|at| at.elapsed() >= SCAN_INTERVAL) {
+                    for candidate in family(&tracked.path) {
+                        tracked.stamps.entry(candidate.clone()).or_insert_with(|| file_stamp(&candidate));
+                    }
+                    tracked.scanned = Some(Instant::now());
                 }
-                *mtime = now_mtime;
-                *size = now_size;
-                match bridge.commit(path) {
-                    Ok(status) if status == "NONE" || status == "OK" => {}
-                    Ok(status) => log::error!("Could not save {path}: {status}"),
-                    Err(error) => log::error!("Could not save {path}: {error}"),
+                let candidates: Vec<String> = tracked.stamps.keys().cloned().collect();
+                for candidate in candidates {
+                    let stamp = file_stamp(&candidate);
+                    if tracked.stamps.get(&candidate) == Some(&stamp) {
+                        continue;
+                    }
+                    tracked.stamps.insert(candidate.clone(), stamp);
+                    // An empty file is the staged copy the picker itself just created, not a write.
+                    if stamp.1 == 0 {
+                        continue;
+                    }
+                    match bridge.commit(&candidate) {
+                        Ok(status) if status == "NONE" || status == "OK" => {}
+                        Ok(status) => log::error!("Could not save {candidate}: {status}"),
+                        Err(error) => log::error!("Could not save {candidate}: {error}"),
+                    }
                 }
             }
         }
+    }
+
+    /// The staged path plus any file beside it with the same stem ("Book.xlsx", "Book.csv", …).
+    fn family(path: &str) -> Vec<String> {
+        let mut paths = vec![path.to_owned()];
+        let staged = std::path::Path::new(path);
+        let (Some(parent), Some(stem)) = (staged.parent(), staged.file_stem()) else {
+            return paths;
+        };
+        let Ok(entries) = std::fs::read_dir(parent) else { return paths };
+        for entry in entries.flatten() {
+            let candidate = entry.path();
+            if candidate.file_stem().is_some_and(|other| other == stem)
+                && let Some(candidate) = candidate.to_str()
+                && candidate != path
+            {
+                paths.push(candidate.to_owned());
+            }
+        }
+        paths
     }
 
     fn file_stamp(path: &str) -> (u64, u64) {

@@ -67,4 +67,5 @@ public class Harness extends Parent {
  }
 }''')
             subprocess.run(['javac','android/view/KeyEvent.java','Harness.java'],cwd=root,check=True,capture_output=True)
-            subprocess.run(['java','-ea','Harness'],cwd=root,check=True,capture_output=True)
+            execution = subprocess.run(['java','-ea','Harness'],cwd=root,capture_output=True,text=True)
+            self.assertEqual(execution.returncode, 0, execution.stdout + execution.stderr)

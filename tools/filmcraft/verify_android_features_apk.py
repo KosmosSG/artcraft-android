@@ -20,7 +20,7 @@ NATIVE_COMMANDS = (
     b"android.filmcraft.importFont",
     b"android.filmcraft.sharedFonts",
     b"android.filmcraft.refreshFonts",
-    b"android.filmcraft.checkUpdates",
+    b"app.checkForUpdates",  # single upstream Help entry, Android action 4
     b"android.filmcraft.startupUpdates",
     b"android.filmcraft.openRelease",
     b"android.filmcraft.buildInfo",

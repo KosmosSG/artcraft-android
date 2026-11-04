@@ -13,6 +13,7 @@ pub struct GridCraftTools {
     pub font_status: String,
     pub update_status: String,
     release_url: Option<String>,
+    install_available: bool,
     checking: bool,
     check_started_at: Option<std::time::Instant>,
     startup_loaded: bool,
@@ -82,7 +83,7 @@ impl GridCraftTools {
             app: app.clone(), vm: Arc::new(vm),
             font_status: "Import TTF/OTF or choose ArtCraft-Fonts; families refresh automatically.".into(),
             update_status: "Manual update check available; no automatic APK installation.".into(),
-            release_url: None, checking: false, check_started_at: None,
+            release_url: None, install_available: false, checking: false, check_started_at: None,
             startup_loaded: false, startup_check: false,
             font_request_pending: false, font_request_started: None,
             feedback_message: None, feedback_until: None,
@@ -98,6 +99,7 @@ impl GridCraftTools {
                 Action::SelectFolder => env.call_method(&*activity, jni_str!("gcSelectSharedFolder"), jni_sig!("()V"), &[]),
                 Action::RefreshFolder => env.call_method(&*activity, jni_str!("gcRefreshSharedFolder"), jni_sig!("()V"), &[]),
                 Action::CheckUpdates => env.call_method(&*activity, jni_str!("gcCheckForUpdates"), jni_sig!("()V"), &[]),
+                Action::DownloadInstall => env.call_method(&*activity, jni_str!("gcDownloadAndInstallUpdate"), jni_sig!("()V"), &[]),
             };
             if result.is_err() { env.exception_clear(); }
             result?;
@@ -228,6 +230,8 @@ impl GridCraftTools {
                             }
                         },
                         "update" => {
+                            self.install_available = value.get("can_install").and_then(|v| v.as_bool())
+                                .unwrap_or(self.install_available);
                             self.checking = false;
                             self.check_started_at = None;
                             self.update_status = text.clone();
@@ -249,10 +253,14 @@ impl GridCraftTools {
             Ok(()) => {
                 if matches!(action, Action::CheckUpdates) {
                     self.release_url = None;
+                    self.install_available = false;
                     self.update_status = "Checking published GridCraft Android releases…".into();
                     self.checking = true;
                     self.check_started_at = Some(std::time::Instant::now());
                     self.notify("Checking GridCraft releases on GitHub…".into());
+                } else if matches!(action, Action::DownloadInstall) {
+                    self.update_status = "Downloading and verifying the official GridCraft APK…".into();
+                    self.notify(self.update_status.clone());
                 } else {
                     self.font_status = "Waiting for Android Files…".into();
                     self.font_request_pending = true;
@@ -261,7 +269,7 @@ impl GridCraftTools {
                 }
             }
             Err(err) => {
-                if matches!(action, Action::CheckUpdates) {
+                if matches!(action, Action::CheckUpdates | Action::DownloadInstall) {
                     self.checking = false;
                     self.check_started_at = None;
                     self.update_status = err.clone();
@@ -291,6 +299,14 @@ impl GridCraftTools {
                 "refresh" => self.try_action(Action::RefreshFolder),
                 "diagnose_fonts" => self.refresh_catalog(),
                 "updates" => self.try_action(Action::CheckUpdates),
+                "download_install" => {
+                    if self.install_available {
+                        self.try_action(Action::DownloadInstall);
+                    } else {
+                        self.update_status = "No verified compatible GridCraft production update is available.".into();
+                        self.notify(self.update_status.clone());
+                    }
+                },
                 "open_release" => {
                     if let Some(url) = self.release_url.clone() {
                         if let Err(error) = self.open_release(&url) {
@@ -363,8 +379,9 @@ impl GridCraftTools {
             d.insert_temp(egui::Id::new("gridcraft.android.menu.checking"), self.checking);
             d.insert_temp(egui::Id::new("gridcraft.android.menu.startup_check"), self.startup_check);
             d.insert_temp(egui::Id::new("gridcraft.android.menu.has_release"), self.release_url.is_some());
+            d.insert_temp(egui::Id::new("gridcraft.android.menu.can_install"), self.install_available);
         });
     }
 }
 #[derive(Clone, Copy)]
-enum Action { Import, SelectFolder, RefreshFolder, CheckUpdates }
+enum Action { Import, SelectFolder, RefreshFolder, CheckUpdates, DownloadInstall }

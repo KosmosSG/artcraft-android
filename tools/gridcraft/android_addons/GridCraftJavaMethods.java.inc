@@ -130,6 +130,12 @@
     }
 
     private void gcCopyFont(android.net.Uri uri, java.io.File destination) throws Exception {
+        gcCopyFont(uri, destination, new long[]{0});
+    }
+
+    // Count actual bytes streamed from SAF providers using 64-bit arithmetic.
+    // A failed scan never replaces the prior shared-font snapshot.
+    private void gcCopyFont(android.net.Uri uri, java.io.File destination, long[] scanBytes) throws Exception {
         java.io.File parent = destination.getParentFile();
         if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) throw new java.io.IOException("Font storage unavailable");
         java.io.File temp = new java.io.File(parent, destination.getName() + ".part");
@@ -145,6 +151,11 @@
                     size += count;
                     if (size > 32L * 1024 * 1024) throw new java.io.IOException("Font exceeds 32 MB");
                     for (int i = 0; i < count && filled < 4; i++) signature[filled++] = buffer[i];
+                    if (scanBytes[0] > 4L * 1024 * 1024 * 1024 - count) {
+                        scanBytes[0] = 4L * 1024 * 1024 * 1024;
+                        throw new java.io.IOException("Font scan reached the 4 GiB data budget");
+                    }
+                    scanBytes[0] += count;
                     out.write(buffer, 0, count);
                 }
                 if (size < 4) throw new java.io.IOException("Font is empty or truncated");
@@ -160,6 +171,10 @@
         }
     }
 
+    // Shared-font SAF scan: up to 5,000 files in up to 5,000 directories, while
+    // retaining the independent 4 GiB aggregate byte budget. Never load font blobs into RAM.
+    private static final int GC_MAX_SHARED_FONTS = 5000;
+    private static final int GC_MAX_SHARED_DIRS = 5000;
     private void gcScanShared(android.net.Uri tree) {
         java.io.File root = gcFontRoot();
         java.io.File active = new java.io.File(root, "artcraft-shared");
@@ -171,8 +186,9 @@
             if (!staged.mkdirs()) throw new java.io.IOException("Cannot prepare font cache");
             java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
             pending.add(android.provider.DocumentsContract.getTreeDocumentId(tree));
+            long[] scanBytes = {0};
             int dirs = 0, imported = 0;
-            while (!pending.isEmpty() && dirs++ < 200 && imported < 200) {
+            while (!pending.isEmpty() && dirs++ < GC_MAX_SHARED_DIRS && imported < GC_MAX_SHARED_FONTS && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                 String documentId = pending.removeFirst();
                 android.net.Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId);
                 try (android.database.Cursor cursor = getContentResolver().query(children,
@@ -181,16 +197,16 @@
                                        android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE },
                         null, null, null)) {
                     if (cursor == null) continue;
-                    while (cursor.moveToNext() && imported < 200) {
+                    while (cursor.moveToNext() && imported < GC_MAX_SHARED_FONTS && scanBytes[0] < 4L * 1024 * 1024 * 1024) {
                         String id = cursor.getString(0), name = cursor.getString(1), mime = cursor.getString(2);
                         if (id == null || name == null) continue;
                         if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                            if (dirs + pending.size() < 200) pending.add(id);
+                            if (dirs + pending.size() < GC_MAX_SHARED_DIRS) pending.add(id);
                         } else if (gcHasFontExtension(name)) {
                             android.net.Uri child = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id);
                             try {
                                 gcCopyFont(child, new java.io.File(staged, gcHash(id) +
-                                      (name.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")));
+                                      (name.toLowerCase(java.util.Locale.ROOT).endsWith(".otf") ? ".otf" : ".ttf")), scanBytes);
                                 imported++;
                             } catch (Exception badFont) {
                                 android.util.Log.w(TAG, "Skipping unreadable/unsupported shared font", badFont);
@@ -199,6 +215,8 @@
                     }
                 }
             }
+            if (scanBytes[0] >= 4L * 1024 * 1024 * 1024)
+                throw new java.io.IOException("4 GiB font scan budget reached; previous fonts preserved");
             gcDeleteTree(previous);
             boolean hadActive = active.exists();
             if (hadActive && !active.renameTo(previous)) throw new java.io.IOException("Cannot prepare existing shared font cache");
@@ -247,6 +265,8 @@
 
     public void gcCheckForUpdates() {
         if (!gcChecking.compareAndSet(false, true)) return;
+        gcEligibleUpdateApkUrl = null;
+        gcEligibleUpdateDigest = null;
         gcWorker.execute(() -> {
             java.net.HttpURLConnection connection = null;
             try {
@@ -266,7 +286,7 @@
                     }
                 }
                 org.json.JSONArray releases = new org.json.JSONArray(bytes.toString("UTF-8"));
-                String bestVersion = null, bestUrl = null;
+                String bestVersion = null, bestUrl = null, bestApk = null, bestDigest = null;
                 for (int i = 0; i < releases.length(); i++) {
                     org.json.JSONObject release = releases.optJSONObject(i);
                     if (release == null || release.optBoolean("draft") || release.optBoolean("prerelease")) continue;
@@ -276,23 +296,30 @@
                     // Only real, published and downloadable GridCraft APKs are updates.
                     // A draft, a tag-only release, or another app's APK is not.
                     org.json.JSONArray assets = release.optJSONArray("assets");
-                    boolean downloadable = false;
+                    String releaseApk = null, releaseDigest = null;
                     if (assets != null) for (int ai = 0; ai < assets.length(); ai++) {
                         org.json.JSONObject asset = assets.optJSONObject(ai);
-                        if (asset != null &&
-                            ("GridCraft-v" + version + "-arm64-v8a.apk").equals(asset.optString("name")) &&
-                            "uploaded".equals(asset.optString("state")) &&
-                            asset.optLong("size", 0) > 0) {
-                            downloadable = true;
-                            break;
-                        }
+                        if (asset == null) continue;
+                        String name = asset.optString("name");
+                        // Only version-matching signed ARM64 assets, not other app assets.
+                        if (!name.matches("GridCraft-v" + java.util.regex.Pattern.quote(version) + "-.*arm64-v8a.*\\.apk") ||
+                                name.toUpperCase(java.util.Locale.ROOT).contains("UNSIGNED") ||
+                                !"uploaded".equals(asset.optString("state")) ||
+                                asset.optLong("size", 0) < 1024 * 1024) continue;
+                        String apk = asset.optString("browser_download_url");
+                        if (!apk.matches("https://github\\.com/KosmosSG/artcraft-android/releases/download/gridcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[0-9]+/[A-Za-z0-9._%-]+\\.apk")) continue;
+                        releaseApk = apk;
+                        releaseDigest = asset.optString("digest");
+                        break;
                     }
-                    if (!downloadable) continue;
+                    if (releaseApk == null) continue;
                     String page = release.optString("html_url");
                     if (!page.startsWith("https://github.com/KosmosSG/artcraft-android/releases/tag/gridcraft-v")) continue;
                     if (bestVersion == null || gcCompareVersion(version, bestVersion) > 0) {
                         bestVersion = version;
                         bestUrl = page;
+                        bestApk = releaseApk;
+                        bestDigest = releaseDigest;
                     }
                 }
                 String installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
@@ -307,8 +334,16 @@
                     result.put("latest", bestVersion);
                     result.put("url", bestUrl);
                     boolean newer = gcCompareVersion(bestVersion, installed) > 0;
-                    result.put("state", newer ? "update_available" : "up_to_date");
-                    result.put("message", newer ? "GridCraft Android " + bestVersion + " is available."
+                    boolean compatiblePackage = !getPackageName().endsWith(".candidate");
+                    if (newer && compatiblePackage) {
+                        gcEligibleUpdateApkUrl = bestApk;
+                        gcEligibleUpdateDigest = bestDigest;
+                    }
+                    result.put("can_install", newer && compatiblePackage);
+                    result.put("state", newer ? (compatiblePackage ? "update_available" : "candidate_only") : "up_to_date");
+                    result.put("message", newer
+                            ? (compatiblePackage ? "GridCraft " + bestVersion + " ready to download and install."
+                                 : "New production release found; this separate test app cannot replace the production package.")
                             : "GridCraft Android is up to date (" + installed + ").");
                 }
                 gcEvents.offer(result.toString());
@@ -390,11 +425,18 @@
                 }
                 return true;
             }
-            if (gcEditorActive && !gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE
+            // Hardware Esc can arrive before Rust's latest frame has updated
+            // gcEditorActive (IME and native render loops run on different threads).
+            // Latch its first key-down regardless of the stale focus flag;
+            // Rust checks the *current* editor and modal state before cancelling.
+            if (!gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE
                     && event.hasNoModifiers() && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                gcDialogKeys.add(code);
                 if (event.getRepeatCount() == 0) gcEscapePending.set(true);
-                return true;
+                if (gcEditorActive) {
+                    gcDialogKeys.add(code); // also consume paired key-up
+                    return true;
+                }
+                // When not editing, allow normal menu/back Esc handling.
             }
             int action = code == android.view.KeyEvent.KEYCODE_D ? 1 : code == android.view.KeyEvent.KEYCODE_C ? 2 : code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
             if (gcDialogActive && action != 0 && event.hasNoModifiers()) {

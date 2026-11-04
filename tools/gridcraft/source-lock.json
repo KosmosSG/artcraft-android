@@ -2,12 +2,14 @@
   "app": "gridcraft",
   "product_name": "GridCraft",
   "upstream_repository": "storytold/gridcraft",
-  "official_release_tag": "v0.11.1",
-  "official_release_commit": "ac8da7d49cbeb4be6aa1ad5869f3d29fe2da8cd9",
-  "official_version": "0.11.1",
+  "official_release_tag": "v0.15.0",
+  "official_release_commit": "30b210b4ef03b30616923465efa70766cefba379",
+  "official_version": "0.15.0",
   "android_revision": 1,
-  "version_name": "0.11.1-android.1",
-  "intended_release_apk": "GridCraft-v0.11.1-android.1-arm64-v8a.apk",
+  "version_name": "0.15.0-android.1",
+  "intended_release_tag": "gridcraft-v0.15.0-android.1-ctrlw-dcs-fix",
+  "intended_release_title": "GridCraft v0.15.0-android.1 — Upstream Update + Ctrl+W / D/C/S Fix Preserved",
+  "intended_release_apk": "GridCraft-v0.15.0-android.1-CTRL-W-DCS-FIX-arm64-v8a-SIGNED.apk",
   "production_package": "com.artcraft.gridcraft",
   "target_abi": "arm64-v8a",
   "implementation_reference": "MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
@@ -33,5 +35,8 @@
   "icon_source_dimensions": [
     1254,
     1254
-  ]
+  ],
+  "upstream_review_only": true,
+  "baseline_android_release_tag": "gridcraft-v0.11.1-android.4-ctrlw-dcs-fix",
+  "baseline_android_source_commit": "720fab9eaa178da485750009f1a2782026da6286"
 }

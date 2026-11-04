@@ -1,0 +1,115 @@
+"""GridCraft v0.15 owner-requested regression guards (source-only, no APK)."""
+from pathlib import Path
+import hashlib
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+ADDONS = Path(__file__).resolve().parent / "android_addons"
+ICON = ROOT / "assets/gridcraft/launcher-user-20261103.png"
+
+
+class GridCraftOwnerRequests(unittest.TestCase):
+    def test_owner_uploaded_icon_is_pinned_for_android_ui_and_launcher(self):
+        png = ICON.read_bytes()
+        self.assertTrue(png.startswith(bytes.fromhex("89504e470d0a1a0a")))
+        self.assertEqual(hashlib.sha256(png).hexdigest(),
+                         "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2")
+        port = (ROOT / "tools/gridcraft/port_v0150_ui.py").read_text()
+        workflow = (ROOT / ".github/workflows/gridcraft-v0150-test-once.yml").read_text()
+        self.assertIn('gridcraft-approved-mark.png', port)
+        self.assertIn("GRIDCRAFT_ANDROID_USER_ICON_V2", port)
+        self.assertIn('egui::Popup::menu(&gc_button).show(', port)
+        # egui 0.37 no longer exports ImageButton (Rust E0433). Use Button
+        # with a full-size Image instead of Button::image's font-height cap.
+        self.assertIn('egui::Button::new(', port)
+        self.assertIn('egui::Image::from_texture(', port)
+        self.assertIn('GRIDCRAFT_GC_SAFE_PADDING_V1', port)
+        installer=(ROOT / "tools/gridcraft/install_overlay.py").read_text()
+        self.assertIn('GRIDCRAFT_GC_SAFE_PADDING_V1', installer)
+        self.assertIn('inset_px = round(CANVAS_PX * 0.78)', installer)
+        self.assertIn('inset = max(1, round(size * 0.82))', installer)
+        self.assertNotIn('egui::ImageButton::new(', port)
+        self.assertIn('image::load_from_memory(include_bytes!(', port)
+        self.assertIn('launcher-user-20261103.png', workflow)
+        self.assertIn('e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2', workflow)
+
+    def test_dark_mode_explicit_toggle_uses_native_persisted_command(self):
+        menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
+        self.assertIn('ui.checkbox(&mut dark, "Dark mode")', menu)
+        self.assertIn('app.run_or_alert("view.darkMode", json!({}))', menu)
+        self.assertIn('theme_choices(app, ui);', menu)
+
+    def test_font_scan_covers_5000_and_remains_4_gib_budget(self):
+        java = (ADDONS / "GridCraftJavaMethods.java.inc").read_text()
+        self.assertIn('GC_MAX_SHARED_FONTS = 5000', java)
+        self.assertIn('GC_MAX_SHARED_DIRS = 5000', java)
+        self.assertIn('dirs++ < GC_MAX_SHARED_DIRS', java)
+        self.assertIn('imported < GC_MAX_SHARED_FONTS', java)
+        self.assertIn('4L * 1024 * 1024 * 1024', java)
+        self.assertIn('new byte[64 * 1024]', java)
+        self.assertIn('artcraft-shared-staging', java)
+        self.assertIn('gcDeleteTree(previous)', java)
+
+    def test_escape_latched_for_hardware_key_before_ime_state_sync(self):
+        java = (ADDONS / "GridCraftJavaMethods.java.inc").read_text()
+        begin = java.index('if (!gcDialogActive && code == android.view.KeyEvent.KEYCODE_ESCAPE')
+        end = java.index('int action = code == android.view.KeyEvent.KEYCODE_D', begin)
+        block = java[begin:end]
+        self.assertIn('gcEscapePending.set(true)', block)
+        self.assertIn('if (gcEditorActive)', block)
+        self.assertIn('gcDialogKeys.add(code)', block)
+        self.assertNotIn('if (gcEditorActive && !gcDialogActive', block)
+        self.assertIn('return super.dispatchKeyEvent(event);', java)
+
+    def test_touch_cell_selection_and_fill_handle_are_version_locked(self):
+        port = (ROOT / "tools/gridcraft/port_v0150_touch_selection.py").read_text()
+        installer = (ROOT / "tools/gridcraft/install_overlay.py").read_text()
+        menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
+        self.assertIn('GRIDCRAFT_ANDROID_TOUCH_SELECT_V1', port)
+        self.assertIn('long_hold', port)
+        self.assertIn('on_fill_handle', port)
+        self.assertIn('app.grid.touch_pan = multi_touch ||', port)
+        self.assertIn('GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1', port)
+        self.assertIn('i.pointer.any_down() || app.grid.drag_select', port)
+        self.assertIn('!i.any_touches()', port)
+        self.assertIn('&& !trackpad_range_drag', port)
+        self.assertIn('Drag::Select', port)
+        self.assertIn('Drag::Fill', port)
+        self.assertIn('port_v0150_touch_selection.py', installer)
+        self.assertIn('Touch drag selects cells', menu)
+        self.assertIn('gridcraft.android.touch_select', menu)
+
+    def test_trackpad_primary_button_routes_android_down_up_not_touch_swipe(self):
+        import runpy
+        import tempfile
+        stage = runpy.run_path(str(ROOT / "tools/gridcraft/install_overlay.py"))["stage_trackpad_primary_button"]
+        # The pinned builder checks action_button() on DOWN/UP, although
+        # Android only defines it on BUTTON_PRESS/RELEASE. Regression-test
+        # that the isolated adapter always forwards ordinary primary clicks.
+        with tempfile.TemporaryDirectory() as tmp:
+            vendor = Path(tmp) / "vendor/winit/src/platform_impl/android/mod.rs"
+            vendor.parent.mkdir(parents=True)
+            vendor.write_text("                                    if motion_event.action_button() != Button::Primary {\n                                        button_sent = true;\n                                    } else {\n                                        button_sent = true;\n                                        callback(" + " callback_body;\\n")
+            stage(Path(tmp))
+            patched = vendor.read_text()
+            self.assertIn("GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1", patched)
+            self.assertIn("MotionAction::Down | MotionAction::Up | MotionAction::Cancel", patched)
+            self.assertIn("motion_event.action_button() == Button::Primary", patched)
+            self.assertIn("if primary {", patched)
+            self.assertNotIn("if motion_event.action_button() != Button::Primary", patched)
+            with self.assertRaises(RuntimeError):
+                stage(Path(tmp))
+
+    def test_gpu_renderer_and_touch_gestures_remain_upstream_owned(self):
+        # Native wgpu is configured by the pinned builder; our staging overlay
+        # must not replace normal Android touch event translation.
+        overlay = (ADDONS / "overlay.py").read_text()
+        menu = (ADDONS / "GridCraftNativeMenu.rs.inc").read_text()
+        self.assertNotIn('handle_touch_event', overlay)
+        self.assertNotIn('MotionAction::', overlay)
+        self.assertIn('wgpu GPU', menu)
+        self.assertIn('Vulkan preferred', menu)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,331 @@
+name: GridCraft v0.15.0-android.1 optimized original-key production release (owner approved, once)
+# Owner approved after successfully testing GridCraft candidate run 41687171682 on HONOR MagicPad 4.
+# Follow-up audit: optimized build succeeded, update AAPT launcher-resource validation.
+# Only this workflow file and this exact message can start the release job.
+on:
+  push:
+    branches:
+      - review/gridcraft-v0150-android-compat-20261102
+    paths:
+      - '.github/workflows/gridcraft-v0150-android1-optimized-production-once.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: gridcraft-v0150-android1-original-certificate-production-once
+  cancel-in-progress: false
+jobs:
+  optimized-sign-and-publish:
+    if: >-
+      github.repository == 'KosmosSG/artcraft-android' &&
+      github.ref == 'refs/heads/review/gridcraft-v0150-android-compat-20261102' &&
+      github.event.head_commit.message == 'gridcraft-v0150-android1-production-owner-approved-20261104'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: gridcraft-v0.15.0-android.1-ctrlw-dcs-fix
+      PACKAGE: com.artcraft.gridcraft
+      VERSION_NAME: 0.15.0-android.1
+      VERSION_CODE: '16781056'
+      TEST_RUN: '41687171682'
+      TEST_SOURCE_SHA: '553f19f9c7ddca5cb1dcf9c8a51272ade0b8bf63'
+      BUILDER_SHA: 'ac54d62d9d2d6f663295a4afd8972a7a3e79f9af'
+      UPSTREAM_SHA: '30b210b4ef03b30616923465efa70766cefba379'
+      ORIGINAL_CERT: '09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d'
+      APK_NAME: GridCraft-v0.15.0-android.1-CTRL-W-DCS-FIX-arm64-v8a-SIGNED.apk
+      PREVIOUS_STABLE_APK_BYTES: '44727285'
+      APPROVED_TEST_APK_BYTES: '35674063'
+    steps:
+      - name: Verify one-time release approval, original tested candidate and new immutable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq '.sha')"
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::GridCraft release already exists; refusing overwrite."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::GridCraft tag already exists; refusing to move it."
+            exit 1
+          fi
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN")"
+          jq -e --arg sha "$TEST_SOURCE_SHA" '
+             .status=="completed" and .conclusion=="success" and
+             .head_sha==$sha and .name=="GridCraft v0.15.0 ARM64 disposable testing candidate (ONE build, no release)"
+          ' <<<"$run" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN/artifacts" \
+             --jq '.artifacts[] | select(.name=="GridCraft-v0.15.0-android.1-TRACKPAD-NO-SCROLL-arm64-DISPOSABLE-TEST-NOT-PRODUCTION" and (.expired|not)) | .id' | grep -q '^13256621132$'
+          echo 'PASS: owner-tested candidate, upstream review commit and no existing release.'
+      - name: Checkout locked review branch
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Checkout exact Android builder (independent original signing key kept in Actions secrets)
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout exact official GridCraft v0.15.0
+        uses: actions/checkout@v5
+        with:
+          repository: storytold/gridcraft
+          ref: 30b210b4ef03b30616923465efa70766cefba379
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - name: Check all existing features, source pins, production name and adapter before compiling
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          python3 -m unittest discover -s tools/gridcraft -p 'test_*.py' -q
+          python3 tools/gridcraft/verify_source.py
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import runpy
+          b=Path('builder')
+          adapter=(b/'vendor/winit/src/platform_impl/android/mod.rs').read_text()
+          show=(b/'source/gridcraft/crates/ui-egui/src/grid/show.rs').read_text()
+          version=(b/'lib/android_project.py').read_text()
+          assert 'GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1' in adapter
+          assert 'GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1' in show
+          assert '!i.any_touches() && (i.pointer.any_down() || app.grid.drag_select)' in show
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in show
+          assert 'GRIDCRAFT_ANDROID_VERSION_NAME_V1' in version
+          assert 'in ("com.artcraft.gridcraft.candidate", "com.artcraft.gridcraft")' in version
+          assert 'GRIDCRAFT_V0150_ACK_SAF_V1' in (b/'lib/build-common.sh').read_text()
+          assert (b/'source/gridcraft/crates/ui-egui/src/ribbon/gridcraft-approved-mark.png').is_file()
+          assert 'GC_MAX_SHARED_FONTS = 5000' in (b/'tools/gridcraft_android/GridCraftJavaMethods.java.inc').read_text()
+          print('PASS: tested touch, trackpad, keyboard, fonts, icon and production version source retained')
+          PY
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install exact Android NDK if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk="$ANDROID_HOME/ndk/27.2.12479018"
+          if [[ ! -d "$ndk" ]]; then
+            sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+            "$sdkmanager" --install 'ndk;27.2.12479018'
+          fi
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - name: Install approved icon graphics tooling
+        run: python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Compile size-optimized RELEASE ARM64 from owner-tested source (production package)
+        shell: bash
+        timeout-minutes: 90
+        env:
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
+          CARGO_PROFILE_RELEASE_LTO: thin
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1'
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+          CARGO_PROFILE_RELEASE_DEBUG: '0'
+          CARGO_PROFILE_RELEASE_INCREMENTAL: 'false'
+        run: |
+          set -euo pipefail
+          icon="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
+          echo "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2  $icon" | sha256sum -c -
+          # Builder uses a throwaway local key; original signing is a later guarded step.
+          bash builder/build.sh -gridcraft -packagename="$PACKAGE" -appicon="$icon"
+          apk="$(find builder/output -maxdepth 1 -type f -name 'gridcraft-0.15.0.apk' -print -quit)"
+          test -s "$apk"
+          mkdir -p production-input publish
+          cp "$apk" production-input/disposable-key-release-build.apk
+      - name: Verify production package, versionCode, ARM64 and size improvement
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdktools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          echo "BUILD_TOOLS=$sdktools" >> "$GITHUB_ENV"
+          apk="production-input/disposable-key-release-build.apk"
+          "$sdktools/apksigner" verify --print-certs "$apk" > production-input/test-signer.txt
+          if grep -qi "$ORIGINAL_CERT" production-input/test-signer.txt; then
+            echo "::error::Production source unexpectedly used permanent signing before verification."; exit 1
+          fi
+          "$sdktools/aapt" dump badging "$apk" > production-input/badging.txt
+          grep -F "name='$PACKAGE'" production-input/badging.txt
+          grep -F "versionName='$VERSION_NAME'" production-input/badging.txt
+          grep -F "versionCode='$VERSION_CODE'" production-input/badging.txt
+          python3 - "$apk" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              assert len(names)==len(set(names))
+              assert 'classes.dex' in names
+              assert any(p.startswith('lib/arm64-v8a/') and p.endswith('.so') for p in names)
+              assert all(p.startswith('lib/arm64-v8a/') for p in names if p.startswith('lib/') and p.endswith('.so'))
+              # Release packaging may minify ZIP entry names while keeping
+              # AndroidManifest launcher references valid. Resolve the actual
+              # resources from aapt badging rather than a literal filename.
+              import re
+              from pathlib import Path
+              badge=Path('production-input/badging.txt').read_text()
+              icons=re.findall(r"application-icon-\\d+:'([^']+)'", badge)
+              if not icons:
+                  icons=re.findall(r"application:.*? icon='([^']+)'", badge)
+              assert icons, 'Missing launcher icon in Android package metadata'
+              assert all(icon in names for icon in icons), 'Launcher icon resource missing from APK ZIP'
+              assert not any(p.endswith(('.jks','.p12','.keystore')) for p in names)
+          PY
+          count="$(wc -c < "$apk")"
+          echo "Optimized APK pre-sign: $count bytes. Previous signed stable: $PREVIOUS_STABLE_APK_BYTES bytes."
+          test "$count" -lt "$PREVIOUS_STABLE_APK_BYTES" || {
+             echo "::error::Size optimization did not beat previous GridCraft release; do not publish."; exit 1;
+          }
+          # Remove the throwaway signing metadata without altering compiled app files.
+          python3 - "$apk" production-input/unsealed.apk <<'PY'
+          import sys,hashlib,zipfile
+          old,output=sys.argv[1:]
+          with zipfile.ZipFile(old) as src, zipfile.ZipFile(output,'w') as dst:
+              for info in src.infolist():
+                  p=info.filename.upper()
+                  if p.startswith('META-INF/') and (p.endswith(('.RSA','.DSA','.EC','.SF','.MF')) or p.startswith('META-INF/SIG-')):
+                      continue
+                  dst.writestr(info, src.read(info.filename))
+          def digest(path):
+              with zipfile.ZipFile(path) as z:
+                  return {p:hashlib.sha256(z.read(p)).hexdigest() for p in z.namelist()
+                          if not p.upper().startswith('META-INF/') and not p.endswith('/')}
+          assert digest(old)==digest(output), 'Unsealing changed compiled contents'
+          print('PASS: original release build payload preserved before permanent signing')
+          PY
+          "$sdktools/zipalign" -f -P 16 4 production-input/unsealed.apk production-input/aligned-unsigned.apk
+          "$sdktools/zipalign" -c -P 16 4 production-input/aligned-unsigned.apk
+          if "$sdktools/apksigner" verify production-input/aligned-unsigned.apk >/dev/null 2>&1; then
+             echo "::error::Unexpectedly signed aligned source"; exit 1
+          fi
+      - name: Sign with the original GridCraft permanent certificate, fail closed on missing secrets
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$RUNNER_TEMP/gridcraft-original.p12"
+          pem="$RUNNER_TEMP/gridcraft-original.pem"
+          trap 'rm -f "$keystore" "$pem"' EXIT
+          for variable in KEYSTORE_B64 STOREPASS KEYPASS KEYALIAS; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "::error::Required ORIGINAL GridCraft signing secret missing: $variable"; exit 1
+            fi
+          done
+          test "$KEYALIAS" = gridcraft
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keystore"
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$keystore" \
+            -storepass:env STOREPASS -alias "$KEYALIAS" > "$pem"
+          actual="$(openssl x509 -in "$pem" -outform DER | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "$ORIGINAL_CERT" || {
+            echo "::error::Signing identity differs from stable GridCraft; publishing prohibited."; exit 1;
+          }
+          "$BUILD_TOOLS/apksigner" sign --ks "$keystore" --ks-type PKCS12 \
+            --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+            --v2-signing-enabled true --v4-signing-enabled false \
+            --out "publish/$APK_NAME" production-input/aligned-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "publish/$APK_NAME" > publish/signature-check.txt
+          python3 - <<'PY'
+          import os,re
+          s=open('publish/signature-check.txt').read()
+          found=re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})',s,re.I)
+          assert len(found)==1
+          assert re.sub(r'[^0-9a-f]','',found[0].lower())==os.environ['ORIGINAL_CERT']
+          assert 'Verified using v2 scheme (APK Signature Scheme v2): true' in s or 'Verified using v3 scheme (APK Signature Scheme v3): true' in s
+          print('PASS: exactly original stable GridCraft signing certificate')
+          PY
+          "$BUILD_TOOLS/aapt" dump badging "publish/$APK_NAME" > publish/badging.txt
+          grep -F "name='$PACKAGE'" publish/badging.txt
+          grep -F "versionCode='$VERSION_CODE'" publish/badging.txt
+          grep -F "versionName='$VERSION_NAME'" publish/badging.txt
+          python3 - production-input/disposable-key-release-build.apk "publish/$APK_NAME" <<'PY'
+          import hashlib,sys,zipfile
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  assert z.testzip() is None
+                  return {p:hashlib.sha256(z.read(p)).hexdigest() for p in z.namelist()
+                          if not p.upper().startswith('META-INF/') and not p.endswith('/')}
+          assert payload(sys.argv[1])==payload(sys.argv[2]),'Original signing altered compiled app contents'
+          print('PASS: compiled GridCraft payload unchanged by original-key signing')
+          PY
+          finalsize="$(wc -c < "publish/$APK_NAME")"
+          test "$finalsize" -lt "$PREVIOUS_STABLE_APK_BYTES" || {
+            echo "::error::Final APK not smaller than previous stable release"; exit 1;
+          }
+          echo "FINAL_SIZE=$finalsize" >> "$GITHUB_ENV"
+          (cd publish && sha256sum "$APK_NAME" > SHA256SUMS.txt)
+      - name: Prepare release notes, check backup and upload signed release-ready artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd publish && sha256sum -c SHA256SUMS.txt)
+          cat > publish/RELEASE-NOTES.md <<'NOTES'
+          ## GridCraft v0.15.0-android.1 — Stable ARM64
+
+          Official Storytold GridCraft v0.15.0 port, preserving the tested
+          GridCraft Ctrl+W and D/C/S, Escape editing exit, and Android-specific
+          feature enhancements. Owner tested the latest temporary-signed ARM64
+          candidate on HONOR MagicPad 4 and confirmed everything working on
+          4 November 2026, including the trackpad no-scroll range-selection fix.
+
+          - Physical trackpad click-and-hold/drag selects rectangular ranges without canvas panning.
+          - Two-finger trackpad scrolling and touchscreen selection/swipe gestures retained.
+          - Gc glossy launcher icon and top-left GridCraft menu; dark mode toggle.
+          - SAF open/save, acknowledged D/C/S close dialog, hardware Esc shortcuts.
+          - Font import/refresh, 5,000-file/4 GiB scan budget and shared-font support.
+          - Secure GitHub APK update checker and download/install handoff preserved.
+          - Native ARM64 release optimized for size using Rust size-focused build settings and symbol stripping.
+          - Permanently signed with the SAME original GridCraft signing certificate as prior stable releases.
+          - Source pinned to official Storytold v0.15.0 and the GridCraft-reviewed Android overlay.
+
+          Package: com.artcraft.gridcraft
+          Version: 0.15.0-android.1 (versionCode 16781056)
+          Tested candidate build: GitHub Actions #41687171682
+          Production signing certificate SHA-256: 09d292709d4dcce84a65e828bdd8a2ce93de62fa4dc6c584bd6269839da8090d
+
+          IMPORTANT: A disposable test APK uses a different package/signature.
+          Existing original-signed GridCraft installations can upgrade in place.
+          Keep a local copy of the prior stable release and your permanent
+          keystore backup; protect documents/settings before changing builds.
+          NOTES
+          echo "PASS: verified original certificate, compiled payload and production signing."
+      - name: Upload owner-approved original-key signed artifact before publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCraft-v0.15.0-android.1-ORIGINAL-SIGNED-RELEASE-READY
+          path: publish/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish immutable GridCraft v0.15.0-android.1 stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+             echo "::error::Release already exists"; exit 1
+          fi
+          gh release create "$TAG" "publish/$APK_NAME" publish/SHA256SUMS.txt \
+            -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'GridCraft v0.15.0-android.1 — Optimized Stable ARM64' \
+            --notes-file publish/RELEASE-NOTES.md --latest
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets \
+            --jq '{tag:.tagName,draft:.isDraft,prerelease:.isPrerelease,assets:[.assets[].name]}'
+      - name: Purge disposable and original signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys builder/output production-input publish
+          rm -f "$RUNNER_TEMP/gridcraft-original.p12" "$RUNNER_TEMP/gridcraft-original.pem"
+          echo 'Signing keys never committed, published or attached to artifacts.'

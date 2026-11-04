@@ -51,8 +51,176 @@ jobs:
           assert Path("builder/tools/gridcraft_android/overlay.py").is_file()
           print("Pinned reference checked; GridCraft-only hook installed; source generator syntax valid")
           PY
+      - name: Checkout exact upstream v0.15.0 source for read-only overlay review
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: 30b210b4ef03b30616923465efa70766cefba379
+          path: upstream-gridcraft
+          persist-credentials: false
+      - name: Report changed upstream GridCraft Android patch anchors
+        run: |
+          python3 tools/gridcraft/check_upstream_port_compat.py upstream-gridcraft --output-json gridcraft-port-compat.json
+          echo '### GridCraft v0.15.0 Android compatibility (source only)' >> "$GITHUB_STEP_SUMMARY"
+          echo '<details><summary>Source anchor review</summary><pre>' >> "$GITHUB_STEP_SUMMARY"
+          cat gridcraft-port-compat.json >> "$GITHUB_STEP_SUMMARY"
+          echo '</pre></details>' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Changed anchors require manual porting; this audit never builds or publishes an APK.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify v0.15 GridCraft-specific SAF acknowledgement bridge in isolated builder (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_builder_saf.py
+          python3 tools/gridcraft/port_v0150_builder_saf.py builder/lib/build-common.sh --verify-only
+          python3 - <<'PY'
+          from pathlib import Path
+          import runpy
+          mod = runpy.run_path("tools/gridcraft/port_v0150_builder_saf.py")
+          text = Path("builder/lib/build-common.sh").read_text()
+          patched = mod["transform"](text)
+          marker = "GRIDCRAFT_V0150_ACK_SAF_V1"
+          assert patched.count(marker) == 2
+          assert 'android_save_close: Some(Box::new(' in patched
+          assert 'let _ = reply.send(success);' in patched
+          assert patched.count('let _ = reply.send(false);') >= 3
+          assert patched.startswith(text[:text.index('    "gridcraft": {',text.index('SAF_RECIPES = {'))])
+          print("PASS: GridCraft v0.15 isolated SAF callback covers success, cancelled/error and retains other-app code")
+          PY
+      - name: Verify and stage the relocated v0.15.0 GridCraft Tools menu and font port (disposable only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/gridcraft/port_v0150_ui.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_ui.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          u = Path("upstream-gridcraft/crates/ui-egui/src")
+          title = (u / "ribbon/title_bar.rs").read_text()
+          home = (u / "ribbon/home.rs").read_text()
+          fonts = (u / "fonts.rs").read_text()
+          app = (u / "app.rs").read_text()
+          state = (u / "lib.rs").read_text()
+          binding = (u / "app/fonts.rs").read_text()
+          assert title.count("GRIDCRAFT_ANDROID_NATIVE_MENU_V1") == 1
+          assert 'egui::Popup::menu(&gc_button).show(' in title
+          assert 'ui.menu_button("GridCraft Tools"' not in title
+          assert 'image::load_from_memory(include_bytes!("gridcraft-approved-mark.png"))' in title
+          assert 'GRIDCRAFT_ANDROID_USER_ICON_V2' in title
+          assert home.count("let available = crate::fonts::families();") == 1
+          assert "pub fn reload_catalog()" in fonts
+          assert "android_font_generation: u64" in state
+          assert "android_font_generation: 0" in app
+          assert "if !catalog_changed && seen == self.fonts_seen" in binding
+          assert "if !catalog_changed && used == self.fonts_bound" in binding
+          print("PASS: GridCraft v0.15.0 title-bar menu, imported font dropdown and live catalog sources staged")
+          print("NOTE: Upstream source staging only; Android launcher, SAF/DCS/keyboard port and APK compilation pending")
+          PY
+      - name: Validate relocated v0.15.0 D/C/S dialog, editor Esc and acknowledged SAF save (source only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_save_dcs.py
+          python3 tools/gridcraft/port_v0150_save_dcs.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_save_dcs.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('upstream-gridcraft/crates/ui-egui/src')
+          services = (s / 'services.rs').read_text()
+          app = (s / 'app.rs').read_text()
+          main = (s / 'lib.rs').read_text()
+          close = (s / 'app/quit.rs').read_text()
+          modal = (s / 'dialogs/show.rs').read_text()
+          assert 'pub android_save_close:' in services
+          assert 'self.android_poll_save_close(ctx);' in app
+          assert 'fn android_poll_save_close' in main
+          assert 'pub fn android_handle_editor_escape' in main
+          assert 'return self.android_save_and_close(quitting);' in close
+          assert 'gridcraft_android_take_dcs(ui.ctx());' in modal
+          assert "\"Don't Save\", \"D\"" in modal
+          assert 'Cancel", "C"' in modal
+          assert 'Save", "S"' in modal
+          assert '&& app.answer_save_changes(answer, quitting, ui.ctx())' in modal
+          assert 'if !success' in main
+          assert 'pub(crate) fn alert(&mut self, e: String)' in (s / 'app/commands.rs').read_text(), 'Rust E0624 visibility regression'
+          print('PASS: relocated D/C/S and SAF-acknowledged close patch matches upstream v0.15.0 source')
+          print('SOURCE ONLY: launcher, JNI bridge and compiled Android APK remain unverified')
+          PY
+      - name: Verify touch/trackpad cell selection, fill handle and preserved swipe scrolling (source only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/gridcraft/port_v0150_touch_selection.py
+          python3 tools/gridcraft/port_v0150_touch_selection.py upstream-gridcraft --verify-only
+          python3 tools/gridcraft/port_v0150_touch_selection.py upstream-gridcraft
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("upstream-gridcraft/crates/ui-egui/src/grid")
+          show=(root/"show.rs").read_text()
+          interaction=(root/"interact.rs").read_text()
+          assert "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in show and "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in interaction
+          assert "long_hold" in show and "on_fill_handle" in show
+          assert "app.grid.touch_pan = multi_touch ||" in show
+          assert "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1" in show
+          assert "i.pointer.any_down() || app.grid.drag_select" in show
+          assert "!i.any_touches()" in show
+          assert "&& !trackpad_range_drag" in show
+          assert 'gridcraft.android.touch_select' in show
+          assert 'let handle_size = if ctx.input(|i| i.any_touches()) { 44.0 } else { 9.0 };' in interaction
+          assert 'Drag::Select' in interaction and 'Drag::Fill' in interaction
+          print("PASS: GridCraft touch hold/drag and fill-handle selection guard, mouse drag, swipe scroll and two-finger gestures retained")
+          PY
+      - name: End-to-end GridCraft v0.15 installer rehearsal using local clean clones (no network, no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous steps patch the first disposable workspaces. Make two clean
+          # LOCAL clones from their exact pinned commits, with no additional checkout minutes.
+          git clone --local --quiet builder builder-integrated
+          mkdir -p builder-integrated/source
+          git clone --local --quiet upstream-gridcraft builder-integrated/source/gridcraft
+          test "$(git -C builder-integrated/source/gridcraft rev-parse HEAD)" = 30b210b4ef03b30616923465efa70766cefba379
+          python3 tools/gridcraft/install_overlay.py builder-integrated
+          bash -n builder-integrated/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          b=Path('builder-integrated')
+          source=b/'source/gridcraft/crates/ui-egui/src'
+          builder=(b/'lib/build-common.sh').read_text()
+          title=(source/'ribbon/title_bar.rs').read_text()
+          modal=(source/'dialogs/show.rs').read_text()
+          main=(source/'lib.rs').read_text()
+          assert tomllib.loads((b/'source/gridcraft/Cargo.toml').read_text())['workspace']['package']['version']=='0.15.0'
+          assert builder.count('GRIDCRAFT_OVERLAY_HOOK_V1')==1
+          adapter=(b/'vendor/winit/src/platform_impl/android/mod.rs').read_text()
+          assert adapter.count("GRIDCRAFT_ANDROID_TRACKPAD_PRIMARY_V1")==1
+          assert "MotionAction::Down | MotionAction::Up | MotionAction::Cancel" in adapter
+          assert "if motion_event.action_button() != Button::Primary" not in adapter
+          assert builder.count('GRIDCRAFT_V0150_ACK_SAF_V1')==2
+          assert 'android_save_close: Some(Box::new(' in builder
+          assert 'GRIDCRAFT_ANDROID_NATIVE_MENU_V1' in title
+          assert 'gridcraft_android_take_dcs(ui.ctx())' in modal
+          assert 'native.or(from_egui)' in modal
+          assert 'fn android_poll_save_close' in main
+          grid=(source/"grid/show.rs").read_text()
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in grid
+          assert 'app.grid.touch_pan = multi_touch ||' in grid
+          assert 'GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1' in grid
+          assert '&& !trackpad_range_drag' in grid
+          assert 'GRIDCRAFT_ANDROID_TOUCH_SELECT_V1' in (source/"grid/interact.rs").read_text()
+          assert (b/'tools/gridcraft_android/gridcraft_tools.rs').is_file()
+          print('PASS: both GridCraft v0.15.0 source ports, Android generator hook, and SAF acknowledgement wired through the complete staging installer')
+          print('No APK compiled; production signer and release remain untouched')
+          PY
       - name: Test GridCraft-only Android overlay (no APK, no key)
         run: python3 -m unittest discover -s tools/gridcraft -p "test_*.py" -v
+      - name: Setup Java 21 for GridCraft 4 GiB scan-budget boundary regression
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test GridCraft Java 4 GiB limit and signed-32-bit overflow cases
+        run: python3 tools/font_scan_budget_regression.py
       - name: Validate GridCraft source lock and no-release gate
         run: python3 tools/gridcraft/verify_source.py
       - name: Verify official release, immutable tag and source version

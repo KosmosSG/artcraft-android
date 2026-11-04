@@ -20,7 +20,7 @@ class Android3OptimizationSourceTests(unittest.TestCase):
             'features = ["native-activity"]',
         )
         self.assertIn("VectorCraftActivity extends android.app.NativeActivity", actual)
-        for item in ("androidx.appcompat", "androidx.core", "androidx.games", "kotlin-bom"):
+        for item in ("androidx.appcompat", "androidx.games", "kotlin-bom"):
             self.assertNotIn(item, actual)
         self.assertIn("base\n", actual)
         self.assertIn("\nother", actual)

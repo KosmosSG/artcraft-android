@@ -40,6 +40,7 @@ mod ime_bridge;
 
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
+mod adaptive_cursor;
 use android_modifiers::{AndroidModifiers, AndroidMenuScrollSmoother, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
@@ -70,6 +71,20 @@ impl AndroidFileBridge {
             app: self.app.clone(),
             vm: self.vm.clone(),
         }
+    }
+
+    /// Forward egui's resolved cursor to Android's native hover pointer,
+    /// with an API24+ system type. Called only when the type changes.
+    fn set_adaptive_pointer_icon(&self, pointer_type: i32) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity,
+                jni_str!("vcSetAdaptivePointerIcon"),
+                jni_sig!("(I)V"),
+                &[JValue::Int(pointer_type)])?;
+            Ok(())
+        }).map_err(|error| error.to_string())
     }
 
     /// Restore native canvas keyboard focus after a completed Type editor Escape.
@@ -778,6 +793,7 @@ struct VectorCraftAndroidApp {
     ime: ime_bridge::ime::ImeBridge,
     modifiers: AndroidModifiers,
     menu_scroll: AndroidMenuScrollSmoother,
+    last_adaptive_pointer_type: Option<i32>,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -1134,6 +1150,11 @@ impl eframe::App for VectorCraftAndroidApp {
         normalize_type_editor_escape(raw, self.inner.session.tool_wants_text());
         let allow_letters = !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();
         restore_tool_key_text(raw, allow_letters);
+        if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(true))) {
+            // Android can recreate/reparent the native drawing surface after
+            // the app resumes. Reapply the current pointer icon on next paint.
+            self.last_adaptive_pointer_type = None;
+        }
         if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
             self.persist_now();
         }
@@ -1409,6 +1430,20 @@ impl eframe::App for VectorCraftAndroidApp {
             }
             ctx.request_repaint();
         }
+        // Adaptive cursor from ArtCraft builder v0.2.0, without replacing the
+        // Android adapter or keyboard/trackpad handling. Resolved AFTER all
+        // VectorCraft panels, dialogs and canvas have set their egui cursor.
+        // A pointerless touchscreen is unaffected by Android PointerIcon.
+        if let Some(pointer_type) =
+            adaptive_cursor::native_pointer_icon(ctx.output(|out| out.cursor_icon))
+        {
+            if self.last_adaptive_pointer_type != Some(pointer_type) {
+                match self.bridge.set_adaptive_pointer_icon(pointer_type) {
+                    Ok(()) => self.last_adaptive_pointer_type = Some(pointer_type),
+                    Err(error) => log::warn!("Adaptive cursor not available: {error}"),
+                }
+            }
+        }
     }
 
     fn on_exit(&mut self) {
@@ -1513,6 +1548,7 @@ fn android_main(android_app: AndroidApp) {
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: AndroidModifiers::default(),
                 menu_scroll: AndroidMenuScrollSmoother::default(),
+                last_adaptive_pointer_type: None,
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

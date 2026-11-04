@@ -27,7 +27,7 @@ class VectorCraftAndroid4Guards(unittest.TestCase):
             self.assertIn(marker,theme)
 
     def test_splash_resources_well_formed_and_switch_to_post_theme(self):
-        base='<resources>'+APPCOMPAT_THEME+'<item name="android:windowBackground">@android:color/black</item></style></resources>'
+        base='<resources>\n    '+APPCOMPAT_THEME+'\n<item name="android:windowBackground">@android:color/black</item>\n    </style>\n</resources>'
         xml=patch_native_theme(base)
         ET.fromstring(xml)
         self.assertIn('<item name="windowSplashScreenBackground">#2d0000</item>',xml)

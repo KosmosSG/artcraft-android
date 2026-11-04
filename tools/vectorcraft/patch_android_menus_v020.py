@@ -17,6 +17,37 @@ def insert_once(source: str, old: str, new: str, label: str) -> str:
     return source.replace(old, new, 1)
 
 
+
+# This is the exact app-menu/File boundary in official VectorCraft v0.21.0.
+VC_APP_MENU_BOUNDARY = '''            vec![c("About VectorCraft", "help.about"), c("Join Our Discord", "help.discord")],
+        ),
+        (
+            "File",'''
+VC_APP_MENU_WITH_ANDROID = '''            vec![c("About VectorCraft", "help.about"), c("Join Our Discord", "help.discord")],
+        ),
+        #[cfg(target_os = "android")]
+        (
+            "Vc",
+            vec![
+                c("About VectorCraft", "help.about"),
+                Sep,
+                c("Import Font (.ttf / .otf)…", "android.vectorcraft.fontImport"),
+                c("Select Shared Font Folder…", "android.vectorcraft.fontFolder"),
+                c("Refresh Shared Fonts", "android.vectorcraft.fontRefresh"),
+                Sep,
+                c("Check for VectorCraft Updates", "android.vectorcraft.updates"),
+                c("Check for Updates at Startup", "android.vectorcraft.startupUpdates"),
+                Sep,
+                c("Graphics Diagnostics…", "android.vectorcraft.diagnostics"),
+            ],
+        ),
+        (
+            "File",'''
+
+
+def add_vc_menu(source: str) -> str:
+    return insert_once(source, VC_APP_MENU_BOUNDARY, VC_APP_MENU_WITH_ANDROID, "top-left Vc menu")
+
 def patch(builder: Path) -> None:
     upstream = builder / "source/vectorcraft"
     manifest = (upstream / "Cargo.toml").read_text()
@@ -94,6 +125,11 @@ pub fn take_android_menu_bits() -> u32 {
 ''', "Android toggles")
 
     stree = tree.read_text()
+    # Keep macOS's genuine VectorCraft app menu untouched. The in-window bar
+    # skips that app menu, so add a *separate* Android-only Vc menu before File.
+    # All IDs already use the verified Android JNI/Rust bridge; duplicate entries
+    # under Type and Help remain as fallbacks until tablet validation.
+    stree = add_vc_menu(stree)
     stree = insert_once(stree,
         '                sub("Type Orientation", vec![c("Horizontal", "type.orientation.horizontal"), c("Vertical", "type.orientation.vertical")]),\n            ],\n        ),\n        ("Select", {',
         '''                sub("Type Orientation", vec![c("Horizontal", "type.orientation.horizontal"), c("Vertical", "type.orientation.vertical")]),
@@ -171,7 +207,7 @@ pub fn take_android_menu_bits() -> u32 {
             raise RuntimeError(f"Android overlay missing required marker {marker}")
     for path, source in ((menus, s), (run, srun), (state, sstate), (tree, stree), (dropdowns, dropdowns_src)):
         path.write_text(source)
-    print("PASS: reviewed v0.20 Type/Help/Window Android controls and one-shot bridge")
+    print("PASS: top-left Vc / Type / Help / Window Android controls and one-shot bridge")
 
 
 if __name__ == "__main__":

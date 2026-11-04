@@ -140,8 +140,18 @@ def java_source(root,android):
 
     private final java.util.concurrent.atomic.AtomicInteger dcToolAction =
         new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicInteger dcEscapeAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicInteger dcCloseAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
 
-    /** Take a physical T/V key that was intercepted before Android's IME. */
+    // A physical tool key can be swallowed by a stale Android IME focus. Queue
+    // the key once regardless of IME focus; Rust checks whether text is actually
+    // being edited before changing tools.
+    public int dcTakeEscapeAction() { return dcEscapeAction.getAndSet(0); }
+    public int dcTakeCloseAction() { return dcCloseAction.getAndSet(0); }
+
+    /** Take a physical tool key that may never reach egui's keymap. */
     public int dcTakeToolAction() {
         return dcToolAction.getAndSet(0);
     }
@@ -182,16 +192,28 @@ def java_source(root,android):
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
         boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
-        // Queue physical T/V even if Android's IME state is stale after
-        // Escape. Rust checks whether the document is actually still typing
-        // before using this fallback, so printable text remains intact.
-        if (!dcDialogActive && event.hasNoModifiers()
-                && state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-            if (code == KeyEvent.KEYCODE_T) dcToolAction.set(1);
-            else if (code == KeyEvent.KEYCODE_V) dcToolAction.set(2);
+        // Distinguish real text editing in Rust, not Android's sometimes-stale
+        // invisible IME focus. Preserve unmodified printable input to text.
+        if (!dcDialogActive && state == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() == 0) {
+            if (escape && event.hasNoModifiers()) dcEscapeAction.set(1);
+            if (close) dcCloseAction.set(1);
+            if (event.hasNoModifiers()) {
+                int tool = code == KeyEvent.KEYCODE_T ? 1
+                    : code == KeyEvent.KEYCODE_V ? 2
+                    : code == KeyEvent.KEYCODE_H ? 3
+                    : code == KeyEvent.KEYCODE_Z ? 4
+                    : code == KeyEvent.KEYCODE_A ? 5
+                    : code == KeyEvent.KEYCODE_P ? 6
+                    : code == KeyEvent.KEYCODE_N ? 7
+                    : code == KeyEvent.KEYCODE_F ? 8
+                    : code == KeyEvent.KEYCODE_M ? 9
+                    : code == KeyEvent.KEYCODE_B ? 10 : 0;
+                if (tool != 0) dcToolAction.set(tool);
+            }
         }
-        // Deliver normal key events as well, so the upstream keymap keeps
-        // other shortcuts working. Rust deduplicates the T/V fallback.
+        // Let native egui still process ordinary key events when available.
+        // Rust deduplicates the native fallback against the same raw event.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
             imeWanted = false;
             if (imeView != null) imeView.clearFocus();

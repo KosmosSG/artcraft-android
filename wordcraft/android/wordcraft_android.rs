@@ -89,12 +89,12 @@ impl Tools {
     /// MagicOS may report hardware letters as Key, Text or IME Commit.
     /// Intercept only unmodified D/C/S while Save Changes is showing;
     /// Ctrl+Shift+S is a separate nonmodal Save As shortcut.
-    pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
+    pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput, android_modifiers: egui::Modifiers) {
         let id = egui::Id::new("wordcraft.unsaved.dcs");
         if !active {
             ctx.data_mut(|d| d.remove::<u8>(id));
         }
-        let allow_text_choice = active && !raw.modifiers.any();
+        let allow_text_choice = active && !android_modifiers.any();
         let mut choice = None;
         let mut save_as = false;
         raw.events.retain(|event| match event {

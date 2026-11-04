@@ -341,6 +341,12 @@ public final class VectorCraftActivity extends NativeActivity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             applyImmersiveFullscreen();
+            // Some Android keyboards return focus to the hidden EditText after
+            // the SAF picker or another app. Never leave the hardware keys
+            // targeting that invisible view when the editor is not typing.
+            if (!imeWanted && imeView != null && imeView.hasFocus()) {
+                getWindow().getDecorView().post(this::vcEndTypeEditing);
+            }
         }
     }
 
@@ -522,19 +528,20 @@ public final class VectorCraftActivity extends NativeActivity {
                 final Window window = getWindow();
                 final View container = window == null ? null :
                         window.getDecorView().findViewById(android.R.id.content);
-                if (container instanceof android.view.ViewGroup) {
-                    android.view.ViewGroup group = (android.view.ViewGroup) container;
-                    for (int i = 0; i < group.getChildCount(); ++i) {
-                        View child = group.getChildAt(i);
-                        if (child != view && child.isShown()) {
-                            child.setFocusable(true);
-                            child.setFocusableInTouchMode(true);
-                            if (child.requestFocus()) {
-                                Log.i(TAG, "Type Escape returned focus to native surface");
-                                break;
-                            }
-                        }
+                // Do not focus the first visible child: that could be our
+                // startup cover or an unrelated overlay rather than the
+                // winit SurfaceView, silently swallowing physical shortcuts.
+                SurfaceView nativeSurface = container == null ? null : findNativeSurface(container);
+                if (nativeSurface != null && nativeSurface.isShown()) {
+                    nativeSurface.setFocusable(true);
+                    nativeSurface.setFocusableInTouchMode(true);
+                    if (nativeSurface.requestFocus()) {
+                        Log.i(TAG, "Type Escape returned focus to actual native SurfaceView");
+                    } else {
+                        Log.w(TAG, "Native SurfaceView refused keyboard focus");
                     }
+                } else {
+                    Log.w(TAG, "Native SurfaceView not yet present for keyboard focus");
                 }
                 // The hidden EditText can generate a final synthetic composition
                 // update during reset. It must not bleed into the next tool.

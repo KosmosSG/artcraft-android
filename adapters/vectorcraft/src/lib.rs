@@ -437,7 +437,10 @@ impl FontUiState {
             self.shared_status = value.get("message")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("Scanning shared fonts in background…").into();
-            return Some(false);
+            // Refresh the native font catalogue off-thread after each batch
+            // that actually adds fonts; continue scanning without a UI stall.
+            let added = value.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            return Some(added > 0);
         }
         let success = value.get("status").and_then(serde_json::Value::as_str) == Some("ok");
         let message = value.get("message").and_then(serde_json::Value::as_str)

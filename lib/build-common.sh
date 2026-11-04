@@ -2851,6 +2851,10 @@ echo "Vendoring the Android-compatible egui-winit for $TITLE (system clipboard v
 mkdir -p "$SRC/vendor"
 rm -rf "$SRC/vendor/egui-winit"
 cp -a "$ROOT/vendor/egui-winit" "$SRC/vendor/egui-winit"
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    python3 "$ROOT/tools/designcraft/overlay_v017_cursor.py" "$ROOT" "$SRC/vendor/egui-winit" \
+        || fail "DesignCraft adaptive cursor overlay failed; refusing an unverified test APK."
+fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib

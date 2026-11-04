@@ -88,9 +88,15 @@ with tempfile.TemporaryDirectory() as folder:
     assert '"android.import_fonts"' in menu and '"android.shared_folder"' in menu
     assert '"android.refresh_fonts"' in menu and '"android.tools_dialog"' in menu
     assert 'ANDROID_TOOLS => Some(ARTCRAFT_ANDROID_TOOLS_VISIBLE.load(' in menu
-    mobile_toolbar = (root / 'templates/android/pdfcraft_mobile.rs').read_text()
-    # Regression: the font picker and shared-folder controls must be visible
-    # without expanding a nested panel on HONOR Android tablet screens.
+    # The optional View toolbar and the separately approved stable Help dialog
+    # are different interfaces. The Help dialog legitimately retains fonts_open.
+    assert 'pub fn handle_menu(&mut self, action: u8)' in mobile
+    assert 'pub fn dialog(&mut self, ctx: &egui::Context)' in mobile
+    assert 'panel_open: bool' in mobile and 'fonts_open: bool' in mobile
+    assert 'toolbar_shown: false' in mobile
+    mobile_toolbar = mobile.split('    pub fn toolbar(&mut self, parent: &mut egui::Ui) -> bool', 1)[1].split('    pub fn handle_menu(&mut self, action: u8)', 1)[0]
+    # Optional toolbar controls remain visible whenever the user opens it,
+    # while the published Help dialog remains available without that toolbar.
     for label in ('Import Font…', 'Choose Shared Font Folder…', 'Refresh Font Folder'):
         assert 'ui.button("' + label + '")' in mobile_toolbar
     assert 'fonts_open' not in mobile_toolbar

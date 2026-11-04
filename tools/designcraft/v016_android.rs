@@ -49,10 +49,19 @@ pub fn handle_keys(
     // associated egui Key event. Consume it only outside document typing.
     let android_tool = if !dialog && app.ui.dialog.is_none()
         && app.ui.palette.is_none() && !app.session.wants_text()
+        && !ctx.text_edit_focused()
     {
         match bridge.dc_tool_action() {
             Ok(1) => Some("type"),
             Ok(2) => Some("selection"),
+            Ok(3) => Some("hand"),
+            Ok(4) => Some("zoom"),
+            Ok(5) => Some("directSelection"),
+            Ok(6) => Some("pen"),
+            Ok(7) => Some("pencil"),
+            Ok(8) => Some("rectangleFrame"),
+            Ok(9) => Some("rectangle"),
+            Ok(10) => Some("contentCollector"),
             _ => None,
         }
     } else {
@@ -60,8 +69,11 @@ pub fn handle_keys(
         let _ = bridge.dc_tool_action();
         None
     };
-    let mut escape = false;
-    let mut close = false;
+    // Native Activity queues physical Esc/Ctrl+W even when a stale IME host
+    // swallows the original KeyEvent. RawInput may contain the same event;
+    // boolean coalescing guarantees each action runs at most once per frame.
+    let mut escape = bridge.dc_escape_action().is_ok_and(|value| value != 0);
+    let mut close = bridge.dc_close_action().is_ok_and(|value| value != 0);
     let mut tools = android_tool;
     let mut modal_action: Option<u8> = None;
     raw.events.retain_mut(|event| {
@@ -99,6 +111,14 @@ pub fn handle_keys(
                     tools = match key {
                         egui::Key::T => Some("type"),
                         egui::Key::V => Some("selection"),
+                        egui::Key::H => Some("hand"),
+                        egui::Key::Z => Some("zoom"),
+                        egui::Key::A => Some("directSelection"),
+                        egui::Key::P => Some("pen"),
+                        egui::Key::N => Some("pencil"),
+                        egui::Key::F => Some("rectangleFrame"),
+                        egui::Key::M => Some("rectangle"),
+                        egui::Key::B => Some("contentCollector"),
                         _ => None,
                     };
                     if tools.is_some() { return false; }
@@ -133,9 +153,17 @@ pub fn handle_keys(
     }
     if let Some(tool) = tools {
         app.select_tool(tool);
+        // A physical tool key may ALSO arrive as an egui Text event. Remove
+        // exactly its matching printable character to avoid adding a stray
+        // glyph when switching tools; never touch arbitrary document text.
+        let shortcut = match tool {
+            "type" => "t", "selection" => "v", "hand" => "h",
+            "zoom" => "z", "directSelection" => "a", "pen" => "p",
+            "pencil" => "n", "rectangleFrame" => "f",
+            "rectangle" => "m", "contentCollector" => "b", _ => "",
+        };
         raw.events.retain(|event| !matches!(event, egui::Event::Text(text)
-            if (tool == "type" && text.eq_ignore_ascii_case("t"))
-                || (tool == "selection" && text.eq_ignore_ascii_case("v"))));
+            if !shortcut.is_empty() && text.eq_ignore_ascii_case(shortcut)));
         ctx.request_repaint();
     }
 }

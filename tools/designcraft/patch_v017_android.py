@@ -166,6 +166,10 @@ def install_icons(root: Path, src: Path, android: Path):
     if cfg["app"] != "designcraft":
         raise ValueError("Wrong app in approved icon manifest")
     res_dir = root / "tools/approved-branding/assets/res"
+    # Use the exact same user-approved Dc artwork for the top-left app menu
+    # as the actual launcher icon, not a placeholder text glyph.
+    shutil.copyfile(res_dir / "mipmap-xxxhdpi/ic_launcher.png",
+                    android / "src/dc-launcher-icon.png")
     dest_dir = android / "res"
     for old in dest_dir.rglob("*"):
         if old.is_file() and old.stem in {"ic_launcher", "ic_launcher_round", "ic_launcher_foreground"}:

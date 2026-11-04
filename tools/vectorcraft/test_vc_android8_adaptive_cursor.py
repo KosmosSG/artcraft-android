@@ -59,6 +59,17 @@ class VectorCraftAndroid8AdaptiveCursor(unittest.TestCase):
         self.assertLess(rust.index("self.inner.ui(ui);"),
                         rust.index("ctx.output(|out| out.cursor_icon)"))
 
+    def test_egui_037_scroll_and_focus_compiler_regressions(self):
+        # These 3 missing egui fields / stale borrow caused Actions
+        # run #41858508545 to fail after the expensive ARM64 setup.
+        src=(ROOT/"adapters/vectorcraft/src/android_modifiers.rs").read_text()
+        self.assertIn("egui::Event::WindowFocused(_) => {", src)
+        self.assertNotIn("let _ = focused; // retain the original focus event unchanged.",src)
+        self.assertIn("egui::Event::MouseWheel { unit, delta, modifiers, source, .. }",src)
+        self.assertIn("phase: egui::TouchPhase::Move,",src)
+        self.assertNotIn("egui::Event::MouseWheel { unit, delta, modifiers, source }",src)
+        self.assertIn("popup_easing_does_not_touch_canvas_wheel_events",src)
+
     def test_candidate_remains_disposable_and_preserves_fonts(self):
         workflow=(ROOT/".github/workflows/vectorcraft-v021-test-apk.yml").read_text()
         fonts=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()

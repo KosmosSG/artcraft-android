@@ -7,3 +7,9 @@ Preserve all tested VectorCraft Android.7 fixes including Ctrl+W D/C/S, keyboard
 Automatic source/JVM guard tests before native build; Android ARM64 com.artcraft.vectorcraft.test only with disposable key.
 Do not use permanent signing or modify published stable VectorCraft.
 Do not create/publish any GitHub Releases. Provide APK artifact for tablet testing if checks pass.
+
+Retry Android.8 Adaptive Cursor test after exact Rust compiler corrections from failed run 41858508545:
+- egui 0.37 MouseWheel event match and synthetic event now explicitly account for phase
+- WindowFocused focus handler no longer uses a borrowed event after move
+- popup test input includes phase; a new prebuild regression guard checks all corrections
+No source baseline/signing changes; use one disposable-key signed ARM64 APK only.

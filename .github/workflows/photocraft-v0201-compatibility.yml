@@ -107,6 +107,13 @@ jobs:
           python3 tools/photocraft_v019_android7_input_overlay.py \
             --upstream source/photocraft \
             --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v0201_keyboard_diagnostics_overlay.py
+          python3 tools/photocraft_v0201_keyboard_diagnostics_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          grep -Fq 'pc_keyboard_diag.show' adapters/photocraft/src/lib.rs
+          grep -Fq 'pcKeyDiagSetEnabled' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'Keyboard Diagnostics (test)' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
           grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs

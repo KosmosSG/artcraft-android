@@ -31,6 +31,7 @@ pub fn icon_type(icon: egui::CursorIcon) -> Option<i32> {
     })
 }
 // Called from deduplicated egui-winit PlatformOutput cursor events only.
+#[expect(unsafe_code)]
 pub fn apply(icon: egui::CursorIcon) {
     let Some(kind) = icon_type(icon) else { return };
     let Some(activity_ptr) = ACTIVITY.get().copied().filter(|p| *p != 0) else { return };

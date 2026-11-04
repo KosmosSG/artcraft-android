@@ -31,6 +31,18 @@ fn to_egui_touch_phase"""
 }
 
 fn to_egui_touch_phase""",1)
+    # PDFCraft pinned winit has a custom IME reset completion event.
+    # Preserve it as a non-consuming event in the staged egui-winit only.
+    event_anchor = "            WindowEvent::PanGesture { delta, phase, .. } => {"
+    if text.count(event_anchor) != 1: raise ValueError("IME match drift")
+    text = text.replace(event_anchor, """            WindowEvent::ImeResetCompleted { .. } => EventResponse {
+                repaint: false,
+                consumed: false,
+            },
+""" + event_anchor, 1)
+    desc_anchor = '        WindowEvent::PanGesture { .. } => "WindowEvent::PanGesture",'
+    if text.count(desc_anchor) != 1: raise ValueError("IME description drift")
+    text = text.replace(desc_anchor, '        WindowEvent::ImeResetCompleted { .. } => "WindowEvent::ImeResetCompleted",\n' + desc_anchor, 1)
     dst.write_text(source.read_text())
     lib.write_text(text)
 if __name__=="__main__":

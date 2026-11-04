@@ -12,12 +12,14 @@ class CursorPortTests(unittest.TestCase):
             (v/"src/lib.rs").write_text(base)
             apply(v,template);saved=(v/"src/lib.rs").read_text()
             self.assertIn("PDFCRAFT_ANDROID_ADAPTIVE_CURSOR",saved)
+            self.assertIn("WindowEvent::ImeResetCompleted { .. } => EventResponse",saved)
             self.assertIn("pdfcraft_adaptive_cursor::apply(cursor_icon)",saved)
             apply(v,template)
             self.assertEqual(saved,(v/"src/lib.rs").read_text())
         self.assertNotIn("PDFCRAFT_ANDROID_ADAPTIVE_CURSOR",base)
     def test_native_pointer_mapping_and_ui_thread(self):
         code=(ROOT/"templates/android/pdfcraft_adaptive_cursor.rs").read_text()
+        self.assertIn("#[expect(unsafe_code)]",code)
         java=(ROOT/"templates/android/pdfcraft_mobile_java.txt").read_text()
         for v in ('C::Text | C::VerticalText => 1008','C::PointingHand => 1002',
                   'C::Crosshair => 1007','C::ResizeHorizontal',

@@ -44,7 +44,9 @@ def patch_native_theme(source: str) -> str:
     if patched.count(black) != 1:
         raise ValueError("Pinned Android windowBackground anchor changed")
     return patched.replace(black,
-        '<item name="android:windowBackground">#2d0000</item>', 1)
+        '<item name="android:windowBackground">#2d0000</item>\\n'
+        '        <item name="android:windowSplashScreenBackground">#2d0000</item>\\n'
+        '        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>', 1)
 
 
 def patch_source(generated: str, java: str, extras: str, manifest: str) -> str:

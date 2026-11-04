@@ -1,13 +1,11 @@
-VectorCraft v0.21.0-android.6 — one disposable-key-signed ARM64 regression test.
-Owner video 2026-11-04: physical trackpad long menu scrolling is jerky; startup still perceived to expose black/native interval; some fonts still missing.
-Changes:
-1. Keep AndroidX splash and approved Vc brand maroon window background.
-2. PixelCopy native SurfaceView requires 2 consecutive frames with both bright/light and dark UI detail (not cleared GPU surface) before hiding splash.
-3. Android-only egui long menus: stable popup scroll state, 0.78 physical-wheel multiplier, 16ms repaint cadence when egui reports scrolling; retain existing Vulkan renderer.
-4. Preserve previously approved launcher/menu, keyboard, dialog shortcuts, shared font BFS with 5000/4GiB, updater.
-Run lightweight source/JVM tests BEFORE expensive Android SDK + ARM64 compilation.
-Build only com.artcraft.vectorcraft.test; use fresh disposable key; never permanent sign/publish or overwrite stable APK.
-
-Retry: updated old Android.5 test version marker and verified JNI bridge methods are in VectorCraftActivity, not VectorCraftExtras. No behavioral code changes.
-
-Retry Android.6: preserve upstream Android ScrollSource::ALL menu touch drag while applying trackpad smoothing to the already-patched widget.
+VectorCraft v0.21.0-android.7 — one owner-approved disposable-key ARM64 test APK
+Owner device feedback: Android.6 startup black remains; physical trackpad menu scroll stutters; font scan works; physical tool shortcuts and D/C/S intermittently fail.
+This revision targets demonstrated keyboard input issues and wheel event batching:
+- Modal Save Changes D/C/S recognizes key press even when Ctrl from Ctrl+W remains latched; never steals keys from a focused text field.
+- Reset left/right Ctrl/Alt/Shift state when Android native window regains focus and after Type editor Escape / Ctrl+W handoff.
+- Restore hardware keyboard focus to actual native SurfaceView instead of first random overlay child.
+- Eased menu-only trackpad wheel events at 16ms intervals; preserve ALL touch ScrollSource and canvas wheel events.
+- Preserve Android.6 PixelCopy splash instrumentation, but do not claim black-screen issue resolved without tablet verification.
+- Preserve approved 5000 font / 4GiB background SAF scanner, launcher, updater and menus.
+- Full source-level and JVM gates BEFORE expensive Android SDK/native build.
+- Only separate com.artcraft.vectorcraft.test test package, ARM64, disposable signing. No permanent signing, release or stable changes.

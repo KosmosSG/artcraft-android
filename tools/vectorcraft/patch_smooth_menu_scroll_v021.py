@@ -9,8 +9,8 @@ from pathlib import Path
 import argparse
 
 
-ORIGINAL = '''        egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'''
-REPLACEMENT = '''        let area = egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room);
+ORIGINAL = '''        egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'''
+REPLACEMENT = '''        let area = egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room);
         #[cfg(target_os = "android")]
         let area = area
             // IDs are scoped by each popup UI so Effect/Window/Submenu states

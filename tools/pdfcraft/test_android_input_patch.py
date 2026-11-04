@@ -28,6 +28,13 @@ class AndroidInputCompatibility(unittest.TestCase):
             "PDFCRAFT_ANDROID_TRACKPAD_SCROLL",
             "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL",
             "PDFCRAFT_ANDROID_GESTURE_AXES_34",
+            "PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK",
+            "PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL",
+            "pdfcraft_trackpad_pan_active",
+            "phase: event::TouchPhase::Started",
+            "phase: event::TouchPhase::Ended",
+            "expanded > (initial_spread*0.12).max(30.0)",
+            "expanded > 2.5 * translated",
             "android_app.enable_motion_axis(Axis::from(50u32))",
             "android_app.enable_motion_axis(Axis::from(51u32))",
             "pointer.axis_value(Axis::from(50u32))",
@@ -60,6 +67,10 @@ class AndroidInputCompatibility(unittest.TestCase):
         self.assertIn("MotionAction::Move",patched)
         self.assertIn("MouseScrollDelta::LineDelta(horizontal, vertical)",patched)
         self.assertNotIn("points: Vec<_> = motion_event.pointers()",patched)
+        # A scroll gesture cannot switch to pinch once latched.
+        self.assertIn("&& !self.pdfcraft_trackpad_pan_active",patched)
+        # Old, hypersensitive trackpad pinch threshold must not reappear.
+        self.assertNotIn("expanded > (initial_spread*0.04).max(12.0)",patched)
 
 if __name__=="__main__":
     unittest.main()

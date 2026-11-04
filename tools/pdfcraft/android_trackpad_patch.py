@@ -32,14 +32,17 @@ def patch(source: str) -> str:
     // PDFCRAFT_ANDROID_TRACKPAD_PINCH
     pdfcraft_trackpad_origin: Option<(PhysicalPosition<f64>, f64)>,
     pdfcraft_trackpad_spread: Option<f64>,
-    pdfcraft_trackpad_pinching: bool,""")
+    pdfcraft_trackpad_pinching: bool,
+    // PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL
+    pdfcraft_trackpad_pan_active: bool,""")
     swap("            pdfcraft_touch_held: false,",
          """            pdfcraft_touch_held: false,
             pdfcraft_trackpad_last: None,
             pdfcraft_trackpad_cursor: None,
             pdfcraft_trackpad_origin: None,
             pdfcraft_trackpad_spread: None,
-            pdfcraft_trackpad_pinching: false,""")
+            pdfcraft_trackpad_pinching: false,
+            pdfcraft_trackpad_pan_active: false,""")
     swap("""                match motion_event.action() {
                     // Hover: the cursor moves without any button held.""",
          """                // Android SOURCE_TOUCHPAD is POSITION-class, not POINTER-class.
@@ -60,6 +63,22 @@ def patch(source: str) -> str:
                     let first_position = first.as_ref().map(pointer_position);
                     let second_position = second.as_ref().map(pointer_position);
                     let point_count = motion_event.pointer_count();
+                    // PDFCRAFT_ANDROID_TRACKPAD_END: native PDF gestures need
+                    // a true End phase for PDFCraft's fling/momentum model.
+                    if self.pdfcraft_trackpad_pan_active && matches!(
+                        motion_event.action(),
+                        MotionAction::Up | MotionAction::PointerUp | MotionAction::Cancel
+                    ) {
+                        callback(event::Event::WindowEvent {
+                            window_id,
+                            event: event::WindowEvent::PanGesture {
+                                device_id,
+                                delta: PhysicalPosition { x: 0.0, y: 0.0 },
+                                phase: event::TouchPhase::Ended,
+                            },
+                        }, self.window_target());
+                        self.pdfcraft_trackpad_pan_active = false;
+                    }
                     if matches!(motion_event.action(),
                         MotionAction::HoverMove | MotionAction::HoverEnter | MotionAction::Move
                     ) && point_count == 1 {
@@ -116,6 +135,20 @@ def patch(source: str) -> str:
                                 event: event::WindowEvent::CursorMoved { device_id, position },
                             }, self.window_target());
                         }
+                        // Distinct Start/Move phases feed PDFCraft's existing
+                        // velocity sampler. A single ACTION_SCROLL should never
+                        // be mistaken for a new gesture on every frame.
+                        if !self.pdfcraft_trackpad_pan_active {
+                            self.pdfcraft_trackpad_pan_active = true;
+                            callback(event::Event::WindowEvent {
+                                window_id,
+                                event: event::WindowEvent::PanGesture {
+                                    device_id,
+                                    delta: PhysicalPosition { x: 0.0, y: 0.0 },
+                                    phase: event::TouchPhase::Started,
+                                },
+                            }, self.window_target());
+                        }
                         // PanGesture reaches egui as a *Point* wheel and
                         // bypasses laggy eased line-wheel smoothing.
                         callback(event::Event::WindowEvent {
@@ -141,9 +174,18 @@ def patch(source: str) -> str:
                             .get_or_insert((mid, spread));
                         let translated = ((mid.x-origin.x).powi(2)+(mid.y-origin.y).powi(2)).sqrt();
                         let expanded = (spread-initial_spread).abs();
+                        // PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK:
+                        // A parallel swipe inevitably changes the apparent
+                        // separation a little as each pointer arrives on a
+                        // different input frame. The earlier permissive 12 px
+                        // threshold accidentally latched Scroll -> Pinch,
+                        // repeatedly zooming and cancelling PDFCraft's fling.
+                        // Commit to a real pinch only BEFORE a scroll starts,
+                        // with strong relative separation evidence.
                         if !self.pdfcraft_trackpad_pinching
-                            && expanded > (initial_spread*0.04).max(12.0)
-                            && expanded > 1.2 * translated
+                            && !self.pdfcraft_trackpad_pan_active
+                            && expanded > (initial_spread*0.12).max(30.0)
+                            && expanded > 2.5 * translated
                         {
                             self.pdfcraft_trackpad_pinching = true;
                         }
@@ -173,19 +215,45 @@ def patch(source: str) -> str:
                                     y: (mid.y-last.y).clamp(-160.0, 160.0),
                                 };
                                 if delta.x != 0.0 || delta.y != 0.0 {
-                                    callback(event::Event::WindowEvent {
-                                        window_id,
-                                        event: event::WindowEvent::PanGesture {
-                                            device_id,
-                                            delta: PhysicalPosition { x: delta.x as f32, y: delta.y as f32 },
-                                            phase: event::TouchPhase::Moved,
-                                        },
-                                    }, self.window_target());
+                                    if !self.pdfcraft_trackpad_pan_active && translated > 3.0 {
+                                        self.pdfcraft_trackpad_pan_active = true;
+                                        callback(event::Event::WindowEvent {
+                                            window_id,
+                                            event: event::WindowEvent::PanGesture {
+                                                device_id,
+                                                delta: PhysicalPosition { x: 0.0, y: 0.0 },
+                                                phase: event::TouchPhase::Started,
+                                            },
+                                        }, self.window_target());
+                                    }
+                                    if self.pdfcraft_trackpad_pan_active {
+                                        callback(event::Event::WindowEvent {
+                                            window_id,
+                                            event: event::WindowEvent::PanGesture {
+                                                device_id,
+                                                delta: PhysicalPosition { x: delta.x as f32, y: delta.y as f32 },
+                                                phase: event::TouchPhase::Moved,
+                                            },
+                                        }, self.window_target());
+                                    }
                                 }
                             }
                         }
                         return input_status; // Never select PDF text during a trackpad gesture.
                     } else {
+                        // Deliver the final phase once after lifting the second
+                        // touchpad finger or after the AXIS_SCROLL stream ends.
+                        if self.pdfcraft_trackpad_pan_active {
+                            callback(event::Event::WindowEvent {
+                                window_id,
+                                event: event::WindowEvent::PanGesture {
+                                    device_id,
+                                    delta: PhysicalPosition { x: 0.0, y: 0.0 },
+                                    phase: event::TouchPhase::Ended,
+                                },
+                            }, self.window_target());
+                            self.pdfcraft_trackpad_pan_active = false;
+                        }
                         self.pdfcraft_trackpad_last = None;
                         self.pdfcraft_trackpad_origin = None;
                         self.pdfcraft_trackpad_spread = None;
@@ -210,6 +278,10 @@ def patch(source: str) -> str:
                         }
                         let (vertical, horizontal) = motion_event""")
     assert marker in source and "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL" in source
+    assert "PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK" in source
+    assert "PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL" in source
+    assert "phase: event::TouchPhase::Started" in source
+    assert "phase: event::TouchPhase::Ended" in source
     assert "PDFCRAFT_ANDROID_GESTURE_AXES_34" in source
     assert "Axis::from(50u32)" in source and "Axis::from(51u32)" in source
     return source

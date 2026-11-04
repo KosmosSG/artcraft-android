@@ -31,6 +31,14 @@ def main() -> None:
     # Do not replace the entire winit Android module: its IME/window extensions
     # must stay exactly as shipped with official DesignCraft v0.16.0.
     target = target.replace(fork_import, donor_import, 1)
+    # Trackpads expose Vscroll/Hscroll only when explicitly enabled by
+    # GameActivity. Without these, two-finger scrolling silently reads zero.
+    redraw = "        let redraw_flag = SharedFlag::new();"
+    require_once(target, redraw, "Pinned Storytold event loop")
+    target = target.replace(redraw, """        android_app.enable_motion_axis(Axis::Vscroll);
+        android_app.enable_motion_axis(Axis::Hscroll);
+""" + redraw, 1)
+
 
     helpers_start = "/// Above this a scroll axis value"
     helpers_end = "struct PeekableReceiver<T>"

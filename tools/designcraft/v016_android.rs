@@ -137,6 +137,10 @@ pub fn handle_keys(
     }
     if escape && !dialog && app.ui.palette.is_none() {
         if app.session.wants_text() {
+            // Committing the edit explicitly fixes the stale text caret left
+            // behind when Android's invisible IME consumes the first Esc.
+            // Preserve the text, then switch back to Selection.
+            let _ = app.run("text.exitToFrame", serde_json::json!({}));
             app.select_tool("selection");
         }
         // A stale focused egui EditText previously blocked T/V indefinitely

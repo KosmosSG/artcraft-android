@@ -1,4 +1,4 @@
-name: PhotoCraft official v0.19 Android compatibility (auto-build, NO RELEASE)
+name: PhotoCraft v0.20.1 optimized ARM64 temporary-signed test (NO RELEASE)
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -21,9 +21,10 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "2"
-      # Keep debug instrumentation but avoid shipping large symbol sections.
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_DEV_STRIP: "symbols"
+      # Release-optimized build without embedded debug symbols.
+      # Keep upstream opt-level defaults to protect graphics and AI performance.
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_STRIP: "symbols"
       PHOTOCRAFT_OVERRIDE_VERSION: "0.20.1-android.1"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
@@ -86,7 +87,7 @@ jobs:
           grep -Fq 'pub fn reset_ime_with_request(&self, _request_id: u64)' vendor/winit/src/window.rs
           echo "Reviewed Android winit IME compatibility APIs present."
 
-      - name: Adapt v0.19 UI menus and ImportOptions (temporary checkout ONLY)
+      - name: Adapt upstream v0.20.1 UI while preserving owner Android features (runner only)
         shell: bash
         run: |
           set -euo pipefail
@@ -183,17 +184,18 @@ jobs:
           print("Separate com.artcraft.photocraft.candidate app: production package and keys untouched")
           PY
 
-      - name: Compile debug-only upstream v0.19 Android compatibility candidate
+      - name: Compile release-optimized upstream v0.20.1 compatibility candidate
         shell: bash
         run: |
           set -euo pipefail
-          # Build-system-generated local debug key is NOT the original PhotoCraft certificate.
-          # Never sign with a production key here; never publish any Releases.
-          bash build-debug.sh -photocraft
-          test -f output/photocraft-0.20.1-debug.apk
-          mv output/photocraft-0.20.1-debug.apk output/photocraft-0.20.1-android.1-debug.apk
+          # build.sh uses a freshly generated builder-owned JKS in this isolated CI job;
+          # this is NOT PhotoCraft's permanent production certificate.
+          # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
+          bash build.sh -photocraft
+          test -f output/photocraft-0.20.1.apk
+          mv output/photocraft-0.20.1.apk output/PhotoCraft-v0.20.1-android.1-arm64-v8a-TEST.apk
 
-      - name: Print compiler failure summary for upstream v0.19 adaptation
+      - name: Print compiler failure summary for upstream v0.20.1 adaptation
         if: failure()
         shell: bash
         run: |
@@ -228,14 +230,37 @@ jobs:
           "$AAPT" dump badging "$APK" | grep '^package:'
           "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate'"
           "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.20.1-android.1'"
+          # Enforce isolated-package architecture, non-production signer, and realistic size report.
+          SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
+          test -n "$SIGNER_SHA"
+          test "$SIGNER_SHA" != "EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936"
+          python3 - "$APK" <<'PY'
+          from pathlib import Path
+          import sys, zipfile
+          apk = Path(sys.argv[1])
+          with zipfile.ZipFile(apk) as archive:
+              bad = archive.testzip()
+              if bad:
+                  raise SystemExit(f"Corrupt APK ZIP entry: {bad}")
+              libs = [n for n in archive.namelist() if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs), libs
+          baseline_bytes = 31463333  # Published PhotoCraft v0.14.0-android.4 signed APK.
+          actual_bytes = apk.stat().st_size
+          delta = actual_bytes - baseline_bytes
+          percent = 100.0 * delta / baseline_bytes
+          print(f"PASS ARM64-only APK ZIP integrity: {len(libs)} native libraries")
+          print(f"Optimized test APK: {actual_bytes} bytes / {actual_bytes / 1048576:.2f} MiB")
+          print(f"Published v0.14.0-android.4: {baseline_bytes} bytes / {baseline_bytes / 1048576:.2f} MiB")
+          print(f"APK size difference: {delta:+d} bytes ({percent:+.2f}%)")
+          PY
           sha256sum "$APK" | tee SHA256SUMS.txt
-          echo "UNTESTED disposable-key debug APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
+          echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
           echo "Candidate v0.20.1-android.1; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Retain debug test artifact ONLY (never publish)
+      - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.20.1-android.1-ARM64-ISOLATED-TEST-DISPOSABLE-KEY
+          name: PhotoCraft-v0.20.1-android.1-ARM64-OPTIMIZED-ISOLATED-TEST-DISPOSABLE-KEY
           path: |
             output/*.apk
             SHA256SUMS.txt

@@ -9,7 +9,7 @@ from pathlib import Path
 import argparse
 import subprocess
 
-OFFICIAL_SHA = "2df9f807702a935184041355a86405380bda8274"
+OFFICIAL_SHA = "327c4cc82e737a3e0af7c147a477126d77525495"
 
 
 def patch(path: Path, before: str, after: str) -> None:

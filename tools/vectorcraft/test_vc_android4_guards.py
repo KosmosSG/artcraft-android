@@ -67,7 +67,7 @@ class VectorCraftAndroid4Guards(unittest.TestCase):
                        "applyImmersiveFullscreen"):
             self.assertIn(marker,java)
         for marker in ("ORIGINAL_CERT:", "Delete disposable builder signing materials",
-                       "com.artcraft.vectorcraft.test", "0.21.0-android.8"):
+                       "com.artcraft.vectorcraft.test", "0.21.0-android.9"):
             self.assertIn(marker,workflow)
         self.assertNotIn("gh release create",workflow)
         self.assertNotIn("softprops/action-gh-release",workflow)

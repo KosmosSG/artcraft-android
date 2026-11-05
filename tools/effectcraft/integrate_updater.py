@@ -86,7 +86,7 @@ j = once(j, matched[0], matched[0] + '''
             return true;
         }
         int action = code == android.view.KeyEvent.KEYCODE_D ? 1 :
-                     code == android.view.KeyEvent.KEYCODE_C ? 2 :
+                     (code == android.view.KeyEvent.KEYCODE_C || code == android.view.KeyEvent.KEYCODE_ESCAPE) ? 2 :
                      code == android.view.KeyEvent.KEYCODE_S ? 3 : 0;
         if (!ecDialogActive || action == 0 || !event.hasNoModifiers()) return false;
         if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
@@ -159,6 +159,11 @@ j = once(j, '                        public boolean sendKeyEvent(KeyEvent event)
     'EffectCraft IME keyboard routing')
 j = once(j, '                view.clearFocus();', '                view.clearFocus();\n                artcraftRestoreCanvasFocus();', 'EffectCraft native surface focus')
 j = j[:-1] + """
+    @Override protected void onDestroy() {
+        android.util.Log.i("EffectCraftLifecycle", "Activity onDestroy finishing=" + isFinishing());
+        super.onDestroy();
+        android.util.Log.i("EffectCraftLifecycle", "Activity onDestroy completed");
+    }
     private android.view.View artcraftNativeSurface(android.view.View node) {
         if (node == null || !node.isShown()) return null;
         if (node instanceof android.view.SurfaceView

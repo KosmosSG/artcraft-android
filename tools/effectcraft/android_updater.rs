@@ -49,7 +49,16 @@ impl Updater {
         match actions {
             Ok(actions) => for code in actions {
                 if inner.dialog.is_some() { continue; }
+                // Commit pending text BEFORE deciding whether this project is dirty.
+                if inner.session.state.text_edit.is_some() {
+                    if let Err(error) = inner.session.execute("text.endEdit", serde_json::json!({})) {
+                        log::warn!("Physical Android shortcut text commit: {error}");
+                        continue;
+                    }
+                    ctx.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });
+                }
                 let command = match code { 1 => "file.close", 2 => "app.quit", _ => continue };
+                log::info!("EffectCraft physical shortcut: {command}, dirty={}", inner.session.is_dirty());
                 if let Err(error) = effectcraft_ui_egui::menus::invoke(inner, ctx,
                     command, serde_json::json!({})) {
                     log::warn!("Physical Android shortcut {command}: {error}");

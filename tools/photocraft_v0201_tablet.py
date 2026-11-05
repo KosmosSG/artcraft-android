@@ -77,4 +77,4 @@ patch(gest,'                        if let Some(f) = self.fingers.iter_mut().fin
                                 self.moves.push(ViewMove { from:f.pos, to:pos, scale:1.0, degrees:0.0 });
                             }''')
 
-patch(host, "        self.inner.ui(ui, _frame);", "        self.inner.ui(ui, _frame);\n        self.pen_input.paint_hover(ui.ctx());")
+patch(host, "        match pc_action {", "        self.pen_input.paint_hover(ui.ctx());\n        match pc_action {")

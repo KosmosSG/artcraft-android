@@ -9,17 +9,51 @@ pub struct PenInput {
     down: bool,
     clear_after_lift: bool,
     hover: Option<egui::Pos2>,
+    cursor_texture: Option<(egui::CustomCursorImage, egui::TextureHandle)>,
 }
 impl PenInput {
-    pub fn paint_hover(&self, ctx: &egui::Context) {
-        let Some(pos) = self.hover else { return };
-        if ctx.pointer_hover_pos() != Some(pos) { return; }
+    pub fn paint_hover(&mut self, ctx: &egui::Context) {
+        let Some(pos) = ctx.pointer_hover_pos() else { return };
+        let (icon, image) = ctx.output(|o| (o.cursor_icon, o.cursor_image.clone()));
         let painter = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Tooltip, egui::Id::new("photocraft_stylus_hover"),
+            egui::Order::Tooltip, egui::Id::new("photocraft_adaptive_pointer"),
         ));
-        // A hollow, two-tone ring stays visible over both light and dark artwork.
-        painter.circle_stroke(pos, 6.0, egui::Stroke::new(3.0, egui::Color32::BLACK));
-        painter.circle_stroke(pos, 6.0, egui::Stroke::new(1.3, egui::Color32::WHITE));
+        // PhotoCraft supplies a custom bitmap for brush outlines, selection crosshairs
+        // and pen tools. The Android bridge handles named icons only.
+        if icon == egui::CursorIcon::None && let Some(image) = image {
+            let [w, h] = image.size;
+            let cached = self.cursor_texture.as_ref().is_some_and(|(old, _)| {
+                old.size == image.size && std::sync::Arc::ptr_eq(&old.rgba, &image.rgba)
+            });
+            if !cached {
+                let rgba = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &image.rgba);
+                let texture = ctx.load_texture("photocraft tool cursor", rgba, egui::TextureOptions::NEAREST);
+                self.cursor_texture = Some((image.clone(), texture));
+            }
+            if let Some((_, texture)) = &self.cursor_texture {
+                let scale = ctx.pixels_per_point();
+                let origin = pos - egui::vec2(image.hotspot[0] as f32, image.hotspot[1] as f32) / scale;
+                let rect = egui::Rect::from_min_size(origin, egui::vec2(w as f32, h as f32) / scale);
+                painter.image(texture.id(), rect, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0,1.0)), egui::Color32::WHITE);
+            }
+            return;
+        }
+        if self.hover != Some(pos) { return; }
+        for (width, color) in [(3.0, egui::Color32::BLACK), (1.3, egui::Color32::WHITE)] {
+            let stroke = egui::Stroke::new(width, color);
+            let line = |x1,y1,x2,y2| painter.line_segment([pos + egui::vec2(x1,y1), pos + egui::vec2(x2,y2)], stroke);
+            match icon {
+                egui::CursorIcon::Text => {
+                    line(0.0,-7.0,0.0,7.0); line(-3.0,-7.0,3.0,-7.0); line(-3.0,7.0,3.0,7.0);
+                }
+                egui::CursorIcon::ZoomIn | egui::CursorIcon::ZoomOut => {
+                    painter.circle_stroke(pos,5.5,stroke); line(4.0,4.0,9.0,9.0);
+                    line(-2.5,0.0,2.5,0.0);
+                    if icon == egui::CursorIcon::ZoomIn { line(0.0,-2.5,0.0,2.5); }
+                }
+                _ => { painter.circle_stroke(pos,6.0,stroke); }
+            }
+        }
     }
 
     pub fn apply(&mut self, app: &mut PhotocraftApp, ctx: &egui::Context, raw: &mut RawInput, modifiers: egui::Modifiers) {

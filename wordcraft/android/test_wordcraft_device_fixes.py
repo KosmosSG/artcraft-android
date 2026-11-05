@@ -1,4 +1,4 @@
-"""WordCraft android.7 acceptance-guard tests for source-level wiring.
+"""WordCraft android.8 acceptance-guard tests for source-level wiring.
 
 These tests catch accidental loss of the requested icon, raw D/C/S intercept
 and font scan limits. Device interactions still require MagicPad testing.
@@ -238,15 +238,21 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('!fresh_press', rust)
         self.assertIn('if paste_out > 0', rust)
         self.assertIn('WC_PASTE_DIAG paste_in=', rust)
+        self.assertIn('key_suppressed={}', rust)
+        self.assertIn('let has_clipboard_paste = current.is_some();', rust)
+        self.assertIn('&& (has_clipboard_paste || held_repeat)', rust)
+        self.assertIn('duplicate_key_dropped += 1;', rust)
+        self.assertIn('key: egui::Key::V, pressed: true, modifiers, ..', rust)
+        self.assertIn('let paste_up =', rust)  # Key-up still reaches WordCraft.
         self.assertNotIn('log::info!("WC_PASTE_DIAG {}", text)', rust)
 
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.7", s)
-        self.assertIn('100014007', s)
+        self.assertIn("0.14.0-android.8", s)
+        self.assertIn('100014008', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.6", s)
+        self.assertNotIn("0.14.0-android.7", s)
 
 
 if __name__ == "__main__":

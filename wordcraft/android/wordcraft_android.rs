@@ -87,6 +87,13 @@ impl Tools {
             egui::Event::Paste(text) => Some(text.clone()),
             _ => None,
         });
+        // Upstream WordCraft maps Ctrl+V itself to edit.paste (see
+        // storyteller/wordcraft engine cmd/edit.rs). The Android launcher
+        // ALSO synthesizes an egui Paste from this very same Ctrl+V. Sending
+        // both through WordApp pastes A twice, even with just one Paste event.
+        // Prefer the explicit Android clipboard Paste; consume only the
+        // matching command keydown and preserve key-up, Copy/Cut and text.
+        let has_clipboard_paste = current.is_some();
         // A Paste can arrive without a matching Key event. Compare only the
         // exact payload; unrelated IME commits and normal text are preserved.
         let echo_text = current.as_deref().or(recent.as_deref());
@@ -94,10 +101,21 @@ impl Tools {
         let mut paste_in = 0usize;
         let mut paste_out = 0usize;
         let mut echo_dropped = 0usize;
+        let mut duplicate_key_dropped = 0usize;
         raw.events.retain(|event| {
             let at = index;
             index += 1;
             match event {
+                egui::Event::Key {
+                    key: egui::Key::V, pressed: true, modifiers, ..
+                } if (modifiers.ctrl || modifiers.command)
+                    && !modifiers.alt && !modifiers.shift
+                    && (has_clipboard_paste || held_repeat) => {
+                    // If we let this keydown reach WordApp it calls edit.paste
+                    // independently of the explicit egui::Event::Paste below.
+                    duplicate_key_dropped += 1;
+                    false
+                }
                 egui::Event::Paste(text) => {
                     paste_in += 1;
                     let is_recent_echo = !fresh_press
@@ -125,10 +143,12 @@ impl Tools {
         if paste_down { self.paste_key_held.set(true); }
         if paste_up || lost_focus { self.paste_key_held.set(false); }
         if lost_focus { self.recent_paste.borrow_mut().take(); }
-        if paste_in > 0 || echo_dropped > 0 || paste_down || paste_repeat {
+        if paste_in > 0 || echo_dropped > 0 || duplicate_key_dropped > 0
+            || paste_down || paste_repeat {
             log::info!(
-                "WC_PASTE_DIAG paste_in={} paste_out={} echo_dropped={} new_key={} held_repeat={}",
-                paste_in, paste_out, echo_dropped, fresh_press, held_repeat
+                "WC_PASTE_DIAG paste_in={} paste_out={} echo_dropped={} key_suppressed={} new_key={} held_repeat={}",
+                paste_in, paste_out, echo_dropped, duplicate_key_dropped,
+                fresh_press, held_repeat
             );
         }
     }

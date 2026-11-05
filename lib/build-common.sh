@@ -2970,6 +2970,10 @@ if [[ "$DESIGNCRAFT_V017" == true ]]; then
         "$ROOT/vendor/winit/src/platform_impl/android/mod.rs" \
         "$SRC/vendor/winit/src/platform_impl/android/mod.rs" \
         || fail "Cannot carry over Android mouse/scroll input onto pinned winit fork."
+    # Syntax-check the generated module before compiling Android dependencies.
+    rustfmt --edition 2024 --config skip_children=true --emit stdout \
+        "$SRC/vendor/winit/src/platform_impl/android/mod.rs" >/dev/null ||
+        fail "Invalid generated DesignCraft Android input module."
     rm -rf "$SRC/vendor/winit/.git"
 elif [[ -d "$SRC/vendor/winit" ]]; then
     rm -rf "$SRC/vendor/winit/src/platform_impl/android"

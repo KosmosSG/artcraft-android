@@ -56,10 +56,6 @@ def main() -> None:
     block_end = "            InputEvent::KeyEvent(key) => {"
     a = require_once(donor, block_start, "ArtCraft motion block")
     b = require_once(donor, block_end, "ArtCraft motion block")
-    x = require_once(target, block_start, "Pinned fork motion block")
-    y = require_once(target, block_end, "Pinned fork motion block")
-    if b <= a or y <= x:
-        raise SystemExit("Motion block marker order is unexpected")
     motion = donor[a:b]
     # Stylus hover is position-only. Contact continues through the touch arm.
     guard = "MotionAction::HoverExit\n                        if pointer_class =>"
@@ -116,6 +112,12 @@ pub static STYLUS_HOVER: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
     for required in ("MotionAction::Scroll", "MotionAction::HoverMove", "MouseWheel", "MouseInput", "event::WindowEvent::Touch"):
         if required not in motion:
             raise SystemExit(f"ArtCraft motion block missing required behavior: {required}")
+    # Field insertions above change byte offsets. Locate the original arm
+    # only once all other edits to the target are complete.
+    x = require_once(target, block_start, "Pinned fork motion block")
+    y = require_once(target, block_end, "Pinned fork key block")
+    if b <= a or y <= x:
+        raise ValueError("Unexpected motion/key event order")
     target = target[:x] + motion + target[y:]
     # The pinned Storytold Android module deliberately implements this
     # no-op platform hook. egui-winit v0.37 calls it through winit::Window;

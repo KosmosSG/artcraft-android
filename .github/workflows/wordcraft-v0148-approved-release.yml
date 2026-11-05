@@ -74,6 +74,36 @@ jobs:
           grep -F "versionName='0.14.0-android.8'" release/badging.txt
           grep -F "versionCode='100014008'" release/badging.txt
 
+      - name: Report actual APK size, native payload and safe debug-strip potential
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,zipfile,tempfile,subprocess
+          from pathlib import Path
+          apk=Path('release')/os.environ['TEST_APK']
+          sdk=Path(os.environ['ANDROID_HOME'])
+          stripper=sdk/'ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          print('ACTUAL APK BYTES:',apk.stat().st_size,flush=True)
+          print('NDK debug-strip tool available:',stripper.is_file(),flush=True)
+          with zipfile.ZipFile(apk) as z, tempfile.TemporaryDirectory() as tmp:
+              infos=sorted(z.infolist(),key=lambda i:i.file_size,reverse=True)
+              for i in infos[:12]:
+                  print('TOP_SIZE_ENTRY:',i.filename,'size',i.file_size,'compressed',i.compress_size,'mode',i.compress_type,flush=True)
+              for i in infos:
+                  if not (i.filename.startswith('lib/arm64-v8a/') and i.filename.endswith('.so')):
+                      continue
+                  target=Path(tmp)/Path(i.filename).name
+                  target.write_bytes(z.read(i))
+                  before=target.stat().st_size
+                  if stripper.is_file():
+                      result=subprocess.run([str(stripper),'--strip-debug',str(target)],capture_output=True,text=True)
+                      if result.returncode:
+                          print('DEBUG_STRIP_FAIL:',result.stderr[-1000:],flush=True)
+                          raise SystemExit('Safe debug-strip failed')
+                      print('NATIVE_STRIP_SAVING:',i.filename,before-target.stat().st_size,flush=True)
+          PY
+
       - name: Restore existing release key temporarily and verify ORIGINAL certificate
         shell: bash
         env:

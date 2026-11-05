@@ -27,6 +27,7 @@ jobs:
       - name: Checkout reviewed source (no stored credentials)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          fetch-depth: 0 # Verify exact approved ancestor commit, not just shallow HEAD
           persist-credentials: false
 
       - name: Fail closed on existing release, changed source or unapproved APK

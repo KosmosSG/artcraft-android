@@ -43,6 +43,7 @@ fn to_egui_touch_phase""",1)
     desc_anchor = '        WindowEvent::PanGesture { .. } => "WindowEvent::PanGesture",'
     if text.count(desc_anchor) != 1: raise ValueError("IME description drift")
     text = text.replace(desc_anchor, '        WindowEvent::ImeResetCompleted { .. } => "WindowEvent::ImeResetCompleted",\n' + desc_anchor, 1)
+    text += '\n#[cfg(target_os = "android")]\npub use winit::pdfcraft_input;\n'
     dst.write_text(source.read_text())
     lib.write_text(text)
 if __name__=="__main__":

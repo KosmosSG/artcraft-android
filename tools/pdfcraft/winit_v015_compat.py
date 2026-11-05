@@ -76,6 +76,9 @@ def prepare(source: Path, builder_android: Path) -> None:
             raise ValueError("Official winit missing IME reset API")
         if tomllib.loads((pinned / "Cargo.toml").read_text())["package"]["version"] != "0.30.13":
             raise ValueError("Pinned winit crate version changed")
+        shutil.copyfile(Path(__file__).with_name("input_metrics.rs"), pinned / "src/pdfcraft_input.rs")
+        lib = pinned / "src/lib.rs"
+        lib.write_text(lib.read_text() + '\n#[cfg(target_os = "android")]\npub mod pdfcraft_input;\n')
         target = pinned / "src/platform_impl/android"
         (target / "mod.rs").write_text(overlay)
         (target / "keycodes.rs").write_bytes(keycodes)

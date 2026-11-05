@@ -171,7 +171,8 @@ impl ShortcutPad {
             return;
         }
         let Some(l) = self.layout.clone() else { return };
-        let hit = |pos| l.panel.contains(pos) && ctx.layer_id_at(pos) == self.layer;
+        let layer = self.layer;
+        let hit = |pos| l.panel.contains(pos) && ctx.layer_id_at(pos) == layer;
         let touch_frame = !self.contacts.is_empty() || raw.events.iter().any(|e|
             matches!(e, Event::Touch { pos, .. } if hit(*pos)));
         for event in raw.events.drain(..) {

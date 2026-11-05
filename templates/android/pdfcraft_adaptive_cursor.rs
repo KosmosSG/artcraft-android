@@ -35,8 +35,33 @@ pub fn icon_type(icon: egui::CursorIcon) -> Option<i32> {
 }
 // Called from deduplicated egui-winit PlatformOutput cursor events only.
 #[expect(unsafe_code)]
-pub fn apply(icon: egui::CursorIcon) {
-    let Some(kind) = icon_type(icon) else { return };
+pub fn apply(icon: impl std::fmt::Debug) {
+    // The PDFCraft app and vendored egui-winit use distinct egui crate revisions.
+    // Compare stable CursorIcon variant names rather than passing a cross-crate enum.
+    let icon_name = format!("{icon:?}");
+    let kind = match icon_name.as_str() {
+        "Default" => 1000,
+        "Text" | "VerticalText" => 1008,
+        "PointingHand" => 1002,
+        "Crosshair" => 1007,
+        "ContextMenu" => 1001,
+        "Help" => 1003,
+        "Cell" => 1006,
+        "Alias" => 1010,
+        "Copy" => 1011,
+        "NoDrop" => 1012,
+        "NotAllowed" => 1013,
+        "Grab" => 1016,
+        "Grabbing" => 1017,
+        "ZoomIn" => 1018,
+        "ZoomOut" => 1019,
+        "AllScroll" | "Move" => 1015,
+        "ResizeHorizontal" | "ResizeColumn" | "ResizeEast" | "ResizeWest" => 1014,
+        "ResizeVertical" | "ResizeRow" | "ResizeNorth" | "ResizeSouth" => 1021,
+        "ResizeNwSe" | "ResizeNorthWest" | "ResizeSouthEast" => 1022,
+        "ResizeNeSw" | "ResizeNorthEast" | "ResizeSouthWest" => 1023,
+        _ => return,
+    };
     let Some(activity_ptr) = ACTIVITY.get().copied().filter(|p| *p != 0) else { return };
     if LAST_ICON.swap(kind, Ordering::Relaxed) == kind { return; }
     use jni::{jni_sig, jni_str, objects::{JObject, JValue}, JavaVM};

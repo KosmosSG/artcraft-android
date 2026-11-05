@@ -150,6 +150,35 @@ jobs:
           python3 wordcraft/android/workspace_v014.py builder
           bash -n builder/lib/build-common.sh
 
+      - name: Increase pinned Gradle download timeout and retry packaging only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # All changes below are isolated to the disposable reference-builder
+          # checkout; never alter the upstream repo or production keys.
+          python3 - <<'PY'
+          from pathlib import Path
+          wrapper = Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          w = wrapper.read_text(encoding="utf-8")
+          old_timeout = "networkTimeout=10000\n"
+          assert w.count(old_timeout) == 1, "Pinned Gradle wrapper timeout changed: review before editing"
+          wrapper.write_text(w.replace(old_timeout, "networkTimeout=120000\n", 1), encoding="utf-8")
+          shell = Path("builder/lib/build-common.sh")
+          s = shell.read_text(encoding="utf-8")
+          old_gradle = '    ./gradlew --console=plain "$GRADLE_TASK"\n'
+          assert s.count(old_gradle) == 1, "Pinned builder Gradle invocation changed: review first"
+          retry_gradle = """    bash -c 'for attempt in 1 2; do
+              if ./gradlew --console=plain "$1"; then exit 0; fi
+              if [[ "$attempt" == 2 ]]; then exit 1; fi
+              echo "Transient Gradle download or packaging failure; retrying only Gradle in 8 seconds"
+              sleep 8
+          done' -- "$GRADLE_TASK"
+          """
+          shell.write_text(s.replace(old_gradle, retry_gradle, 1), encoding="utf-8")
+          print("Ephemeral Gradle wrapper: timeout 120000ms; one packaging-only retry")
+          PY
+          bash -n builder/lib/build-common.sh
+
       - name: Compile candidate with per-run temporary builder key
         shell: bash
         timeout-minutes: 60

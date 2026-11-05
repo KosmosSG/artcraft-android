@@ -102,3 +102,24 @@ repeat, duplicate routes, missing release, stale release and focus reset. The
 existing five Rust routing tests are repeated by CI. Device Escape success is
 still NOT verified. Test a short sentence → Esc → M/B/V; if it fails, capture the
 new Escape lines. Keep the stable app; this remains a temporary-signed candidate.
+
+## Android.4: adaptive cursor, PhotoCraft only
+
+Selectively adapts the native pointer-icon feature from MostafaXS1/artcraft-android
+v0.2.0, vendor/egui-winit/src/pointer_icon.rs (MIT, Copyright 2026 ArtCraft Team;
+repository LICENSE retained). No wholesale fork merge. Maps the resolved egui cursor
+to Android SDK PointerIcon names, including text, hand, crosshair, grab, zoom and
+resize. SDK names avoid incorrect numeric constants in the donor implementation.
+The Java bridge searches the full view hierarchy for NativeContentView (this app) or SurfaceView, changes the icon
+on the UI thread, deduplicates applied icons and resets on window focus regain.
+No shared vendor runtime files or protected production adapters change.
+
+Validation: mapping unit test plus existing keyboard tests, full ARM64 compile,
+package/signature/ABI checks. Device verification remains required. This implements
+native system cursor shapes, not custom bitmap brush cursors.
+
+Keyboard status remains FAILED on android.3. Recording SVID_20261105_080022_1.mp4
+shows some native key presses working and later InputConnection key-up events
+without corresponding presses in the displayed log. No confirmed Escape event
+chain is visible in sampled frames; this is not proof of OS interception. Android.4
+retains diagnostics and does not claim to fix the remaining keyboard issue.

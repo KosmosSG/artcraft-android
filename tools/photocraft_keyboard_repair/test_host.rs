@@ -5,3 +5,5 @@ impl AndroidFileBridge {
     fn poll_hardware_key(&self) -> Result<Option<String>, String> { Ok(None) }
 }
 mod hardware_keys;
+
+mod adaptive_cursor;

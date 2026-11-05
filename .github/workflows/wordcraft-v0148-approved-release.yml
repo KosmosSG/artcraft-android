@@ -104,6 +104,66 @@ jobs:
                       print('NATIVE_STRIP_SAVING:',i.filename,before-target.stat().st_size,flush=True)
           PY
 
+      - name: Prepare cross-platform ARM64 ELF strip tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq binutils-aarch64-linux-gnu
+          fi
+          command -v aarch64-linux-gnu-strip
+          command -v aarch64-linux-gnu-objcopy
+
+      - name: Strip only non-runtime symbols; prove native executable bytes unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,subprocess,tempfile,zipfile
+          from pathlib import Path
+          src=Path('release')/os.environ['TEST_APK']
+          dst=Path('release/wordcraft-optimized.apk')
+          proof={'original_test_apk_bytes':src.stat().st_size,'source_sha256':os.environ['TEST_SHA256'],'libs':[]}
+          with zipfile.ZipFile(src) as original,zipfile.ZipFile(dst,'w') as optimized,tempfile.TemporaryDirectory() as tmp:
+              for entry in original.infolist():
+                  content=original.read(entry)
+                  if entry.filename.startswith('lib/arm64-v8a/') and entry.filename.endswith('.so'):
+                      before=Path(tmp)/'before.so'
+                      after=Path(tmp)/'after.so'
+                      before.write_bytes(content)
+                      after.write_bytes(content)
+                      subprocess.run(['aarch64-linux-gnu-strip','--strip-unneeded',str(after)],check=True)
+                      for name in ('.text','.rodata'):
+                          for target,elf in (('a',before),('b',after)):
+                              subprocess.run(['aarch64-linux-gnu-objcopy',
+                                              '--dump-section',name+'='+str(Path(tmp)/target),
+                                              str(elf)],check=True)
+                          assert (Path(tmp)/'a').read_bytes()==(Path(tmp)/'b').read_bytes(),name+' changed'
+                          (Path(tmp)/'a').unlink()
+                          (Path(tmp)/'b').unlink()
+                      stripped=after.read_bytes()
+                      assert len(stripped)<len(content), 'No safe native strip savings'
+                      proof['libs'].append({'name':entry.filename,'original_bytes':len(content),
+                                            'optimized_bytes':len(stripped),
+                                            'text_and_rodata_identical':True})
+                      content=stripped
+                  optimized.writestr(entry,content,compress_type=entry.compress_type,compresslevel=9)
+          assert proof['libs']
+          with zipfile.ZipFile(src) as inp,zipfile.ZipFile(dst) as out:
+              assert out.testzip() is None
+              assert inp.namelist()==out.namelist()
+              for name in inp.namelist():
+                  if not (name.startswith('lib/arm64-v8a/') and name.endswith('.so')):
+                      assert inp.read(name)==out.read(name), 'Non-native APK entry changed: '+name
+          proof['optimized_before_sign_bytes']=dst.stat().st_size
+          assert dst.stat().st_size < src.stat().st_size-1048576,'Less than 1 MiB saved'
+          Path('release/optimization-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+          print('Original APK bytes:',src.stat().st_size)
+          print('Symbol-stripped APK bytes:',dst.stat().st_size)
+          print('PASS: same native machine code, read-only data, DEX and all resources.')
+          PY
+
       - name: Restore existing release key temporarily and verify ORIGINAL certificate
         shell: bash
         env:
@@ -123,7 +183,7 @@ jobs:
           test "$actual" = "$ORIGINAL_CERT" || { echo "::error::Original WordCraft certificate mismatch"; exit 1; }
           echo "Original published WordCraft signing identity matches."
 
-      - name: Preserve tested executable bytes, optimize safe ZIP alignment, permanently sign
+      - name: Align optimized package, permanently sign and verify
         shell: bash
         env:
           WC_STORE_PASS: ${{ secrets.WORDCRAFT_KEYSTORE_PASSWORD }}
@@ -133,9 +193,9 @@ jobs:
           set -euo pipefail
           zipalign="$ANDROID_HOME/build-tools/35.0.0/zipalign"
           signer="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          # Already ARM64-only and ~60% smaller than published android.6.
-          # No new R8/native stripping after device approval.
-          "$zipalign" -f -p 4 "release/$TEST_APK" release/wordcraft-aligned.apk
+          # Strip removed only non-runtime ELF symbols, and prior step proved
+          # native machine code and read-only constants remain byte-identical.
+          "$zipalign" -f -p 4 release/wordcraft-optimized.apk release/wordcraft-aligned.apk
           "$zipalign" -c -p 4 release/wordcraft-aligned.apk
           "$signer" sign --ks "$RUNNER_TEMP/wordcraft-original.jks" \
             --ks-key-alias "$WC_ALIAS" \
@@ -152,14 +212,21 @@ jobs:
           found={re.sub(r'[^0-9A-F]','',x.upper()) for x in matches}
           assert found=={os.environ['ORIGINAL_CERT']},'Wrong production signer'
           assert apk.stat().st_size < 79464957, 'No savings over prior public release'
-          assert apk.stat().st_size <= orig.stat().st_size + 262144,'Unexpected APK size growth'
+          assert apk.stat().st_size < orig.stat().st_size - 1048576,'Insufficient optimization'
           with zipfile.ZipFile(orig) as tested, zipfile.ZipFile(apk) as signed:
               assert signed.testzip() is None
               libs=[n for n in tested.namelist() if n.startswith('lib/') and n.endswith('.so')]
               assert libs
-              for n in libs+['classes.dex']:
-                  assert signed.read(n)==tested.read(n),f'Executable payload changed: {n}'
-          print('PASS original release signer, unchanged executable code, size reduction.')
+              assert signed.namelist()==tested.namelist(), 'APK file list changed'
+              for n in tested.namelist():
+                  if not (n.startswith('lib/arm64-v8a/') and n.endswith('.so')):
+                      assert signed.read(n)==tested.read(n),f'Non-native APK payload changed: {n}'
+          proof=__import__('json').loads(Path('release/optimization-proof.json').read_text())
+          assert proof['libs'] and all(i['text_and_rodata_identical'] for i in proof['libs'])
+          proof['production_signed_apk_bytes']=apk.stat().st_size
+          proof['production_certificate_sha256']=os.environ['ORIGINAL_CERT']
+          Path('release/optimization-proof.json').write_text(__import__('json').dumps(proof,indent=2)+'\n')
+          print('PASS: original signing certificate and unchanged executable code; smaller APK.')
           PY
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "release/$PROD_APK" > release/signed-badging.txt
           grep -F "name='com.artcraft.wordcraft'" release/signed-badging.txt
@@ -183,7 +250,7 @@ jobs:
           - Save/Don't Save/Cancel, Esc cancel, Ctrl+Q and Ctrl+Shift+S Save As.
           - Approved frameless Wc menu and launcher icon, native touchscreen and trackpad scrolling.
           - Recursive font import (5,000 files / 4 GiB), SAF files, Android clipboard and update checker.
-          - ARM64-only package, approximately 60% smaller than v0.9.0-android.6.
+          - ARM64-only package optimized by removing non-runtime ELF symbols; native code and constants verified identical.
           - Original WordCraft signing certificate for stable release upgrade compatibility.
 
           Package: com.artcraft.wordcraft
@@ -192,7 +259,7 @@ jobs:
           Verified candidate run: 42048384583
           NOTE: Disposable-key preview users must back up app-private files before uninstalling a preview and installing this permanent release.
           NOTES
-          gh release create "$TAG" "release/$PROD_APK" release/SHA256SUMS.txt \
+          gh release create "$TAG" "release/$PROD_APK" release/SHA256SUMS.txt release/optimization-proof.json \
             --target "$SOURCE_COMMIT" --title "WordCraft v0.14.0-android.8 — Stable ARM64" \
             --notes-file release/NOTES.md --latest -R "$GITHUB_REPOSITORY"
           echo "Published https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

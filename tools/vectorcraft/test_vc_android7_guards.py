@@ -44,7 +44,7 @@ class VectorCraftAndroid7Guards(unittest.TestCase):
         workflow=(ROOT/".github/workflows/vectorcraft-v021-test-apk.yml").read_text()
         self.assertIn("MAX_FONTS = 5000",java)
         self.assertIn("MAX_SCAN_BYTES = 4L * 1024 * 1024 * 1024",java)
-        self.assertIn("VERSION_NAME: 0.21.0-android.8",workflow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.9",workflow)
         self.assertIn("com.artcraft.vectorcraft.test",workflow)
         self.assertIn("Delete disposable builder signing materials",workflow)
         self.assertNotIn("gh release create",workflow)

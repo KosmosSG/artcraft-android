@@ -29,14 +29,19 @@ def patch(root: Path) -> None:
     patched = '''    // Android physical keyboard mnemonics for Save Changes only. Rejection by
     // an active modal/IME must not become a canvas command or typed text.
     #[cfg(target_os = "android")]
-    if d.kind == crate::unsaved::KIND && !after_panel && !rejected
-        && !egui::Popup::is_any_open(ctx)
-    {
-        // A physical Ctrl+W can leave Ctrl latched across the IME handoff.
-        // consume_key(NONE) rejects the following D/C/S if modifiers linger.
-        // Accept the key press only in the Save Changes dialog, and never
-        // steal keystrokes from an active egui text-edit field.
-        let pressed = |key| !ctx.text_edit_focused() && ctx.input(|i| i.key_pressed(key));
+    if d.kind == crate::unsaved::KIND && !after_panel && !rejected {
+        // This *specific* Save Changes dialog has no editable field. An
+        // invisible Android IME EditText or a stale egui focus ID must NOT
+        // block the physical D / C / S keyboard keys after Ctrl+W / Ctrl+Q.
+        // Similarly, Popup::is_any_open can still be true during modal
+        // construction; it must not gate the dialog's own actions.
+        // Read actual key-down events, ignoring stale Ctrl/Shift modifiers,
+        // without synthesizing printable text or affecting other dialogs.
+        let pressed = |key| ctx.input(|i| i.events.iter().any(|event|
+            matches!(event, egui::Event::Key {
+                key: logical, physical_key, pressed: true, repeat: false, ..
+            } if *logical == key || *physical_key == Some(key))
+        ));
         if pressed(egui::Key::C) || pressed(egui::Key::Escape) {
             cancel = true;
         } else if pressed(egui::Key::D) {

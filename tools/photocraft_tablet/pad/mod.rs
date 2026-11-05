@@ -78,12 +78,10 @@ pub struct ShortcutPad {
     screen_step: ScreenStep,
     /// The window's content area last frame (keeps the large ring on screen).
     screen: egui::Rect,
-    /// The phone layout: a slimmer pad ([`router::COMPACT_WIDTH`]).
 
     /// Brush size and hardness as the turn has set them, unrounded, so slow turns add up.
     size_target: Option<f32>,
     hardness_target: Option<f32>,
-    /// Canvas gestures to apply to the view (Touch Input).
 
 }
 

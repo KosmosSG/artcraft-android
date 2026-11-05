@@ -217,8 +217,12 @@ jobs:
               assert signed.testzip() is None
               libs=[n for n in tested.namelist() if n.startswith('lib/') and n.endswith('.so')]
               assert libs
-              assert signed.namelist()==tested.namelist(), 'APK file list changed'
+              def protected_names(z):
+                  return {n for n in z.namelist() if not n.startswith('META-INF/')}
+              assert protected_names(signed)==protected_names(tested), 'Application APK files changed'
               for n in tested.namelist():
+                  if n.startswith('META-INF/'):  # signing-related metadata may change
+                      continue
                   if not (n.startswith('lib/arm64-v8a/') and n.endswith('.so')):
                       assert signed.read(n)==tested.read(n),f'Non-native APK payload changed: {n}'
           proof=__import__('json').loads(Path('release/optimization-proof.json').read_text())

@@ -310,6 +310,19 @@ public final class VectorCraftActivity extends NativeActivity {
         cover.postDelayed(this::dismissStartupCover, 15000);
     }
 
+    /**
+     * Android-specific final exit requested by upstream app.quit, after every
+     * unsaved-document Save / Don't Save callback has completed. Never call
+     * this directly from the shortcut: quitting must respect Cancel.
+     */
+    public void vcFinishAfterQuit() {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            Log.i(TAG, "VectorCraft app.quit confirmed; finishing Android task");
+            finishAndRemoveTask();
+        });
+    }
+
     /** Called exactly once by Rust after its first editor UI traversal. */
     public void vcNativeUiReady() {
         // JNI is a signal to START checking; it is not presentation proof.

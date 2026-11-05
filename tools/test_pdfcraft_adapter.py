@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.9'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.10'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.18.0-android.9'
+    assert cargo['package']['version'] == '0.18.0-android.10'
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
@@ -47,6 +47,8 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'ctrl_shortcuts_without_separate_modifier_key_event' in (root/'templates/android/pdfcraft_modifiers.rs').read_text()
     assert 'shell.pdf_mobile.set_renderer(description)' in native
     assert 'egui_winit::pdfcraft_adaptive_cursor::set_activity(app.activity_as_ptr() as usize);' in native
+    assert 'egui_winit::pdfcraft_adaptive_cursor::apply(ui.ctx().output(|o| o.cursor_icon));' in native
+    assert 'PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK' in (root / 'lib/build-common.sh').read_text()
     assert 'self.pdf_mobile.dialog(ui.ctx())' in native
     assert 'self.pdf_mobile.observe_raw_input(raw);' in native
     assert 'self.pdf_mobile.handle_menu(self.inner.take_android_tools_request())' in native
@@ -112,6 +114,9 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'egui::Event::Zoom(factor)' in mobile
     assert 'read_trackpad_status' in mobile
     assert '"Adaptive cursor diagnostics"' in mobile
+    assert 'PDFCRAFT_ANDROID_CURSOR_OUTPUT_DIAGNOSTICS' in mobile
+    assert 'i.pointer.latest_pos()' in mobile
+    assert 'ui.ctx().output(|o| o.cursor_icon)' in mobile
     assert '"Android cursor requests: {}"' in mobile
     assert 'pub fn dialog(&mut self, ctx: &egui::Context)' in mobile
     assert 'panel_open: bool' in mobile and 'fonts_open: bool' in mobile

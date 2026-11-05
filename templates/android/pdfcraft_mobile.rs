@@ -408,6 +408,12 @@ impl Mobile {
                             .unwrap_or("No Java sample"));
                         ui.separator();
                         ui.heading("Adaptive cursor diagnostics");
+                        // PDFCRAFT_ANDROID_CURSOR_OUTPUT_DIAGNOSTICS:
+                        // Show the egui cursor and hover state in addition to Java JNI status.
+                        ui.label(format!("egui pointer position: {:?}",
+                            ui.ctx().input(|i| i.pointer.latest_pos())));
+                        ui.label(format!("egui cursor requested: {:?}",
+                            ui.ctx().output(|o| o.cursor_icon)));
                         ui.label(format!("Android cursor requests: {}",
                             data.get("cursorRequests").and_then(Value::as_u64).unwrap_or(0)));
                         ui.label(format!("Android cursor applied: {}",

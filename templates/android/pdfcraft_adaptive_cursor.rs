@@ -2,7 +2,10 @@
 //! NativeActivity, not the source fork's GameActivity. Hover and pinch are untouched.
 #![cfg(target_os = "android")]
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicI32, Ordering};
 static ACTIVITY: OnceLock<usize> = OnceLock::new();
+// PDFCRAFT_ANDROID_CURSOR_FALLBACK_DEDUP: a changed cursor triggers at most one JNI update.
+static LAST_ICON: AtomicI32 = AtomicI32::new(-1);
 pub fn set_activity(activity: usize) { let _ = ACTIVITY.set(activity); }
 pub fn icon_type(icon: egui::CursorIcon) -> Option<i32> {
     use egui::CursorIcon as C;
@@ -35,6 +38,7 @@ pub fn icon_type(icon: egui::CursorIcon) -> Option<i32> {
 pub fn apply(icon: egui::CursorIcon) {
     let Some(kind) = icon_type(icon) else { return };
     let Some(activity_ptr) = ACTIVITY.get().copied().filter(|p| *p != 0) else { return };
+    if LAST_ICON.swap(kind, Ordering::Relaxed) == kind { return; }
     use jni::{jni_sig, jni_str, objects::{JObject, JValue}, JavaVM};
     let vm = unsafe { JavaVM::from_raw(ndk_context::android_context().vm().cast()) };
     let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {

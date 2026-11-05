@@ -17,6 +17,12 @@ class CursorPortTests(unittest.TestCase):
             apply(v,template)
             self.assertEqual(saved,(v/"src/lib.rs").read_text())
         self.assertNotIn("PDFCRAFT_ANDROID_ADAPTIVE_CURSOR",base)
+        self.assertIn("PDFCRAFT_ANDROID_CURSOR_FALLBACK_DEDUP",
+            (ROOT/"templates/android/pdfcraft_adaptive_cursor.rs").read_text())
+        self.assertIn("LAST_ICON.swap(kind, Ordering::Relaxed) == kind",
+            (ROOT/"templates/android/pdfcraft_adaptive_cursor.rs").read_text())
+        self.assertIn("PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK",
+            (ROOT/"lib/build-common.sh").read_text())
     def test_native_pointer_mapping_and_ui_thread(self):
         code=(ROOT/"templates/android/pdfcraft_adaptive_cursor.rs").read_text()
         self.assertIn("#[expect(unsafe_code)]",code)

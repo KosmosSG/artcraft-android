@@ -311,6 +311,46 @@ fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::Design
     }
 }
 
+/// Visible tool feedback beside the hotspot on systems that override native pointer icons.
+pub fn paint_pointer_feedback(ctx: &egui::Context) {
+    use egui::CursorIcon as C;
+    if !egui_winit::winit::platform::android::HARDWARE_POINTER.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(pos) = ctx.pointer_hover_pos() else { return };
+    // Draw paths rather than font symbols, so custom font catalogs cannot
+    // substitute a missing glyph for the cursor.
+    let hand: &[(i8, i8)] = &[(-4,1),(-2,2),(-2,-4),(0,-5),(1,-1),(4,-1),(5,2),(3,5),(-1,5),(-4,1)];
+    let paths: &[&[(i8, i8)]] = match ctx.output(|o| o.cursor_icon) {
+        C::Text | C::VerticalText => &[&[(-3,-5),(3,-5)], &[(0,-5),(0,5)], &[(-3,5),(3,5)]],
+        C::Grab | C::Grabbing | C::PointingHand => &[hand],
+        C::Move | C::AllScroll => &[&[(-5,0),(5,0)], &[(0,-5),(0,5)], &[(-5,0),(-3,-2)], &[(5,0),(3,2)]],
+        C::Crosshair | C::Cell | C::ZoomIn => &[&[(-5,0),(5,0)], &[(0,-5),(0,5)]],
+        C::ZoomOut => &[&[(-5,0),(5,0)]],
+        C::ResizeHorizontal | C::ResizeColumn | C::ResizeEast | C::ResizeWest =>
+            &[&[(-3,-2),(-5,0),(-3,2)], &[(-5,0),(5,0)], &[(3,-2),(5,0),(3,2)]],
+        C::ResizeVertical | C::ResizeRow | C::ResizeNorth | C::ResizeSouth =>
+            &[&[(-2,-3),(0,-5),(2,-3)], &[(0,-5),(0,5)], &[(-2,3),(0,5),(2,3)]],
+        C::ResizeNwSe | C::ResizeNorthWest | C::ResizeSouthEast =>
+            &[&[(-4,0),(-4,-4),(0,-4)], &[(-4,-4),(4,4)], &[(0,4),(4,4),(4,0)]],
+        C::ResizeNeSw | C::ResizeNorthEast | C::ResizeSouthWest =>
+            &[&[(0,-4),(4,-4),(4,0)], &[(-4,4),(4,-4)], &[(-4,0),(-4,4),(0,4)]],
+        _ => return,
+    };
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip,
+        egui::Id::unique("designcraft.tool-pointer")));
+    let center = pos + egui::vec2(13.0, 17.0);
+    let stroke = egui::Stroke::new(1.3, egui::Color32::WHITE);
+    painter.circle_filled(center, 8.5, egui::Color32::from_gray(35));
+    painter.circle_stroke(center, 8.5, stroke);
+    for path in paths {
+        for edge in path.windows(2) {
+            let point = |(x, y): (i8, i8)| center + egui::vec2(f32::from(x), f32::from(y));
+            painter.line_segment([point(edge[0]), point(edge[1])], stroke);
+        }
+    }
+}
+
 pub fn ui(
     ui: &mut egui::Ui,
     app: &mut designcraft_ui_egui::DesignApp,
@@ -373,9 +413,17 @@ pub fn ui(
     // consolidated here; the standard upstream document menus remain intact.
     egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
-            let button = egui::Button::image_and_text(
-                egui::include_image!("dc-launcher-icon.png"), "▾"
-            );
+            let texture_id = egui::Id::unique("dc.launcher.texture");
+            let texture = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(texture_id))
+                .unwrap_or_else(|| {
+                    let rgba = include_bytes!("dc-launcher-icon.rgba");
+                    let image = egui::ColorImage::from_rgba_unmultiplied([96, 96], rgba);
+                    let texture = ui.ctx().load_texture("DesignCraft launcher", image, egui::TextureOptions::LINEAR);
+                    ui.ctx().data_mut(|d| d.insert_temp(texture_id, texture.clone()));
+                    texture
+                });
+            let image = egui::Image::from_texture((texture.id(), egui::vec2(30.0, 30.0)));
+            let button = egui::Button::image_and_text(image, "▾").min_size(egui::vec2(46.0, 34.0));
             egui::containers::menu::MenuButton::from_button(button).ui(
                 ui, |ui| {
                     if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {

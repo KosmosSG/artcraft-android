@@ -144,6 +144,7 @@ def patch_launcher(root: Path, android: Path):
     source = once(source, "        self.inner.ui(ui);",
         '''        v016_android::ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);
         self.inner.ui(ui);
+        v016_android::paint_pointer_feedback(ui.ctx());
         if egui_winit::winit::platform::android::STYLUS_HOVER.load(std::sync::atomic::Ordering::Relaxed)
             && let Some(pos) = ui.ctx().pointer_hover_pos()
             && self.inner.canvas_rect.is_some_and(|r| r.contains(pos))
@@ -188,8 +189,10 @@ def install_icons(root: Path, src: Path, android: Path):
     res_dir = root / "tools/approved-branding/assets/res"
     # Use the exact same user-approved Dc artwork for the top-left app menu
     # as the actual launcher icon, not a placeholder text glyph.
-    shutil.copyfile(res_dir / "mipmap-xxxhdpi/ic_launcher.png",
-                    android / "src/dc-launcher-icon.png")
+    from PIL import Image
+    with Image.open(res_dir / "mipmap-xxxhdpi/ic_launcher.png") as image:
+        pixels = image.convert("RGBA").resize((96, 96), Image.Resampling.LANCZOS)
+        (android / "src/dc-launcher-icon.rgba").write_bytes(pixels.tobytes())
     dest_dir = android / "res"
     for old in dest_dir.rglob("*"):
         if old.is_file() and old.stem in {"ic_launcher", "ic_launcher_round", "ic_launcher_foreground"}:
@@ -218,7 +221,7 @@ def install_icons(root: Path, src: Path, android: Path):
         raise ValueError("Missing generated launcher icon field")
     # Keep the upstream v0.17 core pinned while identifying the Android build
     # separately. Do not change the signing identity or published release.
-    candidate_version = "0.17.2-android.2"
+    candidate_version = "0.17.2-android.3"
     if updated.count("version.workspace = true") != 1:
         raise ValueError("Generated Android manifest version changed")
     updated = updated.replace("version.workspace = true",

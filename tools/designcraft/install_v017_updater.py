@@ -77,7 +77,7 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     if '"Android",\n' in table_source or '"ui:app.artcraftToggleAndroidTools"' in table_source:
         raise ValueError("Unexpected old Android top-level menu; review before patching")
     dc_menu = (android / "src/v016_android.rs").read_text()
-    for label in ("dc-launcher-icon.png", "Check Updates", "Startup Update Check",
+    for label in ("dc-launcher-icon.rgba", "Check Updates", "Startup Update Check",
                   "Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
                   "Reload Font Catalog", "Android Tools"):
         if label not in dc_menu:

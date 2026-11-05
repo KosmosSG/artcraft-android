@@ -144,9 +144,8 @@ def java_source(root,android):
     }
 
     private void dcSetSurfaceIcon(android.view.View view, android.view.PointerIcon icon) {
-        if (view.getId() == android.R.id.content || view instanceof android.view.SurfaceView) {
-            view.setPointerIcon(icon);
-        }
+        // NativeActivity also uses a plain NativeContentView for its input queue.
+        if (view != imeView) view.setPointerIcon(icon);
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); ++i) dcSetSurfaceIcon(group.getChildAt(i), icon);

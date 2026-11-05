@@ -48,7 +48,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn('text.exitToFrame', self.native)
 
     def test_launcher_icon_replaces_android_top_level_menu(self):
-        self.assertIn('include_image!("dc-launcher-icon.png")', self.native)
+        self.assertIn('include_bytes!("dc-launcher-icon.rgba")', self.native)
         self.assertIn('MenuButton::from_button(button).ui(', self.native)
         self.assertIn('mipmap-xxxhdpi/ic_launcher.png', self.stager)
         for text in ("Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
@@ -79,7 +79,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
     def test_trackpad_axes_and_compatible_package(self):
         self.assertIn("enable_motion_axis(Axis::Vscroll)", self.wheel)
         self.assertIn("enable_motion_axis(Axis::Hscroll)", self.wheel)
-        self.assertIn('0.17.2-android.2', self.stager)
+        self.assertIn('0.17.2-android.3', self.stager)
         self.assertIn("fix/designcraft-v017-android2-input-cursor-20261104", self.workflow)
         self.assertNotIn("action-gh-release", self.workflow)
         self.assertNotIn("secrets.", self.workflow)

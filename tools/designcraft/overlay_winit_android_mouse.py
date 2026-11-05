@@ -93,19 +93,38 @@ def main() -> None:
                             if !changed { return InputStatus::Handled; }
                         }
 """ + anchor)
+    anchor = "                    MotionAction::Scroll if pointer_class => {"
+    require_once(motion, anchor, "wheel anchor")
+    motion = motion.replace(anchor, anchor + """
+                        if let Some(p) = motion_event.pointers().next() {
+                            callback(event::Event::WindowEvent { window_id, event:
+                                event::WindowEvent::CursorMoved { device_id, position: pointer_position(&p) }
+                            }, self.window_target());
+                        }
+""")
     threshold = "if vertical.abs() <= MAX_LINE_SCROLL"
     require_once(motion, threshold, "scroll delta classification")
     motion = motion.replace(threshold, "if motion_event.source() != Source::Touchpad"
         " && vertical.fract() == 0.0 && horizontal.fract() == 0.0 && vertical.abs() <= MAX_LINE_SCROLL")
+    marker = "                let pointer_class = matches!("
+    require_once(motion, marker, "pointer device sources")
+    motion = motion.replace(marker, """                let bits = u32::from(motion_event.source());
+                let has_source = |source: Source| bits & u32::from(source) == u32::from(source);
+                let pointer_class = has_source(Source::Mouse) || has_source(Source::Touchpad) || matches!(""")
+    gesture = Path(__file__).with_name("trackpad_gestures.rs.inc").read_text()
     action = "                match motion_event.action() {"
     motion = motion.replace(action, """                crate::platform::android::STYLUS_HOVER.store(
                     matches!(tool_type, ToolType::Stylus | ToolType::Eraser)
                         && matches!(motion_event.action(), MotionAction::HoverEnter | MotionAction::HoverMove),
                     std::sync::atomic::Ordering::Relaxed,
                 );
-""" + action, 1)
+                crate::platform::android::HARDWARE_POINTER.store(pointer_class
+                    && motion_event.action() != MotionAction::HoverExit, std::sync::atomic::Ordering::Relaxed);
+""" + gesture + action, 1)
     platform = target_path.parents[2] / "platform/android.rs"
     platform.write_text(platform.read_text() + """
+/// True for mouse/trackpad samples; finger contacts do not display a cursor badge.
+pub static HARDWARE_POINTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Whether the latest Android motion sample is an in-range pen hover.
 pub static STYLUS_HOVER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 """)
@@ -125,6 +144,33 @@ pub static STYLUS_HOVER: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
     if "pub fn reset_ime_with_request" not in target:
         raise SystemExit("Pinned Storytold Android IME reset hook was lost")
 
+    # The native Activity can finish and restart inside a still-live process.
+    # Release winit's process-wide singleton only after the previous loop drops.
+    loop_file = target_path.parents[2] / "event_loop.rs"
+    loop_src = loop_file.read_text()
+    for before, after in [
+        ("static EVENT_LOOP_CREATED: AtomicBool", """#[cfg(android_platform)]
+struct AndroidLoopLease;
+#[cfg(android_platform)]
+impl Drop for AndroidLoopLease {
+    fn drop(&mut self) {
+        EVENT_LOOP_CREATED.store(false, Ordering::Release);
+    }
+}
+
+static EVENT_LOOP_CREATED: AtomicBool"""),
+        ("    pub(crate) event_loop: platform_impl::EventLoop<T>,",
+         "    pub(crate) event_loop: platform_impl::EventLoop<T>,\n    #[cfg(android_platform)]\n    _android_lease: AndroidLoopLease,"),
+        ("        Ok(EventLoop {", """        #[cfg(android_platform)]
+        let lease = AndroidLoopLease;
+        Ok(EventLoop {
+            #[cfg(android_platform)]
+            _android_lease: lease,"""),
+        ("EVENT_LOOP_CREATED.swap(true, Ordering::Relaxed)", "EVENT_LOOP_CREATED.swap(true, Ordering::AcqRel)"),
+    ]:
+        require_once(loop_src, before, "winit event-loop lease")
+        loop_src = loop_src.replace(before, after)
+    loop_file.write_text(loop_src)
     target_path.write_text(target)
     print("Preserved Storytold winit IME/lifecycle; added ArtCraft mouse/hover/wheel/touch Android translation")
 

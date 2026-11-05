@@ -87,6 +87,18 @@ impl AndroidFileBridge {
         }).map_err(|error| error.to_string())
     }
 
+    /// Called only after upstream app.quit confirms there are no unsaved
+    /// documents, or the Save Changes D/C/S flow completed without Cancel.
+    fn finish_android_after_quit(&self) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcFinishAfterQuit"),
+                jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
     /// Restore native canvas keyboard focus after a completed Type editor Escape.
     fn end_type_editing(&self) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -794,6 +806,7 @@ struct VectorCraftAndroidApp {
     modifiers: AndroidModifiers,
     menu_scroll: AndroidMenuScrollSmoother,
     last_adaptive_pointer_type: Option<i32>,
+    android_quit_finished: bool,
     persist: Option<std::path::PathBuf>,
     persist_last: Option<std::time::Instant>,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
@@ -1049,6 +1062,25 @@ impl eframe::App for VectorCraftAndroidApp {
         let field_focused = ctx.text_edit_focused();
         let composing = self.inner.session.tool_composing();
         let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // Treat Ctrl+Q as a native application quit request (not merely a
+        // viewport-close hint, which Android NativeActivity may ignore).
+        // Delegate to the existing upstream unsaved-document state machine;
+        // the Android Activity is NOT finished until it reports "quit".
+        if !modal && raw.events.iter().any(|event| matches!(event,
+            egui::Event::Key {
+                key: egui::Key::Q, pressed: true, repeat: false, modifiers, ..
+            } if (modifiers.command || modifiers.ctrl) && !modifiers.alt
+        )) {
+            raw.events.retain(|event| !matches!(event,
+                egui::Event::Key {
+                    key: egui::Key::Q, pressed: true, modifiers, ..
+                } if (modifiers.command || modifiers.ctrl) && !modifiers.alt
+            ));
+            if let Err(error) = self.inner.run("app.quit", serde_json::json!({})) {
+                log::warn!("VectorCraft Ctrl+Q quit request failed: {error}");
+            }
+            ctx.request_repaint();
+        }
         // Native Type editing owns the input before egui's generic shortcut router.
         // On Ctrl+W, finish Type via the device-tested Escape transition first,
         // then invoke the regular upstream close command so the ORIGINAL Save
@@ -1244,6 +1276,14 @@ impl eframe::App for VectorCraftAndroidApp {
         // The editor uses space left after the bottom shortcut dock; About is
         // the genuine upstream dialog, not a separate floating update overlay.
         self.inner.ui(ui);
+        if self.inner.ui.status == "quit" && !self.android_quit_finished {
+            // Upstream confirms quit only after the Save Changes dialog's
+            // real Save or Don't Save callback; Cancel never reaches here.
+            match self.bridge.finish_android_after_quit() {
+                Ok(()) => self.android_quit_finished = true,
+                Err(error) => log::warn!("Confirmed quit could not finish Android Activity: {error}"),
+            }
+        }
 
         // Small Android-only entry point: no upstream desktop preferences are changed.
         let ctx = ui.ctx();
@@ -1549,6 +1589,7 @@ fn android_main(android_app: AndroidApp) {
                 modifiers: AndroidModifiers::default(),
                 menu_scroll: AndroidMenuScrollSmoother::default(),
                 last_adaptive_pointer_type: None,
+                android_quit_finished: false,
                 persist,
                 persist_last: None,
                 intent_inbox: app_intent_inbox.clone(),

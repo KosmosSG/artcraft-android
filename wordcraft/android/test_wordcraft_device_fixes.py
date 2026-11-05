@@ -219,7 +219,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'let fresh_press = paste_down && !was_held',
             'let keep_last = raw.events.iter().rposition(|event| matches!(',
             'let keep = !held_repeat && Some(at) == keep_last',
-            'egui::Event::Ime(egui::ImeEvent::Commit(_))',
+            'egui::Event::Ime(egui::ImeEvent::Commit(text))',
             'self.paste_key_held.set(false)',
         ):
             self.assertIn(piece, rust)

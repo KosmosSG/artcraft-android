@@ -13,7 +13,7 @@ lib=a.vendor/'android-activity/src'
 winit=a.vendor/'winit/src/platform_impl/android/mod.rs'
 ui=a.upstream/'crates/ui-egui/src'
 files=Path(__file__).parent/'photocraft_tablet'
-patch(a.adapter/'Cargo.toml','version = "0.20.1-android.8"','version = "0.20.1-android.9"')
+patch(a.adapter/'Cargo.toml','version = "0.20.1-android.8"','version = "0.20.1-android.10"')
 patch(a.adapter/'Cargo.toml','serde_json = { workspace = true }','''serde_json = { workspace = true }
 serde = { workspace = true }
 craft-ui = { workspace = true }
@@ -76,3 +76,5 @@ patch(gest,'                        if let Some(f) = self.fingers.iter_mut().fin
                             if single && mode == FingerMode::Pan {
                                 self.moves.push(ViewMove { from:f.pos, to:pos, scale:1.0, degrees:0.0 });
                             }''')
+
+patch(host, "        self.inner.ui(ui, _frame);", "        self.inner.ui(ui, _frame);\n        self.pen_input.paint_hover(ui.ctx());")

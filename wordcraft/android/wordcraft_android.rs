@@ -5,6 +5,7 @@ use eframe::egui;
 use jni::{JavaVM, jni_sig, strings::JNIString, objects::{JObject, JString, JValue}};
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::cell::Cell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 mod refresh_feedback;
@@ -37,9 +38,72 @@ pub struct Tools {
     pending_fonts: VecDeque<String>,
     fonts: FontRefresh,
     slots: [usize; 6],
+    paste_key_held: Cell<bool>,
 }
 
 impl Tools {
+    /// One authoritative pasted text event for each actual Ctrl+V keypress.
+    ///
+    /// Android's builder shortcut bridge generates a system-clipboard Paste;
+    /// egui-winit 0.37 may *also* deliver a Paste for the same key. Keep only
+    /// the last (Android-system authoritative) event, without changing menu
+    /// Paste or the clipboard text itself. Likewise avoid treating an IME
+    /// echo on the same Ctrl+V frame as typed document text.
+    pub fn deduplicate_clipboard_input(&self, raw: &mut egui::RawInput) {
+        let was_held = self.paste_key_held.get();
+        let paste_down = raw.events.iter().any(|event| matches!(
+            event,
+            egui::Event::Key {
+                key: egui::Key::V,
+                pressed: true,
+                repeat: false,
+                modifiers,
+                ..
+            } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
+        ));
+        let paste_repeat = raw.events.iter().any(|event| matches!(
+            event,
+            egui::Event::Key {
+                key: egui::Key::V,
+                pressed: true,
+                repeat: true,
+                modifiers,
+                ..
+            } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
+        ));
+        let paste_up = raw.events.iter().any(|event| matches!(
+            event,
+            egui::Event::Key { key: egui::Key::V, pressed: false, .. }
+        ));
+        if paste_down || paste_repeat {
+            let keep_last = if paste_down && !was_held {
+                raw.events.iter().rposition(|event| matches!(event, egui::Event::Paste(_)))
+            } else {
+                None
+            };
+            let mut at = 0usize;
+            raw.events.retain(|event| {
+                let index = at;
+                at += 1;
+                match event {
+                    egui::Event::Paste(_) => Some(index) == keep_last,
+                    // Hardware Ctrl+V sometimes arrives as both a paste and
+                    // an IME text echo on MagicOS. Neither should type again.
+                    egui::Event::Text(_)
+                    | egui::Event::Ime(egui::ImeEvent::Commit(_))
+                        if keep_last.is_some() => false,
+                    _ => true,
+                }
+            });
+            if paste_down { self.paste_key_held.set(true); }
+        }
+        if paste_up || raw.events.iter().any(|e| matches!(
+            e, egui::Event::WindowFocused(false)
+        )) {
+            self.paste_key_held.set(false);
+        }
+    }
+
     /// Capture D/C/S while the save-changes prompt is active, at eframe's raw
     /// input hook *before* the editor, focus navigation or popup can consume it.
     /// The Android Activity bridge is an independent fallback for physical keys
@@ -224,6 +288,7 @@ impl Tools {
             update_visible: false, update_message: String::new(),
             update_started: None, pending_fonts: VecDeque::new(),
             fonts: FontRefresh::default(), slots: [0, 1, 2, 3, 4, 5],
+            paste_key_held: Cell::new(false),
         };
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
         if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {

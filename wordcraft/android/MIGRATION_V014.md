@@ -117,3 +117,12 @@ Android application already passes these tests.
 - Touchscreen two-finger pan tracks exactly two contacts and stable inter-finger separation. It preserves native touch/pinch events, coalesces centroid movement and sends precise canvas wheel events. On-device smoothness and gesture interaction must be verified.
 - Clipboard A->B: official upstream egui-winit 0.37 uses an Android app-internal fallback. WordCraft's Android shell reads Ctrl+V from the system clipboard but previously never called the existing android_clipboard_set. After WordCraft emits egui::OutputCommand::CopyText, mirror text into Android ClipboardManager. Verify selected text A copied to the system clipboard, then pasted over location B, not a stale clipboard value. This does not change selection logic or Ctrl+V handling.
 - Scope: WordCraft PR117 only, preview 0.14.0-android.5, per-run disposable signing; no production key, merge, tag or release without approval. Compile checks are not hardware validation.
+
+
+## 2026-11-05 WordCraft Android.6 — single clipboard paste per physical Ctrl+V
+
+- The owner tested android.5 on HONOR MagicPad 4: copying A and pasting once produced AA, an apparent duplicate paste.
+- Egui-winit 0.37 may deliver a native Paste event when Ctrl+V is recognized, while the reference Android builder independently synthesizes Paste using ClipboardManager. WordCraft's document handler processes each Paste. This is a source-supported suspected double-delivery; on-device event trace has not been captured.
+- WordCraft-only Tools::deduplicate_clipboard_input runs after the builder's existing handle_clipboard_shortcuts and before WordApp input processing. For one unmodified Ctrl+V keydown, retain only the last Paste event (system clipboard authoritative), discard earlier duplicates and same-frame IME/text echoes, and suppress autorepeat until V release. Preserve separately intentional Ctrl+V presses, regular typing and menu paste.
+- Keep the Android system clipboard write-back, SAF, font scanner, touchscreen panning, trackpad input, D/S/C, Esc and Ctrl+Q fixes unchanged. Source guard added; device testing still required.
+- Candidate: 0.14.0-android.6, versionCode 100014006, temporary signing only. Original signing credentials, published stable release and PR draft are protected.

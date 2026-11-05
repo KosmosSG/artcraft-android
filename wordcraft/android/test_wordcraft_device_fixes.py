@@ -1,4 +1,4 @@
-"""WordCraft android.5 acceptance-guard tests for source-level wiring.
+"""WordCraft android.6 acceptance-guard tests for source-level wiring.
 
 These tests catch accidental loss of the requested icon, raw D/C/S intercept
 and font scan limits. Device interactions still require MagicPad testing.
@@ -207,13 +207,35 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('self.handle_clipboard_shortcuts(raw)', build)
         self.assertNotIn('android_clipboard_set(&self.app, "")', build)
 
+
+    def test_one_ctrl_v_yields_one_paste_and_preserves_android_clipboard(self):
+        rust, build = text(RUST), text(BUILD)
+        for piece in (
+            'paste_key_held: Cell<bool>',
+            'paste_key_held: Cell::new(false)',
+            'pub fn deduplicate_clipboard_input(&self, raw: &mut egui::RawInput)',
+            'key: egui::Key::V',
+            'repeat: false',
+            'let keep_last = if paste_down && !was_held',
+            'rposition(|event| matches!(event, egui::Event::Paste(_)))',
+            'egui::Event::Paste(_) => Some(index) == keep_last',
+            'egui::Event::Ime(egui::ImeEvent::Commit(_))',
+            'self.paste_key_held.set(false)',
+        ):
+            self.assertIn(piece, rust)
+        self.assertIn("wc_clip_dedupe = ", build)
+        self.assertIn("self.wc.deduplicate_clipboard_input(raw);", build)
+        self.assertIn("{wc_clip_dedupe}{persist_hook}        {inner_hook}", build)
+        self.assertIn("if app == 'wordcraft' else ''", build)
+        self.assertIn('android_clipboard_set(&self.app, &copy)', build)
+
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.5", s)
-        self.assertIn('100014005', s)
+        self.assertIn("0.14.0-android.6", s)
+        self.assertIn('100014006', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.4", s)
+        self.assertNotIn("0.14.0-android.5", s)
 
 
 if __name__ == "__main__":

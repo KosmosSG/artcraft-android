@@ -68,6 +68,14 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn('android_activity::set_activity', self.stager)
         self.assertIn('src.name != "designcraft"', (ROOT/"tools/designcraft/install_v017_updater.py").read_text())
 
+    def test_renderer_and_launcher_share_the_pinned_cursor_adapter(self):
+        # eframe's git workspace references its sibling egui-winit by path.
+        # An APK can compile with a second cursor bridge the renderer never calls.
+        self.assertIn('egui-winit = "0.37"', self.stager)
+        self.assertNotIn('path = "../../vendor/egui-winit"', self.stager)
+        self.assertIn('DC_EGUI_REV=6d518fc799681571963842f95b55a6b68431b15a', self.builder)
+        self.assertIn('WindowEvent::ImeResetCompleted', self.overlay)
+
     def test_trackpad_axes_and_compatible_package(self):
         self.assertIn("enable_motion_axis(Axis::Vscroll)", self.wheel)
         self.assertIn("enable_motion_axis(Axis::Hscroll)", self.wheel)

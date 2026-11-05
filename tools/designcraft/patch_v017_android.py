@@ -72,14 +72,6 @@ use super::export::{''', str(run))
     }
 ''', str(run))
     run.write_text(source)
-    table = ui / "menus/tables.rs"
-    source = table.read_text()
-    source = once(source, '            "cmd:file.close",',
-        '            "cmd:file.close",\n            "ui:app.artcraftImportFont",', str(table))
-    source = once(source, '        "Type",\n        &[\n',
-        '        "Type",\n        &[\n            "ui:app.artcraftImportFont",\n            "-",\n', str(table))
-    table.write_text(source)
-
     dialogs = ui / "dialogs.rs"
     source = dialogs.read_text()
     source = once(source,
@@ -175,7 +167,7 @@ def patch_launcher(root: Path, android: Path):
     manifest = android / "Cargo.toml"
     m = manifest.read_text()
     m = once(m, "[dependencies]\n", """[dependencies]
-egui-winit = { path = "../../vendor/egui-winit" }
+egui-winit = "0.37"
 """, "DesignCraft's egui-winit adapter dependency")
     manifest.write_text(m)
     shutil.copyfile(root / "tools/designcraft/v016_android.rs", android / "src/v016_android.rs")

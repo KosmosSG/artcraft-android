@@ -66,6 +66,37 @@ def main() -> None:
     require_once(motion, guard, "hover classification")
     motion = motion.replace(guard, guard.replace("if pointer_class",
         "if pointer_class || matches!(tool_type, ToolType::Stylus | ToolType::Eraser)"))
+    # Android may report both Down and ButtonPress for the same physical
+    # click. action_button() is undefined on Down/Up. Track the primary edge
+    # per device, preserving secondary buttons and click-only trackpad taps.
+    for anchor, addition in [
+        ("    redraw_flag: SharedFlag,", "    primary_devices: std::collections::HashSet<i32>,"),
+        ("            redraw_flag,", "            primary_devices: Default::default(),"),
+    ]:
+        require_once(target, anchor, "per-device primary state")
+        target = target.replace(anchor, anchor + "\n" + addition)
+    start = motion.index("                                    // Android reports the primary")
+    end = motion.index("                                        callback(", start)
+    motion = motion[:start] + """                                    button_sent = true;
+                                    let id = motion_event.device_id();
+                                    let buttons = motion_event.button_state();
+                                    let changed = match state {
+                                        event::ElementState::Pressed => (buttons.primary() || buttons.0 == 0)
+                                            && self.primary_devices.insert(id),
+                                        event::ElementState::Released => self.primary_devices.remove(&id),
+                                    };
+                                    if changed {
+""" + motion[end:]
+    anchor = "                        trace!(\"Button {device_id:?}"
+    require_once(motion, anchor, "button edge coalescing")
+    motion = motion.replace(anchor, """                        if button == event::MouseButton::Left {
+                            let changed = match state {
+                                event::ElementState::Pressed => self.primary_devices.insert(motion_event.device_id()),
+                                event::ElementState::Released => self.primary_devices.remove(&motion_event.device_id()),
+                            };
+                            if !changed { return InputStatus::Handled; }
+                        }
+""" + anchor)
     threshold = "if vertical.abs() <= MAX_LINE_SCROLL"
     require_once(motion, threshold, "scroll delta classification")
     motion = motion.replace(threshold, "if motion_event.source() != Source::Touchpad"

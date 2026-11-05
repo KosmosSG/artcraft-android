@@ -2849,12 +2849,19 @@ fi
 # platform-gated, so desktop builds are unaffected.
 echo "Vendoring the Android-compatible egui-winit for $TITLE (system clipboard via JNI)..."
 mkdir -p "$SRC/vendor"
+if [[ "$DESIGNCRAFT_V017" == true ]]; then
+    DC_EGUI_DIR="$(dirname "$SRC")/designcraft-egui"
+    DC_EGUI_REV=6d518fc799681571963842f95b55a6b68431b15a
+    [[ ! -e "$DC_EGUI_DIR" ]] || fail "Use a fresh DesignCraft candidate workspace."
+    git init -q "$DC_EGUI_DIR" &&
+        git -C "$DC_EGUI_DIR" fetch --quiet --depth 1 https://github.com/storytold/egui.git "$DC_EGUI_REV" &&
+        git -C "$DC_EGUI_DIR" checkout -q --detach "$DC_EGUI_REV" ||
+        fail "Unable to stage the DesignCraft-locked egui source."
+    python3 "$ROOT/tools/designcraft/overlay_v017_cursor.py" "$ROOT" "$DC_EGUI_DIR/crates/egui-winit" "$SRC" ||
+        fail "DesignCraft Android cursor/clipboard overlay failed."
+else
 rm -rf "$SRC/vendor/egui-winit"
 cp -a "$ROOT/vendor/egui-winit" "$SRC/vendor/egui-winit"
-if [[ "$DESIGNCRAFT_V017" == true ]]; then
-    python3 "$ROOT/tools/designcraft/overlay_v017_cursor.py" "$ROOT" "$SRC/vendor/egui-winit" \
-        || fail "DesignCraft adaptive cursor overlay failed; refusing an unverified test APK."
-fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib
@@ -2870,6 +2877,8 @@ if entry not in s:
     tomllib.loads(s)
     p.write_text(s)
 PY
+
+fi
 
 # Some apps call `rfd` directly from a crate that ends up in the launcher's dependency graph
 # (PDFCraft does, in ~18 files), and rfd 0.17 ships no Android backend, so it fails to compile for

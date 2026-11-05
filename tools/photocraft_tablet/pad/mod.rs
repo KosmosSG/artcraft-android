@@ -34,7 +34,7 @@ impl Shared {
 
 pub struct ShortcutPad {
     shared: Rc<RefCell<Shared>>,
-    contacts: HashMap<egui::TouchId, Control>,
+    contacts: HashMap<(u64,u64), Control>,
     reserved: Option<egui::Rect>,
     layer: Option<egui::LayerId>,
     mouse: Option<Control>,
@@ -176,7 +176,8 @@ impl ShortcutPad {
             matches!(e, Event::Touch { pos, .. } if hit(*pos)));
         for event in raw.events.drain(..) {
             match event {
-                Event::Touch { id, phase, pos, .. } => {
+                Event::Touch { device_id, id, phase, pos, .. } => {
+                    let id = (device_id.0, id.0);
                     let control = match phase {
                         egui::TouchPhase::Start if hit(pos) => {
                             let c = l.hit(pos); self.contacts.insert(id, c); Some(PadTouch::Down(c, pos))

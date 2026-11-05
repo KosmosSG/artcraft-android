@@ -73,7 +73,7 @@ class VectorCraftAndroid8AdaptiveCursor(unittest.TestCase):
     def test_candidate_remains_disposable_and_preserves_fonts(self):
         workflow=(ROOT/".github/workflows/vectorcraft-v021-test-apk.yml").read_text()
         fonts=(ROOT/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.8",workflow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.9",workflow)
         self.assertIn("com.artcraft.vectorcraft.test",workflow)
         self.assertIn("Delete disposable builder signing materials",workflow)
         self.assertIn("MAX_FONTS = 5000",fonts)

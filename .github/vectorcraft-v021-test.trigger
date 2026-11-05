@@ -9,3 +9,5 @@ Fix D/C/S: physical raw egui Key press for this modal only; ignore stale Android
 Fix Ctrl+Q: convert physical chord to upstream app.quit, which shows unsaved prompts; only on app.ui.status=="quit" call JNI vcFinishAfterQuit -> Activity.finishAndRemoveTask. Cancel must not exit. No data deletion.
 Preserve existing adaptive cursor Android.8, keyboard tool shortcuts, 5000 font /4 GiB SAF scanner, updater, trackpad scroll, icon/splash.
 Use tests BEFORE expensive compile. Build only disposable signed ARM64 com.artcraft.vectorcraft.test. Never touch signing key or publish.
+
+Retry: corrected a test-only source-quote assertion for the Don't Save (D) label; no changes to runtime code since failed 41990159712.

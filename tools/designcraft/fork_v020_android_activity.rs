@@ -11,15 +11,17 @@
 ///
 /// The pointer is an unowned JNI global reference owned by `android-activity`, so it must never be
 /// deleted by anything that reads it here.
-static ACTIVITY: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+use std::sync::atomic::{AtomicPtr, Ordering};
+static ACTIVITY: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Publish the Activity jobject for the bridges. Call once at startup with
-/// `app.activity_as_ptr() as usize`. Safe to call more than once; the first wins.
+/// `app.activity_as_ptr() as usize`. Each new android_main refreshes the Activity after recreation.
 pub fn set_activity(activity_as_ptr: *mut std::ffi::c_void) {
-    let _ = ACTIVITY.set(activity_as_ptr as usize);
+    ACTIVITY.store(activity_as_ptr, Ordering::Release);
 }
 
 /// The published Activity jobject, or `None` before the shell publishes it.
 pub fn activity_raw() -> Option<jni::sys::jobject> {
-    ACTIVITY.get().copied().map(|ptr| ptr as jni::sys::jobject)
+    let ptr = ACTIVITY.load(Ordering::Acquire);
+    (!ptr.is_null()).then_some(ptr.cast())
 }

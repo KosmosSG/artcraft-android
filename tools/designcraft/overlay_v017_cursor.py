@@ -52,6 +52,16 @@ fn to_egui_touch_phase''',
 fn to_egui_touch_phase''',
         str(lib),
     )
+    # The pinned Android backend implements reset_ime_with_request as a no-op.
+    # A reset acknowledgement is a notification, never text or a physical key.
+    anchor = "            WindowEvent::Ime(ime) => {"
+    source = once(source, anchor, """            WindowEvent::ImeResetCompleted { .. } => EventResponse {
+                repaint: false,
+                consumed: false,
+            },
+""" + anchor, str(lib))
+    anchor = '        WindowEvent::Ime { .. } => "WindowEvent::Ime",'
+    source = once(source, anchor, anchor + '\n        WindowEvent::ImeResetCompleted { .. } => "WindowEvent::ImeResetCompleted",', str(lib))
     for original, target in [
         ("fork_v020_adaptive_pointer_icon.rs", "pointer_icon.rs"),
         ("fork_v020_android_activity.rs", "android_activity.rs"),

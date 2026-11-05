@@ -19,7 +19,7 @@ Options:
   -appname=<name>     Override the display name (default: app's built-in title)
   -packagename=<pkg>  Override the Android package (default: com.artcraft.<app>)
   -appicon=<path>     Use a custom launcher icon PNG (default: app's own icon)
-  -designcraft-v017   Use pinned official DesignCraft v0.17.0 source (review builds only)
+  -designcraft-v017   Use pinned official DesignCraft v0.17.2 source (review builds only)
   -h, --help          Show this help
 
 App names:
@@ -117,7 +117,7 @@ if [[ "$DESIGNCRAFT_V017" == true && "$APP" != "designcraft" ]]; then
     exit 2
 fi
 if [[ "$DESIGNCRAFT_V017" == true && "$MODE" != "debug" ]]; then
-    echo "The v0.17.0 source integration is review-only; production/release signing is blocked. Use build-debug.sh." >&2
+    echo "The v0.17.2 source integration is review-only; production/release signing is blocked. Use build-debug.sh." >&2
     exit 2
 fi
 
@@ -279,15 +279,15 @@ from pathlib import Path
 lock = json.loads(Path(sys.argv[1]).read_text())
 if (lock.get("schema_version") != 1
         or lock.get("official_upstream") != "storytold/designcraft"
-        or lock.get("stable_tag") != "v0.17.0"
-        or lock.get("upstream_workspace_version") != "0.17.0"
+        or lock.get("stable_tag") != "v0.17.2"
+        or lock.get("upstream_workspace_version") != "0.17.2"
         or not re.fullmatch(r"[0-9a-f]{40}", lock.get("tag_commit", ""))):
     raise SystemExit("STOP: incompatible DesignCraft official v0.17 source lock")
 if lock.get("production_release_authorized") or lock.get("permanent_signing_authorized"):
     raise SystemExit("STOP: source review lock must not authorize release or signing")
 print(lock["tag_commit"])
 PY
-)" || fail "Could not verify the DesignCraft v0.17.0 source-lock configuration."
+)" || fail "Could not verify the DesignCraft v0.17.2 source-lock configuration."
 fi
 if [[ -e "$SRC" ]]; then
     [[ -d "$SRC/.git" ]] || fail "$SRC exists but is not a Git checkout. Move it aside manually before retrying."
@@ -299,18 +299,18 @@ if [[ -e "$SRC" ]]; then
     if [[ "$DESIGNCRAFT_V017" == true ]]; then
         ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Could not identify the existing DesignCraft checkout."
         [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
-            fail "Existing DesignCraft source is at $ACTUAL_SOURCE_SHA, not pinned v0.17.0 ($DESIGNCRAFT_LOCKED_COMMIT). Preserve it: run this in a separate clean builder checkout, or review its migration manually."
+            fail "Existing DesignCraft source is at $ACTUAL_SOURCE_SHA, not pinned v0.17.2 ($DESIGNCRAFT_LOCKED_COMMIT). Preserve it: run this in a separate clean builder checkout, or review its migration manually."
     fi
     echo "Reusing existing source checkout (including your Android port changes)."
     echo "Commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     echo "Source is not automatically reset or updated."
 else
     if [[ "$DESIGNCRAFT_V017" == true ]]; then
-        git clone --depth 1 --branch v0.17.0 "$REPO" "$SRC" || fail "Unable to fetch the pinned official DesignCraft v0.17.0 tag."
+        git clone --depth 1 --branch v0.17.2 "$REPO" "$SRC" || fail "Unable to fetch the pinned official DesignCraft v0.17.2 tag."
         ACTUAL_SOURCE_SHA="$(git -C "$SRC" rev-parse HEAD)" || fail "Cannot identify the cloned upstream source."
         [[ "$ACTUAL_SOURCE_SHA" == "$DESIGNCRAFT_LOCKED_COMMIT" ]] ||
             fail "DesignCraft tag did not resolve to the audited source commit. No Android build will proceed."
-        echo "Verified official DesignCraft v0.17.0 source at $ACTUAL_SOURCE_SHA (no publication authorized)."
+        echo "Verified official DesignCraft v0.17.2 source at $ACTUAL_SOURCE_SHA (no publication authorized)."
     else
         git clone --depth 1 "$REPO" "$SRC"
     fi
@@ -2876,7 +2876,7 @@ PY
 # `aarch64-linux-android`. Vendor the builder's Android-compatible copy (a stub backend that
 # resolves dialogs to "cancelled") and patch it into the workspace so the launcher builds. Real
 # open/save on Android needs a platform adapter (see adapters/README.md).
-# DesignCraft v0.17.0 uses rfd indirectly via craft-dialogs; its crates need
+# DesignCraft v0.17.2 uses rfd indirectly via craft-dialogs; its crates need
 # the vendored Android backend even when source files contain no direct `rfd::` call.
 # Keep the existing conditional detection unchanged for all other apps.
 if [[ "$DESIGNCRAFT_V017" == true ]] || grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
@@ -2948,7 +2948,7 @@ if [[ "$DESIGNCRAFT_V017" == true ]]; then
     rm -rf "$SRC/vendor/winit"
     git init -q "$SRC/vendor/winit" || fail "Cannot initialize pinned Storytold winit checkout."
     git -C "$SRC/vendor/winit" fetch --quiet --depth 1 https://github.com/storytold/winit.git "$DESIGNCRAFT_WINIT_REV" \
-        || fail "Cannot fetch the exact DesignCraft v0.17.0 winit fork; refusing to substitute an older crate."
+        || fail "Cannot fetch the exact DesignCraft v0.17.2 winit fork; refusing to substitute an older crate."
     git -C "$SRC/vendor/winit" checkout -q --detach FETCH_HEAD \
         || fail "Cannot checkout DesignCraft's pinned winit fork."
     [[ "$(git -C "$SRC/vendor/winit" rev-parse HEAD)" == "$DESIGNCRAFT_WINIT_REV" ]] \
@@ -3124,9 +3124,9 @@ else:
 PY
 )"
 if [[ "$DESIGNCRAFT_V017" == true ]]; then
-    # The source workspace remains v0.17.0; this is the separate ArtCraft
+    # The source workspace remains v0.17.2; this is the separate ArtCraft
     # Android testing revision shown in filenames and Android app settings.
-    APP_VERSION="0.17.0-android.2"
+    APP_VERSION="0.17.2-android.2"
 fi
 
 # FigCraft and DeckCraft set `CRAFT_FONTS_DIR = "../craft-fonts"` (relative) in .cargo/config.toml.

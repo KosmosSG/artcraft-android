@@ -97,26 +97,6 @@ pub fn pointer_icon_type(cursor: egui::CursorIcon) -> Option<i32> {
     })
 }
 
-/// `View.getClass().getName()` as a Rust string, or `""` when the lookup fails.
-#[cfg(target_os = "android")]
-fn view_class_name(env: &mut jni::Env<'_>, view: &jni::objects::JObject<'_>) -> String {
-    use jni::{jni_sig, jni_str};
-
-    env.call_method(view, jni_str!("getClass"), jni_sig!("()Ljava/lang/Class;"), &[])
-        .and_then(|v| v.l())
-        .and_then(|c| {
-            env.call_method(&c, jni_str!("getName"), jni_sig!("()Ljava/lang/String;"), &[])
-                .and_then(|v| v.l())
-        })
-        .ok()
-        .and_then(|n| {
-            env.cast_local::<jni::objects::JString>(n)
-                .ok()
-                .and_then(|s| env.get_string(&s).ok().map(String::from))
-        })
-        .unwrap_or_default()
-}
-
 /// Push `cursor` to the Activity's GameActivity surface view as a Android pointer icon.
 ///
 /// `Activity.getWindow()` needs the Activity, and `ndk-context` only carries the Application
@@ -148,129 +128,8 @@ pub fn apply(cursor: egui::CursorIcon) {
         // borrow it, never delete it.
         let activity = unsafe { env.as_cast_raw::<JObject<'_>>(&activity_raw)? };
 
-        // `PointerIcon.getSystemIcon(Context, int)` — one shared icon per type, so this is cheap
-        // and never needs caching on our side.
-        let pointer_icon_class = env.find_class(jni_str!("android/view/PointerIcon"))?;
-        let icon = env
-            .call_static_method(
-                &pointer_icon_class,
-                jni_str!("getSystemIcon"),
-                jni_sig!("(Landroid/content/Context;I)Landroid/view/PointerIcon;"),
-                &[
-                    jni::objects::JValue::Object(&*activity),
-                    jni::objects::JValue::Int(icon_type),
-                ],
-            )?
-            .l()?;
-        if icon.is_null() {
-            return Ok(());
-        }
-
-        // `Window.getDecorView().findViewById(android.R.id.content)` is the most reliable way to
-        // the content root: it needs no GameActivity internals, and works identically for the
-        // generated shell and the hand-written adapters.
-        let window = env
-            .call_method(
-                &*activity,
-                jni_str!("getWindow"),
-                jni_sig!("()Landroid/view/Window;"),
-                &[],
-            )?
-            .l()?;
-        if window.is_null() {
-            return Ok(());
-        }
-        let decor = env
-            .call_method(
-                &window,
-                jni_str!("getDecorView"),
-                jni_sig!("()Landroid/view/View;"),
-                &[],
-            )?
-            .l()?;
-        if decor.is_null() {
-            return Ok(());
-        }
-
-        // `android.R.id.content` is a framework resource id; read it from the class rather than
-        // hard-coding an int (it has never been stable across releases).
-        let r_id = env.find_class(jni_str!("android/R$id"))?;
-        let content_id = env
-            .get_static_field(&r_id, jni_str!("content"), jni_sig!("I"))?
-            .i()?;
-
-        let content = env
-            .call_method(
-                &decor,
-                jni_str!("findViewById"),
-                jni_sig!("(I)Landroid/view/View;"),
-                &[jni::objects::JValue::Int(content_id)],
-            )?
-            .l()?;
-        if content.is_null() {
-            return Ok(());
-        }
-
-        // Walk down to the view that actually receives hover: GameActivity wraps its
-        // `InputEnabledSurfaceView` one level below the app-compat content view
-        // (`ContentFrameLayout` → `FrameLayout` → `InputEnabledSurfaceView`), and any extra
-        // views the app adds (the invisible IME host) sit as siblings, not on that path.
-        // `ViewGroup.onResolvePointerIcon` asks the hovered *child* first and only falls back to
-        // a parent when the child has no icon of its own, so the icon has to land on the surface
-        // view itself — setting it on an ancestor is silently ignored. Descend until a view has
-        // no children; that leaf is the surface view.
-        let mut target = content;
-        for _ in 0..8 {
-            let child_count = match env
-                .call_method(&target, jni_str!("getChildCount"), jni_sig!("()I"), &[])
-                .and_then(|v| v.i())
-            {
-                Ok(n) => n,
-                Err(err) => {
-                    // Not a ViewGroup (or the call threw): clear the pending exception and stop.
-                    let _ = env.exception_clear();
-                    log::debug!("egui-winit Android pointer icon: getChildCount failed: {err}");
-                    break;
-                }
-            };
-            if child_count <= 0 {
-                break;
-            }
-            // Prefer the child that is (or contains) a surface view; fall back to the first child.
-            let mut next = None;
-            for index in 0..child_count {
-                let child = env
-                    .call_method(
-                        &target,
-                        jni_str!("getChildAt"),
-                        jni_sig!("(I)Landroid/view/View;"),
-                        &[jni::objects::JValue::Int(index)],
-                    )?
-                    .l()?;
-                if child.is_null() {
-                    continue;
-                }
-                let name = view_class_name(env, &child);
-                if name.contains("SurfaceView") {
-                    next = Some(child);
-                    break;
-                }
-                if next.is_none() {
-                    next = Some(child);
-                }
-            }
-            match next {
-                Some(child) => target = child,
-                None => break,
-            }
-        }
-
-        env.call_method(
-            &target,
-            jni_str!("setPointerIcon"),
-            jni_sig!("(Landroid/view/PointerIcon;)V"),
-            &[jni::objects::JValue::Object(&icon)],
-        )?;
+        env.call_method(&*activity, jni_str!("dcApplyPointerIcon"), jni_sig!("(I)V"),
+            &[jni::objects::JValue::Int(icon_type)])?;
         Ok(())
     });
     if let Err(err) = res {

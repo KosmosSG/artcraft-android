@@ -135,6 +135,24 @@ def java_source(root,android):
     // A physical tool key can be swallowed by a stale Android IME focus. Queue
     // the key once regardless of IME focus; Rust checks whether text is actually
     // being edited before changing tools.
+    public void dcApplyPointerIcon(int type) {
+        runOnUiThread(() -> {
+            android.view.PointerIcon icon = android.view.PointerIcon.getSystemIcon(this, type);
+            android.view.View content = findViewById(android.R.id.content);
+            if (content != null) dcSetSurfaceIcon(content, icon);
+        });
+    }
+
+    private void dcSetSurfaceIcon(android.view.View view, android.view.PointerIcon icon) {
+        if (view.getId() == android.R.id.content || view instanceof android.view.SurfaceView) {
+            view.setPointerIcon(icon);
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); ++i) dcSetSurfaceIcon(group.getChildAt(i), icon);
+        }
+    }
+
     public int dcTakeEscapeAction() { return dcEscapeAction.getAndSet(0); }
     public int dcTakeCloseAction() { return dcCloseAction.getAndSet(0); }
 
@@ -178,13 +196,14 @@ def java_source(root,android):
             return true;
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
-        boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
+        boolean close = (code == KeyEvent.KEYCODE_W || code == KeyEvent.KEYCODE_Q)
+            && event.hasModifiers(KeyEvent.META_CTRL_ON);
         // Distinguish real text editing in Rust, not Android's sometimes-stale
         // invisible IME focus. Preserve unmodified printable input to text.
         if (!dcDialogActive && state == KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() == 0) {
             if (escape && event.hasNoModifiers()) dcEscapeAction.set(1);
-            if (close) dcCloseAction.set(1);
+            if (close) dcCloseAction.set(code == KeyEvent.KEYCODE_Q ? 2 : 1);
             if (event.hasNoModifiers()) {
                 int tool = code == KeyEvent.KEYCODE_T ? 1
                     : code == KeyEvent.KEYCODE_V ? 2
@@ -203,7 +222,12 @@ def java_source(root,android):
         // Rust deduplicates the native fallback against the same raw event.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
             imeWanted = false;
-            if (imeView != null) imeView.clearFocus();
+            if (imeView != null) {
+                android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+                if (imm != null) imm.hideSoftInputFromWindow(imeView.getWindowToken(), 0);
+                imeView.clearFocus();
+            }
+            getWindow().getDecorView().restoreDefaultFocus();
         }
         if (escape || close) {
             if (state == KeyEvent.ACTION_DOWN) {

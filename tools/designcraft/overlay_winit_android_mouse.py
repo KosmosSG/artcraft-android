@@ -61,6 +61,27 @@ def main() -> None:
     if b <= a or y <= x:
         raise SystemExit("Motion block marker order is unexpected")
     motion = donor[a:b]
+    # Stylus hover is position-only. Contact continues through the touch arm.
+    guard = "MotionAction::HoverExit\n                        if pointer_class =>"
+    require_once(motion, guard, "hover classification")
+    motion = motion.replace(guard, guard.replace("if pointer_class",
+        "if pointer_class || matches!(tool_type, ToolType::Stylus | ToolType::Eraser)"))
+    threshold = "if vertical.abs() <= MAX_LINE_SCROLL"
+    require_once(motion, threshold, "scroll delta classification")
+    motion = motion.replace(threshold, "if motion_event.source() != Source::Touchpad"
+        " && vertical.fract() == 0.0 && horizontal.fract() == 0.0 && vertical.abs() <= MAX_LINE_SCROLL")
+    action = "                match motion_event.action() {"
+    motion = motion.replace(action, """                crate::platform::android::STYLUS_HOVER.store(
+                    matches!(tool_type, ToolType::Stylus | ToolType::Eraser)
+                        && matches!(motion_event.action(), MotionAction::HoverEnter | MotionAction::HoverMove),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+""" + action, 1)
+    platform = target_path.parents[2] / "platform/android.rs"
+    platform.write_text(platform.read_text() + """
+/// Whether the latest Android motion sample is an in-range pen hover.
+pub static STYLUS_HOVER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+""")
     for required in ("MotionAction::Scroll", "MotionAction::HoverMove", "MouseWheel", "MouseInput", "event::WindowEvent::Touch"):
         if required not in motion:
             raise SystemExit(f"ArtCraft motion block missing required behavior: {required}")

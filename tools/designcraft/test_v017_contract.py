@@ -1,4 +1,4 @@
-"""DesignCraft v0.17.0 isolated ARM64 test build source-contract checks.
+"""DesignCraft v0.17.2 isolated ARM64 test build source-contract checks.
 These do not substitute for compiled-artifact/device regression tests.
 """
 from pathlib import Path
@@ -19,8 +19,8 @@ class DesignCraftV017Contract(unittest.TestCase):
         cls.wf = (ROOT/".github/workflows/designcraft-v017-review.yml").read_text()
 
     def test_pinned_upstream_and_stable_rollback(self):
-        self.assertEqual(self.lock["stable_tag"], "v0.17.0")
-        self.assertEqual(self.lock["tag_commit"], "e79d682e02dc66f14370958b193bfa46072b2f41")
+        self.assertEqual(self.lock["stable_tag"], "v0.17.2")
+        self.assertEqual(self.lock["tag_commit"], "16322ad54b3a20b4cd70666be7431086514d0a36")
         self.assertEqual(self.lock["stable_android_release"], "designcraft-v0.12.0-android.9")
         self.assertFalse(self.lock["permanent_signing_authorized"])
         self.assertFalse(self.lock["production_release_authorized"])
@@ -29,9 +29,9 @@ class DesignCraftV017Contract(unittest.TestCase):
         self.assertIn('DESIGNCRAFT_V017', self.shell)
         self.assertIn('MODE" != "debug"', self.shell)
         self.assertIn('designcraft-v017.json', self.shell)
-        self.assertIn("git clone --depth 1 --branch v0.17.0", self.shell)
-        self.assertIn('0.17.0-android.2', self.shell)
-        self.assertIn('candidate_version = "0.17.0-android.2"', self.patch)
+        self.assertIn("git clone --depth 1 --branch v0.17.2", self.shell)
+        self.assertIn('0.17.2-android.2', self.shell)
+        self.assertIn('candidate_version = "0.17.2-android.2"', self.patch)
         self.assertIn('com.artcraft.designcraft.test', self.wf)
         self.assertIn('keys/artcraft-builder.jks', self.shell)
         self.assertNotIn('secrets.', self.wf)

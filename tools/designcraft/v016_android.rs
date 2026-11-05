@@ -73,7 +73,9 @@ pub fn handle_keys(
     // swallows the original KeyEvent. RawInput may contain the same event;
     // boolean coalescing guarantees each action runs at most once per frame.
     let mut escape = bridge.dc_escape_action().is_ok_and(|value| value != 0);
-    let mut close = bridge.dc_close_action().is_ok_and(|value| value != 0);
+    let command = bridge.dc_close_action().unwrap_or(0);
+    let mut close = command == 1;
+    let mut quit = command == 2;
     let mut tools = android_tool;
     let mut modal_action: Option<u8> = None;
     raw.events.retain_mut(|event| {
@@ -96,6 +98,10 @@ pub fn handle_keys(
                 }
                 if *key == egui::Key::Escape && !modifiers.any() {
                     escape = true;
+                }
+                if *key == egui::Key::Q && (modifiers.ctrl || modifiers.command) && !modifiers.shift && !modifiers.alt {
+                    quit = true;
+                    return false;
                 }
                 if *key == egui::Key::W && (modifiers.ctrl || modifiers.command) {
                     close = true;
@@ -150,8 +156,14 @@ pub fn handle_keys(
         });
         ctx.request_repaint();
     }
-    if close && !dialog {
-        if app.session.wants_text() { app.select_tool("selection"); }
+    if quit && app.ui.dialog.is_none() {
+        if app.session.wants_text() {
+            let _ = app.run("text.exitToFrame", serde_json::json!({}));
+        }
+        app.request_quit();
+        ctx.request_repaint();
+    } else if close && app.ui.dialog.is_none() {
+        if app.session.wants_text() { let _ = app.run("text.exitToFrame", serde_json::json!({})); }
         designcraft_ui_egui::menus::close_document(app, None);
         ctx.request_repaint();
     }

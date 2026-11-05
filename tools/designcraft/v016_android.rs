@@ -373,12 +373,11 @@ pub fn ui(
     // consolidated here; the standard upstream document menus remain intact.
     egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
-            egui::menu::menu_custom_button(
-                ui,
-                egui::Button::image_and_text(
-                    egui::include_image!("dc-launcher-icon.png"), "▾"
-                ),
-                |ui| {
+            let button = egui::Button::image_and_text(
+                egui::include_image!("dc-launcher-icon.png"), "▾"
+            );
+            egui::containers::menu::MenuButton::from_button(button).ui(
+                ui, |ui| {
                     if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {
                         if let Err(e) = request_import(bridge, state) {
                             app.status_error("Import Font", e);

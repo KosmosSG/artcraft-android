@@ -49,7 +49,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
 
     def test_launcher_icon_replaces_android_top_level_menu(self):
         self.assertIn('include_image!("dc-launcher-icon.png")', self.native)
-        self.assertIn('menu_custom_button', self.native)
+        self.assertIn('MenuButton::from_button(button).ui(', self.native)
         self.assertIn('mipmap-xxxhdpi/ic_launcher.png', self.stager)
         for text in ("Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
                      "Reload Font Catalog", "Check Updates", "Startup Update Check",

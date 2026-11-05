@@ -21,7 +21,7 @@ class VectorCraftAndroid9QuitDialog(unittest.TestCase):
         self.assertIn("pressed(egui::Key::S)",script)
         self.assertNotIn("&& !egui::Popup::is_any_open(ctx)",script)
         self.assertNotIn("!ctx.text_edit_focused() && ctx.input",script)
-        for preserved in ('crate::unsaved::confirm(app)', "Don't Save (D)",
+        for preserved in ('crate::unsaved::confirm(app)', "Save (D)",
                           "Save (S)", "Cancel (C)"):
             self.assertIn(preserved,script)
 

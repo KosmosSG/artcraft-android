@@ -5,7 +5,7 @@ use eframe::egui;
 use jni::{JavaVM, jni_sig, strings::JNIString, objects::{JObject, JString, JValue}};
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 mod refresh_feedback;
@@ -39,68 +39,97 @@ pub struct Tools {
     fonts: FontRefresh,
     slots: [usize; 6],
     paste_key_held: Cell<bool>,
+    recent_paste: RefCell<Option<(Instant, String)>>,
 }
 
 impl Tools {
-    /// One authoritative pasted text event for each actual Ctrl+V keypress.
+    /// Normalize WordCraft Android clipboard delivery before WordApp processes
+    /// input. GameActivity, egui-winit and the hidden MagicOS IME can emit the
+    /// SAME copied characters as Paste and Text/Commit in separate frames.
     ///
-    /// Android's builder shortcut bridge generates a system-clipboard Paste;
-    /// egui-winit 0.37 may *also* deliver a Paste for the same key. Keep only
-    /// the last (Android-system authoritative) event, without changing menu
-    /// Paste or the clipboard text itself. Likewise avoid treating an IME
-    /// echo on the same Ctrl+V frame as typed document text.
+    /// Do not require an egui Key::V keydown: winit sometimes consumes that
+    /// key while synthesizing its own Paste. Preserve one system clipboard
+    /// event per explicit Ctrl+V press or ribbon paste, while filtering short
+    /// delayed echoes of the same data. No clipboard contents are logged.
     pub fn deduplicate_clipboard_input(&self, raw: &mut egui::RawInput) {
         let was_held = self.paste_key_held.get();
         let paste_down = raw.events.iter().any(|event| matches!(
             event,
             egui::Event::Key {
-                key: egui::Key::V,
-                pressed: true,
-                repeat: false,
-                modifiers,
-                ..
+                key: egui::Key::V, pressed: true, repeat: false, modifiers, ..
             } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
         ));
         let paste_repeat = raw.events.iter().any(|event| matches!(
             event,
             egui::Event::Key {
-                key: egui::Key::V,
-                pressed: true,
-                repeat: true,
-                modifiers,
-                ..
+                key: egui::Key::V, pressed: true, repeat: true, modifiers, ..
             } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
         ));
         let paste_up = raw.events.iter().any(|event| matches!(
-            event,
-            egui::Event::Key { key: egui::Key::V, pressed: false, .. }
+            event, egui::Event::Key { key: egui::Key::V, pressed: false, .. }
         ));
-        if paste_down || paste_repeat {
-            let keep_last = if paste_down && !was_held {
-                raw.events.iter().rposition(|event| matches!(event, egui::Event::Paste(_)))
-            } else {
-                None
-            };
-            let mut at = 0usize;
-            raw.events.retain(|event| {
-                let index = at;
-                at += 1;
-                match event {
-                    egui::Event::Paste(_) => Some(index) == keep_last,
-                    // Hardware Ctrl+V sometimes arrives as both a paste and
-                    // an IME text echo on MagicOS. Neither should type again.
-                    egui::Event::Text(_)
-                    | egui::Event::Ime(egui::ImeEvent::Commit(_))
-                        if keep_last.is_some() => false,
-                    _ => true,
+        let lost_focus = raw.events.iter().any(|event| matches!(
+            event, egui::Event::WindowFocused(false)
+        ));
+        // An independent new Key down following a release is allowed even if
+        // it pastes the same character quickly. A held/repeated key is not.
+        let fresh_press = paste_down && !was_held;
+        let held_repeat = paste_repeat || (paste_down && was_held);
+        let now = Instant::now();
+        let recent = self.recent_paste.borrow().as_ref().and_then(|(at, text)| {
+            (now.duration_since(*at) <= Duration::from_millis(110))
+                .then(|| text.clone())
+        });
+        let keep_last = raw.events.iter().rposition(|event| matches!(
+            event, egui::Event::Paste(_)
+        ));
+        let current = keep_last.and_then(|index| match &raw.events[index] {
+            egui::Event::Paste(text) => Some(text.clone()),
+            _ => None,
+        });
+        // A Paste can arrive without a matching Key event. Compare only the
+        // exact payload; unrelated IME commits and normal text are preserved.
+        let echo_text = current.as_deref().or(recent.as_deref());
+        let mut index = 0usize;
+        let mut paste_in = 0usize;
+        let mut paste_out = 0usize;
+        let mut echo_dropped = 0usize;
+        raw.events.retain(|event| {
+            let at = index;
+            index += 1;
+            match event {
+                egui::Event::Paste(text) => {
+                    paste_in += 1;
+                    let is_recent_echo = !fresh_press
+                        && recent.as_deref() == Some(text.as_str());
+                    let keep = !held_repeat && Some(at) == keep_last
+                        && !is_recent_echo;
+                    if keep { paste_out += 1; } else { echo_dropped += 1; }
+                    keep
                 }
-            });
-            if paste_down { self.paste_key_held.set(true); }
+                egui::Event::Text(text)
+                | egui::Event::Ime(egui::ImeEvent::Commit(text))
+                    if echo_text == Some(text.as_str())
+                        && (current.is_some() || recent.is_some()) => {
+                    echo_dropped += 1;
+                    false
+                }
+                _ => true,
+            }
+        });
+        if paste_out > 0 {
+            if let Some(text) = current {
+                *self.recent_paste.borrow_mut() = Some((now, text));
+            }
         }
-        if paste_up || raw.events.iter().any(|e| matches!(
-            e, egui::Event::WindowFocused(false)
-        )) {
-            self.paste_key_held.set(false);
+        if paste_down { self.paste_key_held.set(true); }
+        if paste_up || lost_focus { self.paste_key_held.set(false); }
+        if lost_focus { self.recent_paste.borrow_mut().take(); }
+        if paste_in > 0 || echo_dropped > 0 || paste_down || paste_repeat {
+            log::info!(
+                "WC_PASTE_DIAG paste_in={} paste_out={} echo_dropped={} new_key={} held_repeat={}",
+                paste_in, paste_out, echo_dropped, fresh_press, held_repeat
+            );
         }
     }
 
@@ -289,6 +318,7 @@ impl Tools {
             update_started: None, pending_fonts: VecDeque::new(),
             fonts: FontRefresh::default(), slots: [0, 1, 2, 3, 4, 5],
             paste_key_held: Cell::new(false),
+            recent_paste: RefCell::new(None),
         };
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
         if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {

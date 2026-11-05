@@ -1,4 +1,4 @@
-"""WordCraft android.6 acceptance-guard tests for source-level wiring.
+"""WordCraft android.7 acceptance-guard tests for source-level wiring.
 
 These tests catch accidental loss of the requested icon, raw D/C/S intercept
 and font scan limits. Device interactions still require MagicPad testing.
@@ -216,9 +216,9 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'pub fn deduplicate_clipboard_input(&self, raw: &mut egui::RawInput)',
             'key: egui::Key::V',
             'repeat: false',
-            'let keep_last = if paste_down && !was_held',
-            'rposition(|event| matches!(event, egui::Event::Paste(_)))',
-            'egui::Event::Paste(_) => Some(index) == keep_last',
+            'let fresh_press = paste_down && !was_held',
+            'let keep_last = raw.events.iter().rposition(|event| matches!(',
+            'let keep = !held_repeat && Some(at) == keep_last',
             'egui::Event::Ime(egui::ImeEvent::Commit(_))',
             'self.paste_key_held.set(false)',
         ):
@@ -228,14 +228,25 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn("{wc_clip_dedupe}{persist_hook}        {inner_hook}", build)
         self.assertIn("if app == 'wordcraft' else ''", build)
         self.assertIn('android_clipboard_set(&self.app, &copy)', build)
+        # Android.6 required Ctrl+V keydown in the same frame; the video shows
+        # duplicates when Android/IME delivers a copy without that key event.
+        self.assertIn('use std::cell::{Cell, RefCell};', rust)
+        self.assertIn('recent_paste: RefCell<Option<(Instant, String)>>', rust)
+        self.assertIn('let recent = self.recent_paste.borrow()', rust)
+        self.assertIn('let echo_text = current.as_deref().or(recent.as_deref());', rust)
+        self.assertIn('Duration::from_millis(110)', rust)
+        self.assertIn('!fresh_press', rust)
+        self.assertIn('if paste_out > 0', rust)
+        self.assertIn('WC_PASTE_DIAG paste_in=', rust)
+        self.assertNotIn('log::info!("WC_PASTE_DIAG {}", text)', rust)
 
     def test_candidate_build_has_new_test_and_temp_key_not_original(self):
         s = text(WORKFLOW)
         self.assertIn("test_wordcraft_device_fixes.py", s)
-        self.assertIn("0.14.0-android.6", s)
-        self.assertIn('100014006', s)
+        self.assertIn("0.14.0-android.7", s)
+        self.assertIn('100014007', s)
         self.assertIn('TEMP-SIGNED-NO-UPGRADE', s)
-        self.assertNotIn("0.14.0-android.5", s)
+        self.assertNotIn("0.14.0-android.6", s)
 
 
 if __name__ == "__main__":

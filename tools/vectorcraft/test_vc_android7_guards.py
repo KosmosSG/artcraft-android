@@ -9,8 +9,11 @@ class VectorCraftAndroid7Guards(unittest.TestCase):
     def test_dcs_after_ctrl_w_is_modal_only_and_ignores_stale_modifiers(self):
         patch=(ROOT/"tools/vectorcraft/patch_android_unsaved_shortcuts_v020.py").read_text()
         self.assertIn("d.kind == crate::unsaved::KIND",patch)
-        self.assertIn("!ctx.text_edit_focused()",patch)
-        self.assertIn("i.key_pressed(key)",patch)
+        self.assertIn("d.kind == crate::unsaved::KIND && !after_panel && !rejected",patch)
+        self.assertIn("i.events.iter().any",patch)
+        self.assertIn("egui::Event::Key",patch)
+        self.assertNotIn("!ctx.text_edit_focused() && ctx.input",patch)
+        self.assertNotIn("&& !egui::Popup::is_any_open(ctx)",patch)
         self.assertNotIn("consume_key(egui::Modifiers::NONE, key)",patch)
 
     def test_physical_keyboard_focus_returns_to_real_surface(self):

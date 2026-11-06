@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/wordcraft-v0152-side-by-side.yml"
       - "wordcraft/android/patch_builder.py"
+      - "wordcraft/android/WordCraftExtension.java.inc"
+      - "wordcraft/android/wordcraft_android.rs"
   workflow_dispatch:
 
 permissions:
@@ -24,8 +26,8 @@ jobs:
     env:
       WORDCRAFT_UPSTREAM_COMMIT: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
       WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
-      WORDCRAFT_VERSION_NAME: 0.15.2-android.1
-      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015201"
+      WORDCRAFT_VERSION_NAME: 0.15.2-android.2
+      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015202"
       WORDCRAFT_PACKAGE: com.artcraft.wordcraft.candidate
 
     steps:
@@ -124,13 +126,13 @@ jobs:
           s = source.read_text()
           old = 'version = "0.15.2"'
           assert s.count(old) == 1, 'Review new upstream manifest before changing version'
-          source.write_text(s.replace(old, 'version = "0.15.2-android.1"', 1))
+          source.write_text(s.replace(old, 'version = "0.15.2-android.2"', 1))
           project = Path('builder/lib/android_project.py')
           p = project.read_text()
           formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert p.count(formula) == 1, 'Version-code override location changed: stop'
-          project.write_text(p.replace(formula, 'return 100015201', 1))
-          print('Candidate metadata set: 0.15.2-android.1 / 100015201')
+          project.write_text(p.replace(formula, 'return 100015202', 1))
+          print('Candidate metadata set: 0.15.2-android.2 / 100015202')
           PY
           git -C builder/source/wordcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
@@ -144,6 +146,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          native=Path("wordcraft/android/wordcraft_android.rs").read_text()
+          activity=Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          assert "WC_ANDROID_FAST_INPUT_V1" in native and "WC_ANDROID_FAST_INPUT_V1" in activity
+          assert 'self.call_bool("wcFastInputActive")' in native
+          assert "return imeWanted;" in activity
+          assert "Duration::from_millis(16)" in native
+          print("PASS: WordCraft conditional 16ms IME frame delivery, normal typing and clipboard untouched")
+          PY
           python3 -m py_compile wordcraft/android/patch_builder.py
           python3 wordcraft/android/patch_builder.py builder
           python3 -m unittest discover -s wordcraft/android -p 'test_workspace_v014.py' -v
@@ -189,13 +201,13 @@ jobs:
           python3 wordcraft/android/adaptive_safe.py builder wordcraft
           cd builder
           bash build.sh -wordcraft -packagename=com.artcraft.wordcraft.candidate -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
-          test -s output/wordcraft-0.15.2-android.1.apk
+          test -s output/wordcraft-0.15.2-android.2.apk
 
       - name: Check compiled APK package, ARM64, version, icon, signature and hash
         shell: bash
         run: |
           set -euo pipefail
-          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.1.apk"
+          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.2.apk"
           test -s "$apk"
           python3 - "$apk" <<'PY'
           import sys, zipfile
@@ -222,8 +234,8 @@ jobs:
           grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
           badging="$("$aapt2" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft.candidate'"
-          printf '%s\n' "$badging" | grep -F "versionCode='100015201'"
-          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.1'"
+          printf '%s\n' "$badging" | grep -F "versionCode='100015202'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.2'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
@@ -233,7 +245,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: wordcraft-v0152-android1-SEPARATE-PACKAGE-ARM64-TEMP-SIGNED-NO-UPGRADE
-          path: builder/output/wordcraft-0.15.2-android.1.apk
+          path: builder/output/wordcraft-0.15.2-android.2.apk
           retention-days: 7
           if-no-files-found: error
 

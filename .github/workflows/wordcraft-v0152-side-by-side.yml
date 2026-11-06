@@ -1,0 +1,246 @@
+name: WordCraft v0.15.2 side-by-side ARM64 TEMP TEST (NEVER publish)
+
+on:
+  push:
+    branches:
+      - feature/wordcraft-v0152-android-side-by-side-test-20261106
+    paths:
+      - ".github/workflows/wordcraft-v0152-side-by-side.yml"
+      - ".github/workflows/wordcraft-v0152-side-by-side.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wordcraft-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-candidate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      WORDCRAFT_UPSTREAM_COMMIT: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
+      WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      WORDCRAFT_VERSION_NAME: 0.15.2-android.1
+      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015201"
+      WORDCRAFT_PACKAGE: com.artcraft.wordcraft.candidate
+
+    steps:
+      - name: Checkout WordCraft-only candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned reference builder
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout pinned stable WordCraft
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: storytold/wordcraft
+          ref: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
+          path: builder/source/wordcraft
+          persist-credentials: false
+
+      - name: Confirm stable tag, exact commits, isolated input and icon digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$WORDCRAFT_BUILDER_COMMIT"
+          test "$(git -C builder/source/wordcraft rev-parse HEAD)" = "$WORDCRAFT_UPSTREAM_COMMIT"
+          test -z "$(git -C builder/source/wordcraft status --porcelain)"
+          tag_commit="$(git ls-remote https://github.com/storytold/wordcraft.git refs/tags/v0.15.2 | awk '{print $1}')"
+          test "$tag_commit" = "$WORDCRAFT_UPSTREAM_COMMIT"
+          test -s tools/approved-branding/assets/WordCraft.png
+
+      - name: Set up Java, Rust and Android build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+          # GitHub's Ubuntu image may have SDK command-line tools installed but not on PATH.
+          # Look only under the runner's Android SDK; do not download unverified installers.
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root" || { echo "::error::Android SDK root not found"; exit 1; }
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_bin" ]]; then
+            sdkmanager_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          if [[ ! -x "$sdkmanager_bin" && -x "$sdk_root/tools/bin/sdkmanager" ]]; then
+            sdkmanager_bin="$sdk_root/tools/bin/sdkmanager"
+          fi
+          test -x "$sdkmanager_bin" || { echo "::error::Android SDK command-line tools missing: install them in a reviewed follow-up"; exit 1; }
+          "$sdkmanager_bin" --sdk_root="$sdk_root" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/wordcraft-icon-env
+          /tmp/wordcraft-icon-env/bin/pip install "Pillow==11.3.0"
+          echo "/tmp/wordcraft-icon-env/bin" >> "$GITHUB_PATH"
+
+      - name: Generate candidate launcher icon from approved WordCraft PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          source = Path("tools/approved-branding/assets/WordCraft.png")
+          target = Path("wordcraft/android/icon/wordcraft-approved-192.png")
+          with Image.open(source) as image:
+              assert image.width >= 192 and image.height >= 192, "Approved artwork too small"
+              image.convert("RGBA").resize((192, 192), Image.Resampling.LANCZOS).save(target)
+          print("Candidate icon generated from tools/approved-branding/assets/WordCraft.png")
+          PY
+
+      - name: Regression-test upstream v0.15.2 D/C/S migration without touching source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_unsaved_dcs.py wordcraft/android/patch_unsaved_dcs_v014.py wordcraft/android/patch_builder.py
+          python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
+          python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
+          git -C builder/source/wordcraft diff --exit-code
+
+      - name: Apply isolated Android-only candidate version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          # These changes are confined to ephemeral checkouts, never upstream or suite main.
+          source = Path('builder/source/wordcraft/Cargo.toml')
+          s = source.read_text()
+          old = 'version = "0.15.2"'
+          assert s.count(old) == 1, 'Review new upstream manifest before changing version'
+          source.write_text(s.replace(old, 'version = "0.15.2-android.1"', 1))
+          project = Path('builder/lib/android_project.py')
+          p = project.read_text()
+          formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
+          assert p.count(formula) == 1, 'Version-code override location changed: stop'
+          project.write_text(p.replace(formula, 'return 100015201', 1))
+          print('Candidate metadata set: 0.15.2-android.1 / 100015201')
+          PY
+          git -C builder/source/wordcraft diff -- Cargo.toml
+          git -C builder diff -- lib/android_project.py
+
+      - name: Test asynchronous font refresh feedback
+        run: |
+          rustc --edition=2024 --test wordcraft/android/refresh_feedback.rs -o /tmp/wordcraft-refresh-tests
+          /tmp/wordcraft-refresh-tests
+
+      - name: Integrate WordCraft persistent font import (isolated builder only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py
+          python3 wordcraft/android/patch_builder.py builder
+          python3 -m unittest discover -s wordcraft/android -p 'test_workspace_v014.py' -v
+          python3 wordcraft/android/workspace_v014.py builder
+          bash -n builder/lib/build-common.sh
+
+      - name: Increase pinned Gradle download timeout and retry packaging only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # All changes below are isolated to the disposable reference-builder
+          # checkout; never alter the upstream repo or production keys.
+          python3 - <<'PY'
+          from pathlib import Path
+          wrapper = Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          w = wrapper.read_text(encoding="utf-8")
+          old_timeout = "networkTimeout=10000\n"
+          assert w.count(old_timeout) == 1, "Pinned Gradle wrapper timeout changed: review before editing"
+          wrapper.write_text(w.replace(old_timeout, "networkTimeout=120000\n", 1), encoding="utf-8")
+          shell = Path("builder/lib/build-common.sh")
+          s = shell.read_text(encoding="utf-8")
+          old_gradle = '    ./gradlew --console=plain "$GRADLE_TASK"\n'
+          assert s.count(old_gradle) == 1, "Pinned builder Gradle invocation changed: review first"
+          retry_gradle = """    bash -c 'for attempt in 1 2; do
+              if ./gradlew --console=plain "$1"; then exit 0; fi
+              if [[ "$attempt" == 2 ]]; then exit 1; fi
+              echo "Transient Gradle download or packaging failure; retrying only Gradle in 8 seconds"
+              sleep 8
+          done' -- "$GRADLE_TASK"
+          """
+          shell.write_text(s.replace(old_gradle, retry_gradle, 1), encoding="utf-8")
+          print("Ephemeral Gradle wrapper: timeout 120000ms; one packaging-only retry")
+          PY
+          bash -n builder/lib/build-common.sh
+
+      - name: Compile candidate with per-run temporary builder key
+        shell: bash
+        timeout-minutes: 60
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          python3 wordcraft/android/adaptive_safe.py builder wordcraft
+          cd builder
+          bash build.sh -wordcraft -packagename=com.artcraft.wordcraft.candidate -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
+          test -s output/wordcraft-0.15.2-android.1.apk
+
+      - name: Check compiled APK package, ARM64, version, icon, signature and hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.1.apk"
+          test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk) as archive:
+              names = archive.namelist()
+              libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+              assert any(n.startswith('res/') and n.lower().endswith(('.png', '.webp')) for n in names), 'Packaged raster resources missing'
+              # AAPT2 compiles adaptive-icon XML to a binary resource entry with
+              # an optimized filename; verify the resource table below instead.
+              assert 'classes.dex' in names, 'Android Java bridge missing'
+          print('Archive checks: ARM64 libraries, icon resources, Java DEX found')
+          PY
+          # AAPT2 may rename/optimize packaged PNG paths; assert the generated
+          # source artwork AND compiled resource-table identifiers instead.
+          icon_res="builder/source/wordcraft/apps/wordcraft-android/res"
+          test -s "$icon_res/mipmap-xxxhdpi/ic_launcher.png"
+          test -s "$icon_res/drawable-xxxhdpi/ic_launcher_foreground.png"
+          test -s "$icon_res/mipmap-anydpi-v26/ic_launcher.xml"
+          aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          "$aapt2" dump resources "$apk" > /tmp/wordcraft-packed-resources.txt
+          grep -F "mipmap/ic_launcher" /tmp/wordcraft-packed-resources.txt
+          grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
+          badging="$("$aapt2" dump badging "$apk")"
+          printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft.candidate'"
+          printf '%s\n' "$badging" | grep -F "versionCode='100015201'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.1'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+          sha256sum "$apk"
+          echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
+
+      - name: Upload temporary-key-signed APK for device testing only
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: wordcraft-v0152-android1-SEPARATE-PACKAGE-ARM64-TEMP-SIGNED-NO-UPGRADE
+          path: builder/output/wordcraft-0.15.2-android.1.apk
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Erase temporary key and local APK after artifact staging
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys
+          rm -rf builder/output
+          echo 'Temporary signing keys and local APK erased; test artifact expires in seven days.'

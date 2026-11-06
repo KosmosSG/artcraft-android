@@ -431,7 +431,10 @@ impl Mobile {
                 let (events, scrolls, source, action, ns, hz, latency) = egui_winit::pdfcraft_input::snapshot();
                 ui.label(format!("Native mouse/trackpad events: {events}; axis-scroll events: {scrolls}"));
                 ui.monospace(format!("source=0x{source:X}, action={action}, event timestamp={ns} ns"));
-                ui.label(format!("Scroll event rate over capture: {hz:.1} Hz; last dispatch-to-UI completion: {latency:.2} ms"));
+                ui.label(format!("Capture average (includes idle): {hz:.1} axis events/s; last dispatch-to-UI: {latency:.2} ms"));
+                let (history, recovered, mean_gap, max_gap, max_latency) = egui_winit::pdfcraft_input::timing_snapshot();
+                ui.label(format!("Historical samples: {history}; nonzero scroll samples recovered: {recovered}"));
+                ui.label(format!("Within-burst input gaps: mean {mean_gap:.2} ms / max {max_gap:.2} ms; max dispatch-to-UI {max_latency:.2} ms"));
                 let variation = if self.perf_frame_count > 1 { (self.perf_m2_ms / (self.perf_frame_count-1) as f64).sqrt() } else { 0.0 };
                 let fps = if self.perf_mean_ms > 0.0 { 1000.0 / self.perf_mean_ms } else { 0.0 };
                 ui.label(format!("Active UI interval: {:.2} ms; mean {:.2} ms; variation {:.2} ms; {:.1} passes/s",

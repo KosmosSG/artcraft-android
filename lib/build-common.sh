@@ -3038,6 +3038,9 @@ if grep -qE 'ARTCRAFT_ANDROID_SAF_BRIDGE|mod ime_bridge' "$ANDROID_DIR/src/lib.r
     echo "Vendoring the ANR-safe android-activity glue for $TITLE..."
     rm -rf "$SRC/vendor/android-activity"
     cp -a "$ROOT/vendor/android-activity" "$SRC/vendor/android-activity"
+    if [[ "$APP" == "pdfcraft" ]]; then
+        python3 "$ROOT/tools/pdfcraft/activity_history_patch.py" "$SRC/vendor/android-activity"
+    fi
     python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib

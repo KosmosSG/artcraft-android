@@ -7,7 +7,7 @@ Candidate package: com.artcraft.pdfcraft.scrolltest; disposable signer only. No 
 
 ## Evidence and limits
 
-The supplied 22.57-second recording appears to show Adobe Acrobat, not the PDFCraft diagnostics screen. It contains no input timestamp trace. It cannot establish PDFCraft's physical-device root cause, GPU frame time or input-to-photon latency.
+The initial recording was mistakenly identified as Acrobat because of the similar interface. Subsequent recordings show the PDFCraft Android diagnostics. The initial recording contains no input timestamp trace and cannot establish a physical-device root cause or input-to-photon latency.
 
 Confirmed source defects:
 
@@ -34,3 +34,17 @@ Source tests exercise the real patch generator, preserved D/C/S/tool/IME/font/me
 ## Device test
 
 Keep stable PDFCraft installed. Install only the separate scrolltest package. Open a copy of a PDF, enable performance measurements, close diagnostics, and compare slow/fast vertical and horizontal gestures. Check zero-delta pauses, lift, cancel, reversing direction, pinch, selection drag, touch scrolling and ESC/D/C/S. Reopen diagnostics and record values. Check open/edit/save fidelity, fonts and cursor. Do not approve permanent signing until this exact artifact passes real-device testing.
+
+
+## Android.12: native batched relative-scroll samples
+
+Owner reports android.11 still stutters while touchscreen scrolling is smooth. In SVID_20261106_132947_1.mp4 near 46 seconds: native mouse/trackpad events 668; axis events 36; egui wheels 36; zoom events 0; last dispatch-to-UI 1.93 ms; UI CPU work 2.62 ms; mean active UI interval 22.30 ms and variation 33.66 ms. These values are snapshots, not proof that the GPU never stalls. The 1.2 events/s capture average includes idle time and is not the physical trackpad sampling rate.
+
+The adapter drops all historical axis samples, reading only the latest one. Android explicitly defines AXIS_GESTURE_SCROLL_X/Y_DISTANCE as relative per sample and requires processing batched history:
+https://developer.android.com/reference/android/view/MotionEvent#AXIS_GESTURE_SCROLL_X_DISTANCE
+
+Android.12 exposes the already-supported borrowed NDK history iterator only in PDFCraft's staged NativeActivity dependency, then accumulates historical and current relative axes exactly once. Absolute touchscreen coordinates are not accumulated; the working touch path is unchanged. A batch whose current sample is zero can still contain movement. Fractional precision evidence is retained even if samples sum to an integer. Summation uses f64 and rejects nonfinite samples. No added easing, velocity, sensitivity or momentum multiplier.
+
+The recording does not prove that this device supplies nonempty history. New counters report total historical samples and nonzero scroll samples recovered; native within-burst gap mean/max and maximum dispatch-to-UI completion help distinguish sparse delivery from occasional frame stalls. Device validation is still required. No rendering-path change is justified by the current evidence.
+
+Candidate 0.18.0-android.12, versionCode 16781836, separate package com.artcraft.pdfcraft.scrollhistory, disposable key. Different test identity avoids signature conflict with android.11; production remains untouched. Added native history API guards and Rust replay tests for partition-invariant distance, zero-tail batches, sign reversals, integer sums with fractional inputs and invalid samples.

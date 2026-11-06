@@ -98,23 +98,29 @@ def patch(source: str) -> str:
                             self.pdfcraft_trackpad_cursor = first_position;
                         }
                     }
-                    let axes = first.as_ref().map(|pointer| {
-                        (pointer.axis_value(Axis::Vscroll), pointer.axis_value(Axis::Hscroll))
-                    }).unwrap_or((0.0, 0.0));
-                    let has_scroll_axes = axes.0.is_finite() && axes.1.is_finite()
-                        && (axes.0 != 0.0 || axes.1 != 0.0);
-                    let fractional_scroll = axes.0.fract() != 0.0
-                        || axes.1.fract() != 0.0;
-                    // Android 14+ (API 34) CLASSIFICATION_TWO_FINGER_SWIPE
-                    // usually comes as SOURCE_MOUSE + TOOL_TYPE_FINGER
-                    // with ONE pointer and ACTION_MOVE, carrying dedicated
-                    // AXIS_GESTURE_SCROLL_{X,Y}_DISTANCE (50, 51).
-                    // This is *not* AXIS_VSCROLL and was silently ignored by
-                    // all previous PDFCraft trackpad patches.
-                    let gesture_axes = first.as_ref().map(|pointer| (
-                        pointer.axis_value(Axis::from(50u32)),
-                        pointer.axis_value(Axis::from(51u32)),
-                    )).unwrap_or((0.0, 0.0));
+                    // PDFCRAFT_ANDROID_BATCHED_SCROLL: Android axes 50/51 are
+                    // relative PER SAMPLE. The latest sample excludes motion history.
+                    let mut batch = crate::pdfcraft_input::ScrollBatch::default();
+                    if matches!(motion_event.action(), MotionAction::Move | MotionAction::Scroll) {
+                        let mut history_count = 0;
+                        for historical in motion_event.pdfcraft_history() {
+                            history_count += 1;
+                            if let Some(p) = historical.pointers().next() {
+                                batch.push([p.axis_value(9i32.into()), p.axis_value(10i32.into()),
+                                    p.axis_value(50i32.into()), p.axis_value(51i32.into())], true);
+                            }
+                        }
+                        crate::pdfcraft_input::history(history_count, batch.historical_nonzero);
+                    }
+                    if let Some(p) = first.as_ref() {
+                        batch.push([p.axis_value(Axis::Vscroll), p.axis_value(Axis::Hscroll),
+                            p.axis_value(Axis::from(50u32)), p.axis_value(Axis::from(51u32))], false);
+                    }
+                    let combined = batch.axes();
+                    let axes = (combined[0], combined[1]);
+                    let gesture_axes = (combined[2], combined[3]);
+                    let has_scroll_axes = axes.0 != 0.0 || axes.1 != 0.0;
+                    let fractional_scroll = batch.fractional;
                     let has_gesture_scroll = gesture_axes.0.is_finite()
                         && gesture_axes.1.is_finite()
                         && (gesture_axes.0 != 0.0 || gesture_axes.1 != 0.0);

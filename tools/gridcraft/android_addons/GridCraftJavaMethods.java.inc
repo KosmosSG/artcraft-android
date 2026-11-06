@@ -401,6 +401,20 @@
         if (!active) return 0;
         return gcDialogAction.getAndSet(0);
     }
+    // GC_ANDROID_CTRL_Q_V1: capture from both Activity and hidden IME host.
+    // Never force finish(): SheetApp.request_quit owns the Save/D/C flow.
+    private final java.util.concurrent.atomic.AtomicBoolean gcQuitPending =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    public boolean gcTakeQuitShortcut() { return gcQuitPending.getAndSet(false); }
+    public boolean gcHandleQuitShortcut(android.view.KeyEvent event) {
+        if (event == null || gcDialogActive || event.getKeyCode() != android.view.KeyEvent.KEYCODE_Q
+                || !event.isCtrlPressed() || event.isShiftPressed()
+                || event.isAltPressed() || event.isMetaPressed()) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() == 0) gcQuitPending.set(true);
+        return true; // consume both down/up and prevent 'q' from entering a cell
+    }
+
     private final java.util.concurrent.atomic.AtomicBoolean gcClosePending = new java.util.concurrent.atomic.AtomicBoolean();
     public boolean gcTakeCloseShortcut() { return gcClosePending.getAndSet(false); }
     private final java.util.concurrent.atomic.AtomicBoolean gcEscapePending = new java.util.concurrent.atomic.AtomicBoolean();
@@ -411,6 +425,7 @@
         return active && pending;
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (gcHandleQuitShortcut(event)) return true;
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
             int code = event.getKeyCode();
             if (gcDialogKeys.contains(code)) {

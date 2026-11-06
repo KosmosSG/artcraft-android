@@ -25,6 +25,20 @@ pub struct GridCraftTools {
 }
 impl GridCraftTools {
     pub fn close_shortcut(&self, inner: &mut gridcraft_ui_egui::SheetApp, ctx: &eframe::egui::Context) {
+        // GC_ANDROID_CTRL_Q_V1: request native, guarded quit — do not use
+        // Activity.finish(), which would bypass unsaved changes and relaunch.
+        let quit = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("gcTakeQuitShortcut"), jni_sig!("()Z"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?.z()
+        }).unwrap_or(false);
+        if quit {
+            inner.request_quit(ctx);
+            ctx.request_repaint();
+            return;
+        }
         // Capture Ctrl+W from Java even when the Android IME owns cell focus.
         let triggered = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;

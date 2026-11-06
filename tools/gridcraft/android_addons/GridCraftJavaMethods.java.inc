@@ -415,6 +415,22 @@
         return true; // consume both down/up and prevent 'q' from entering a cell
     }
 
+    // GC_ANDROID_SAVE_AS_SHORTCUT_V1: Ctrl+Shift+S is a separate,
+    // one-shot command. Never intercept unmodified S or the modal D/C/S keys.
+    // Activity and IME host can both observe one key: the atomic latch coalesces it.
+    private final java.util.concurrent.atomic.AtomicBoolean gcSaveAsPending =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    public boolean gcTakeSaveAsShortcut() { return gcSaveAsPending.getAndSet(false); }
+    public boolean gcHandleSaveAsShortcut(android.view.KeyEvent event) {
+        if (event == null || gcDialogActive
+                || event.getKeyCode() != android.view.KeyEvent.KEYCODE_S
+                || !event.isCtrlPressed() || !event.isShiftPressed()
+                || event.isAltPressed() || event.isMetaPressed()) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() == 0) gcSaveAsPending.set(true);
+        return true; // consume down/up; never enter a literal S in a worksheet
+    }
+
     private final java.util.concurrent.atomic.AtomicBoolean gcClosePending = new java.util.concurrent.atomic.AtomicBoolean();
     public boolean gcTakeCloseShortcut() { return gcClosePending.getAndSet(false); }
     private final java.util.concurrent.atomic.AtomicBoolean gcEscapePending = new java.util.concurrent.atomic.AtomicBoolean();
@@ -426,6 +442,7 @@
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (gcHandleQuitShortcut(event)) return true;
+        if (gcHandleSaveAsShortcut(event)) return true;
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
             int code = event.getKeyCode();
             if (gcDialogKeys.contains(code)) {

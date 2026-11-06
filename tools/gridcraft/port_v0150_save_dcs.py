@@ -11,7 +11,7 @@ import argparse
 import json
 import tomllib
 
-VERSION = "0.15.0"
+VERSION = "0.16.1"
 MARKER = "GRIDCRAFT_ANDROID_V0150_SAVE_PORT_V1"
 ROOT = Path(__file__).resolve().parent
 SOURCES = {

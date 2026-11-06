@@ -49,6 +49,11 @@ impl Updater {
         match actions {
             Ok(actions) => for code in actions {
                 if inner.dialog.is_some() { continue; }
+                let resume_text = if code == 2 {
+                    inner.session.state.text_edit.as_ref().map(|edit| serde_json::json!({
+                        "layer": edit.layer.0, "select": [edit.anchor, edit.caret]
+                    }))
+                } else { None };
                 // Commit pending text BEFORE deciding whether this project is dirty.
                 if inner.session.state.text_edit.is_some() {
                     if let Err(error) = inner.session.execute("text.endEdit", serde_json::json!({})) {
@@ -56,6 +61,9 @@ impl Updater {
                         continue;
                     }
                     ctx.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });
+                }
+                if let Some(params) = resume_text {
+                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("effectcraft.quit.resume_text"), (params, false)));
                 }
                 let command = match code { 1 => "file.close", 2 => "app.quit", _ => continue };
                 log::info!("EffectCraft physical shortcut: {command}, dirty={}", inner.session.is_dirty());
@@ -67,6 +75,25 @@ impl Updater {
             Err(error) => log::warn!("Physical Android shortcut bridge: {error}"),
         }
     }
+    /// Re-enter the same text selection only after a quit prompt was cancelled.
+    /// text.edit issues a fresh IME session token; never resurrect an old composition.
+    pub fn restore_cancelled_quit_edit(&self, inner: &mut EffectcraftApp, ctx: &egui::Context) {
+        let key = egui::Id::new("effectcraft.quit.resume_text");
+        let pending = ctx.data_mut(|d| d.remove_temp::<(serde_json::Value, bool)>(key));
+        let Some((params, seen_dialog)) = pending else { return };
+        if inner.android_unsaved_dcs_active() {
+            ctx.data_mut(|d| d.insert_temp(key, (params, true)));
+        } else if !seen_dialog {
+            // A viewport-close request reaches the unsaved guard on the next logic tick.
+            ctx.data_mut(|d| d.insert_temp(key, (params, false)));
+        } else if !inner.dialog_state.unsaved.quitting && inner.dialog.is_none() {
+            if let Err(error) = inner.session.execute("text.edit", params) {
+                log::warn!("Restore text editing after cancelled quit: {error}");
+            }
+            ctx.request_repaint();
+        }
+    }
+
     pub fn unsaved_dialog(&self, active: bool, ctx: &egui::Context) {
         if !active { ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("effectcraft.unsaved.dcs"))); }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };

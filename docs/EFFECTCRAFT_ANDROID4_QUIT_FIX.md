@@ -34,7 +34,9 @@ resource-drop order and failed-construction recovery.
 Physical Ctrl+W/Q commits active text before the guarded command decides whether
 the project is dirty. A failed commit leaves the editor open. D/S/C retain the
 upstream save/discard/cancel workflow; physical Escape is intercepted as Cancel
-while the unsaved dialog is active. Activity destruction is logged without document
+while the unsaved dialog is active. After C/Escape or a cancelled Save picker,
+the original text layer and selection reopen through `text.edit` with a fresh
+IME session token. A confirmed quit never reopens the editor. Activity destruction is logged without document
 contents. Existing native startup errors are logged by the launcher.
 
 Android persistence here loads settings and keymaps via the upstream lenient

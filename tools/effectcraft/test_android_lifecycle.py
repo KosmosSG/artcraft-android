@@ -61,3 +61,12 @@ class AndroidLifecycle(unittest.TestCase):
         patch = (TOOLS / 'patch_android_lifecycle.py').read_text()
         self.assertNotIn('process::exit', patch)
         self.assertNotIn('remove_dir', patch)
+
+    def test_cancel_resumes_selection_with_fresh_editor_command(self):
+        native = (TOOLS / 'android_updater.rs').read_text()
+        self.assertIn('"layer": edit.layer.0, "select": [edit.anchor, edit.caret]', native)
+        self.assertIn('else if !seen_dialog', native)
+        self.assertIn('!inner.dialog_state.unsaved.quitting && inner.dialog.is_none()', native)
+        self.assertIn('inner.session.execute("text.edit", params)', native)
+        launcher = (TOOLS / 'integrate_updater.py').read_text()
+        self.assertIn('self.updates.restore_cancelled_quit_edit(&mut self.inner, ui.ctx());', launcher)

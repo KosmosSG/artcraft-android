@@ -414,6 +414,7 @@ impl Mobile {
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
                 ui.separator();
                 ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
+                ui.label(crate::pdfcraft_ocr::status());
             });
             if self.gpu_details_open {
                 ui.separator();

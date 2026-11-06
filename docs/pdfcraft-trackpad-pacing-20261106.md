@@ -48,3 +48,16 @@ Android.12 exposes the already-supported borrowed NDK history iterator only in P
 The recording does not prove that this device supplies nonempty history. New counters report total historical samples and nonzero scroll samples recovered; native within-burst gap mean/max and maximum dispatch-to-UI completion help distinguish sparse delivery from occasional frame stalls. Device validation is still required. No rendering-path change is justified by the current evidence.
 
 Candidate 0.18.0-android.12, versionCode 16781836, separate package com.artcraft.pdfcraft.scrollhistory, disposable key. Different test identity avoids signature conflict with android.11; production remains untouched. Added native history API guards and Rust replay tests for partition-invariant distance, zero-tail batches, sign reversals, integer sums with fractional inputs and invalid samples.
+
+
+## Android.13: offline Scan & OCR models
+
+Owner requested the OCR addition from MostafaXS1/artcraft-android v0.5.0, source tag commit 52308fbcb26d8d8625f35fc1f048813f8e1e12a8. Only model packaging and startup availability are integrated; the builder is not replaced. PDFCraft remains pinned to official 0.18.0 with the android.12 history fix and existing Android features.
+
+The two upstream ONNX files are fetched using immutable expected SHA256 values already present in official ATTRIBUTION.toml. Missing or changed files fail the build. Both models, their attribution and unmodified CC-BY-SA-4.0 text are packaged and checked inside the compiled APK. Licence text was retrieved from Creative Commons' own repository at https://raw.githubusercontent.com/creativecommons/creativecommons.org/master/docroot/legalcode/by-sa_4.0.txt and matches upstream's pinned 28a9529c7d0bb4dc51f4bf5c116a3d16ef247a052f7591466768ddf563fd1cf5 checksum.
+
+Startup copies assets to internal app-private storage via temporary files, verifies checksums before renaming, and sets PDFCRAFT_MODELS only after both models pass. No model download runs on the tablet. Failures are nonfatal and shown in Android tools. The existing Scan & OCR workflow handles recognition and the invisible searchable PDF text layer. English is the documented model language; no Chinese or multilingual recognition claim is made.
+
+CI runs pdfcraft-ocr unit tests with models installed, rejects the upstream recognition test's missing-model skip, and verifies both model hashes inside the APK. Device acceptance still requires an image-only PDF: recognize English text, search/copy it, save a copy, reopen and verify text/image fidelity. OCR adds approximately 12 MB of raw model data plus extracted private copies, and can use CPU/RAM during recognition. Trackpad smoothness remains unverified.
+
+Candidate: 0.18.0-android.13 / 16781837 / com.artcraft.pdfcraft.ocrtest. Disposable signer, separate installation, Actions artifact only. No production keys or release publication.

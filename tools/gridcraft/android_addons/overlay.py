@@ -79,6 +79,17 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     rust = replace_exact(rust, "self.inner.logic(ctx);", "self.tools.close_shortcut(&mut self.inner,ctx);\n        self.tools.editor_escape(&mut self.inner,ctx);\n        self.inner.android_capture_unsaved_dcs(ctx);\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\n        self.inner.logic(ctx);")
     rust = replace_exact(rust, "self.inner.ui(ui);", "self.inner.ui(ui);\n        self.tools.editor_escape(&mut self.inner,ui.ctx());\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());")
 
+    # GC_ANDROID_CTRL_Q_V1: the Activity does not always receive physical
+    # shortcuts when the invisible keyboard host/InputConnection owns focus.
+    # Route all three event paths through ONE idempotent Java key handler.
+    for signature in (
+        "public boolean sendKeyEvent(KeyEvent event) {",
+        "public boolean onKeyDown(int keyCode, KeyEvent event) {",
+        "public boolean onKeyUp(int keyCode, KeyEvent event) {",
+    ):
+        java = replace_exact(java, signature,
+                             signature + "\n                    if (gcHandleQuitShortcut(event)) return true;")
+
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",
                          "super.onActivityResult(requestCode, resultCode, data);\n        if (gcHandleActivityResult(requestCode, resultCode, data)) return;")
     java = replace_exact(java, "super.onCreate(savedInstanceState);",

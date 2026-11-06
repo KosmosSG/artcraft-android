@@ -63,9 +63,19 @@ def port(root: Path, verify_only=False):
                 && touch_geo.range_panes(RangeRef::cell(sel.current().end))
                     .iter().any(|pane| pane.contains(logical))
         });
-        app.grid.touch_pan = multi_touch || !(select_mode || long_hold || on_fill_handle);
+        // GC_TWO_FINGER_ONLY_PAN_V1: never drag-pan with one touchscreen
+        // finger (or the single physical trackpad pointer). A one-finger
+        // press remains available for editing, selection and long-hold.
+        let _ = (select_mode, long_hold, on_fill_handle);
+        app.grid.touch_pan = multi_touch;
     }"""
     show = once(show, touch_pan_old, touch_pan_new, SHOW)
+    show = once(show,
+        "    if app.grid.touch_pan && resp.dragged() && ui.input(|i| i.multi_touch().is_none()) {",
+        "    // GC_TWO_FINGER_ONLY_PAN_V1: no trailing one-finger pan after a pinch.\n"
+        "    if app.grid.touch_pan && resp.dragged() && ui.input(|i| i.multi_touch().is_some()) {",
+        SHOW)
+
     # Block pan/zoom deltas that Android trackpads emit during a held click:
     # only in the disposable v0.15 GridCraft source, never suite-wide winit.
     scroll_input_old = """    if (resp.hovered() || resp.contains_pointer()) && !crate::text_box::contains_pointer(app, ui.ctx()) {"""
@@ -83,7 +93,7 @@ def port(root: Path, verify_only=False):
     # The source's show_grid_interactions already skips *only* touch_pan.
     # All drag select, drag fill, shift+arrow, popup and scroll math stay intact.
     for label, source, must in [
-        (SHOW, show, ["long_hold", "app.grid.touch_pan = multi_touch ||", "on_fill_handle", "gridcraft.android.touch_select", "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1", "&& !trackpad_range_drag"]),
+        (SHOW, show, ["long_hold", "app.grid.touch_pan = multi_touch;", "on_fill_handle", "gridcraft.android.touch_select", "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1", "&& !trackpad_range_drag"]),
         (INTERACT, interact, ["let handle_size =", "Drag::Select", "Drag::Fill"]),
     ]:
         for token in must:
@@ -99,7 +109,7 @@ def port(root: Path, verify_only=False):
         "mouse_drag_selection_preserved": True,
         "trackpad_drag_prevents_canvas_scroll": True,
         "normal_trackpad_two_finger_scroll_preserved": True,
-        "single_touch_swipe_pan_preserved": True,
+        "single_touch_swipe_pan_disabled": True,
         "two_finger_zoom_preserved": True,
         "source_modified": not verify_only,
         "compiled_or_tested_on_device": False,

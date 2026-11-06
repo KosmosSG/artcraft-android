@@ -50,7 +50,7 @@ def stage_candidate_android_version(builder: Path):
     revised = source.replace(anchor,
         '        # GRIDCRAFT_ANDROID_VERSION_NAME_V1: app-info display only; keep upstream semver.\n'
         '        build_gradle(android_meta["package"], min_sdk, target_sdk, code,\n'
-        '                     "0.16.1-android.2" if app == "gridcraft"\n'
+        '                     "0.16.1-android.3" if app == "gridcraft"\n'
         '                     and version == "0.16.1"\n'
         '                     and android_meta["package"] in ("com.artcraft.gridcraft.candidate", "com.artcraft.gridcraft")\n'
         '                     else version)', 1)

@@ -1,0 +1,135 @@
+name: GridCraft v0.16.1 ARM64 SIDE-BY-SIDE TEMP TEST ONLY
+
+on:
+  push:
+    branches:
+      - feature/gridcraft-v0161-android-side-by-side-test-20261106
+    paths:
+      - '.github/workflows/gridcraft-v0161-side-by-side.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gridcraft-v0161-isolated-test
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/gridcraft-v0161-android-side-by-side-test-20261106'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    steps:
+      - name: Checkout protected published baseline and isolated integration branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout exact known reference Android builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout exact official GridCraft v0.16.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: e581bc95b2a17d2a744a115478a20a1c2ad1ef72
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - name: Strict pinned-source, isolated overlay and compatibility preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = e581bc95b2a17d2a744a115478a20a1c2ad1ef72
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib, hashlib
+          src = Path("builder/source/gridcraft/Cargo.toml")
+          assert tomllib.loads(src.read_text())["workspace"]["package"]["version"] == "0.16.1"
+          icon=Path("assets/gridcraft/launcher-user-20261103.png")
+          assert hashlib.sha256(icon.read_bytes()).hexdigest()=="e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2"
+          print("PASS: reviewed official v0.16.1 source, original Gc icon intact")
+          PY
+          python3 -m py_compile tools/gridcraft/install_overlay.py tools/gridcraft/port_v0150_ui.py tools/gridcraft/port_v0150_save_dcs.py tools/gridcraft/port_v0150_touch_selection.py tools/gridcraft/android_addons/overlay.py
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("builder/source/gridcraft/crates/ui-egui/src")
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in (p/"ribbon/title_bar.rs").read_text()
+          assert "gridcraft_android_take_dcs" in (p/"dialogs/show.rs").read_text()
+          assert "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1" in (p/"grid/show.rs").read_text()
+          s=Path("builder/lib/build-common.sh").read_text()
+          assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in s
+          assert "GRIDCRAFT_V0150_ACK_SAF_V1" in s
+          a=Path("builder/lib/android_project.py").read_text()
+          assert "0.16.1-android.1" in a
+          assert "com.artcraft.gridcraft.candidate" in a
+          print("PASS: Android menu, modal, save acknowledgements, font loading, selection, candidate version")
+          PY
+      - name: Set up Java 21, Rust ARM64 and Android NDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install NDK and icon dependency if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          if [ ! -d "$NDK" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+            "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          fi
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Build one ARM64 development candidate with fresh disposable key
+        shell: bash
+        timeout-minutes: 75
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: |
+          set -euo pipefail
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
+          bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
+      - name: Verify separate package, temporary signature, ARM64 and artifact integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -type f -iname '*gridcraft*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" > apk-signing.txt
+          "$TOOLS/aapt" dump badging "$APK" > apk-badging.txt
+          grep -F "name='com.artcraft.gridcraft.candidate'" apk-badging.txt
+          grep -F "versionName='0.16.1-android.1'" apk-badging.txt
+          python3 - "$APK" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              assert 'classes.dex' in names
+              assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names)
+              assert not any(n.startswith('lib/') and not n.startswith('lib/arm64-v8a/') for n in names)
+              assert not any(n.endswith(('.jks','.keystore','.p12')) for n in names)
+          print("PASS: separate package, native ARM64, disposable-signature APK")
+          PY
+          mkdir -p candidate
+          cp "$APK" candidate/GridCraft-v0.16.1-android.1-ARM64-SIDE-BY-SIDE-TEMP-TEST.apk
+          (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
+          cp apk-signing.txt apk-badging.txt candidate/
+      - name: Upload temporary test APK only — NEVER publish or production-sign
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCraft-v0161-android1-ARM64-CANDIDATE-SIDE-BY-SIDE-TEMP
+          path: candidate/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Erase disposable signing material after artifact staging
+        if: always()
+        run: rm -rf builder/keys builder/output

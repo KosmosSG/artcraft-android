@@ -15,9 +15,11 @@ mod android_stability_tests {
     }
     fn press(app:&mut VectorcraftApp,key:Key) {
         let ctx=egui::Context::default();
-        let _=ctx.run_ui(egui::RawInput {events:vec![egui::Event::Key {
+        let mut output=ctx.run_ui(egui::RawInput {events:vec![egui::Event::Key {
             key,physical_key:Some(key),pressed:true,repeat:false,modifiers:Modifiers::NONE
         }],..Default::default()},|_|{android_save_changes_key(app,&ctx);});
+        // This headless command test has no renderer to apply texture updates.
+        output.textures_delta.clear();
     }
     #[test]
     fn android_stability_repeated_cancel_save_discard() {

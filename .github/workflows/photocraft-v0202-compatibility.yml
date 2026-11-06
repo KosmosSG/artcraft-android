@@ -25,7 +25,7 @@ jobs:
       # Keep upstream opt-level defaults to protect graphics and AI performance.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       CARGO_PROFILE_RELEASE_STRIP: "symbols"
-      PHOTOCRAFT_OVERRIDE_VERSION: "0.20.2-android.1"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.20.2-android.2"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.20.2"
@@ -48,7 +48,8 @@ jobs:
           git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
           CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
-          test "$CHANGED" = ".github/workflows/photocraft-v0202-compatibility.yml" || {
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v0202-compatibility.yml tools/photocraft_v0202_trackpad.py)"
+          test "$CHANGED" = "$EXPECTED" || {
             echo "Refusing branch: unexpected modifications beyond the new CI workflow."
             printf '%s\n' "$CHANGED"
             exit 1
@@ -93,14 +94,14 @@ jobs:
                   assert t.count('UPSTREAM_TAG = "v0.20.1"') == 1
                   t = t.replace('UPSTREAM_TAG = "v0.20.1"', 'UPSTREAM_TAG = "v0.20.2"')
               if name == "photocraft_v0201_tablet.py":
-                  assert t.count('version = "0.20.2-android.10"') == 1
-                  t = t.replace('version = "0.20.2-android.10"', 'version = "0.20.2-android.1"')
+                  assert t.count('version = "0.20.2-android.20"') == 1
+                  t = t.replace('version = "0.20.2-android.20"', 'version = "0.20.2-android.2"')
               p.write_text(t, encoding="utf-8")
           assert pins == 6, f"Unexpected upstream pin count: {pins}"
           assert versions == 17, f"Unexpected Android version count: {versions}"
           print("PASS: 6 source pins and 17 version anchors staged in disposable CI checkout only")
           PY
-          python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py
+          python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py
 
       - name: Check out exact latest official v0.20.2 source without changing project history
         shell: bash
@@ -195,6 +196,14 @@ jobs:
           python3 tools/photocraft_v0201_context_cancel.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
           python3 tools/photocraft_v0201_menu_scroll.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
           python3 tools/photocraft_v0201_tablet.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
+          python3 tools/photocraft_v0202_trackpad.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft \
+            --vendor vendor
+          grep -Fq 'pcTrackpadPinchPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'pub fn pc_pad_gesture_take()' vendor/android-activity/src/lib.rs
+          grep -Fq 'pub(crate) fn trackpad_view(' adapters/photocraft/src/canvas_gesture.rs
+          grep -Fq '0.20.2-android.2' adapters/photocraft/Cargo.toml
           mkdir -p "$RUNNER_TEMP/pc-keyboard-tests"
           javac -d "$RUNNER_TEMP/pc-keyboard-tests" \
             tools/photocraft_keyboard_repair/PcHardwareKeyGate.java \
@@ -234,7 +243,7 @@ jobs:
           grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
-          grep -Fq 'version = "0.20.2-android.1"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.20.2-android.2"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release untouched.'
 
       - name: Stage owner's blue Pc icon into disposable upstream checkout
@@ -265,9 +274,9 @@ jobs:
           p = Path("adapters/photocraft/Cargo.toml")
           manifest = p.read_text()
           changes = [
-              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.up202"', 1),
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.pad202"', 1),
               ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
-              ('label = "PhotoCraft"', 'label = "PhotoCraft Test 202"', 2),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Test Pad 202"', 2),
           ]
           for old, new, expected in changes:
               count = manifest.count(old)
@@ -277,8 +286,8 @@ jobs:
           p.write_text(manifest)
           import tomllib
           data = tomllib.loads(manifest)
-          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.up202"
-          print("Separate com.artcraft.photocraft.candidate.up202 app: production package and keys untouched")
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.pad202"
+          print("Separate com.artcraft.photocraft.candidate.pad202 app: production package and keys untouched")
           PY
 
       - name: Compile release-optimized upstream v0.20.2 compatibility candidate
@@ -290,7 +299,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.20.2.apk
-          mv output/photocraft-0.20.2.apk output/PhotoCraft-v0.20.2-android.1-arm64-v8a-TEST.apk
+          mv output/photocraft-0.20.2.apk output/PhotoCraft-v0.20.2-android.2-arm64-v8a-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.20.2 adaptation
         if: failure()
@@ -325,8 +334,8 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
-          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.up202'"
-          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.20.2-android.1'"
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.pad202'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.20.2-android.2'"
           # Enforce isolated-package architecture, non-production signer, and realistic size report.
           SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
           test -n "$SIGNER_SHA"
@@ -352,12 +361,12 @@ jobs:
           PY
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
-          echo "Candidate v0.20.2-android.1; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.20.2-android.2; touch-scroll port is unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.20.2-android.1-ARM64-OPTIMIZED-ISOLATED-TEST-DISPOSABLE-KEY
+          name: PhotoCraft-v0.20.2-android.2-ARM64-OPTIMIZED-ISOLATED-TEST-DISPOSABLE-KEY
           path: |
             output/*.apk
             SHA256SUMS.txt

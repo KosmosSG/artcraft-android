@@ -6,7 +6,7 @@ on:
       - feature/wordcraft-v0152-android-side-by-side-test-20261106
     paths:
       - ".github/workflows/wordcraft-v0152-side-by-side.yml"
-      - ".github/workflows/wordcraft-v0152-side-by-side.yml"
+      - "wordcraft/android/patch_builder.py"
   workflow_dispatch:
 
 permissions:

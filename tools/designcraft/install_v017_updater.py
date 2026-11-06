@@ -69,15 +69,20 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     edit(menu_file,
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle, take_android_update_action};')
+    # Android.2 consolidates actions under the user-approved top-left Dc icon.
+    # Do not reinsert update controls into the removed top-level Android menu.
+    # Native dc_update_action() below powers both Dc dropdown actions.
     table_file = ui_root / "menus/tables.rs"
-    edit(table_file,
-         '''            "ui:app.artcraftToggleAndroidTools",
-        ],''',
-         '''            "ui:app.artcraftToggleAndroidTools",
-            "-",
-            "ui:app.artcraftCheckUpdates",
-            "ui:app.artcraftStartupCheck",
-        ],''')
+    table_source = table_file.read_text()
+    if '"Android",\n' in table_source or '"ui:app.artcraftToggleAndroidTools"' in table_source:
+        raise ValueError("Unexpected old Android top-level menu; review before patching")
+    dc_menu = (android / "src/v016_android.rs").read_text()
+    for label in ("dc-launcher-icon.rgba", "Check Updates", "Startup Update Check",
+                  "Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
+                  "Reload Font Catalog", "Android Tools"):
+        if label not in dc_menu:
+            raise ValueError(f"Missing approved Dc launcher menu action: {label}")
+
 
     bridge_file = android / "src/lib.rs"
     edit(bridge_file,
@@ -104,24 +109,15 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
         }
     }
     let shared_actions = designcraft_ui_egui::menus::take_android_shared_actions();''')
-    edit(toolbar_file,
-         '''                ui.separator();
-                let gpu = GPU_STATUS.lock()''',
-         '''                ui.separator();
-                if ui.button("Check updates").clicked() {
-                    if let Err(error) = bridge.dc_update_action(3) {
-                        app.status_error("Check updates", error);
-                    }
-                    ui.close();
-                }
-                if ui.button("Startup update check…").clicked() {
-                    if let Err(error) = bridge.dc_update_action(4) {
-                        app.status_error("Startup update check", error);
-                    }
-                    ui.close();
-                }
-                ui.separator();
-                let gpu = GPU_STATUS.lock()''')
+    # Android.2 already routes both update actions from the top-left Dc menu.
+    # The legacy Android Tools toolbar is intentionally absent; check the
+    # action/bridge contract instead of trying to reinsert duplicate buttons.
+    dc_menu = toolbar_file.read_text()
+    for action, code in (('Check Updates', 'bridge.dc_update_action(3)'),
+                         ('Startup Update Check', 'bridge.dc_update_action(4)')):
+        if dc_menu.count(action) != 1 or dc_menu.count(code) != 1:
+            raise ValueError(f"Dc menu updater action not wired exactly once: {action}")
+
 
     java_dir = android / "java" / Path(*package.split("."))
     java_file = java_dir / "DesignCraftActivity.java"

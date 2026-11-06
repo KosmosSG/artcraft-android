@@ -62,22 +62,9 @@ pub fn take_android_tools_toggle() -> bool {
     p=base/"menus.rs"
     edit(p,'pub use run::take_android_font_import;',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',"UI action exports")
-    p=base/"menus/tables.rs"
-    a='            "ui:app.artcraftImportFont",\n            "-",'
-    edit(p,a,'            "ui:app.artcraftImportFont",\n            "ui:app.artcraftSelectSharedFonts",\n            "ui:app.artcraftRefreshSharedFonts",\n            "-",',"Type actions")
-    edit(p,'    (\n        "Help",\n        &[','''    (
-        "Android",
-        &[
-            "ui:app.artcraftImportFont",
-            "ui:app.artcraftSelectSharedFonts",
-            "ui:app.artcraftRefreshSharedFonts",
-            "-",
-            "ui:app.artcraftToggleAndroidTools",
-        ],
-    ),
-    (
-        "Help",
-        &[''',"main Android menu")
+    # Android commands remain registered for keyboard/updater compatibility.
+    # Android-specific menu rows are consolidated under the approved Dc icon
+    # in v016_android.rs; do not create a duplicate top-level Android menu.
     p=base/"dialogs.rs";s=p.read_text()
     a='let action = ctx.input(|i| i.events.iter().find_map(|event| match event {'
     s=put_once(s,a,'''let action = ctx.data_mut(|d| d.remove_temp::<u8>(
@@ -140,8 +127,35 @@ def java_source(root,android):
 
     private final java.util.concurrent.atomic.AtomicInteger dcToolAction =
         new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicInteger dcEscapeAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicInteger dcCloseAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
 
-    /** Take a physical T/V key that was intercepted before Android's IME. */
+    // A physical tool key can be swallowed by a stale Android IME focus. Queue
+    // the key once regardless of IME focus; Rust checks whether text is actually
+    // being edited before changing tools.
+    public void dcApplyPointerIcon(int type) {
+        runOnUiThread(() -> {
+            android.view.PointerIcon icon = android.view.PointerIcon.getSystemIcon(this, type);
+            android.view.View content = findViewById(android.R.id.content);
+            if (content != null) dcSetSurfaceIcon(content, icon);
+        });
+    }
+
+    private void dcSetSurfaceIcon(android.view.View view, android.view.PointerIcon icon) {
+        // NativeActivity also uses a plain NativeContentView for its input queue.
+        if (view != imeView) view.setPointerIcon(icon);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); ++i) dcSetSurfaceIcon(group.getChildAt(i), icon);
+        }
+    }
+
+    public int dcTakeEscapeAction() { return dcEscapeAction.getAndSet(0); }
+    public int dcTakeCloseAction() { return dcCloseAction.getAndSet(0); }
+
+    /** Take a physical tool key that may never reach egui's keymap. */
     public int dcTakeToolAction() {
         return dcToolAction.getAndSet(0);
     }
@@ -181,20 +195,38 @@ def java_source(root,android):
             return true;
         }
         boolean escape = code == KeyEvent.KEYCODE_ESCAPE;
-        boolean close = code == KeyEvent.KEYCODE_W && event.isCtrlPressed();
-        // Queue physical T/V even if Android's IME state is stale after
-        // Escape. Rust checks whether the document is actually still typing
-        // before using this fallback, so printable text remains intact.
-        if (!dcDialogActive && event.hasNoModifiers()
-                && state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-            if (code == KeyEvent.KEYCODE_T) dcToolAction.set(1);
-            else if (code == KeyEvent.KEYCODE_V) dcToolAction.set(2);
+        boolean close = (code == KeyEvent.KEYCODE_W || code == KeyEvent.KEYCODE_Q)
+            && event.hasModifiers(KeyEvent.META_CTRL_ON);
+        // Distinguish real text editing in Rust, not Android's sometimes-stale
+        // invisible IME focus. Preserve unmodified printable input to text.
+        if (!dcDialogActive && state == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() == 0) {
+            if (escape && event.hasNoModifiers()) dcEscapeAction.set(1);
+            if (close) dcCloseAction.set(code == KeyEvent.KEYCODE_Q ? 2 : 1);
+            if (event.hasNoModifiers()) {
+                int tool = code == KeyEvent.KEYCODE_T ? 1
+                    : code == KeyEvent.KEYCODE_V ? 2
+                    : code == KeyEvent.KEYCODE_H ? 3
+                    : code == KeyEvent.KEYCODE_Z ? 4
+                    : code == KeyEvent.KEYCODE_A ? 5
+                    : code == KeyEvent.KEYCODE_P ? 6
+                    : code == KeyEvent.KEYCODE_N ? 7
+                    : code == KeyEvent.KEYCODE_F ? 8
+                    : code == KeyEvent.KEYCODE_M ? 9
+                    : code == KeyEvent.KEYCODE_B ? 10 : 0;
+                if (tool != 0) dcToolAction.set(tool);
+            }
         }
-        // Deliver normal key events as well, so the upstream keymap keeps
-        // other shortcuts working. Rust deduplicates the T/V fallback.
+        // Let native egui still process ordinary key events when available.
+        // Rust deduplicates the native fallback against the same raw event.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
             imeWanted = false;
-            if (imeView != null) imeView.clearFocus();
+            if (imeView != null) {
+                android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+                if (imm != null) imm.hideSoftInputFromWindow(imeView.getWindowToken(), 0);
+                imeView.clearFocus();
+            }
+            getWindow().getDecorView().restoreDefaultFocus();
         }
         if (escape || close) {
             if (state == KeyEvent.ACTION_DOWN) {
@@ -257,6 +289,24 @@ def launcher(android):
                         jni_sig!("(J)V"), &[JValue::Long(id as i64)])?;
                 }
                 Ok(())
+            }).map_err(|e| e.to_string())
+        }
+
+        pub fn dc_escape_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeEscapeAction"),
+                    jni_sig!("()I"), &[])?.i()
+            }).map_err(|e| e.to_string())
+        }
+
+        pub fn dc_close_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeCloseAction"),
+                    jni_sig!("()I"), &[])?.i()
             }).map_err(|e| e.to_string())
         }
 

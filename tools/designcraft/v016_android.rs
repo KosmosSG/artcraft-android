@@ -49,10 +49,19 @@ pub fn handle_keys(
     // associated egui Key event. Consume it only outside document typing.
     let android_tool = if !dialog && app.ui.dialog.is_none()
         && app.ui.palette.is_none() && !app.session.wants_text()
+        && !ctx.text_edit_focused()
     {
         match bridge.dc_tool_action() {
             Ok(1) => Some("type"),
             Ok(2) => Some("selection"),
+            Ok(3) => Some("hand"),
+            Ok(4) => Some("zoom"),
+            Ok(5) => Some("directSelection"),
+            Ok(6) => Some("pen"),
+            Ok(7) => Some("pencil"),
+            Ok(8) => Some("rectangleFrame"),
+            Ok(9) => Some("rectangle"),
+            Ok(10) => Some("contentCollector"),
             _ => None,
         }
     } else {
@@ -60,8 +69,13 @@ pub fn handle_keys(
         let _ = bridge.dc_tool_action();
         None
     };
-    let mut escape = false;
-    let mut close = false;
+    // Native Activity queues physical Esc/Ctrl+W even when a stale IME host
+    // swallows the original KeyEvent. RawInput may contain the same event;
+    // boolean coalescing guarantees each action runs at most once per frame.
+    let mut escape = bridge.dc_escape_action().is_ok_and(|value| value != 0);
+    let command = bridge.dc_close_action().unwrap_or(0);
+    let mut close = command == 1;
+    let mut quit = command == 2;
     let mut tools = android_tool;
     let mut modal_action: Option<u8> = None;
     raw.events.retain_mut(|event| {
@@ -85,6 +99,10 @@ pub fn handle_keys(
                 if *key == egui::Key::Escape && !modifiers.any() {
                     escape = true;
                 }
+                if *key == egui::Key::Q && (modifiers.ctrl || modifiers.command) && !modifiers.shift && !modifiers.alt {
+                    quit = true;
+                    return false;
+                }
                 if *key == egui::Key::W && (modifiers.ctrl || modifiers.command) {
                     close = true;
                     return false;
@@ -99,6 +117,14 @@ pub fn handle_keys(
                     tools = match key {
                         egui::Key::T => Some("type"),
                         egui::Key::V => Some("selection"),
+                        egui::Key::H => Some("hand"),
+                        egui::Key::Z => Some("zoom"),
+                        egui::Key::A => Some("directSelection"),
+                        egui::Key::P => Some("pen"),
+                        egui::Key::N => Some("pencil"),
+                        egui::Key::F => Some("rectangleFrame"),
+                        egui::Key::M => Some("rectangle"),
+                        egui::Key::B => Some("contentCollector"),
                         _ => None,
                     };
                     if tools.is_some() { return false; }
@@ -117,6 +143,10 @@ pub fn handle_keys(
     }
     if escape && !dialog && app.ui.palette.is_none() {
         if app.session.wants_text() {
+            // Committing the edit explicitly fixes the stale text caret left
+            // behind when Android's invisible IME consumes the first Esc.
+            // Preserve the text, then switch back to Selection.
+            let _ = app.run("text.exitToFrame", serde_json::json!({}));
             app.select_tool("selection");
         }
         // A stale focused egui EditText previously blocked T/V indefinitely
@@ -126,16 +156,30 @@ pub fn handle_keys(
         });
         ctx.request_repaint();
     }
-    if close && !dialog {
-        if app.session.wants_text() { app.select_tool("selection"); }
+    if quit && app.ui.dialog.is_none() {
+        if app.session.wants_text() {
+            let _ = app.run("text.exitToFrame", serde_json::json!({}));
+        }
+        app.request_quit();
+        ctx.request_repaint();
+    } else if close && app.ui.dialog.is_none() {
+        if app.session.wants_text() { let _ = app.run("text.exitToFrame", serde_json::json!({})); }
         designcraft_ui_egui::menus::close_document(app, None);
         ctx.request_repaint();
     }
     if let Some(tool) = tools {
         app.select_tool(tool);
+        // A physical tool key may ALSO arrive as an egui Text event. Remove
+        // exactly its matching printable character to avoid adding a stray
+        // glyph when switching tools; never touch arbitrary document text.
+        let shortcut = match tool {
+            "type" => "t", "selection" => "v", "hand" => "h",
+            "zoom" => "z", "directSelection" => "a", "pen" => "p",
+            "pencil" => "n", "rectangleFrame" => "f",
+            "rectangle" => "m", "contentCollector" => "b", _ => "",
+        };
         raw.events.retain(|event| !matches!(event, egui::Event::Text(text)
-            if (tool == "type" && text.eq_ignore_ascii_case("t"))
-                || (tool == "selection" && text.eq_ignore_ascii_case("v"))));
+            if !shortcut.is_empty() && text.eq_ignore_ascii_case(shortcut)));
         ctx.request_repaint();
     }
 }
@@ -267,6 +311,46 @@ fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::Design
     }
 }
 
+/// Visible tool feedback beside the hotspot on systems that override native pointer icons.
+pub fn paint_pointer_feedback(ctx: &egui::Context) {
+    use egui::CursorIcon as C;
+    if !egui_winit::winit::platform::android::HARDWARE_POINTER.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(pos) = ctx.pointer_hover_pos() else { return };
+    // Draw paths rather than font symbols, so custom font catalogs cannot
+    // substitute a missing glyph for the cursor.
+    let hand: &[(i8, i8)] = &[(-4,1),(-2,2),(-2,-4),(0,-5),(1,-1),(4,-1),(5,2),(3,5),(-1,5),(-4,1)];
+    let paths: &[&[(i8, i8)]] = match ctx.output(|o| o.cursor_icon) {
+        C::Text | C::VerticalText => &[&[(-3,-5),(3,-5)], &[(0,-5),(0,5)], &[(-3,5),(3,5)]],
+        C::Grab | C::Grabbing | C::PointingHand => &[hand],
+        C::Move | C::AllScroll => &[&[(-5,0),(5,0)], &[(0,-5),(0,5)], &[(-5,0),(-3,-2)], &[(5,0),(3,2)]],
+        C::Crosshair | C::Cell | C::ZoomIn => &[&[(-5,0),(5,0)], &[(0,-5),(0,5)]],
+        C::ZoomOut => &[&[(-5,0),(5,0)]],
+        C::ResizeHorizontal | C::ResizeColumn | C::ResizeEast | C::ResizeWest =>
+            &[&[(-3,-2),(-5,0),(-3,2)], &[(-5,0),(5,0)], &[(3,-2),(5,0),(3,2)]],
+        C::ResizeVertical | C::ResizeRow | C::ResizeNorth | C::ResizeSouth =>
+            &[&[(-2,-3),(0,-5),(2,-3)], &[(0,-5),(0,5)], &[(-2,3),(0,5),(2,3)]],
+        C::ResizeNwSe | C::ResizeNorthWest | C::ResizeSouthEast =>
+            &[&[(-4,0),(-4,-4),(0,-4)], &[(-4,-4),(4,4)], &[(0,4),(4,4),(4,0)]],
+        C::ResizeNeSw | C::ResizeNorthEast | C::ResizeSouthWest =>
+            &[&[(0,-4),(4,-4),(4,0)], &[(-4,4),(4,-4)], &[(-4,0),(-4,4),(0,4)]],
+        _ => return,
+    };
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip,
+        egui::Id::unique("designcraft.tool-pointer")));
+    let center = pos + egui::vec2(13.0, 17.0);
+    let stroke = egui::Stroke::new(1.3, egui::Color32::WHITE);
+    painter.circle_filled(center, 8.5, egui::Color32::from_gray(35));
+    painter.circle_stroke(center, 8.5, stroke);
+    for path in paths {
+        for edge in path.windows(2) {
+            let point = |(x, y): (i8, i8)| center + egui::vec2(f32::from(x), f32::from(y));
+            painter.line_segment([point(edge[0]), point(edge[1])], stroke);
+        }
+    }
+}
+
 pub fn ui(
     ui: &mut egui::Ui,
     app: &mut designcraft_ui_egui::DesignApp,
@@ -324,55 +408,88 @@ pub fn ui(
         // SAF scanning happens asynchronously; continue polling and repainting.
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
     }
-    if !SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
-        return;
-    }
+    // Always show the approved Dc launcher icon at the far left, including when
+    // the accessory status toolbar is hidden. Android-specific actions are
+    // consolidated here; the standard upstream document menus remain intact.
     egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.menu_button("Android Tools ▾", |ui| {
-                if ui.button("Import Font (TTF/OTF/TTC)…").clicked() {
-                    if let Err(e) = request_import(bridge, state) {
-                        app.status_error("Import Font", e);
-                    }
-                    ui.close();
-                }
-                if ui.button("Select Shared Font Folder…").clicked() {
-                    if let Err(e) = request_shared(bridge, state, false) {
-                        app.status_error("Select Shared Font Folder", e);
-                    }
-                    ui.close();
-                }
-                if ui.button("Refresh Shared Fonts").clicked() {
-                    if let Err(e) = request_shared(bridge, state, true) {
-                        app.status_error("Refresh Shared Fonts", e);
-                    }
-                    ui.close();
-                }
-                if ui.button("Reload Font Catalog").clicked() {
-                    if let Err(e) = app.run("font.reload", serde_json::json!({})) {
-                        app.status_error("Reload Font Catalog", e);
-                    }
-                    ui.close();
-                }
-                ui.separator();
-                let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                ui.label(if gpu.is_empty() {
-                    "GPU: WGPU initialization pending".to_owned()
-                } else {
-                    format!("GPU: {gpu}")
+            let texture_id = egui::Id::unique("dc.launcher.texture");
+            let texture = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(texture_id))
+                .unwrap_or_else(|| {
+                    let rgba = include_bytes!("dc-launcher-icon.rgba");
+                    let image = egui::ColorImage::from_rgba_unmultiplied([96, 96], rgba);
+                    let texture = ui.ctx().load_texture("DesignCraft launcher", image, egui::TextureOptions::LINEAR);
+                    ui.ctx().data_mut(|d| d.insert_temp(texture_id, texture.clone()));
+                    texture
                 });
-                ui.label("Ctrl+W → D / C / S; Esc exits typing; V/T tools");
-            });
-            ui.separator();
-            if ui.small_button("Hide Tools").clicked() {
-                SHOW_ANDROID_TOOLS.store(false, Ordering::Relaxed);
-                ui.ctx().request_repaint();
-            }
-            let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            if status.is_empty() {
-                ui.label("Shared Fonts • Keyboard");
-            } else {
-                ui.label(status);
+            let image = egui::Image::from_texture((texture.id(), egui::vec2(30.0, 30.0)));
+            let button = egui::Button::image_and_text(image, "▾").min_size(egui::vec2(46.0, 34.0));
+            egui::containers::menu::MenuButton::from_button(button).ui(
+                ui, |ui| {
+                    if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {
+                        if let Err(e) = request_import(bridge, state) {
+                            app.status_error("Import Font", e);
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Select Shared Font Folder…").clicked() {
+                        if let Err(e) = request_shared(bridge, state, false) {
+                            app.status_error("Select Shared Font Folder", e);
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Refresh Shared Fonts").clicked() {
+                        if let Err(e) = request_shared(bridge, state, true) {
+                            app.status_error("Refresh Shared Fonts", e);
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Reload Font Catalog").clicked() {
+                        if let Err(e) = app.run("font.reload", serde_json::json!({})) {
+                            app.status_error("Reload Font Catalog", e);
+                        }
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Check Updates").clicked() {
+                        if let Err(e) = bridge.dc_update_action(3) {
+                            app.status_error("Check updates", e);
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Startup Update Check…").clicked() {
+                        if let Err(e) = bridge.dc_update_action(4) {
+                            app.status_error("Startup update check", e);
+                        }
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.menu_button("Android Tools", |ui| {
+                        let visible = SHOW_ANDROID_TOOLS.load(Ordering::Relaxed);
+                        if ui.button(if visible { "Hide Tools / Status" } else { "Show Tools / Status" }).clicked() {
+                            SHOW_ANDROID_TOOLS.store(!visible, Ordering::Relaxed);
+                            ui.ctx().request_repaint();
+                            ui.close();
+                        }
+                        let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                        ui.label(if gpu.is_empty() {
+                            "GPU: WGPU initialization pending".to_owned()
+                        } else {
+                            format!("GPU: {gpu}")
+                        });
+                        ui.label("Ctrl+W → D/C/S • Esc exits typing");
+                        ui.label("V/T/H/Z/A/P/N/F/M/B tools");
+                    });
+                }
+            );
+            if SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
+                ui.separator();
+                let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                if status.is_empty() {
+                    ui.label("Shared Fonts • Keyboard");
+                } else {
+                    ui.label(status);
+                }
             }
         });
     });

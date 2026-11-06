@@ -32,19 +32,19 @@ class AndroidInputCompatibility(unittest.TestCase):
             "PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL",
             "pdfcraft_trackpad_pan_active",
             "phase: event::TouchPhase::Started",
-            "phase: event::TouchPhase::Ended",
+            "else { event::TouchPhase::Ended }",
             "expanded > (initial_spread*0.12).max(30.0)",
             "expanded > 2.5 * translated",
             "android_app.enable_motion_axis(Axis::from(50u32))",
             "android_app.enable_motion_axis(Axis::from(51u32))",
-            "pointer.axis_value(Axis::from(50u32))",
-            "pointer.axis_value(Axis::from(51u32))",
+            "p.axis_value(Axis::from(50u32))",
+            "p.axis_value(Axis::from(51u32))",
             "has_gesture_scroll",
-            "x: (-gesture_axes.0).clamp(",
-            "y: (-gesture_axes.1).clamp(",
+            "x: -gesture_axes.0",
+            "y: -gesture_axes.1",
             "fractional_scroll",
             "point_count >= 2",
-            "precision_trackpad = touchpad_source",
+            "precision_trackpad = self.pdfcraft_precision_stream.classify",
             "(has_scroll_axes || has_gesture_scroll) && axis_action",
             "Source::Touchpad | Source::TouchNavigation",
             "PdfTouchMode::Scroll",
@@ -71,6 +71,20 @@ class AndroidInputCompatibility(unittest.TestCase):
         self.assertIn("&& !self.pdfcraft_trackpad_pan_active",patched)
         # Old, hypersensitive trackpad pinch threshold must not reappear.
         self.assertNotIn("expanded > (initial_spread*0.04).max(12.0)",patched)
+
+    def test_axis_stream_never_synthesizes_momentum_or_truncates_distance(self):
+        source=(ROOT/"vendor/winit/src/platform_impl/android/mod.rs").read_text()
+        patched=patch_trackpad(patch_onefinger(patch(with_ime_api(source))))
+        axis=patched.split("if precision_trackpad &&",1)[1].split("if let (Some(a), Some(b))",1)[0]
+        self.assertNotIn("TouchPhase::Ended",axis)
+        self.assertNotIn("TouchPhase::Started",axis)
+        self.assertNotIn(".clamp(",axis)
+        self.assertIn("!delta.x.is_finite()",axis)
+        self.assertIn("motion_event.button_state().0 == 0",patched)
+        # Real cancellation cannot launch the upstream Fling implementation.
+        self.assertIn("MotionAction::Cancel { event::TouchPhase::Cancelled }",patched)
+        idle=patched.split("// Zero-axis/hover samples",1)[1].split("match motion_event.action()",1)[0]
+        self.assertNotIn("TouchPhase::Ended",idle)
 
 if __name__=="__main__":
     unittest.main()

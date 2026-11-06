@@ -65,8 +65,9 @@ public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
             if (now - pdfLastTrackpadTime >= 250) {
                 pdfLastTrackpadTime = now;
                 pdfLastTrackpad = String.format(java.util.Locale.US,
-                        "source=0x%X action=%d pointers=%d gestureX=%.2f gestureY=%.2f wheelH=%.2f wheelV=%.2f",
-                        source, action, event.getPointerCount(), x, y, h, v);
+                        "source=0x%X action=%d pointers=%d gestureX=%.2f gestureY=%.2f wheelH=%.2f wheelV=%.2f classification=%d eventTimeMs=%d",
+                        source, action, event.getPointerCount(), x, y, h, v,
+                        android.os.Build.VERSION.SDK_INT >= 29 ? event.getClassification() : -1, event.getEventTime());
             }
         }
     }

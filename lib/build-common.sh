@@ -2175,7 +2175,8 @@ icon = "@mipmap/ic_launcher"
         if manifest.count(dep_anchor) != 1:
             raise SystemExit("PDFCraft Adaptive Cursor dependency drift")
         manifest = manifest.replace(dep_anchor,
-            dep_anchor + 'egui-winit = { path = "../../vendor/egui-winit" }\n', 1)
+            dep_anchor + 'egui-winit = { path = "../../vendor/egui-winit" }\nsha2 = "0.10"\n', 1)
+        manifest = manifest.replace('resources = "res"', 'resources = "res"\nassets = "ocr-assets"', 1)
         display_version = __import__("os").environ.get("PDFCRAFT_ANDROID_VERSION_NAME", "")
         if display_version:
             if not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+-android[.][1-9][0-9]*", display_version):
@@ -2224,7 +2225,7 @@ name = "android.permission.INTERNET"
     # android-activity (which forwards show/hide to the Activity's imeShow/imeHide) in step.
     imports.append("mod ime_bridge;")
     if app == "pdfcraft":
-        imports.append("mod pdfcraft_mobile;")
+        imports.append("mod pdfcraft_mobile;\nmod pdfcraft_ocr;")
     if re.search(r"\bSession\b", construct):
         imports.append(f"use {engine_ident}::Session;")
     services_syms = [s for s in ("NoServices", "Services") if re.search(r"\b" + s + r"\b", (SAF_RECIPES.get(app) or {}).get("construct_expr") or construct)]
@@ -2722,7 +2723,7 @@ impl eframe::App for AndroidShell {{
              "        egui_winit::pdfcraft_adaptive_cursor::set_activity(app.activity_as_ptr() as usize);\n        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
             ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.handle_menu(self.inner.take_android_tools_request());\n        self.pdf_mobile.poll(ctx);\n        self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());"),
-            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        self.inner.ui(ui, frame);\n        self.pdf_mobile.dialog(ui.ctx());\n        // PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK: bypass missing winit hover cache.\n        egui_winit::pdfcraft_adaptive_cursor::apply(ui.ctx().output(|o| o.cursor_icon));"),
+            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        let pdf_perf_start = self.pdf_mobile.begin_ui_sample();\n        self.inner.ui(ui, frame);\n        self.pdf_mobile.end_ui_sample(pdf_perf_start);\n        self.pdf_mobile.dialog(ui.ctx());\n        // PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK: bypass missing winit hover cache.\n        egui_winit::pdfcraft_adaptive_cursor::apply(ui.ctx().output(|o| o.cursor_icon));"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:
@@ -2863,10 +2864,12 @@ fn android_main(android_app: android_activity::AndroidApp) {{
             shutil.copy2(src_audio, staging_dir / "src" / filename)
     if app == "pdfcraft":
         shutil.copy2(root / "templates/android/pdfcraft_modifiers.rs", staging_dir / "src/pdfcraft_modifiers.rs")
+        shutil.copy2(root / "templates/android/pdfcraft_ocr.rs", staging_dir / "src/pdfcraft_ocr.rs")
         marker = "    let saf_bridge = saf::Bridge::new(&android_app);"
         if entry.count(marker) != 1:
             raise SystemExit("PDFCraft environment initialization anchor changed")
         entry = entry.replace(marker, """
+    pdfcraft_ocr::initialize(&android_app);
     // Document font imports are limited to this app's private cache; no PDF bytes are modified.
     if let Some(folder) = android_app.external_data_path().or_else(|| android_app.internal_data_path()) {
         let path = folder.join("pdfcraft-document-fonts");
@@ -2898,6 +2901,9 @@ PY
 fi
 
 [[ -f "$ANDROID_DIR/Cargo.toml" && -f "$ANDROID_DIR/src/lib.rs" ]] || fail "Android wrapper is incomplete at $ANDROID_DIR. See the build log and adapters/README.md."
+if [[ "$APP" == "pdfcraft" ]]; then
+    python3 "$ROOT/tools/pdfcraft/ocr_models.py" stage "$SRC" "$ANDROID_DIR"
+fi
 
 # egui-winit's stock Android build gates its `arboard` clipboard backend behind
 # `cfg(not(target_os = "android"))`, so on Android its `Clipboard` is only an in-app
@@ -3038,6 +3044,9 @@ if grep -qE 'ARTCRAFT_ANDROID_SAF_BRIDGE|mod ime_bridge' "$ANDROID_DIR/src/lib.r
     echo "Vendoring the ANR-safe android-activity glue for $TITLE..."
     rm -rf "$SRC/vendor/android-activity"
     cp -a "$ROOT/vendor/android-activity" "$SRC/vendor/android-activity"
+    if [[ "$APP" == "pdfcraft" ]]; then
+        python3 "$ROOT/tools/pdfcraft/activity_history_patch.py" "$SRC/vendor/android-activity"
+    fi
     python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys, tomllib

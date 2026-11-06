@@ -14,6 +14,14 @@ pub struct Mobile {
     fonts_open: bool,
     gpu_details_open: bool,
     trackpad_details_open: bool,
+    performance_enabled: bool,
+    perf_last_frame: Option<std::time::Instant>,
+    perf_frame_count: u64,
+    perf_mean_ms: f64,
+    perf_m2_ms: f64,
+    perf_last_ms: f64,
+    perf_ui_ms: f64,
+    perf_slow_frames: u64,
     trackpad_scroll_events: u64,
     trackpad_zoom_events: u64,
     trackpad_last_native: String,
@@ -33,7 +41,10 @@ impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
             app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, gpu_details_open: false,
-            trackpad_details_open: false, trackpad_scroll_events: 0, trackpad_zoom_events: 0,
+            trackpad_details_open: false, performance_enabled: false,
+            perf_last_frame: None, perf_frame_count: 0, perf_mean_ms: 0.0,
+            perf_m2_ms: 0.0, perf_last_ms: 0.0, perf_ui_ms: 0.0, perf_slow_frames: 0,
+            trackpad_scroll_events: 0, trackpad_zoom_events: 0,
             trackpad_last_native: "No egui scroll/zoom events yet".into(),
             trackpad_java_status: "No Java input diagnostic sample yet".into(),
             trackpad_last_poll: None, updates_open: false, toolbar_shown: false,
@@ -217,7 +228,7 @@ impl Mobile {
     // PDFCRAFT_ANDROID_EGUI_SCROLL_DIAGNOSTICS: inspect egui input before
     // the upstream canvas consumes it. Never alter, consume or delay events.
     pub fn observe_raw_input(&mut self, raw: &egui::RawInput) {
-        if !self.trackpad_details_open { return; }
+        if !self.performance_enabled { return; }
         for event in &raw.events {
             match event {
                 egui::Event::MouseWheel { unit, delta, .. } => {
@@ -233,6 +244,29 @@ impl Mobile {
                 }
                 _ => {}
             }
+        }
+    }
+    pub fn begin_ui_sample(&mut self) -> Option<std::time::Instant> {
+        if !self.performance_enabled { return None; }
+        let now = std::time::Instant::now();
+        if let Some(last) = self.perf_last_frame.replace(now) {
+            let ms = now.duration_since(last).as_secs_f64() * 1000.0;
+            // Active UI passes only: idle intervals are not dropped display frames.
+            if ms < 250.0 {
+                self.perf_last_ms = ms;
+                self.perf_frame_count += 1;
+                let d = ms - self.perf_mean_ms;
+                self.perf_mean_ms += d / self.perf_frame_count as f64;
+                self.perf_m2_ms += d * (ms - self.perf_mean_ms);
+                if ms > 33.333 { self.perf_slow_frames += 1; }
+            }
+        }
+        Some(now)
+    }
+    pub fn end_ui_sample(&mut self, start: Option<std::time::Instant>) {
+        if let Some(start) = start {
+            self.perf_ui_ms = start.elapsed().as_secs_f64() * 1000.0;
+            egui_winit::pdfcraft_input::ui_complete();
         }
     }
     fn read_trackpad_status(&self) -> Result<String, String> {
@@ -380,6 +414,7 @@ impl Mobile {
                 if ui.button("Check updates").clicked() { self.do_update_check(); }
                 ui.separator();
                 ui.label("PDFCraft Android • document fonts and releases").on_hover_text(&self.renderer);
+                ui.label(crate::pdfcraft_ocr::status());
             });
             if self.gpu_details_open {
                 ui.separator();
@@ -389,7 +424,24 @@ impl Mobile {
             if self.trackpad_details_open {
                 ui.separator();
                 ui.heading("Trackpad diagnostics");
-                ui.label("While this window is open, try two-finger scrolling on the physical trackpad.");
+                if ui.checkbox(&mut self.performance_enabled, "Enable performance measurements").changed() {
+                    egui_winit::pdfcraft_input::enabled(self.performance_enabled);
+                    self.perf_last_frame = None;
+                }
+                ui.label("Enable, close this window, scroll the PDF, then reopen to inspect. Measurements continue until disabled.");
+                let (events, scrolls, source, action, ns, hz, latency) = egui_winit::pdfcraft_input::snapshot();
+                ui.label(format!("Native mouse/trackpad events: {events}; axis-scroll events: {scrolls}"));
+                ui.monospace(format!("source=0x{source:X}, action={action}, event timestamp={ns} ns"));
+                ui.label(format!("Capture average (includes idle): {hz:.1} axis events/s; last dispatch-to-UI: {latency:.2} ms"));
+                let (history, recovered, mean_gap, max_gap, max_latency) = egui_winit::pdfcraft_input::timing_snapshot();
+                ui.label(format!("Historical samples: {history}; nonzero scroll samples recovered: {recovered}"));
+                ui.label(format!("Within-burst input gaps: mean {mean_gap:.2} ms / max {max_gap:.2} ms; max dispatch-to-UI {max_latency:.2} ms"));
+                let variation = if self.perf_frame_count > 1 { (self.perf_m2_ms / (self.perf_frame_count-1) as f64).sqrt() } else { 0.0 };
+                let fps = if self.perf_mean_ms > 0.0 { 1000.0 / self.perf_mean_ms } else { 0.0 };
+                ui.label(format!("Active UI interval: {:.2} ms; mean {:.2} ms; variation {:.2} ms; {:.1} passes/s",
+                    self.perf_last_ms, self.perf_mean_ms, variation, fps));
+                ui.label(format!("PDF/UI CPU work: {:.2} ms; intervals >33.3 ms: {}", self.perf_ui_ms, self.perf_slow_frames));
+                ui.label("UI-pass timing is not display FPS. GPU upload/present time, dropped display frames and raster-worker time are not measured here. Native Android classification is unavailable in this binding; source/axes/tool drive classification.");
                 ui.label(format!("egui scroll events received: {}", self.trackpad_scroll_events));
                 ui.label(format!("egui pinch/zoom events received: {}", self.trackpad_zoom_events));
                 ui.monospace(&self.trackpad_last_native);

@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.10'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.18.0-android.13'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,11 +38,16 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.18.0-android.10'
+    assert cargo['package']['version'] == '0.18.0-android.13'
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
+    assert cargo['dependencies']['sha2'] == '0.10'
+    assert cargo['package']['metadata']['android']['assets'] == 'ocr-assets'
     assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
+    assert 'mod pdfcraft_ocr;' in native
+    assert native.index('pdfcraft_ocr::initialize(&android_app);') < native.index('let saf_bridge = saf::Bridge::new(&android_app);')
+    assert (android / 'src/pdfcraft_ocr.rs').is_file()
     assert 'android_input_patch' in (root/'tools/pdfcraft/winit_v015_compat.py').read_text()
     assert 'ctrl_shortcuts_without_separate_modifier_key_event' in (root/'templates/android/pdfcraft_modifiers.rs').read_text()
     assert 'shell.pdf_mobile.set_renderer(description)' in native

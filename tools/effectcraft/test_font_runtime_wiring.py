@@ -63,7 +63,13 @@ class FontRuntimeWiringTest(unittest.TestCase):
             self.assertIn(symbol, self.rust)
         self.assertIn('tools/effectcraft/android_updater.rs', self.integration)
         self.assertIn('FontsBridge.java.inc', self.integration)
-        self.assertIn('artcraft.effectcraft.import_font', self.integration)
+        # These controls now live on the top-left Ec brand icon, not Window/Help.
+        menu = (ROOT / "menu_corner.py").read_text()
+        self.assertIn('artcraft.effectcraft.import_font', menu)
+        self.assertIn('artcraft.effectcraft.select_fonts', menu)
+        self.assertIn('artcraft.effectcraft.refresh_fonts', menu)
+        self.assertIn('artcraft.effectcraft.check_updates_requested', menu)
+        self.assertIn('artcraft.effectcraft.update_settings_requested', menu)
 
 
 if __name__ == "__main__":

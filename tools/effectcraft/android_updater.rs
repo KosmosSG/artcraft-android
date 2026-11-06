@@ -2,10 +2,13 @@
 use android_activity::AndroidApp;
 use jni::{jni_sig, jni_str, JavaVM, objects::{JObject, JString, JValue}};
 use std::sync::mpsc;
+use effectcraft_ui_egui::EffectcraftApp;
 
 pub struct Updater {
     app: AndroidApp,
     started: bool,
+    restore_editor_after_picker: bool,
+    picker_returned: bool,
     fonts: mpsc::Sender<(String, bool)>,
     reports: mpsc::Receiver<String>,
 }
@@ -25,6 +28,72 @@ macro_rules! action {
 }
 
 impl Updater {
+    /// Pull explicit physical Ctrl+W/Q from Android before UI text-focus filters.
+    /// Invoke the same guarded upstream menu commands; never bypass unsaved prompts.
+    pub fn keyboard_shortcuts(&self, inner: &mut EffectcraftApp, ctx: &egui::Context) {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let actions = vm.attach_current_thread(|env| -> jni::errors::Result<Vec<i32>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let mut actions = Vec::new();
+            for _ in 0..8 {
+                let result = env.call_method(&*activity, jni_str!("ecPollPhysicalShortcut"),
+                    jni_sig!("()I"), &[]);
+                if result.is_err() { env.exception_clear(); }
+                let code = result?.i()?;
+                if code == 0 { break; }
+                actions.push(code);
+            }
+            Ok(actions)
+        });
+        match actions {
+            Ok(actions) => for code in actions {
+                if inner.dialog.is_some() { continue; }
+                let resume_text = if code == 2 {
+                    inner.session.state.text_edit.as_ref().map(|edit| serde_json::json!({
+                        "layer": edit.layer.0, "select": [edit.anchor, edit.caret]
+                    }))
+                } else { None };
+                // Commit pending text BEFORE deciding whether this project is dirty.
+                if inner.session.state.text_edit.is_some() {
+                    if let Err(error) = inner.session.execute("text.endEdit", serde_json::json!({})) {
+                        log::warn!("Physical Android shortcut text commit: {error}");
+                        continue;
+                    }
+                    ctx.memory_mut(|m| { if let Some(focus) = m.focused() { m.surrender_focus(focus); } });
+                }
+                if let Some(params) = resume_text {
+                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("effectcraft.quit.resume_text"), (params, false)));
+                }
+                let command = match code { 1 => "file.close", 2 => "app.quit", _ => continue };
+                log::info!("EffectCraft physical shortcut: {command}, dirty={}", inner.session.is_dirty());
+                if let Err(error) = effectcraft_ui_egui::menus::invoke(inner, ctx,
+                    command, serde_json::json!({})) {
+                    log::warn!("Physical Android shortcut {command}: {error}");
+                }
+            },
+            Err(error) => log::warn!("Physical Android shortcut bridge: {error}"),
+        }
+    }
+    /// Re-enter the same text selection only after a quit prompt was cancelled.
+    /// text.edit issues a fresh IME session token; never resurrect an old composition.
+    pub fn restore_cancelled_quit_edit(&self, inner: &mut EffectcraftApp, ctx: &egui::Context) {
+        let key = egui::Id::new("effectcraft.quit.resume_text");
+        let pending = ctx.data_mut(|d| d.remove_temp::<(serde_json::Value, bool)>(key));
+        let Some((params, seen_dialog)) = pending else { return };
+        if inner.android_unsaved_dcs_active() {
+            ctx.data_mut(|d| d.insert_temp(key, (params, true)));
+        } else if !seen_dialog {
+            // A viewport-close request reaches the unsaved guard on the next logic tick.
+            ctx.data_mut(|d| d.insert_temp(key, (params, false)));
+        } else if !inner.dialog_state.unsaved.quitting && inner.dialog.is_none() {
+            if let Err(error) = inner.session.execute("text.edit", params) {
+                log::warn!("Restore text editing after cancelled quit: {error}");
+            }
+            ctx.request_repaint();
+        }
+    }
+
     pub fn unsaved_dialog(&self, active: bool, ctx: &egui::Context) {
         if !active { ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("effectcraft.unsaved.dcs"))); }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
@@ -100,7 +169,7 @@ impl Updater {
                 }
             }
         });
-        Self { app: app.clone(), started: false, fonts: sender, reports }
+        Self { app: app.clone(), started: false, restore_editor_after_picker: false, picker_returned: false, fonts: sender, reports }
     }
 
     fn font_path(&self) -> Result<Option<String>, String> {
@@ -137,6 +206,11 @@ impl Updater {
         for _ in 0..8 {
             match self.font_path() {
                 Ok(Some(path)) => {
+                    if path == "picker-return|" {
+                        self.picker_returned = true;
+                        ctx.request_repaint();
+                        continue;
+                    }
                     // The manual marker comes only from the Java file picker; saved
                     // fonts and background shared-folder refreshes stay quiet.
                     let (manual, path) = match path.strip_prefix("manual|") {
@@ -159,7 +233,16 @@ impl Updater {
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
 
-    pub fn ui(&mut self, ctx: &egui::Context) {
+    pub fn ui(&mut self, ctx: &egui::Context, start_screen: &mut bool) {
+        if self.picker_returned {
+            self.picker_returned = false;
+            // Only return to the editor if the editor was open before the picker.
+            if self.restore_editor_after_picker {
+                *start_screen = false;
+                ctx.request_repaint();
+            }
+            self.restore_editor_after_picker = false;
+        }
         macro_rules! dispatch {
             ($key:literal, $method:literal) => {
                 if ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new($key))).unwrap_or(false) {
@@ -170,7 +253,12 @@ impl Updater {
         dispatch!("artcraft.effectcraft.check_updates_requested", "ecCheckForUpdates");
         dispatch!("artcraft.effectcraft.update_settings_requested", "ecStartupUpdateSettings");
         dispatch!("artcraft.effectcraft.import_font", "ecImportFont");
-        dispatch!("artcraft.effectcraft.select_fonts", "ecSelectSharedFonts");
+        if ctx.data_mut(|d| d.remove_temp::<bool>(
+            egui::Id::new("artcraft.effectcraft.select_fonts"))).unwrap_or(false) {
+            self.restore_editor_after_picker = !*start_screen;
+            self.picker_returned = false;
+            if let Err(e) = action!(self, "ecSelectSharedFonts") { self.message(&e); }
+        }
         dispatch!("artcraft.effectcraft.refresh_fonts", "ecRefreshFonts");
     }
 }

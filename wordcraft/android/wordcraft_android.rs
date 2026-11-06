@@ -426,6 +426,12 @@ impl Tools {
     }
 
     pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        // WC_ANDROID_FAST_INPUT_V1: soft keyboard commits live in Java's queue.
+        // GameActivity need not wake Rust on each IME commit, so keep frames
+        // responsive while editing without polling continuously while idle.
+        if self.call_bool("wcFastInputActive").unwrap_or(false) {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
         let raw_quit = ctx.data_mut(|d|
             d.remove_temp::<bool>(egui::Id::new("wordcraft.shortcut.quit"))
         ).unwrap_or(false);

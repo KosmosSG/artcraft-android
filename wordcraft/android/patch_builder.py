@@ -224,12 +224,12 @@ def main() -> None:
     )
     ribbon_text = exactly_once(
         ribbon_text,
-        "                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {\n"
-        "                    // No document open (#1129): nothing to share, edit or comment on — but only",
+        "                    ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {\n"
+        "                        // No document open (#1129): nothing to share, edit or comment on — but only",
         "                #[cfg(target_os = \"android\")]\n"
         "                artcraft_android_menu(ui);\n"
-        "                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {\n"
-        "                    // No document open (#1129): nothing to share, edit or comment on — but only",
+        "                    ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {\n"
+        "                        // No document open (#1129): nothing to share, edit or comment on — but only",
         "place WordCraft launcher icon menu at top left of tab strip",
     )
     ribbon.write_text(ribbon_text + Path(__file__).with_name("ribbon_android.rs.inc").read_text(), encoding="utf-8")

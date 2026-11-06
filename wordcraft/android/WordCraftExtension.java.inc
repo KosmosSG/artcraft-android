@@ -445,6 +445,10 @@
         }
     }
 
+    // WC_ANDROID_FAST_INPUT_V1: notify Rust while the hidden Android IME host
+    // is active so pending keyboard commits are collected on responsive frames.
+    public boolean wcFastInputActive() { return imeWanted; }
+
     private final java.util.concurrent.atomic.AtomicInteger wcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean wcDialogActive;
     private final java.util.concurrent.atomic.AtomicInteger wcNewDocument = new java.util.concurrent.atomic.AtomicInteger();

@@ -88,7 +88,8 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
         "public boolean onKeyUp(int keyCode, KeyEvent event) {",
     ):
         java = replace_exact(java, signature,
-                             signature + "\n                    if (gcHandleQuitShortcut(event)) return true;")
+                             signature + "\n                    if (gcHandleQuitShortcut(event)) return true;" +
+                             "\n                    if (gcHandleSaveAsShortcut(event)) return true;")
 
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",
                          "super.onActivityResult(requestCode, resultCode, data);\n        if (gcHandleActivityResult(requestCode, resultCode, data)) return;")

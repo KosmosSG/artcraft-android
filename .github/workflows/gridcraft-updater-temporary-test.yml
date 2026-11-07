@@ -149,6 +149,7 @@ jobs:
           assert p.count(anchor)==1
           p=p.replace(anchor, 'code = 16781314 if app == "gridcraft" else version_code(version)',1)
           project.write_text(p)
+          java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
           floating=Path("builder/templates/android/updater.rs").read_text()
           icon_menu=Path("tools/gridcraft/android_addons/GridCraftNativeMenu.rs.inc").read_text()
           assert "egui::Area::new" not in floating, "Floating update button must not ship"
@@ -174,7 +175,6 @@ jobs:
 
           for action in ('"check"', '"test"', '"toggle"'):
               assert action in icon_menu, f"Missing menu action {action}"
-          java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
           assert "PackageInstaller" in java and "verifyPackageAndSigner" in java
           PY
           bash -n builder/lib/build-common.sh

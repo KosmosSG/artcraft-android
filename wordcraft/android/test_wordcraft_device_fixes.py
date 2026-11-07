@@ -41,8 +41,10 @@ class WordCraftDeviceFixes(unittest.TestCase):
                        "wc_pressure_segments", "wc_smooth_pressures"):
             self.assertIn(marker, pressure)
         for marker in ("join_next_undo", "draw.stroke", '"width": width',
-                       "pressure_on", "wc_stylus.path_samples"):
+                       "pressure_on", "wc_pressure_segments"):
             self.assertIn(marker, overlay)
+        self.assertIn("wc_stylus.path_samples",
+                      (base / "patch_stylus_ink.py").read_text())
         self.assertIn("app.session.view.draw.ink_to_shape = auto_shape", overlay)
         self.assertNotIn("Pressure-responsive stroke width: Not yet available.", menu)
 

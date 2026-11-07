@@ -41,7 +41,41 @@ public final class ArtCraftUpdater {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final String RELEASES =
             "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
+    private static volatile Release cachedUpdate;
+    private static volatile String menuStatus = "Check GitHub Releases for updates.";
     private ArtCraftUpdater() {}
+
+    /** Read-only UI state for the Wc/Gc top-left icon menus. */
+    public static String menuState(Activity activity, String app, String installedTag,
+                                   String targetPackage) {
+        try {
+            boolean startupEnabled = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+                    .getBoolean("startup_" + app, false);
+            Release ready = cachedUpdate;
+            boolean available = ready != null && compareTags(ready.tag, installedTag, app) > 0;
+            return new JSONObject()
+                    .put("startup", startupEnabled)
+                    .put("available", available)
+                    .put("diagnostics", !activity.getPackageName().equals(targetPackage))
+                    .put("status", menuStatus).toString();
+        } catch (Exception ex) {
+            Log.w(TAG, "Cannot read updater menu status", ex);
+            return "{}";
+        }
+    }
+
+    /** Offer only the verified release found by the previous user-initiated check. */
+    public static void downloadAvailable(Activity activity, String app, String installedTag,
+                                         String targetPackage) {
+        UI.post(() -> {
+            Release release = cachedUpdate;
+            if (release == null || compareTags(release.tag, installedTag, app) <= 0) {
+                message(activity, "Check for updates first.");
+                return;
+            }
+            download(activity, release, targetPackage);
+        });
+    }
 
     /** Called from the app's lightweight egui menu. */
     public static void check(Activity activity, String app, String installedTag, String targetPackage) {
@@ -81,6 +115,8 @@ public final class ArtCraftUpdater {
 
     private static void checkInternal(Activity activity, String app, String installedTag,
                                       String targetPackage, boolean quiet) {
+        menuStatus = "Checking published GitHub Releases…";
+        cachedUpdate = null;
         final java.util.concurrent.atomic.AtomicBoolean checkCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
         final ProgressDialog checking = quiet ? null : new ProgressDialog(activity);
         if (checking != null) {
@@ -95,11 +131,17 @@ public final class ArtCraftUpdater {
                 Release release = latestRelease(app);
                 UI.post(() -> {
                     if (checking != null && checking.isShowing()) checking.dismiss();
-                    if (checkCancelled.get()) return;
+                    if (checkCancelled.get()) {
+                        menuStatus = "Update check cancelled.";
+                        return;
+                    }
                     if (release == null || compareTags(release.tag, installedTag, app) <= 0) {
+                        menuStatus = "Up to date: " + installedTag;
                         if (!quiet) message(activity, "No newer published " + app + " release.");
                         return;
                     }
+                    cachedUpdate = release;
+                    menuStatus = "New version available: " + release.tag;
                     new AlertDialog.Builder(activity)
                         .setTitle("Update " + app)
                         .setMessage("Installed: " + installedTag + "\nPublished: " + release.tag
@@ -112,6 +154,7 @@ public final class ArtCraftUpdater {
                 });
             } catch (Exception error) {
                 Log.e(TAG, "Release check failed", error);
+                menuStatus = "Update check failed; retry when connected.";
                 UI.post(() -> {
                     if (checking != null && checking.isShowing()) checking.dismiss();
                     if (!quiet) error(activity, "Update check failed: " + error.getMessage());

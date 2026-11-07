@@ -145,7 +145,7 @@ jobs:
               block = s[a:b]
               if "python3 - \"$SRC/Cargo.toml\" <<'PY'" not in block:
                   raise SystemExit("STOP: missing expected vendor-patch block")
-              s = s[:a] + 'echo "LightCraft v0.18: retaining pinned egui/winit IME-compatible forks"\\n' + s[b:]
+              s = s[:a] + 'echo "LightCraft v0.18: retaining pinned egui/winit IME-compatible forks"\n' + s[b:]
           p.write_text(s)
           PY
           bash -n builder/lib/build-common.sh

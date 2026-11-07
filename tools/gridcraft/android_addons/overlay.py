@@ -93,8 +93,8 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
 
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",
                          "super.onActivityResult(requestCode, resultCode, data);\n        if (gcHandleActivityResult(requestCode, resultCode, data)) return;")
-    java = replace_exact(java, "super.onCreate(savedInstanceState);",
-                         "super.onCreate(savedInstanceState);\n        gcStartIfEnabled();")
+    # The single ArtCraftUpdater Java bridge owns startup checks. Do not trigger
+    # the legacy GridCraft background checker as a second network request.
     if not java.rstrip().endswith("}"):
         raise RuntimeError("Unexpected GridCraft Java Activity ending")
     # User-controlled, one-shot APK downloader is GridCraft v0.15-only.

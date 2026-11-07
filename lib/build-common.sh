@@ -2215,6 +2215,23 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
             if java_src.count(marker) != 1:
                 raise SystemExit("Cannot safely extend PDFCraft Activity: SAF poll anchor changed")
             java_src = java_src.replace(marker, marker + "\n" + extension, 1)
+            # PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT: if MagicOS delivers a
+            # singleTask MAIN/document intent to a Java Activity whose native
+            # editor has already exited, reconstruct a fresh NativeActivity
+            # instead of handing the intent to a dead renderer.
+            intent_hook = "        setIntent(intent);\\n        applyImmersiveFullscreen();"
+            intent_replacement = """        // PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT
+        if (pdfNativeLoopFinished) {
+            android.util.Log.w("PDFCraftLifecycle", "Stale native loop: recreate for new intent");
+            setIntent(intent);
+            recreate();
+            return;
+        }
+        setIntent(intent);
+        applyImmersiveFullscreen();"""
+            if java_src.count(intent_hook) != 1:
+                raise SystemExit("PDFCraft SAF Activity onNewIntent anchor changed")
+            java_src = java_src.replace(intent_hook, intent_replacement, 1)
             callback = "super.onActivityResult(requestCode, resultCode, data);"
             if java_src.count(callback) != 1:
                 raise SystemExit("Cannot install PDFCraft font picker callback")
@@ -2722,6 +2739,18 @@ impl eframe::App for AndroidShell {{
         platform = platform[:start] + "mod pdfcraft_modifiers;\nuse pdfcraft_modifiers::{AndroidModifiers, apply_android_modifiers};\n\n" + platform[end:]
         shell = shell.replace("modifiers: egui::Modifiers", "modifiers: AndroidModifiers")
         shell = shell.replace("modifiers: egui::Modifiers::default()", "modifiers: AndroidModifiers::default()")
+        # PDFCRAFT_ANDROID_EXIT_BEFORE_LOOP_TEARDOWN: on_exit executes while
+        # NativeActivity/JVM are still alive. Persist first, then finish the
+        # Java Activity so the next launcher tap starts a fresh native loop.
+        # The earlier *post-run_native* finish often ran after native teardown.
+        exit_hook = "    fn on_exit(&mut self) {\\n        self.persist_now();\\n    }"
+        if shell.count(exit_hook) != 1:
+            raise SystemExit("PDFCraft on_exit lifecycle anchor changed")
+        shell = shell.replace(exit_hook, """    fn on_exit(&mut self) {
+        self.persist_now();
+        finish_pdfcraft_android_activity(&self.app);
+    }""", 1)
+
 
     if app == "pdfcraft":
         # PDFCraft-only; the document-font cache is separate from UI system-font fallbacks.
@@ -2854,10 +2883,10 @@ fn android_main(android_app: android_activity::AndroidApp) {{
     }}
 }}
 '''
-    # PDFCRAFT_ANDROID_ACTIVITY_FINISH: the default singleTask Activity must be
-    # finished after eframe's native loop returns. Otherwise the launcher icon
-    # delivers onNewIntent to a stopped native loop, leaving a blank/unlaunchable
-    # activity until app data is cleared. Never kill the process or clear data.
+    # PDFCRAFT_ANDROID_ACTIVITY_FINISH: ensure singleTask Activity.finish
+    # is requested from AndroidShell::on_exit BEFORE the native loop is torn
+    # down. The post-run_native request below is a secondary fallback only.
+    # No force-stop, process exit, settings deletion or clear-data workaround.
     if app == "pdfcraft":
         helper = r'''
 #[cfg(target_os = "android")]
@@ -2870,11 +2899,11 @@ fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
         let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = activity_app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("finish"), jni_sig!("()V"), &[])?;
+            env.call_method(&*activity, jni_str!("pdfFinishNativeLoop"), jni_sig!("()V"), &[])?;
             Ok(())
         });
         if let Err(error) = result {
-            log::error!("PDFCraft Android Activity.finish failed: {error}");
+            log::error!("PDFCraft Java native loop finish request failed: {error}");
         }
     }));
 }
@@ -2889,8 +2918,8 @@ fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
         entry = entry.replace(options_anchor,
                               '    let exit_activity = android_app.clone();\n' + options_anchor, 1)
         footer_anchor = '    if let Err(error) = result {\n        log::error!("'
-        # The final result is eframe::run_native; after it returns, close the Java
-        # NativeActivity on the main thread so MagicOS can create a new instance.
+        # Best-effort fallback if eframe exits without calling AndroidShell::on_exit.
+        # Java pdfFinishNativeLoop is idempotent and preserves application data.
         footer_index = entry.rfind(footer_anchor)
         if footer_index < entry.index('let result = eframe::run_native('):
             raise SystemExit("PDFCraft run_native completion anchor changed")

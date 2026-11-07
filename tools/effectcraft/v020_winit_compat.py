@@ -51,6 +51,15 @@ def apply(local: Path, pinned: Path) -> None:
         raise RuntimeError("STOP: malformed Android input match; refuse to patch")
 
     old_motion = original[old_start:old_end]
+    scroll_anchor = "MotionAction::Scroll if pointer_class => {"
+    if old_motion.count(scroll_anchor) != 1:
+        raise RuntimeError("STOP: expected one Android mouse scroll source guard in legacy winit")
+    # Some Android tablet trackpads identify a two-finger AXIS_VSCROLL
+    # gesture as a generic motion source, not Source::Touchpad/Mouse. This
+    # must still be a MouseWheel event; the existing code forwards it only
+    # when a pointer is classified as a mouse. The rest of pointer and
+    # touch/stylus gesture handling remains unchanged.
+    old_motion = old_motion.replace(scroll_anchor, "MotionAction::Scroll => {", 1)
     upstream_motion = upstream[new_start:new_end]
     if "pointer_class" not in old_motion or "MouseWheel" not in old_motion or "MouseInput" not in old_motion:
         raise RuntimeError("STOP: local mouse/scroll/right-click features missing")
@@ -69,7 +78,7 @@ def apply(local: Path, pinned: Path) -> None:
     merged = merged.replace(HELPER_END, extra + HELPER_END, 1)
     if merged.count("reset_ime_with_request") != upstream.count("reset_ime_with_request"):
         raise RuntimeError("STOP: incompatible IME reset change detected")
-    if merged.count(END) != 1 or merged.count("MouseWheel") < 1:
+    if merged.count(END) != 1 or merged.count("MouseWheel") < 1 or "MotionAction::Scroll if pointer_class => {" in merged or "MotionAction::Scroll => {" not in merged:
         raise RuntimeError("STOP: generated Android input patch failed structural checks")
     pinned.write_text(merged, encoding="utf-8")
     print("PASS: pinned winit IME and Android mouse/hover/wheel/secondary-click paths preserved")

@@ -16,17 +16,79 @@ def replace_once(src: str, old: str, new: str, what: str) -> str:
 def patch_sources(menus: str, bar: str, chrome: str) -> tuple[str, str, str]:
     menus = replace_once(menus, "pub use bar::menu_bar;\n", """pub use bar::menu_bar;
 
-// Android puts the existing Vc menu beneath its existing branded mark,
-// rather than adding a second text-labelled Vc button beside Home.
+// Compact Android top-left Vc menu, arranged like GridCraft's grouped launcher.
+// Keep upstream's entire menu tree and the same action IDs. No duplicate About
+// or diagnostics entries inside this launcher; native desktop menus stay intact.
 #[cfg(target_os = "android")]
 pub(crate) fn android_vc_menu(app: &mut VectorcraftApp, response: &egui::Response) {
     let tree = tree::menu_tree_named(app.session.prefs.font_names_in_english);
-    if let Some((_, items)) = tree.iter().find(|(name, _)| *name == "Vc") {
+    if tree.iter().any(|(name, _)| *name == "Vc") {
         let mut clicked: Option<(String, Value)> = None;
-        egui::Popup::menu(response).show(|ui| bar::menu_body(app, ui, items, &mut clicked));
-        if let Some((id, parameters)) = clicked {
-            invoke::invoke(app, &id, parameters);
-        }
+        egui::Popup::menu(response).show(|ui| {
+            ui.set_min_width(272.0);
+            for (label, id) in [
+                ("Import Fonts (TTF / OTF)…", "android.vectorcraft.fontImport"),
+                ("Choose Shared Font Folder…", "android.vectorcraft.fontFolder"),
+                ("Refresh Shared Fonts", "android.vectorcraft.fontRefresh"),
+            ] {
+                if ui.button(label).clicked() {
+                    clicked = Some((id.into(), serde_json::json!({})));
+                    ui.close();
+                }
+            }
+            ui.separator();
+            ui.menu_button("App Updates", |ui| {
+                ui.set_min_width(250.0);
+                if ui.button("Check for Updates").clicked() {
+                    clicked = Some(("android.vectorcraft.updates".into(), serde_json::json!({})));
+                    ui.close();
+                }
+                if ui.button("Check at Startup").clicked() {
+                    clicked = Some(("android.vectorcraft.startupUpdates".into(), serde_json::json!({})));
+                    ui.close();
+                }
+            });
+            ui.menu_button("Appearance", |ui| {
+                ui.set_min_width(210.0);
+                for (label, brightness) in [("Light", "light"), ("Dark", "dark")] {
+                    if ui.button(label).clicked() {
+                        clicked = Some(("prefs.set".into(), serde_json::json!({
+                            "key": "uiBrightness", "value": brightness
+                        })));
+                        ui.close();
+                    }
+                }
+                if ui.button("More Appearance Settings…").clicked() {
+                    clicked = Some(("edit.preferences".into(), serde_json::json!({ "category": "User Interface" })));
+                    ui.close();
+                }
+            });
+            ui.separator();
+            if ui.button("Touch Shortcut Pad").clicked() {
+                clicked = Some(("android.vectorcraft.touchPad".into(), serde_json::json!({})));
+                ui.close();
+            }
+            if ui.button("Keyboard Shortcuts…").clicked() {
+                clicked = Some(("edit.keyboardShortcuts".into(), serde_json::json!({})));
+                ui.close();
+            }
+            ui.menu_button("Diagnostics", |ui| {
+                if ui.button("Keyboard Diagnostics…").clicked() {
+                    clicked = Some(("android.vectorcraft.keyboardDiagnostics".into(), serde_json::json!({})));
+                    ui.close();
+                }
+                if ui.button("Graphics Diagnostics…").clicked() {
+                    clicked = Some(("android.vectorcraft.diagnostics".into(), serde_json::json!({})));
+                    ui.close();
+                }
+            });
+            ui.separator();
+            if ui.button("About VectorCraft").clicked() {
+                clicked = Some(("help.about".into(), serde_json::json!({})));
+                ui.close();
+            }
+        });
+        if let Some((id, params)) = clicked { invoke::invoke(app, &id, params); }
     }
 }
 """, "menus root helper")

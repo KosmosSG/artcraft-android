@@ -34,7 +34,7 @@ with zipfile.ZipFile(apk) as z:
  # artwork must be embedded byte-identically inside the native library below.
  def compiled_resource(rel):
   parts=rel.parts
-  expected='res/'+parts[0]+'-'+parts[1]+'-v4/'+parts[2] if parts[0].startswith('mipmap') or parts[0]=='drawable-xxxhdpi' else 'res/'+rel.as_posix()
+  expected='res/'+parts[0]+'-v4/'+parts[1] if len(parts)==2 and (parts[0].startswith('mipmap-') or parts[0].startswith('drawable-')) else 'res/'+rel.as_posix()
   return expected if expected in names else ('res/'+rel.as_posix() if 'res/'+rel.as_posix() in names else None)
  for p in (ASSETS/'res').rglob('*.png'):
   if p.name in {'ic_inapp_symbol_64.png', 'ic_inapp_symbol_128.png'}:

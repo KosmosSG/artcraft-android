@@ -461,6 +461,7 @@
     private volatile float wcPenPressure = 0f;
     private volatile float wcPenTilt = 0f;
     private volatile float wcPenPeakPressure = 0f;
+    private volatile float wcPenLastContactPressure = 0f;
     private volatile float wcPenHoverX = Float.NaN;
     private volatile float wcPenHoverY = Float.NaN;
     // Keep historical stylus events that the egui frame-based pointer misses.
@@ -522,8 +523,10 @@
                     wcPenHoverY = Float.NaN;
                 }
                 wcPenPressure = event.getPressure(i);
-                if (wcPenContact && Float.isFinite(wcPenPressure))
+                if (wcPenContact && Float.isFinite(wcPenPressure)) {
+                    wcPenLastContactPressure = wcPenPressure;
                     wcPenPeakPressure = Math.max(wcPenPeakPressure, wcPenPressure);
+                }
                 wcPenTilt = event.getAxisValue(android.view.MotionEvent.AXIS_TILT, i);
                 break;
             }
@@ -552,6 +555,7 @@
         if (action == android.view.MotionEvent.ACTION_DOWN) {
             synchronized (wcStylusTrailLock) { wcStylusTrail.clear(); }
             wcPenPeakPressure = 0f;
+            wcPenLastContactPressure = 0f;
         }
         for (int i = 0; i < event.getPointerCount(); ++i) {
             int tool = event.getToolType(i);
@@ -565,6 +569,9 @@
                     wcPenPeakPressure = Math.max(wcPenPeakPressure, pressure);
             }
             wcAppendStylusPoint(event.getX(i), event.getY(i));
+            float pressure = event.getPressure(i);
+            if (Float.isFinite(pressure) && pressure > 0f)
+                wcPenPeakPressure = Math.max(wcPenPeakPressure, pressure);
         }
     }
 
@@ -595,9 +602,10 @@
         if (wcPenContact) return "Stylus: Contact | pressure " + wcPenPressure
                 + " | peak " + wcPenPeakPressure;
         if (wcPenSeen && wcPenPeakPressure > 0f && !wcPenHover)
-            return "Stylus: Detected | last pressure " + wcPenPressure
+            return "Stylus: Detected | last pressure " + wcPenLastContactPressure
                     + " | peak " + wcPenPeakPressure;
-        if (wcPenHover) return "Stylus: Hovering";
+        if (wcPenHover) return "Stylus: Hovering | last pressure "
+                + wcPenLastContactPressure + " | peak " + wcPenPeakPressure;
         return "Stylus: Detected";
     }
 

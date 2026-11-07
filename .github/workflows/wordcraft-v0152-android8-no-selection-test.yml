@@ -188,6 +188,7 @@ jobs:
           assert "event.getHistoricalX(0, historyIndex)" in java
           assert "wcOnlyFingers(event)" in java
           assert "WC_TWOFINGER_NAV_NO_SELECTION_RUST_V2" in rust
+          assert "let Some(canvas) = canvas_rect else { return };" in rust
           assert "wcTouchNavigationCancellingInk" in java
           assert "cancel.setAction(android.view.MotionEvent.ACTION_CANCEL)" in java
           assert "wcTouchNavConsuming = true" in java

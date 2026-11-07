@@ -1,4 +1,4 @@
-name: WordCraft v0.15.2 Android.4 STYLUS PHASE1 ARM64 TEST ONLY
+name: WordCraft v0.15.2 Android.5 STYLUS SMOOTH INK AND HOVER ARM64 TEST ONLY
 
 on:
   push:
@@ -22,16 +22,16 @@ jobs:
     timeout-minutes: 110
     env:
       ARTCRAFT_UPDATER_TEST_ONLY: 'true'
-      TAG: wordcraft-v0.15.2-android.4
-      APK: WordCraft-v0.15.2-android.4-arm64-v8a.apk
+      TAG: wordcraft-v0.15.2-android.5
+      APK: WordCraft-v0.15.2-android.5-arm64-v8a.apk
       APP: wordcraft
       PACKAGE: com.artcraft.wordcraft.styluscandidate
-      VERSION: 0.15.2-android.4
-      VERSION_CODE: '100015204'
+      VERSION: 0.15.2-android.5
+      VERSION_CODE: '100015205'
       WORDCRAFT_UPSTREAM_COMMIT: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
       WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
-      WORDCRAFT_VERSION_NAME: 0.15.2-android.4
-      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015204"
+      WORDCRAFT_VERSION_NAME: 0.15.2-android.5
+      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015205"
       WORDCRAFT_PACKAGE: com.artcraft.wordcraft.styluscandidate
 
     steps:
@@ -66,6 +66,36 @@ jobs:
           tag_commit="$(git ls-remote https://github.com/storytold/wordcraft.git refs/tags/v0.15.2 | awk '{print $1}')"
           test "$tag_commit" = "$WORDCRAFT_UPSTREAM_COMMIT"
           test -s tools/approved-branding/assets/WordCraft.png
+
+      - name: Verify stylus pressure hover and curve integration before spending build minutes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_stylus_ink.py
+          python3 - <<'PY'
+          from pathlib import Path
+          j = Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          n = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          p = Path("wordcraft/android/patch_builder.py").read_text()
+          overlay = Path("wordcraft/android/patch_stylus_ink.py").read_text()
+          smoothing = Path("wordcraft/android/stylus_curve.rs.inc").read_text()
+          for marker in ("wcTakeStylusTrail", "getHistoricalX", "getHistoricalPressure",
+                         "wcStylusHoverPosition", "wcPenPeakPressure", "wcPenLastContactPressure"):
+              assert marker in j, marker
+          for marker in ("inject_stylus_motion", "wc_stylus.hover_pos", "wc_stylus.path_samples"):
+              assert marker in n, marker
+          assert "apply_stylus_ink" in p and "wc_stylus_samples" in p
+          assert "WC_ANDROID_STYLUS_HOVER_CURSOR_V1" in overlay
+          assert "wc_smooth_stroke" in overlay and "WC_STYLUS_CURVE_SMOOTHING_V1" in smoothing
+          source = Path("builder/source/wordcraft/crates/ui-egui/src/ink.rs").read_text()
+          assert source.count('    paint_lasso(app, painter, rects, layout, scale);') == 1
+          assert source.count('const MIN_STEP_PX: f32 = 1.5;') == 1
+          assert source.count('    let pts: Vec<Pos2> = d.pts.iter().map(|p| map(*p)).collect();') == 1
+          print("PASS: source preflight for smoother WordCraft stylus and noncontact hover")
+          PY
+          cp wordcraft/android/stylus_curve.rs.inc /tmp/wc_smoothing_test.rs
+          rustc --edition=2024 --crate-name wc_smoothing_test --test /tmp/wc_smoothing_test.rs -o /tmp/wc_smoothing_test
+          /tmp/wc_smoothing_test
 
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
@@ -130,13 +160,13 @@ jobs:
           s = source.read_text()
           old = 'version = "0.15.2"'
           assert s.count(old) == 1, 'Review new upstream manifest before changing version'
-          source.write_text(s.replace(old, 'version = "0.15.2-android.4"', 1))
+          source.write_text(s.replace(old, 'version = "0.15.2-android.5"', 1))
           project = Path('builder/lib/android_project.py')
           p = project.read_text()
           formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert p.count(formula) == 1, 'Version-code override location changed: stop'
-          project.write_text(p.replace(formula, 'return 100015204', 1))
-          print('Candidate metadata set: 0.15.2-android.4 / 100015204')
+          project.write_text(p.replace(formula, 'return 100015205', 1))
+          print('Candidate metadata set: 0.15.2-android.5 / 100015205')
           PY
           git -C builder/source/wordcraft diff -- Cargo.toml
           git -C builder diff -- lib/android_project.py
@@ -264,6 +294,11 @@ jobs:
           assert 'wc_menu_stylus_status' in menu and 'wc_menu_stylus_status' in tools
           assert 'app.run("font.add"' in tools
           assert 'wcTouchPairActive = false' in extension
+          assert 'wcStylusHoverPosition' in extension
+          assert 'wcTakeStylusTrail' in extension
+          assert 'inject_stylus_motion' in tools
+          assert 'WC_ANDROID_STYLUS_HOVER_CURSOR_V1' in Path("wordcraft/android/patch_stylus_ink.py").read_text()
+
           assert 'wcImportFonts' in extension
           assert 'wcHandleImportedFonts' in extension
           assert 'WC_COMPACT_GC_STYLE_MENU_V1' in menu, "Gc-style WordCraft menu absent"
@@ -308,13 +343,13 @@ jobs:
           python3 wordcraft/android/adaptive_safe.py builder wordcraft
           cd builder
           bash build.sh -wordcraft -packagename=com.artcraft.wordcraft.styluscandidate -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
-          test -s output/wordcraft-0.15.2-android.4.apk
+          test -s output/wordcraft-0.15.2-android.5.apk
 
       - name: Check compiled APK package, ARM64, version, icon, signature and hash
         shell: bash
         run: |
           set -euo pipefail
-          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.4.apk"
+          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.5.apk"
           test -s "$apk"
           python3 - "$apk" <<'PY'
           import sys, zipfile
@@ -341,8 +376,8 @@ jobs:
           grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
           badging="$("$aapt2" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft.styluscandidate'"
-          printf '%s\n' "$badging" | grep -F "versionCode='100015204'"
-          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.4'"
+          printf '%s\n' "$badging" | grep -F "versionCode='100015205'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.5'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           sha256sum "$apk"
           echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
@@ -353,7 +388,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apk="builder/output/wordcraft-0.15.2-android.4.apk"
+          apk="builder/output/wordcraft-0.15.2-android.5.apk"
           aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$aapt2" dump badging "$apk" | grep -F "name='com.artcraft.wordcraft.styluscandidate'"
@@ -362,15 +397,15 @@ jobs:
           test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/styluscandidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$apk" candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-APPEARANCE-TEMP-TEST.apk
+          cp "$apk" candidate/WordCraft-v0.15.2-android.5-ARM64-SMOOTH-HOVER-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload temporary signed ARM64 updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: WordCraft-Stylus-CompactWc-Appearance-ARM64-TEMP-TEST
+          name: WordCraft-Stylus-SmoothCurves-Hover-ARM64-TEMP-TEST
           path: |
-            candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-APPEARANCE-TEMP-TEST.apk
+            candidate/WordCraft-v0.15.2-android.5-ARM64-SMOOTH-HOVER-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

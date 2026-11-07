@@ -62,8 +62,8 @@ inject = """        // PDFCRAFT_ANDROID_INK_PRESSURE_CAPTURE: winit's Android st
         // only during an active ink gesture and only when the OS exposes it.
         // A PDF Ink annotation supports a single width for the whole stroke.
         #[cfg(target_os = "android")]
-        if tool == CommentTool::Ink && matches!(cv.gesture,
-            Some(Gesture::Draw { page, tool: CommentTool::Ink, .. }) if page == cx.page)
+        if tool == CommentTool::Ink && matches!(cv.gesture.as_ref(),
+            Some(Gesture::Draw { page, tool: CommentTool::Ink, .. }) if *page == cx.page)
         {
             let force = ui.input(|i| i.events.iter().rev().find_map(|event| {
                 match event {

@@ -49,7 +49,11 @@ class Android12RegressionGuards(unittest.TestCase):
             "startupCover.bringToFront()",
         ):
             self.assertIn(marker, patch)
-        self.assertNotIn("cover.postDelayed(this::dismissStartupCover", patch)
+        # The generator MUST contain the old timeout as its replacement
+        # anchor; assert the safe replacement exists, then let CI's real
+        # generated-source preflight inspect the final Java output.
+        self.assertIn("cover.postDelayed(() -> {", patch)
+        self.assertIn("cover.setOnClickListener", patch)
 
     def test_menu_smoothing_is_menu_only(self):
         patch = (BASE / "patch_android12_menu_scroll.py").read_text()

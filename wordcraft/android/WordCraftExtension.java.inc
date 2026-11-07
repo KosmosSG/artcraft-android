@@ -535,12 +535,24 @@
 
     // WC_ANDROID_STYLUS_HISTORY_V1: preserve Android's historical pen movement
     // while forwarding the original event to GameActivity unmodified.
-    private void wcAppendStylusPoint(float x, float y) {
+    private static final String WC_PRESSURE_PREFS = "wordcraft_android_stylus";
+    // WC_PRESSURE_TOGGLE_V1: opt-in, persistent per Android app install.
+    public boolean wcPressureInkEnabled() {
+        return getSharedPreferences(WC_PRESSURE_PREFS, MODE_PRIVATE)
+                .getBoolean("pressure_ink", false);
+    }
+    public void wcSetPressureInkEnabled(boolean on) {
+        getSharedPreferences(WC_PRESSURE_PREFS, MODE_PRIVATE).edit()
+                .putBoolean("pressure_ink", on).apply();
+    }
+
+    private void wcAppendStylusPoint(float x, float y, float pressure) {
         if (!Float.isFinite(x) || !Float.isFinite(y)) return;
+        if (!Float.isFinite(pressure) || pressure <= 0f) pressure = 0f;
         synchronized (wcStylusTrailLock) {
             while (wcStylusTrail.size() >= WC_STYLUS_TRAIL_LIMIT)
                 wcStylusTrail.pollFirst();
-            wcStylusTrail.addLast(Float.toString(x) + "," + Float.toString(y));
+            wcStylusTrail.addLast(Float.toString(x) + "," + Float.toString(y) + "," + Float.toString(pressure));
         }
     }
 
@@ -563,12 +575,13 @@
                     && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) continue;
             final int count = event.getHistorySize();
             for (int h = Math.max(0, count - 80); h < count; ++h) {
-                wcAppendStylusPoint(event.getHistoricalX(i, h), event.getHistoricalY(i, h));
+                wcAppendStylusPoint(event.getHistoricalX(i, h), event.getHistoricalY(i, h),
+                        event.getHistoricalPressure(i, h));
                 float pressure = event.getHistoricalPressure(i, h);
                 if (Float.isFinite(pressure))
                     wcPenPeakPressure = Math.max(wcPenPeakPressure, pressure);
             }
-            wcAppendStylusPoint(event.getX(i), event.getY(i));
+            wcAppendStylusPoint(event.getX(i), event.getY(i), event.getPressure(i));
             float pressure = event.getPressure(i);
             if (Float.isFinite(pressure) && pressure > 0f)
                 wcPenPeakPressure = Math.max(wcPenPeakPressure, pressure);

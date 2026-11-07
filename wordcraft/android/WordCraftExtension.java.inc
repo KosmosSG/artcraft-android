@@ -789,6 +789,16 @@
         if (wcHasStylus(event)) {
             wcRecordStylus(event);
             wcCaptureStylusHistory(event);
+            if (event != null
+                    && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                // Stylus is an independent editing tool. Starting a new pen
+                // stroke must clear the previous finger navigation latch.
+                synchronized (wcTouchPanLock) {
+                    wcTouchNavSuppressInk = false;
+                    wcTouchNavConsuming = false;
+                    wcTouchPairActive = false;
+                }
+            }
         }
         if (wcRejectPalm(event)) return true;
         if (event == null || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)

@@ -66,6 +66,19 @@ public final class ArtCraftUpdater {
         });
     }
 
+    /** End-to-end download/checksum test: never invokes Android's installer. */
+    public static void testDownload(Activity activity, String app, String installedTag, String targetPackage) {
+        IO.execute(() -> {
+            try {
+                Release release = latestRelease(app);
+                if (release == null) throw new IllegalStateException("No published ARM64 asset found");
+                UI.post(() -> download(activity, release, targetPackage, true));
+            } catch (Exception ex) {
+                UI.post(() -> error(activity, "Updater test failed: " + ex.getMessage()));
+            }
+        });
+    }
+
     private static void checkInternal(Activity activity, String app, String installedTag,
                                       String targetPackage, boolean quiet) {
         final java.util.concurrent.atomic.AtomicBoolean checkCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -171,6 +184,11 @@ public final class ArtCraftUpdater {
     }
 
     private static void download(Activity activity, Release release, String targetPackage) {
+        download(activity, release, targetPackage, false);
+    }
+
+    private static void download(Activity activity, Release release, String targetPackage,
+                                 boolean verificationOnly) {
         ProgressDialog progress = new ProgressDialog(activity);
         progress.setTitle("Downloading " + release.tag);
         progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
@@ -209,6 +227,17 @@ public final class ArtCraftUpdater {
                 if (!hex(sha.digest()).equalsIgnoreCase(expected))
                     throw new SecurityException("APK SHA-256 verification failed");
                 verifyPackageAndSigner(activity, apk, targetPackage);
+                if (verificationOnly) {
+                    if (!apk.delete()) Log.w(TAG, "Could not remove test APK");
+                    UI.post(() -> {
+                        progress.dismiss();
+                        new AlertDialog.Builder(activity)
+                            .setTitle("Updater test passed")
+                            .setMessage("GitHub download, APK identity, signing certificate and SHA-256 verified. No app was installed.")
+                            .setPositiveButton("OK", null).show();
+                    });
+                    return;
+                }
                 UI.post(() -> {
                     progress.dismiss();
                     new AlertDialog.Builder(activity)

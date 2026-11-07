@@ -714,7 +714,7 @@
     private boolean wcTouchPairActive, wcTouchNavConsuming;
     private volatile boolean wcTouchNavSuppressInk;
     private int wcTouchMode; // 0 unknown, 1 pan, 2 pinch
-    private float wcTouchStartSpan, wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
+    private float wcTouchStartSpan, wcTouchStartX, wcTouchStartY, wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
     private float wcTouchZoom = 1f;
     private volatile float wcCanvasLeft = Float.NaN, wcCanvasTop = Float.NaN;
@@ -755,7 +755,7 @@
             if (wcTouchMode == 0) {
                 if (Math.abs(spanChange) > Math.max(8f, wcTouchStartSpan * .03f))
                     wcTouchMode = 2;
-                else if (Math.hypot(dx, dy) > 2.5f
+                else if (Math.hypot(x - wcTouchStartX, y - wcTouchStartY) > 4f
                         && Math.abs(spanChange) < Math.max(8f, wcTouchStartSpan * .03f))
                     wcTouchMode = 1;
             }
@@ -769,6 +769,7 @@
             }
         } else {
             wcTouchStartSpan = Math.max(span, 1f);
+            wcTouchStartX = x; wcTouchStartY = y;
         }
         wcTouchPairActive = true;
         wcTouchLastX = x; wcTouchLastY = y; wcTouchLastSpan = span;
@@ -822,6 +823,8 @@
                 }
                 // Consume the remaining one-finger events until the full
                 // gesture ends; otherwise the last finger selects text.
+                if (action == android.view.MotionEvent.ACTION_POINTER_UP)
+                    wcTouchPairActive = false;
                 if (action == android.view.MotionEvent.ACTION_UP
                         || action == android.view.MotionEvent.ACTION_CANCEL) {
                     wcTouchNavConsuming = false;

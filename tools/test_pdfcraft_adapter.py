@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.19.0-android.1'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.19.0-android.3'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.19.0-android.1'
+    assert cargo['package']['version'] == '0.19.0-android.3'
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['dependencies']['sha2'] == '0.10'
     assert cargo['package']['metadata']['android']['assets'] == 'ocr-assets'
@@ -48,8 +48,23 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'mod pdfcraft_ocr;' in native
     assert 'fn finish_pdfcraft_android_activity(' in native
     assert 'finish_pdfcraft_android_activity(&exit_activity);' in native
-    assert 'jni_str!("finish")' in native
+    assert 'jni_str!("pdfFinishNativeLoop")' in native
+    assert native.count('finish_pdfcraft_android_activity(') >= 3
+    assert 'fn on_exit(&mut self)' in native
+    assert native.index('fn on_exit(&mut self)') < native.index('let result = eframe::run_native(')
+    assert 'self.persist_now();\\n        finish_pdfcraft_android_activity(&self.app);' in native
     assert native.index('let result = eframe::run_native(') < native.index('finish_pdfcraft_android_activity(&exit_activity);')
+    # Stale singleTask intents must recreate rather than target a dead native loop.
+    java_file = android / 'java' / 'com' / 'artcraft' / 'pdfcraft' / 'PdfCraftActivity.java'
+    java_sources = list((android / 'java').rglob('*.java'))
+    assert len(java_sources) == 1, java_sources
+    java = java_sources[0].read_text()
+    assert 'PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT' in java
+    assert 'if (pdfNativeLoopFinished)' in java
+    assert 'recreate();' in java
+    assert 'public void pdfFinishNativeLoop()' in java
+    assert 'finishAndRemoveTask();' in java
+    assert 'pdfNativeLoopFinished = true;' in java
     assert 'std::process::exit(' not in native
     assert 'PDFCRAFT_ANDROID_ACTIVITY_FINISH' in (root/'lib/build-common.sh').read_text()
     assert native.index('pdfcraft_ocr::initialize(&android_app);') < native.index('let saf_bridge = saf::Bridge::new(&android_app);')

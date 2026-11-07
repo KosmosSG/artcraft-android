@@ -109,6 +109,51 @@ fn artcraft_android_menu(ui: &mut Ui) {
             }
         });
         ui.separator();
+        // WC_GC_STYLE_APPEARANCE_V1: Reuse WordCraft's persistent interface
+        // theme (ui.theme) rather than GridCraft's page-only view.darkMode.
+        ui.menu_button("Appearance", |ui| {
+            ui.set_min_width(250.0);
+            let mut dark = ui.ctx().theme() == egui::Theme::Dark;
+            if ui.checkbox(&mut dark, "Dark mode").changed() {
+                let action = if dark { "theme_dark" } else { "theme_light" };
+                ui.ctx().data_mut(|d| d.insert_temp(
+                    egui::Id::new("wc_menu_action"), action.to_owned()
+                ));
+                ui.ctx().request_repaint();
+                ui.close();
+            }
+            ui.menu_button("Theme preferences (System / Light / Dark)", |ui| {
+                let selected = ui.ctx().data(|d|
+                    d.get_temp::<String>(egui::Id::new("wc_menu_interface_theme"))
+                ).unwrap_or_else(|| "system".to_owned());
+                for (label, code, action) in [
+                    ("System (follow device)", "system", "theme_system"),
+                    ("Light", "light", "theme_light"),
+                    ("Dark", "dark", "theme_dark"),
+                ] {
+                    if ui.selectable_label(selected == code, label).clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(
+                            egui::Id::new("wc_menu_action"), action.to_owned()
+                        ));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                }
+            });
+            ui.separator();
+            let mut dark_page = ui.ctx().data(|d|
+                d.get_temp::<bool>(egui::Id::new("wc_menu_dark_page"))
+            ).unwrap_or(false);
+            if ui.checkbox(&mut dark_page, "Dark document pages").changed() {
+                let action = if dark_page { "page_dark_on" } else { "page_dark_off" };
+                ui.ctx().data_mut(|d| d.insert_temp(
+                    egui::Id::new("wc_menu_action"), action.to_owned()
+                ));
+                ui.ctx().request_repaint();
+                ui.close();
+            }
+            ui.small("Page colours are separate from the interface theme.");
+        });
         ui.menu_button("Keyboard & Shortcuts", |ui| {
             ui.set_min_width(230.0);
             let mut pad = ui.ctx().data(|d|

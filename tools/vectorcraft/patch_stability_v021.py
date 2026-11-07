@@ -270,9 +270,8 @@ def patch_startup(root):
 
     @Override
     protected void onNewIntent(Intent intent) {''')
-    s=once(s,'        startupStage("activity_created");','''        // The Android 12 system splash stays until our branded native cover
-        // exists, NOT until the native frame (which would deadlock pre-draw).
-        // This closes the black flash between system splash and SurfaceView.
+    s=once(s,'        splash.setKeepOnScreenCondition(() -> !nativeEditorReady);','''        // The Android system splash stays only until our branded cover exists.
+        // Waiting for PixelCopy here would deadlock native pre-draw.
         final long coverDeadlineMs = android.os.SystemClock.uptimeMillis() + 3000L;
         splash.setKeepOnScreenCondition(() -> startupCover == null
             && android.os.SystemClock.uptimeMillis() < coverDeadlineMs);

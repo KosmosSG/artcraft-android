@@ -37,7 +37,16 @@ once(
 path = src / "crates/ui-egui/src/tools/comments/input.rs"
 original = path.read_text()
 if "PDFCRAFT_ANDROID_INK_PRESSURE_CAPTURE" in original:
-    raise SystemExit("Refusing to patch PDFCraft pressure overlay twice")
+    # The Android builder intentionally re-runs every guarded patch to prove
+    # it is idempotent. A complete installed overlay must be a harmless no-op.
+    if "PDFCRAFT_ANDROID_INK_PRESSURE_COMMIT" not in original:
+        raise SystemExit("Partial Android pressure overlay: review required")
+    if "PDFCRAFT_ANDROID_INK_PRESSURE_STATE" not in (
+        src / "crates/ui-egui/src/tools/comments/state.rs"
+    ).read_text():
+        raise SystemExit("Missing Android ink force state: review required")
+    print("PASS: Android PDF ink pressure overlay already applied (idempotent)")
+    sys.exit(0)
 start = """            cv.gesture = Some(Gesture::Draw { page: cx.page, tool, points: vec![cx.to_user(o)] });
             cv.selected = None;
 """

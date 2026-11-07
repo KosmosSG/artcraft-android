@@ -616,7 +616,12 @@
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) wcRecordStylus(event);
         if (wcRejectPalm(event)) return true;
-        if (event != null && event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)) {
+        if (wcHasStylus(event)) {
+            synchronized (wcTouchPanLock) { wcTouchPairActive = false; }
+        }
+        if (event != null
+                && event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)
+                && !wcHasStylus(event)) {
             synchronized (wcTouchPanLock) {
                 int action = event.getActionMasked();
                 if (event.getPointerCount() == 2

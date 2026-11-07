@@ -19,6 +19,15 @@ class MenuAndPickerTest(unittest.TestCase):
                           "Check for Updates", "Startup Update Check", "About EffectCraft"):
                 self.assertIn(title, result)
             self.assertIn('#[cfg(not(target_os = "android"))]', result)
+            self.assertIn('egui::ScrollArea::vertical()', result)
+            self.assertIn('.max_height(250.0)', result)
+            self.assertIn('ui.menu_button("Appearance"', result)
+            for mode in ('("System", "auto")', '("Light", "light")', '("Dark", "dark")'):
+                self.assertIn(mode, result)
+            self.assertIn('app.set_pref(', result)
+            self.assertIn('"appearance.appearanceMode"', result)
+            self.assertIn('app.apply_prefs(ui.ctx())', result)
+            self.assertIn('ui.selectable_label(current == value, label)', result)
             with self.assertRaisesRegex(RuntimeError, "STOP"):
                 patch_header(root)
 

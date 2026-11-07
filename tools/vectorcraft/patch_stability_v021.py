@@ -150,7 +150,7 @@ def patch_adapter(root):
 
 def patch_dialog(root):
     src=root/'source/vectorcraft/crates/ui-egui/src';p=src/'shortcuts.rs';s=p.read_text()
-    // Handle Save Changes keys even if Android left egui's viewport unfocused.
+    # Handle Save Changes keys even if Android left egui's viewport unfocused.
     s=once(s,'''    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {''','''    #[cfg(any(target_os = "android", test))]
     if app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND)
         && ctx.input(|input| input.events.iter().any(|event| matches!(event,

@@ -157,7 +157,7 @@ def main() -> None:
         "    wc_logic = '        self.inner.android_capture_unsaved_dcs(ctx);\\n        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ctx);\\n        self.wc.poll(&mut self.inner, ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_trackpad_scroll = '        self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
-        "    wc_touch_pan = '        self.wc.inject_touch_pan(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_touch_pan = '        self.wc.inject_touch_pan(ctx, raw, self.modifiers, self.inner.canvas.canvas_rect);\\n' if app == 'wordcraft' else ''\n"
         "    wc_stylus_samples = '        self.wc.inject_stylus_motion(ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_clip_dedupe = '        self.wc.deduplicate_clipboard_input(raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n        if let Some(copy) = ui.ctx().output(|o| o.commands.iter().rev().find_map(|c| match c { egui::OutputCommand::CopyText(text) => Some(text.clone()), _ => None })) { android_clipboard_set(&self.app, &copy); }\\n' if app == 'wordcraft' else ''\n"

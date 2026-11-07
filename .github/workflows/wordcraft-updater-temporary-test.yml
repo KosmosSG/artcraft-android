@@ -240,6 +240,17 @@ jobs:
 
           for action in ('"check"', '"test"', '"toggle"'):
               assert action in icon_menu, f"Missing menu action {action}"
+          extension = Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          patch_builder = Path("wordcraft/android/patch_builder.py").read_text()
+          wc_native = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          assert "WC_INDIVIDUAL_FONT_IMPORT_V1" in extension
+          assert "Intent.ACTION_OPEN_DOCUMENT" in extension
+          assert "Intent.EXTRA_ALLOW_MULTIPLE" in extension
+          assert "wcHandleImportedFonts(resultCode, data)" in patch_builder
+          assert '"font_import"' in icon_menu and "wcImportFonts" in wc_native
+          assert '("Import Fonts (TTF / OTF)…", "font_import")' in icon_menu
+          assert "wcRefreshFontFolder" in extension and "WC_MAX_FONTS = 5_000" in extension
+          assert 'app.run("font.add"' in wc_native
           assert "PackageInstaller" in java and "verifyPackageAndSigner" in java
           assert "progress.isCanceled()" not in java
           PY
@@ -309,15 +320,15 @@ jobs:
           test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/updatercandidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$apk" candidate/WordCraft-v0.15.2-android.3-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
+          cp "$apk" candidate/WordCraft-v0.15.2-android.3-ARM64-FONT-IMPORT-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload temporary signed ARM64 updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: WordCraft-Unified-Updater-ARM64-TEMP-TEST
+          name: WordCraft-FontImport-ARM64-TEMP-TEST
           path: |
-            candidate/WordCraft-v0.15.2-android.3-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
+            candidate/WordCraft-v0.15.2-android.3-ARM64-FONT-IMPORT-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

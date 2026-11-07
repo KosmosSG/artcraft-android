@@ -23,10 +23,11 @@ fn artcraft_android_menu(ui: &mut Ui) {
         ui.set_min_width(270.0);
         let refreshing = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_font_busy"))).unwrap_or(false);
         for (label, action) in [
+            ("Import Fonts (TTF / OTF)…", "font_import"),
             ("Choose shared font folder…", "font_folder"),
             ("Refresh shared fonts", "font_refresh"),
         ] {
-            let font_action = action == "font_folder" || action == "font_refresh";
+            let font_action = matches!(action, "font_import" | "font_folder" | "font_refresh");
             let label = if refreshing && action == "font_refresh" { "Refreshing fonts…" } else { label };
             if ui.add_enabled(!font_action || !refreshing, egui::Button::new(label)).clicked() {
                 ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("wc_menu_action"), action.to_owned()));

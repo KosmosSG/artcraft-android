@@ -55,6 +55,7 @@ public final class ArtCraftUpdater {
             boolean available = ready != null && compareTags(ready.tag, installedTag, app) > 0;
             return new JSONObject()
                     .put("startup", startupEnabled)
+                    .put("installed", installedTag)
                     .put("available", available)
                     .put("diagnostics", !activity.getPackageName().equals(targetPackage))
                     .put("status", menuStatus).toString();
@@ -97,6 +98,21 @@ public final class ArtCraftUpdater {
             prefs.edit().putBoolean("startup_" + app, enabled).apply();
             message(activity, "Check at startup " + (enabled ? "enabled" : "disabled")
                     + ". Downloads and installation always require confirmation.");
+        });
+    }
+
+    /** Read-only release-notes shortcut for the currently validated published update. */
+    public static void viewAvailable(Activity activity, String app, String installedTag,
+                                     String targetPackage) {
+        UI.post(() -> {
+            Release release = cachedUpdate;
+            if (release == null || compareTags(release.tag, installedTag, app) <= 0) {
+                message(activity, "Check for updates first.");
+                return;
+            }
+            Intent intent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/KosmosSG/artcraft-android/releases/tag/" + release.tag));
+            activity.startActivity(intent);
         });
     }
 

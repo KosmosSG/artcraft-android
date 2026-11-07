@@ -40,17 +40,53 @@ mod android_stability_tests {
     }
     #[test]
     fn android_stability_failed_or_cancelled_save_retains_work() {
-        for cancel in [true,false] {
-            let mut app=app();
-            if cancel {app.services.pick_save=Some(Box::new(|_:&crate::FilePick|None));}
-            else {app.services.write=Some(Box::new(|_:&str,_:&[u8]|Err("provider failure".into())));}
-            dirty(&mut app);app.run("app.quit",json!({})).unwrap();
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Both paths must really invoke the Save service, but a failed write
+        // intentionally opens the upstream "Can't save" message dialog.
+        // Requiring dialog.is_none() here erroneously panicked on a valid UI.
+        for cancel in [true, false] {
+            let mut app = app();
+            let attempted = Arc::new(AtomicUsize::new(0));
+            let attempt = Arc::clone(&attempted);
+            if cancel {
+                app.services.pick_save = Some(Box::new(move |_: &crate::FilePick| {
+                    attempt.fetch_add(1, Ordering::SeqCst);
+                    None // User cancelled the SAF / Save As picker.
+                }));
+            } else {
+                app.services.write = Some(Box::new(move |_: &str, _: &[u8]| {
+                    attempt.fetch_add(1, Ordering::SeqCst);
+                    Err("provider failure".into())
+                }));
+            }
+
+            dirty(&mut app);
+            app.run("app.quit", json!({})).unwrap();
             assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND));
-            press(&mut app,Key::S);
-            // Do not permit a vacuous pass when the key handler was never called.
-            assert!(app.ui.dialog.is_none(), "S must attempt Save, even when the picker or provider fails");
-            assert_eq!(app.session.documents().len(),1);
-            assert!(app.session.active().unwrap().is_dirty()); assert_ne!(app.ui.status,"quit");
+            press(&mut app, Key::S);
+
+            assert!(
+                attempted.load(Ordering::SeqCst) > 0,
+                "Save must call the picker or writer even if that service fails"
+            );
+            assert_eq!(app.session.documents().len(), 1, "Failed Save must not close the document");
+            assert!(app.session.active().is_some_and(|doc| doc.is_dirty()));
+            assert_ne!(app.ui.status, "quit", "Failed Save must not exit the app");
+
+            if cancel {
+                // A cancelled file picker does not create a separate error message.
+                assert!(app.ui.dialog.is_none(), "Cancel should leave no modal behind");
+            } else {
+                // Upstream write_reporting() deliberately displays a nonfatal
+                // error dialog. Its presence PROVES failure reporting, not a
+                // missing Save attempt; the unsaved document remains editable.
+                assert!(
+                    app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::dialogs::confirm::MESSAGE),
+                    "A failed storage write should show the error-message dialog"
+                );
+            }
         }
     }
     #[test]

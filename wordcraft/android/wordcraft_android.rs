@@ -623,6 +623,19 @@ impl Tools {
     }
 
     pub fn prepare_menu(&self, ctx: &egui::Context, frame: &eframe::Frame) {
+        // WC_ANDROID_STYLUS_INPUT_V1: lightweight Java status snapshot at most every
+        // 300 ms, never interrupting the Draw tab or the touch/trackpad pipeline.
+        let probe_id = egui::Id::new("wc_stylus_probe_at");
+        let probe = ctx.data(|d| d.get_temp::<Instant>(probe_id)
+            .is_none_or(|when| when.elapsed() >= Duration::from_millis(300)));
+        if probe {
+            let status = self.call_string("wcStylusStatus").ok().flatten()
+                .unwrap_or_else(|| "Stylus: Android status unavailable".to_owned());
+            ctx.data_mut(|d| {
+                d.insert_temp(probe_id, Instant::now());
+                d.insert_temp(egui::Id::new("wc_menu_stylus_status"), status);
+            });
+        }
         let gpu = if let Some(render) = frame.wgpu_render_state() {
             let info = render.adapter.get_info();
             format!("GPU: {} ({:?})", info.name, info.backend)

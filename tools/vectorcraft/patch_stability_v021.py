@@ -191,18 +191,38 @@ def patch_startup(root):
         Log.i(TAG, "VC_STARTUP " + stage + "=" + ((android.os.SystemClock.elapsedRealtimeNanos()-activityStartNs)/1000000L) + "ms");
     }''')
     start=s.index('            int bright = 0, dark = 0;');end=s.index('\n        }, splashHandler);',start)
-    s=s[:start]+'''            pixels.recycle();
-            // Probe begins after a second UI traversal. A presented dark frame
-            // is valid; never use theme brightness as readiness detection.
+    s=s[:start]+'''            // PixelCopy.SUCCESS alone may copy only the GPU's initial black
+            // clear, especially on a cold boot after clearing app data. Do not
+            // expose the native SurfaceView until UI contrast is visible twice.
+            int min = 255, max = 0, varied = 0;
+            int first = pixels.getPixel(0, 0);
             if (result == PixelCopy.SUCCESS) {
-                startupStage("first_presented_frame");
+                for (int y = 0; y < pixels.getHeight(); y++) {
+                    for (int x = 0; x < pixels.getWidth(); x++) {
+                        int p = pixels.getPixel(x, y);
+                        int lum = (Color.red(p) * 3 + Color.green(p) * 6 + Color.blue(p)) / 10;
+                        min = Math.min(min, lum);
+                        max = Math.max(max, lum);
+                        if (p != first) varied++;
+                    }
+                }
+            }
+            pixels.recycle();
+            boolean painted = result == PixelCopy.SUCCESS && varied >= 4 && max - min >= 24;
+            verifiedNativeFrames = painted ? verifiedNativeFrames + 1 : 0;
+            if (verifiedNativeFrames >= 2) {
+                startupStage("first_painted_editor");
                 nativeEditorReady = true;
                 dismissStartupCover();
             } else if (!isFinishing() && !isDestroyed()) {
-                splashHandler.postDelayed(this::probeFirstPresentedFrame, 16);
+                splashHandler.postDelayed(this::probeFirstPresentedFrame, 48);
             }'''+s[end:]
-    s=once(s,'        splash.setKeepOnScreenCondition(() -> !nativeEditorReady);','''        // Do not block Android pre-draw while waiting for its native surface.
-        // The app cover remains until PixelCopy confirms a presented buffer.
+    s=once(s,'        startupStage("activity_created");','''        // The Android 12 system splash stays until our branded native cover
+        // exists, NOT until the native frame (which would deadlock pre-draw).
+        // This closes the black flash between system splash and SurfaceView.
+        final long coverDeadlineMs = android.os.SystemClock.uptimeMillis() + 3000L;
+        splash.setKeepOnScreenCondition(() -> startupCover == null
+            && android.os.SystemClock.uptimeMillis() < coverDeadlineMs);
         startupStage("activity_created");''')
     s=s.replace('            probeFirstPresentedFrame();','            startupStage("editor_traversal_ready");\n            probeFirstPresentedFrame();')
     s=once(s,'        firstFrameProbePending = true;','        startupStage("native_surface_ready");\n        firstFrameProbePending = true;')

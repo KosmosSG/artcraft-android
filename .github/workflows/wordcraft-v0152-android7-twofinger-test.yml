@@ -1,0 +1,494 @@
+name: WordCraft v0.15.2 Android.7 TWO-FINGER SCROLL ARM64 TEST ONLY
+
+on:
+  push:
+    branches:
+      - feature/wordcraft-v0152-android7-twofinger-scroll-20261107
+    paths:
+      - '.github/workflows/wordcraft-v0152-android7-twofinger-test.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wordcraft-v0152-android7-twofinger-test
+  cancel-in-progress: true
+
+jobs:
+  isolated-candidate:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/wordcraft-v0152-android7-twofinger-scroll-20261107'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      ARTCRAFT_UPDATER_TEST_ONLY: 'true'
+      TAG: wordcraft-v0.15.2-android.7
+      APK: WordCraft-v0.15.2-android.7-arm64-v8a.apk
+      APP: wordcraft
+      PACKAGE: com.artcraft.wordcraft.scrollcandidate
+      VERSION: 0.15.2-android.7
+      VERSION_CODE: '100015207'
+      WORDCRAFT_UPSTREAM_COMMIT: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
+      WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      WORDCRAFT_VERSION_NAME: 0.15.2-android.7
+      WORDCRAFT_CANDIDATE_VERSION_CODE: "100015207"
+      WORDCRAFT_PACKAGE: com.artcraft.wordcraft.scrollcandidate
+
+    steps:
+      - name: Checkout WordCraft-only candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned reference builder
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout pinned stable WordCraft
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: storytold/wordcraft
+          ref: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
+          path: builder/source/wordcraft
+          persist-credentials: false
+
+      - name: Confirm stable tag, exact commits, isolated input and icon digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$WORDCRAFT_BUILDER_COMMIT"
+          test "$(git -C builder/source/wordcraft rev-parse HEAD)" = "$WORDCRAFT_UPSTREAM_COMMIT"
+          test -z "$(git -C builder/source/wordcraft status --porcelain)"
+          tag_commit="$(git ls-remote https://github.com/storytold/wordcraft.git refs/tags/v0.15.2 | awk '{print $1}')"
+          test "$tag_commit" = "$WORDCRAFT_UPSTREAM_COMMIT"
+          test -s tools/approved-branding/assets/WordCraft.png
+
+      - name: Verify stylus pressure hover and curve integration before spending build minutes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_stylus_ink.py
+          python3 - <<'PY'
+          from pathlib import Path
+          j = Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          n = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          p = Path("wordcraft/android/patch_builder.py").read_text()
+          overlay = Path("wordcraft/android/patch_stylus_ink.py").read_text()
+          smoothing = Path("wordcraft/android/stylus_curve.rs.inc").read_text()
+          for marker in ("wcTakeStylusTrail", "getHistoricalX", "getHistoricalPressure",
+                         "wcStylusHoverPosition", "wcPenPeakPressure", "wcPenLastContactPressure"):
+              assert marker in j, marker
+          for marker in ("inject_stylus_motion", "wc_stylus.hover_pos", "wc_stylus.path_samples"):
+              assert marker in n, marker
+          assert "apply_stylus_ink" in p and "wc_stylus_samples" in p
+          assert "WC_ANDROID_STYLUS_HOVER_CURSOR_V1" in overlay
+          assert "wc_smooth_stroke" in overlay and "WC_STYLUS_CURVE_SMOOTHING_V1" in smoothing
+          source = Path("builder/source/wordcraft/crates/ui-egui/src/ink.rs").read_text()
+          assert source.count('    paint_lasso(app, painter, rects, layout, scale);') == 1
+          assert source.count('const MIN_STEP_PX: f32 = 1.5;') == 1
+          assert source.count('    let pts: Vec<Pos2> = d.pts.iter().map(|p| map(*p)).collect();') == 1
+          print("PASS: source preflight for smoother WordCraft stylus and noncontact hover")
+          PY
+          cp wordcraft/android/stylus_curve.rs.inc /tmp/wc_smoothing_test.rs
+          rustc --edition=2024 --crate-name wc_smoothing_test --test /tmp/wc_smoothing_test.rs -o /tmp/wc_smoothing_test
+          /tmp/wc_smoothing_test
+
+      - name: Validate pressure width module and pinned upstream overlay before Android setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_pressure_ink.py wordcraft/android/patch_stylus_ink.py
+          cp wordcraft/android/stylus_pressure.rs.inc /tmp/wordcraft-pressure-tests.rs
+          rustc --edition=2024 --crate-name wordcraft_pressure_tests --test /tmp/wordcraft-pressure-tests.rs -o /tmp/wordcraft-pressure-tests
+          /tmp/wordcraft-pressure-tests
+          python3 - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          import sys, shutil
+          sys.path.insert(0, "wordcraft/android")
+          from patch_stylus_ink import apply_stylus_ink
+          from patch_pressure_ink import apply_pressure_ink
+          with TemporaryDirectory() as d:
+              root = Path(d)
+              ink = root / "crates" / "ui-egui" / "src" / "ink.rs"
+              ink.parent.mkdir(parents=True)
+              shutil.copyfile("builder/source/wordcraft/crates/ui-egui/src/ink.rs", ink)
+              apply_stylus_ink(root, Path("wordcraft/android/stylus_curve.rs.inc"))
+              apply_pressure_ink(root, Path("wordcraft/android/stylus_pressure.rs.inc"))
+              text = ink.read_text()
+              assert 'wc_pressure_segments(&points, &pressure, base, 12)' in text
+              assert 'app.session.join_next_undo()' in text
+              assert 'painter.line_segment' in text
+              assert 'pressure_on: pressure_requested && had_batch' in text
+              assert 'include!("wordcraft-stylus-pressure.rs.inc")' in text
+          print("PASS: pressure overlay applied to pinned upstream and module tests.")
+          PY
+
+      - name: Regression gate before installing expensive Android tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_stylus_ink.py
+          python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
+          # Pressure-buffer regression now verifies the source owning each
+          # symbol: native sample buffer in patch_stylus_ink, variable-width
+          # persistence in patch_pressure_ink. No Android tools until this passes.
+          python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
+          echo "PASS: D/C/S, clipboard, two-finger scrolling, pressure and hover regressions."
+
+      - name: Verify two-finger touchscreen and trackpad source gates before Android setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
+          python3 - <<'PY'
+          from pathlib import Path
+          java=Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          rust=Path("wordcraft/android/wordcraft_android.rs").read_text()
+          builder=Path("wordcraft/android/patch_builder.py").read_text()
+          assert "WC_TWOFINGER_SCROLL_HISTORY_V1" in java
+          assert "event.getHistoricalX(0, historyIndex)" in java
+          assert "wcOnlyFingers(event)" in java
+          assert "WC_TWOFINGER_CANVAS_GUARD_V1" in rust
+          assert "if !canvas.contains(center) { return; }" in rust
+          assert "self.inner.canvas.canvas_rect" in builder
+          assert 'self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers)' in builder
+          assert "wcRejectPalm(event)" in java
+          assert "wcCaptureStylusHistory(event)" in java
+          print("PASS: two-finger scroll, pinch, palm, pen and document focus safeguards")
+          PY
+
+      - name: Set up Java, Rust and Android build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+          # GitHub's Ubuntu image may have SDK command-line tools installed but not on PATH.
+          # Look only under the runner's Android SDK; do not download unverified installers.
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root" || { echo "::error::Android SDK root not found"; exit 1; }
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_bin" ]]; then
+            sdkmanager_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          if [[ ! -x "$sdkmanager_bin" && -x "$sdk_root/tools/bin/sdkmanager" ]]; then
+            sdkmanager_bin="$sdk_root/tools/bin/sdkmanager"
+          fi
+          test -x "$sdkmanager_bin" || { echo "::error::Android SDK command-line tools missing: install them in a reviewed follow-up"; exit 1; }
+          "$sdkmanager_bin" --sdk_root="$sdk_root" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/wordcraft-icon-env
+          /tmp/wordcraft-icon-env/bin/pip install "Pillow==11.3.0"
+          echo "/tmp/wordcraft-icon-env/bin" >> "$GITHUB_PATH"
+
+      - name: Generate candidate launcher icon from approved WordCraft PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          source = Path("tools/approved-branding/assets/WordCraft.png")
+          target = Path("wordcraft/android/icon/wordcraft-approved-192.png")
+          with Image.open(source) as image:
+              assert image.width >= 192 and image.height >= 192, "Approved artwork too small"
+              image.convert("RGBA").resize((192, 192), Image.Resampling.LANCZOS).save(target)
+          print("Candidate icon generated from tools/approved-branding/assets/WordCraft.png")
+          PY
+
+      - name: Verify regression gate remains valid after preparing build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_unsaved_dcs.py wordcraft/android/patch_unsaved_dcs_v014.py wordcraft/android/patch_builder.py
+          python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
+          python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
+          git -C builder/source/wordcraft diff --exit-code
+
+      - name: Apply isolated Android-only candidate version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          # These changes are confined to ephemeral checkouts, never upstream or suite main.
+          source = Path('builder/source/wordcraft/Cargo.toml')
+          s = source.read_text()
+          old = 'version = "0.15.2"'
+          assert s.count(old) == 1, 'Review new upstream manifest before changing version'
+          source.write_text(s.replace(old, 'version = "0.15.2-android.7"', 1))
+          project = Path('builder/lib/android_project.py')
+          p = project.read_text()
+          formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
+          assert p.count(formula) == 1, 'Version-code override location changed: stop'
+          project.write_text(p.replace(formula, 'return 100015207', 1))
+          print('Candidate metadata set: 0.15.2-android.7 / 100015207')
+          PY
+          git -C builder/source/wordcraft diff -- Cargo.toml
+          git -C builder diff -- lib/android_project.py
+
+      - name: Test asynchronous font refresh feedback
+        run: |
+          rustc --edition=2024 --test wordcraft/android/refresh_feedback.rs -o /tmp/wordcraft-refresh-tests
+          /tmp/wordcraft-refresh-tests
+
+      - name: Integrate WordCraft persistent font import (isolated builder only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          native=Path("wordcraft/android/wordcraft_android.rs").read_text()
+          activity=Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          assert "WC_ANDROID_FAST_INPUT_V1" in native and "WC_ANDROID_FAST_INPUT_V1" in activity
+          assert 'self.call_bool("wcFastInputActive")' in native
+          assert "return imeWanted;" in activity
+          assert "Duration::from_millis(16)" in native
+          print("PASS: WordCraft conditional 16ms IME frame delivery, normal typing and clipboard untouched")
+          PY
+          python3 -m py_compile wordcraft/android/patch_builder.py
+          python3 wordcraft/android/patch_builder.py builder
+          python3 -m unittest discover -s wordcraft/android -p 'test_workspace_v014.py' -v
+          python3 wordcraft/android/workspace_v014.py builder
+          bash -n builder/lib/build-common.sh
+
+      - name: Increase pinned Gradle download timeout and retry packaging only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # All changes below are isolated to the disposable reference-builder
+          # checkout; never alter the upstream repo or production keys.
+          python3 - <<'PY'
+          from pathlib import Path
+          wrapper = Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          w = wrapper.read_text(encoding="utf-8")
+          old_timeout = "networkTimeout=10000\n"
+          assert w.count(old_timeout) == 1, "Pinned Gradle wrapper timeout changed: review before editing"
+          wrapper.write_text(w.replace(old_timeout, "networkTimeout=120000\n", 1), encoding="utf-8")
+          shell = Path("builder/lib/build-common.sh")
+          s = shell.read_text(encoding="utf-8")
+          old_gradle = '    ./gradlew --console=plain "$GRADLE_TASK"\n'
+          assert s.count(old_gradle) == 1, "Pinned builder Gradle invocation changed: review first"
+          retry_gradle = """    bash -c 'for attempt in 1 2; do
+              if ./gradlew --console=plain "$1"; then exit 0; fi
+              if [[ "$attempt" == 2 ]]; then exit 1; fi
+              echo "Transient Gradle download or packaging failure; retrying only Gradle in 8 seconds"
+              sleep 8
+          done' -- "$GRADLE_TASK"
+          """
+          shell.write_text(s.replace(old_gradle, retry_gradle, 1), encoding="utf-8")
+          print("Ephemeral Gradle wrapper: timeout 120000ms; one packaging-only retry")
+          PY
+          bash -n builder/lib/build-common.sh
+
+      - name: Apply updater source to pinned, already patched builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile lib/inapp_updater.py
+          cp templates/android/ArtCraftUpdater.java builder/templates/android/ArtCraftUpdater.java
+          cp templates/android/updater.rs builder/templates/android/updater.rs
+          cp lib/inapp_updater.py builder/lib/inapp_updater.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("builder/lib/build-common.sh")
+          s=p.read_text()
+          anchor='[[ -f "$ANDROID_DIR/Cargo.toml" && -f "$ANDROID_DIR/src/lib.rs" ]] || fail '
+          assert s.count(anchor)==1
+          hook="""if [[ "$APP" == "wordcraft" ]]; then
+              python3 "$ROOT/lib/inapp_updater.py" "$APP" "$ANDROID_DIR" "$ROOT" || fail "Updater integration failed"
+          fi
+          """
+          p.write_text(s.replace(anchor,hook+anchor,1))
+          java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
+          floating=Path("builder/templates/android/updater.rs").read_text()
+          icon_menu=Path("wordcraft/android/ribbon_android.rs.inc").read_text()
+          assert "egui::Area::new" not in floating, "Floating update button must not ship"
+          assert "egui::Window::new" not in floating, "Old update popup must not ship"
+          assert "artcraft.updater.action" in floating, "Menu bridge absent"
+          assert icon_menu.count('ui.menu_button("App Updates"') == 1, "App Updates must be unified"
+          assert icon_menu.count('ui.button("Check for Updates")') == 1, "Duplicate Check for Updates"
+          assert 'ui.menu_button("Verified APK updater"' not in icon_menu, "Legacy updater submenu remains"
+          assert 'ui.button("Download & Install Update…")' in icon_menu
+          assert 'ui.checkbox(&mut startup, "Check at Startup")' in icon_menu
+          assert 'ui.button("View Release Notes…")' in icon_menu
+          assert '"artcraft.updater.available"' in icon_menu
+          assert '"artcraft.updater.diagnostics"' in icon_menu
+          legacy = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          assert 'if tools.startup_updates && tools.call_void("wcCheckForUpdates")' not in legacy
+          assert '"check_updates"' not in icon_menu, "Duplicate legacy WordCraft update option"
+
+          assert 'invoke(android, "download")' in floating
+          assert 'invoke(android, "view")' in floating
+          assert 'poll_menu_state(ctx, android)' in floating
+          assert "downloadAvailable" in java and "menuState" in java and "viewAvailable" in java
+          assert "egui::Window::new" not in floating
+
+          for action in ('"check"', '"test"', '"toggle"'):
+              assert action in icon_menu, f"Missing menu action {action}"
+          extension = Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          patch_builder = Path("wordcraft/android/patch_builder.py").read_text()
+          wc_native = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          assert "WC_INDIVIDUAL_FONT_IMPORT_V1" in extension
+          assert "Intent.ACTION_OPEN_DOCUMENT" in extension
+          assert "Intent.EXTRA_ALLOW_MULTIPLE" in extension
+          assert "wcHandleImportedFonts(resultCode, data)" in patch_builder
+          assert '"font_import"' in icon_menu and "wcImportFonts" in wc_native
+          assert '("Import Fonts (TTF / OTF)…", "font_import")' in icon_menu
+          assert "wcRefreshFontFolder" in extension and "WC_MAX_FONTS = 5_000" in extension
+          assert 'app.run("font.add"' in wc_native
+          # Pen-input bridge is isolated to WordCraft; verified source markers
+          # block burning Actions minutes on an empty or incomplete stylus patch.
+          extension = Path("wordcraft/android/WordCraftExtension.java.inc").read_text()
+          tools = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          menu = Path("wordcraft/android/ribbon_android.rs.inc").read_text()
+          for marker in ('WC_ANDROID_STYLUS_INPUT_V1', 'wcHasStylus(',
+                         'wcRecordStylus(', 'wcRejectPalm(', 'wcStylusStatus()',
+                         'ACTION_HOVER_ENTER', 'TOOL_TYPE_ERASER'):
+              assert marker in extension, f"Missing stylus bridge: {marker}"
+          assert 'wcStylusStatus' in tools
+          assert "wcPressureInkEnabled" in extension
+          assert "wcSetPressureInkEnabled" in extension
+          assert 'Vec<[f32; 3]>' in tools
+          assert 'wc_stylus.pressure_enabled' in tools
+          assert 'ui.checkbox(&mut pressure_on, "Pressure-responsive stroke width")' in menu
+          assert "apply_pressure_ink" in Path("wordcraft/android/patch_builder.py").read_text()
+          assert "WC_ANDROID_PRESSURE_STROKES_V1" in Path("wordcraft/android/stylus_pressure.rs.inc").read_text()
+
+          assert 'wc_menu_stylus_status' in menu and 'wc_menu_stylus_status' in tools
+          assert 'app.run("font.add"' in tools
+          assert 'wcTouchPairActive = false' in extension
+          assert "WC_TWOFINGER_SCROLL_HISTORY_V1" in extension
+          assert "WC_TWOFINGER_CANVAS_GUARD_V1" in tools
+          assert 'self.inner.canvas.canvas_rect' in Path("wordcraft/android/patch_builder.py").read_text()
+
+          assert 'wcStylusHoverPosition' in extension
+          assert 'wcTakeStylusTrail' in extension
+          assert 'inject_stylus_motion' in tools
+          assert 'WC_ANDROID_STYLUS_HOVER_CURSOR_V1' in Path("wordcraft/android/patch_stylus_ink.py").read_text()
+
+          assert 'wcImportFonts' in extension
+          assert 'wcHandleImportedFonts' in extension
+          assert 'WC_COMPACT_GC_STYLE_MENU_V1' in menu, "Gc-style WordCraft menu absent"
+          assert menu.count('ui.menu_button("Font Status & Diagnostics"') == 1
+          assert menu.count('ui.menu_button("Keyboard & Shortcuts"') == 1
+          assert menu.count('ui.menu_button("Stylus & Handwriting"') == 1
+          assert menu.count('ui.menu_button("About WordCraft"') == 1
+          assert menu.count('ui.menu_button("App Updates"') == 1
+          assert menu.count('ui.button("Check for Updates")') == 1
+          assert all(text in menu for text in (
+              '("Import Fonts (TTF / OTF)…", "font_import")',
+              '("Choose Shared Font Folder…", "font_folder")',
+              '("Refresh Shared Fonts", "font_refresh")',
+              '"pad_on"', '"pad_off"', '"keyboard".to_owned()',
+              'wc_menu_stylus_status', 'wc_menu_gpu', 'wc_menu_status'))
+          assert 'WC_GC_STYLE_APPEARANCE_V1' in menu
+          assert menu.count('ui.menu_button("Appearance"') == 1
+          assert 'ui.checkbox(&mut dark, "Dark mode")' in menu
+          assert 'Theme preferences (System / Light / Dark)' in menu
+          assert all(code in menu for code in ('"theme_system"', '"theme_light"', '"theme_dark"'))
+          assert '"Dark document pages"' in menu
+          assert '"page_dark_on"' in menu and '"page_dark_off"' in menu
+          assert 'app.run("ui.theme"' in tools
+          assert 'app.run("view.darkMode"' in tools
+          assert 'app.ui.theme.code()' in tools
+          assert 'app.session.view.dark_mode' in tools
+          assert 'Handwriting-to-editable-text: In development.' in menu
+          assert 'ui.menu_button("App Updates"' in menu
+          assert "Handwriting-to-editable-text: In development." in menu
+          assert "Pressure-responsive stroke width: Not yet available." not in menu
+          assert "PackageInstaller" in java and "verifyPackageAndSigner" in java
+          assert "progress.isCanceled()" not in java
+          PY
+          bash -n builder/lib/build-common.sh
+
+      - name: Compile candidate with per-run temporary builder key
+        shell: bash
+        timeout-minutes: 60
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          python3 wordcraft/android/adaptive_safe.py builder wordcraft
+          cd builder
+          bash build.sh -wordcraft -packagename=com.artcraft.wordcraft.scrollcandidate -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
+          test -s output/wordcraft-0.15.2-android.7.apk
+
+      - name: Check compiled APK package, ARM64, version, icon, signature and hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/builder/output/wordcraft-0.15.2-android.7.apk"
+          test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk) as archive:
+              names = archive.namelist()
+              libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+              assert any(n.startswith('res/') and n.lower().endswith(('.png', '.webp')) for n in names), 'Packaged raster resources missing'
+              # AAPT2 compiles adaptive-icon XML to a binary resource entry with
+              # an optimized filename; verify the resource table below instead.
+              assert 'classes.dex' in names, 'Android Java bridge missing'
+          print('Archive checks: ARM64 libraries, icon resources, Java DEX found')
+          PY
+          # AAPT2 may rename/optimize packaged PNG paths; assert the generated
+          # source artwork AND compiled resource-table identifiers instead.
+          icon_res="builder/source/wordcraft/apps/wordcraft-android/res"
+          test -s "$icon_res/mipmap-xxxhdpi/ic_launcher.png"
+          test -s "$icon_res/drawable-xxxhdpi/ic_launcher_foreground.png"
+          test -s "$icon_res/mipmap-anydpi-v26/ic_launcher.xml"
+          aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          "$aapt2" dump resources "$apk" > /tmp/wordcraft-packed-resources.txt
+          grep -F "mipmap/ic_launcher" /tmp/wordcraft-packed-resources.txt
+          grep -F "drawable/ic_launcher_foreground" /tmp/wordcraft-packed-resources.txt
+          badging="$("$aapt2" dump badging "$apk")"
+          printf '%s\n' "$badging" | grep -F "name='com.artcraft.wordcraft.scrollcandidate'"
+          printf '%s\n' "$badging" | grep -F "versionCode='100015207'"
+          printf '%s\n' "$badging" | grep -F "versionName='0.15.2-android.7'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+          sha256sum "$apk"
+          echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
+
+
+
+      - name: Assert candidate package, disposable signing and updater code
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="builder/output/wordcraft-0.15.2-android.7.apk"
+          aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$aapt2" dump badging "$apk" | grep -F "name='com.artcraft.wordcraft.scrollcandidate'"
+          "$apksigner" verify --verbose --print-certs "$apk" > /tmp/word-updater-cert.txt
+          ! grep -qi "C05372EA57ECF5571A7AC27716179606A2A1A8E57F213D1E3E8BEB41F4360B65" /tmp/word-updater-cert.txt
+          test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/styluscandidate/ArtCraftUpdater.java
+          grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
+          mkdir -p candidate
+          cp "$apk" candidate/WordCraft-v0.15.2-android.7-ARM64-TWOFINGER-TEMP-TEST.apk
+          (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Upload temporary signed ARM64 updater test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WordCraft-TwoFingerScroll-ARM64-TEMP-TEST
+          path: |
+            candidate/WordCraft-v0.15.2-android.7-ARM64-TWOFINGER-TEMP-TEST.apk
+            candidate/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove disposable local signing material
+        if: always()
+        shell: bash
+        run: rm -rf builder/keys

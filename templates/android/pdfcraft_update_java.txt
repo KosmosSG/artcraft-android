@@ -164,6 +164,7 @@ public void pdfInstallDownloadedUpdate() {
                     installer.setDataAndType(contentUri, "application/vnd.android.package-archive");
                     installer.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(installer); // User must confirm in system Package Installer.
+                    pdfUpdateNotice("Android installer opened; confirm the installation in the system dialog.", true);
                 } catch (Exception e) {
                     pdfUpdateNotice("Unable to open Android installer: " + e.getMessage(), true);
                 }

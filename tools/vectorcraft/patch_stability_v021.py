@@ -24,6 +24,13 @@ fi
     smooth_menu(root)
     from patch_keyboard_diagnostics_v021 import patch as diagnostics
     diagnostics(root)
+    # Android.12 patches are limited to the generated test candidate.
+    from patch_android12_keyboard import patch as physical_keys
+    from patch_android12_startup import patch as startup_cover
+    from patch_android12_menu_scroll import patch as menu_scroll
+    physical_keys(root)
+    startup_cover(root)
+    menu_scroll(root)
 
 
 def patch_adapter(root):

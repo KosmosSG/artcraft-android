@@ -58,7 +58,9 @@ class PinnedWinitTests(unittest.TestCase):
         self.assertEqual(before, self.new.read_text())
 
     def test_missing_existing_pointer_support_rejected(self):
-        self.sources(old_motion="let pointer_class = true;\n")
+        # Keep the scroll branch present so this test targets the separate
+        # missing-mouse-feature guard (not the new scroll-source guard).
+        self.sources(old_motion='let pointer_class = true;\n                MotionAction::Scroll if pointer_class => { let wheel = MouseWheel; }\n')
         with self.assertRaisesRegex(RuntimeError, "features missing"):
             apply(self.local, self.new)
 

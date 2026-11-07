@@ -145,7 +145,7 @@ def main() -> None:
     patched = exactly_once(
         patched,
         "        self.handle_clipboard_shortcuts(raw);\n{persist_hook}        {inner_hook}",
-        "{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);\n{wc_clip_dedupe}{persist_hook}        {inner_hook}",
+        "{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}        self.handle_clipboard_shortcuts(raw);\n{wc_clip_dedupe}{persist_hook}        {inner_hook}",
         "intercept D/C/S physical keys before app input processing",
     )
     patched = exactly_once(
@@ -158,6 +158,7 @@ def main() -> None:
         "    wc_raw_dcs = '        self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_trackpad_scroll = '        self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
         "    wc_touch_pan = '        self.wc.inject_touch_pan(ctx, raw, self.modifiers);\\n' if app == 'wordcraft' else ''\n"
+        "    wc_stylus_samples = '        self.wc.inject_stylus_motion(ctx);\\n' if app == 'wordcraft' else ''\n"
         "    wc_clip_dedupe = '        self.wc.deduplicate_clipboard_input(raw);\\n' if app == 'wordcraft' else ''\n"
         "    wc_ui = '        self.wc.unsaved_dialog(self.inner.android_unsaved_dcs_active(), ui.ctx());\\n        self.wc.ui(&mut self.inner, ui.ctx(), frame);\\n        if let Some(copy) = ui.ctx().output(|o| o.commands.iter().rev().find_map(|c| match c { egui::OutputCommand::CopyText(text) => Some(text.clone()), _ => None })) { android_clipboard_set(&self.app, &copy); }\\n' if app == 'wordcraft' else ''\n"
         "    wc_preui = 'self.wc.prepare_menu(ui.ctx(), frame);\\n        self.wc.update_feedback(ui);\\n        ' if app == 'wordcraft' else ''\n"
@@ -237,6 +238,8 @@ def main() -> None:
         "place WordCraft launcher icon menu at top left of tab strip",
     )
     ribbon.write_text(ribbon_text + Path(__file__).with_name("ribbon_android.rs.inc").read_text(), encoding="utf-8")
+    from patch_stylus_ink import apply_stylus_ink
+    apply_stylus_ink(root / "source" / "wordcraft", Path(__file__).with_name("stylus_curve.rs.inc"))
     source.write_text(patched, encoding="utf-8")
     print("Applied WordCraft font persistence and scoped-storage overlay to isolated builder")
     print("WordCraft SAF shared font folder, manual/opt-in updater, shortcut pad and GPU info installed; device testing pending")

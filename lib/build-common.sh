@@ -2860,11 +2860,13 @@ fn android_main(android_app: android_activity::AndroidApp) {{
         helper = r'''
 #[cfg(target_os = "android")]
 fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
-    let app = app.clone();
+    // The Java scheduling call borrows 'app'; the callback captures a separate
+    // owned clone. Capturing the same local by move would fail Rust E0505.
+    let activity_app = app.clone();
     app.run_on_java_main_thread(Box::new(move || {
-        let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+        let vm = unsafe { JavaVM::from_raw(activity_app.vm_as_ptr() as *mut _) };
         let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = app.activity_as_ptr() as jni::sys::jobject;
+            let raw = activity_app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("finish"), jni_sig!("()V"), &[])?;
             Ok(())

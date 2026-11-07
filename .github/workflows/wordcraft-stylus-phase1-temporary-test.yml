@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: wordcraft-stylus-phase1-temp-only
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   isolated-candidate:
@@ -279,6 +279,17 @@ jobs:
               '("Refresh Shared Fonts", "font_refresh")',
               '"pad_on"', '"pad_off"', '"keyboard".to_owned()',
               'wc_menu_stylus_status', 'wc_menu_gpu', 'wc_menu_status'))
+          assert 'WC_GC_STYLE_APPEARANCE_V1' in menu
+          assert menu.count('ui.menu_button("Appearance"') == 1
+          assert 'ui.checkbox(&mut dark, "Dark mode")' in menu
+          assert 'Theme preferences (System / Light / Dark)' in menu
+          assert all(code in menu for code in ('"theme_system"', '"theme_light"', '"theme_dark"'))
+          assert '"Dark document pages"' in menu
+          assert '"page_dark_on"' in menu and '"page_dark_off"' in menu
+          assert 'app.run("ui.theme"' in tools
+          assert 'app.run("view.darkMode"' in tools
+          assert 'app.ui.theme.code()' in tools
+          assert 'app.session.view.dark_mode' in tools
           assert 'Handwriting-to-editable-text: In development.' in menu
           assert 'ui.menu_button("App Updates"' in menu
           assert not any(token in menu for token in ('Ink to Text is ready', 'Pen pressure width enabled'))
@@ -351,15 +362,15 @@ jobs:
           test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/styluscandidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$apk" candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-COMPACT-MENU-TEMP-TEST.apk
+          cp "$apk" candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-APPEARANCE-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload temporary signed ARM64 updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: WordCraft-Stylus-CompactMenu-ARM64-TEMP-TEST
+          name: WordCraft-Stylus-CompactWc-Appearance-ARM64-TEMP-TEST
           path: |
-            candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-COMPACT-MENU-TEMP-TEST.apk
+            candidate/WordCraft-v0.15.2-android.4-ARM64-STYLUS-APPEARANCE-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

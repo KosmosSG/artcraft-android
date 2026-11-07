@@ -98,7 +98,8 @@ jobs:
           assert "GRIDCRAFT_V0150_KEEP_EGUI037_FORK" in s
           assert "GRIDCRAFT_V0150_ACK_SAF_V1" in s
           a=Path("builder/lib/android_project.py").read_text()
-          assert "0.16.1-android.4" in a
+          # The pinned production overlay sets android.3; the updater stage below bumps it to android.4.
+          assert "0.16.1-android.3" in a
           assert "com.artcraft.gridcraft" in a
           print("PASS: Android menu, modal, save acknowledgements, font loading, selection, candidate version")
           PY

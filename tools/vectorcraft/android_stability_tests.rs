@@ -90,6 +90,19 @@ mod android_stability_tests {
         }
     }
     #[test]
+    fn android_stability_unavailable_save_intent_keeps_unsaved_work() {
+        let mut app = app();
+        // No Android picker is registered (e.g. the external SAF intent cannot start).
+        app.services.pick_save = None;
+        dirty(&mut app);
+        app.run("app.quit", json!({})).unwrap();
+        press(&mut app, Key::S);
+        assert_eq!(app.session.documents().len(), 1);
+        assert!(app.session.active().is_some_and(|doc| doc.is_dirty()));
+        assert_ne!(app.ui.status, "quit");
+        assert!(app.ui.dialog.is_none());
+    }
+    #[test]
     fn android_stability_multi_document_quit_cancel() {
         let mut app=app();dirty(&mut app);dirty(&mut app);
         app.run("app.quit",json!({})).unwrap();press(&mut app,Key::C);

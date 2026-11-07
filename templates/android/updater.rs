@@ -26,6 +26,11 @@ fn invoke(android: &AndroidApp, method: &str) {
                 jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
                 &args,
             )?; }
+            "view" => { env.call_static_method(
+                jni_str!("__JAVA_CLASS__"), jni_str!("viewAvailable"),
+                jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+                &args,
+            )?; }
             "download" => { env.call_static_method(
                 jni_str!("__JAVA_CLASS__"), jni_str!("downloadAvailable"),
                 jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
@@ -76,6 +81,9 @@ fn poll_menu_state(ctx: &egui::Context, android: &AndroidApp) {
     match result {
         Ok(json) => match serde_json::from_str::<serde_json::Value>(&json) {
             Ok(value) => ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("artcraft.updater.installed"),
+                    value.get("installed").and_then(|v| v.as_str())
+                         .unwrap_or(INSTALLED_TAG).to_owned());
                 data.insert_temp(egui::Id::new("artcraft.updater.startup"),
                     value.get("startup").and_then(|v| v.as_bool()).unwrap_or(false));
                 data.insert_temp(egui::Id::new("artcraft.updater.available"),
@@ -109,6 +117,7 @@ pub fn show_ui(ctx: &egui::Context, android: &AndroidApp, _open: &mut bool, init
     });
     match action.as_str() {
         "check" => invoke(android, "check"),
+        "view" => invoke(android, "view"),
         "download" => invoke(android, "download"),
         "test" => invoke(android, "test"),
         "toggle" => invoke(android, "toggle"),

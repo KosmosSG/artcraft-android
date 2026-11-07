@@ -247,35 +247,58 @@ impl Tools {
     /// Intercept only unmodified D/C/S while Save Changes is showing;
     /// Ctrl+Shift+S is a separate nonmodal Save As shortcut.
 
-    // Translate stable two-finger touchscreen movement to precise canvas pan.
-    // Preserve native touch/pinch input, so zoom and selection still work.
+    // WC_TWOFINGER_NAV_NO_SELECTION_RUST_V2
+    // Keep Android hit-testing synchronized with the actual egui document
+    // viewport. Send only on geometry change to avoid a JNI call per frame.
     pub fn inject_touch_pan(
         &self, ctx: &egui::Context, raw: &mut egui::RawInput,
         modifiers: egui::Modifiers, canvas_rect: Option<egui::Rect>,
     ) {
+        let scale = ctx.pixels_per_point();
+        if !scale.is_finite() || scale <= 0.0 { return; }
+        let rect_string = canvas_rect.filter(|r|
+            [r.min.x, r.min.y, r.max.x, r.max.y].iter().all(|v| v.is_finite())
+        ).map_or_else(
+            || "NaN,NaN,NaN,NaN".to_owned(),
+            |r| format!("{},{},{},{}",
+                r.min.x * scale, r.min.y * scale,
+                r.max.x * scale, r.max.y * scale),
+        );
+        let bounds_id = egui::Id::new("wc_touchnav.last_canvas_bounds");
+        let changed = ctx.data(|d| d.get_temp::<String>(bounds_id).as_deref() != Some(rect_string.as_str()));
+        if changed && self.call_string_arg("wcSetTouchCanvasBounds", &rect_string).is_ok() {
+            ctx.data_mut(|d| d.insert_temp(bounds_id, rect_string));
+        }
+        // A second finger cancelled the original editor drag at Android level.
+        // The ink overlay drops any pending one-finger stroke on this frame.
+        let suppress_ink = self.call_bool("wcTouchNavigationCancellingInk").unwrap_or(false);
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("wc_touchnav.suppress_ink"), suppress_ink));
         let Ok(Some(sample)) = self.call_string("wcTakeTwoFingerPan") else { return };
         let parts: Vec<_> = sample.split(',').collect();
-        if parts.len() != 4 { return; }
-        let Ok(values) = parts.iter().map(|v| v.parse::<f32>()).collect::<Result<Vec<_>, _>>() else { return };
-        let scale = ctx.pixels_per_point();
-        if !scale.is_finite() || scale <= 0.0 || !values.iter().all(|n| n.is_finite()) { return; }
-        let (dx, dy, x, y) = (values[0], values[1], values[2], values[3]);
-        if dx == 0.0 && dy == 0.0 { return; }
-        // WC_TWOFINGER_CANVAS_GUARD_V1. Two-finger gestures on the font picker,
-        // ribbon, menus and text dialogs must not secretly scroll the document.
-        // Leave the native Android event stream intact for pinch and selection.
-        let Some(canvas) = canvas_rect else { return; };
+        if parts.len() != 5 { return; }
+        let Ok(values) = parts.iter().map(|v| v.parse::<f32>())
+            .collect::<Result<Vec<_>, _>>() else { return };
+        if !values.iter().all(|v| v.is_finite()) { return; }
+        let (dx, dy, x, y, zoom) = (values[0], values[1], values[2], values[3], values[4]);
         let center = egui::pos2(x / scale, y / scale);
+        let Some(canvas) = canvas_rect else { return };
         if !canvas.contains(center) { return; }
-        raw.events.push(egui::Event::PointerMoved(center));
-        raw.events.push(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(dx / scale, dy / scale),
-            phase: egui::TouchPhase::Move,
-            source: egui::MouseWheelSource::Trackpad,
-            modifiers,
-        });
-        ctx.request_repaint();
+        // A pinch must not scroll or select; preserve its zoom anchor.
+        if zoom > 0.0 && (zoom - 1.0).abs() > 0.001 {
+            raw.events.push(egui::Event::PointerMoved(center));
+            raw.events.push(egui::Event::Zoom(zoom.clamp(0.5, 2.0)));
+            ctx.request_repaint();
+        } else if dx != 0.0 || dy != 0.0 {
+            raw.events.push(egui::Event::PointerMoved(center));
+            raw.events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(dx / scale, dy / scale),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Trackpad,
+                modifiers,
+            });
+            ctx.request_repaint();
+        }
     }
 
     pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {

@@ -249,7 +249,10 @@ impl Tools {
 
     // Translate stable two-finger touchscreen movement to precise canvas pan.
     // Preserve native touch/pinch input, so zoom and selection still work.
-    pub fn inject_touch_pan(&self, ctx: &egui::Context, raw: &mut egui::RawInput, modifiers: egui::Modifiers) {
+    pub fn inject_touch_pan(
+        &self, ctx: &egui::Context, raw: &mut egui::RawInput,
+        modifiers: egui::Modifiers, canvas_rect: Option<egui::Rect>,
+    ) {
         let Ok(Some(sample)) = self.call_string("wcTakeTwoFingerPan") else { return };
         let parts: Vec<_> = sample.split(',').collect();
         if parts.len() != 4 { return; }
@@ -258,7 +261,13 @@ impl Tools {
         if !scale.is_finite() || scale <= 0.0 || !values.iter().all(|n| n.is_finite()) { return; }
         let (dx, dy, x, y) = (values[0], values[1], values[2], values[3]);
         if dx == 0.0 && dy == 0.0 { return; }
-        raw.events.push(egui::Event::PointerMoved(egui::pos2(x / scale, y / scale)));
+        // WC_TWOFINGER_CANVAS_GUARD_V1. Two-finger gestures on the font picker,
+        // ribbon, menus and text dialogs must not secretly scroll the document.
+        // Leave the native Android event stream intact for pinch and selection.
+        let Some(canvas) = canvas_rect else { return; };
+        let center = egui::pos2(x / scale, y / scale);
+        if !canvas.contains(center) { return; }
+        raw.events.push(egui::Event::PointerMoved(center));
         raw.events.push(egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
             delta: egui::vec2(dx / scale, dy / scale),

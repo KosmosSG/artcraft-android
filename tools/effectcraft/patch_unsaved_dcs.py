@@ -59,6 +59,11 @@ impl EffectcraftApp {
             && self.dialog_state.unsaved.command.is_some()
     }
 
+    /// Read-only Android access to the upstream private unsaved quit flag.
+    pub fn android_quit_in_progress(&self) -> bool {
+        self.dialog_state.unsaved.quitting
+    }
+
     pub fn android_capture_unsaved_dcs(&self, ctx: &egui::Context) {
         if self.android_unsaved_dcs_active() {
             if let Some(action) = take_dcs(ctx) {

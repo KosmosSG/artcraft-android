@@ -65,6 +65,8 @@
     }
     private boolean ecFontActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode != EC_FONT_PICK && requestCode != EC_FONT_TREE) return false;
+        // Notify the Rust UI when the Android folder picker returns, including Cancel.
+        if (requestCode == EC_FONT_TREE) ecFontPaths.offer("picker-return|");
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return true;
         Uri uri = data.getData();
         if (requestCode == EC_FONT_PICK) {

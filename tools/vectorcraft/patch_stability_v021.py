@@ -100,6 +100,32 @@ def patch_adapter(root):
             }
         }
         self.last_type_editing = editing_now;''')
+    s=once(s,'    fn end_type_editing(&self) -> Result<(), String> {','''    // Android's hidden EditText may consume Ctrl+W/Q before winit sees them.
+    // Poll only these commands; ordinary native keyboard events remain as-is.
+    fn poll_hidden_ime_close(&self) -> Result<i32, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcPollHiddenImeClose"),
+                jni_sig!("()I"), &[])?.i()
+        }).map_err(|error| error.to_string())
+    }
+
+    fn end_type_editing(&self) -> Result<(), String> {''')
+    s=once(s,'        self.ime.poll(raw);','''        self.ime.poll(raw);
+        match self.bridge.poll_hidden_ime_close() {
+            Ok(code @ (51 | 45)) => {
+                let key = if code == 51 { egui::Key::W } else { egui::Key::Q };
+                raw.events.push(egui::Event::Key {
+                    key, physical_key: Some(key), pressed: true, repeat: false,
+                    modifiers: egui::Modifiers {
+                        ctrl: true, command: true, ..egui::Modifiers::NONE
+                    },
+                });
+            }
+            Ok(_) => {}
+            Err(error) => log::warn!("Hidden IME close-key poll failed: {error}"),
+        }''')
     s=once(s,'        let allow_letters = !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();',
         '        let allow_letters = !modal && !composing && !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();')
     s=once(s,'            match self.bridge.finish_android_after_quit() {','''            self.persist_now();
@@ -219,6 +245,31 @@ def patch_startup(root):
             } else if (!isFinishing() && !isDestroyed()) {
                 splashHandler.postDelayed(this::probeFirstPresentedFrame, 48);
             }'''+s[end:]
+    s=once(s,'    private volatile boolean nativeEditorReady;','''    private volatile boolean nativeEditorReady;
+    private final java.util.concurrent.ConcurrentLinkedQueue<Integer> hiddenImeCloseKeys =
+        new java.util.concurrent.ConcurrentLinkedQueue<>();
+    public int vcPollHiddenImeClose() {
+        Integer key = hiddenImeCloseKeys.poll();
+        return key == null ? 0 : key.intValue();
+    }''')
+    s=once(s,'    @Override\n    protected void onNewIntent(Intent intent) {','''    // Only Ctrl+W/Q from the focused hidden IME are forwarded. No typed
+    // letters, clipboard data, or other hardware events are intercepted.
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        final int key = event.getKeyCode();
+        final boolean close = key == KeyEvent.KEYCODE_W || key == KeyEvent.KEYCODE_Q;
+        if (imeView != null && imeView.hasFocus() && close && event.isCtrlPressed()
+                && !event.isAltPressed() && !event.isShiftPressed()) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                hiddenImeCloseKeys.offer(key);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {''')
     s=once(s,'        startupStage("activity_created");','''        // The Android 12 system splash stays until our branded native cover
         // exists, NOT until the native frame (which would deadlock pre-draw).
         // This closes the black flash between system splash and SurfaceView.

@@ -26,6 +26,11 @@ fn invoke(android: &AndroidApp, method: &str) {
                 jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
                 &args,
             )?; }
+            "test" => { env.call_static_method(
+                jni_str!("__JAVA_CLASS__"), jni_str!("testDownload"),
+                jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+                &args,
+            )?; }
             "startup" => { env.call_static_method(
                 jni_str!("__JAVA_CLASS__"), jni_str!("startup"),
                 jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
@@ -68,6 +73,9 @@ pub fn show_ui(ctx: &egui::Context, android: &AndroidApp, open: &mut bool, initi
                 ui.label(format!("Installed release: {}", INSTALLED_TAG));
                 if ui.button("Check for updates").clicked() {
                     invoke(android, "check");
+                }
+                if ui.button("Test download and SHA-256 (no installation)").clicked() {
+                    invoke(android, "test");
                 }
                 if ui.button("Toggle automatic check at startup").clicked() {
                     invoke(android, "toggle");

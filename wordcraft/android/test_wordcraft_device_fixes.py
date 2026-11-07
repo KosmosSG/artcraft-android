@@ -236,22 +236,55 @@ class WordCraftDeviceFixes(unittest.TestCase):
 
     def test_two_finger_scroll_history_is_smooth_and_canvas_only(self):
         java, native, builder = text(JAVA), text(RUST), text(BUILD)
-        self.assertIn("WC_TWOFINGER_SCROLL_HISTORY_V1", java)
+        self.assertIn("WC_TWOFINGER_NAV_NO_SELECTION_V2", java)
         self.assertIn("wcAccumulateTwoFingerSample", java)
         self.assertIn("wcAccumulateTwoFingerEvent", java)
         self.assertIn("event.getHistorySize()", java)
         self.assertIn("event.getHistoricalX(0, historyIndex)", java)
         self.assertIn("event.getHistoricalY(1, historyIndex)", java)
         self.assertIn("wcOnlyFingers(event)", java)
-        self.assertIn("wcTouchLastSpan * .025f", java)
+        self.assertIn("wcTouchStartSpan * .03f", java)
         self.assertIn("wcRejectPalm(event)", java)
         self.assertIn("return super.dispatchTouchEvent(event);", java)
-        self.assertIn("WC_TWOFINGER_CANVAS_GUARD_V1", native)
+        self.assertIn("WC_TWOFINGER_NAV_NO_SELECTION_RUST_V2", native)
         self.assertIn("let Some(canvas) = canvas_rect else { return; };", native)
         self.assertIn("if !canvas.contains(center) { return; }", native)
         self.assertIn("self.inner.canvas.canvas_rect", builder)
         self.assertIn("self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers)", builder)
         self.assertNotIn("egui::Event::Touch {", native)
+
+    def test_two_finger_navigation_blocks_text_object_and_ink_selection(self):
+        from pathlib import Path
+        java, native, build = text(JAVA), text(RUST), text(BUILD)
+        guard = (Path(__file__).parent / "patch_touch_guard.py").read_text()
+        for token in (
+            "wcTouchNavConsuming = true", "wcTouchNavSuppressInk = true",
+            "wcTouchNavSuppressInk = false", "wcTouchOnCanvas(",
+            "wcSetTouchCanvasBounds(String bounds)",
+            "wcTouchNavigationCancellingInk()", "ACTION_CANCEL",
+            "cancel.setAction(android.view.MotionEvent.ACTION_CANCEL)",
+            "super.dispatchTouchEvent(cancel)", "if (consume) return true;",
+            "wcOnlyFingers(event)", "wcRejectPalm(event)",
+            "wcTouchMode = 2", "wcTouchMode = 1", "wcTouchZoom",
+            "wcTouchStartSpan * .03f", "wcTouchStartX",
+            "event.getHistoricalX(0, historyIndex)",
+        ):
+            self.assertIn(token, java)
+        for token in (
+            "wcSetTouchCanvasBounds", "wcTouchNavigationCancellingInk",
+            'wc_touchnav.suppress_ink', 'egui::Event::Zoom(',
+            "if !canvas.contains(center) { return; }",
+            "egui::MouseWheelSource::Trackpad",
+            'self.call_string("wcTakeTwoFingerPan")',
+        ):
+            self.assertIn(token, native)
+        for token in ("app.canvas.cancel_text_drag()", "app.canvas.obj_drag = None",
+                      "app.canvas.ink = None", "app.canvas.erasing = None",
+                      "app.canvas.ink_ui.lasso = None"):
+            self.assertIn(token, guard)
+        self.assertIn("apply_touch_guard(root", build)
+        self.assertIn('self.inner.canvas.canvas_rect', build)
+        self.assertNotIn("com.artcraft.wordcraft.styluscandidate", java)
 
     def test_two_finger_touchscreen_pan_preserves_pinch_zoom(self):
         java, rust, build = text(JAVA), text(RUST), text(BUILD)
@@ -261,7 +294,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'event.getPointerCount() == 2',
             'android.view.MotionEvent.ACTION_POINTER_DOWN',
             'android.view.MotionEvent.ACTION_MOVE',
-            'wcTouchLastSpan * .025f',
+            'wcTouchStartSpan * .03f',
             'return super.dispatchTouchEvent(event);',
             'public String wcTakeTwoFingerPan()',
         ):

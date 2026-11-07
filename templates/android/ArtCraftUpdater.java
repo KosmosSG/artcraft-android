@@ -68,11 +68,13 @@ public final class ArtCraftUpdater {
 
     private static void checkInternal(Activity activity, String app, String installedTag,
                                       String targetPackage, boolean quiet) {
+        final java.util.concurrent.atomic.AtomicBoolean checkCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
         final ProgressDialog checking = quiet ? null : new ProgressDialog(activity);
         if (checking != null) {
             checking.setMessage("Checking published GitHub Releases…");
             checking.setIndeterminate(true);
             checking.setCancelable(true);
+            checking.setOnCancelListener(dialog -> checkCancelled.set(true));
             checking.show();
         }
         IO.execute(() -> {
@@ -80,7 +82,7 @@ public final class ArtCraftUpdater {
                 Release release = latestRelease(app);
                 UI.post(() -> {
                     if (checking != null && checking.isShowing()) checking.dismiss();
-                    if (checking != null && checking.isCanceled()) return;
+                    if (checkCancelled.get()) return;
                     if (release == null || compareTags(release.tag, installedTag, app) <= 0) {
                         if (!quiet) message(activity, "No newer published " + app + " release.");
                         return;
@@ -174,6 +176,8 @@ public final class ArtCraftUpdater {
         progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
         progress.setMax(100);
         progress.setCancelable(true);
+        final java.util.concurrent.atomic.AtomicBoolean downloadCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        progress.setOnCancelListener(dialog -> downloadCancelled.set(true));
         progress.show();
         IO.execute(() -> {
             File apk = new File(activity.getCacheDir(), "artcraft-update-" + targetPackage + ".apk");
@@ -190,7 +194,7 @@ public final class ArtCraftUpdater {
                     byte[] buffer = new byte[64 * 1024];
                     int n;
                     while ((n = in.read(buffer)) != -1) {
-                        if (progress.isCanceled()) throw new InterruptedException("Download cancelled");
+                        if (downloadCancelled.get()) throw new InterruptedException("Download cancelled");
                         out.write(buffer, 0, n);
                         sha.update(buffer, 0, n);
                         count += n;

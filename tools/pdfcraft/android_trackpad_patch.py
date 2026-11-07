@@ -86,9 +86,15 @@ def patch(source: str) -> str:
                     // Suppress it before the generic pointer-class path can
                     // press a tool in the left sidebar. Actual mouse clicks
                     // retain their normal button-state dispatch below.
-                    if touchpad_source && matches!(
-                        motion_event.action(), MotionAction::Down | MotionAction::PointerDown
-                    ) {
+                    // PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE: HONOR trackpads
+                    // can classify two-finger contacts as SOURCE_MOUSE with
+                    // ToolType::Finger. Do not let either contact click a
+                    // sidebar tool. A real mouse reports ToolType::Mouse and
+                    // retains all buttons.
+                    if (touchpad_source || (mouse_source && tool_type == ToolType::Finger))
+                        && matches!(motion_event.action(),
+                            MotionAction::Down | MotionAction::PointerDown)
+                    {
                         self.pdfcraft_trackpad_last = None;
                         return input_status;
                     }
@@ -294,6 +300,7 @@ def patch(source: str) -> str:
                         }
                         let (vertical, horizontal) = motion_event""")
     assert marker in source and "PDFCRAFT_ANDROID_PRECISE_TRACKPAD_SCROLL" in source
+    assert "PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE" in source
     assert "PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK" in source
     assert "PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL" in source
     assert "phase: event::TouchPhase::Started" in source

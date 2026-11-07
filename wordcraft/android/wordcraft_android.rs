@@ -722,6 +722,26 @@ impl Tools {
                     }
                 }
             }
+            // WC_GC_STYLE_APPEARANCE_V1: WordCraft's own upstream UI commands
+            // persist ui.theme in ui.json; never mistake page inversion for UI theme.
+            "theme_system" | "theme_light" | "theme_dark" => {
+                let value = action.strip_prefix("theme_").unwrap_or("system");
+                match app.run("ui.theme", serde_json::json!({"value": value})) {
+                    Ok(_) => self.status = format!("Interface theme: {value}"),
+                    Err(error) => self.status = format!("Could not change theme: {error}"),
+                }
+            }
+            "page_dark_on" | "page_dark_off" => {
+                let value = action == "page_dark_on";
+                match app.run("view.darkMode", serde_json::json!({"value": value})) {
+                    Ok(_) => self.status = if value {
+                        "Document pages: dark".to_owned()
+                    } else {
+                        "Document pages: normal".to_owned()
+                    },
+                    Err(error) => self.status = format!("Could not change page mode: {error}"),
+                }
+            }
             "pad_on" => self.show_pad = true,
             "pad_off" => self.show_pad = false,
             "keyboard" => self.status = match app.run("tools.customizeKeyboard", serde_json::json!({})) {
@@ -730,6 +750,15 @@ impl Tools {
             },
             _ => {}
         }
+        // Snapshot actual upstream state, not a second Android preference.
+        // Next Wc menu open reflects File > Options / View > Interface Theme too.
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new("wc_menu_interface_theme"),
+                app.ui.theme.code().to_owned()
+            );
+            d.insert_temp(egui::Id::new("wc_menu_dark_page"), app.session.view.dark_mode);
+        });
         if !action.is_empty() { ctx.request_repaint(); }
         if self.show_pad {
             let mut open = self.show_pad;

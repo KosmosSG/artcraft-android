@@ -452,6 +452,101 @@
     }
 
 
+    // WC_ANDROID_STYLUS_INPUT_V1: native Android pen/eraser identification.
+    // Uses TOOL_TYPE_* rather than assuming every touchscreen contact is a pen.
+    // Existing upstream Draw tab owns ink geometry, editing, undo and saving.
+    private volatile boolean wcPenSeen = false;
+    private volatile boolean wcPenHover = false;
+    private volatile boolean wcPenContact = false;
+    private volatile float wcPenPressure = 0f;
+    private volatile float wcPenTilt = 0f;
+    private volatile long wcPenEventAt = 0L;
+    private boolean wcPalmSuppressed = false;
+    private int wcPalmSuppressedCount = 0;
+
+    private static boolean wcHasStylus(android.view.MotionEvent event) {
+        if (event == null) return false;
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            int tool = event.getToolType(i);
+            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) return true;
+        }
+        return false;
+    }
+
+    private static boolean wcOnlyFingers(android.view.MotionEvent event) {
+        if (event == null || event.getPointerCount() < 1) return false;
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            if (event.getToolType(i) != android.view.MotionEvent.TOOL_TYPE_FINGER) return false;
+        }
+        return true;
+    }
+
+    private void wcRecordStylus(android.view.MotionEvent event) {
+        if (!wcHasStylus(event)) return;
+        wcPenSeen = true;
+        wcPenEventAt = android.os.SystemClock.uptimeMillis();
+        int action = event.getActionMasked();
+        boolean hover = action == android.view.MotionEvent.ACTION_HOVER_ENTER
+                || action == android.view.MotionEvent.ACTION_HOVER_MOVE;
+        if (hover) { wcPenHover = true; wcPenContact = false; }
+        else if (action == android.view.MotionEvent.ACTION_DOWN
+                || action == android.view.MotionEvent.ACTION_MOVE
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            wcPenContact = true;
+            wcPenHover = false;
+        } else if (action == android.view.MotionEvent.ACTION_UP
+                || action == android.view.MotionEvent.ACTION_POINTER_UP
+                || action == android.view.MotionEvent.ACTION_CANCEL) {
+            wcPenContact = false;
+        } else if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+            wcPenHover = false;
+        }
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            int tool = event.getToolType(i);
+            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
+                wcPenPressure = event.getPressure(i);
+                wcPenTilt = event.getAxisValue(android.view.MotionEvent.AXIS_TILT, i);
+                break;
+            }
+        }
+    }
+
+    /** Read-only, throttled by the Rust UI; diagnostic status in the Wc icon menu. */
+    public String wcStylusStatus() {
+        if (!wcPenSeen) return "Stylus: Not detected yet";
+        if (wcPenContact) return "Stylus: Contact (pressure " + wcPenPressure + ")";
+        if (wcPenHover) return "Stylus: Hovering";
+        return "Stylus: Detected";
+    }
+
+    /**
+     * Conservative palm filtering while pen contact is active.
+     * A swallowed finger gesture remains swallowed until UP/CANCEL, preventing
+     * orphan MOVE input from reaching upstream. Stylus events always pass through.
+     * Two-finger scrolling remains unchanged whenever pen is not in contact.
+     */
+    private boolean wcRejectPalm(android.view.MotionEvent event) {
+        if (event == null || wcHasStylus(event)) return false;
+        int action = event.getActionMasked();
+        if (wcPalmSuppressed) {
+            if (action == android.view.MotionEvent.ACTION_UP
+                    || action == android.view.MotionEvent.ACTION_CANCEL) {
+                wcPalmSuppressed = false;
+            }
+            wcPalmSuppressedCount++;
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_DOWN
+                && wcOnlyFingers(event) && wcPenContact) {
+            wcPalmSuppressed = true;
+            wcPalmSuppressedCount++;
+            return true;
+        }
+        return false;
+    }
+
     // Physical trackpad / mouse-wheel to document canvas bridge. Stock Android
     // winit receives finger touches but ignores ACTION_SCROLL for pointer sources.
     // Capture both axes here, without swallowing touches, drag, Android back
@@ -463,6 +558,7 @@
     private float wcScrollPointerY;
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (wcHasStylus(event)) wcRecordStylus(event);
         if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
             int source = event.getSource();
             boolean trackpadOrMouse =
@@ -518,6 +614,8 @@
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (wcHasStylus(event)) wcRecordStylus(event);
+        if (wcRejectPalm(event)) return true;
         if (event != null && event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)) {
             synchronized (wcTouchPanLock) {
                 int action = event.getActionMasked();

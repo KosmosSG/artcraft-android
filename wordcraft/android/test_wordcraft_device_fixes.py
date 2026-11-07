@@ -247,7 +247,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn("wcRejectPalm(event)", java)
         self.assertIn("return super.dispatchTouchEvent(event);", java)
         self.assertIn("WC_TWOFINGER_NAV_NO_SELECTION_RUST_V2", native)
-        self.assertIn("let Some(canvas) = canvas_rect else { return; };", native)
+        self.assertIn("let Some(canvas) = canvas_rect else { return };", native)
         self.assertIn("if !canvas.contains(center) { return; }", native)
         self.assertIn("self.inner.canvas.canvas_rect", builder)
         self.assertIn("self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers)", builder)

@@ -487,7 +487,7 @@ impl Mobile {
             .min_width(300.0)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Installed: PDFCraft 0.19.0-android.1 (test candidate)");
+                ui.label("Installed: PDFCraft 0.19.0-android.2 (test candidate)");
                 ui.label(&self.update_status);
                 if self.checking || self.downloading { ui.spinner(); }
                 ui.horizontal_wrapped(|ui| {
@@ -537,7 +537,7 @@ impl Mobile {
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.heading("PDFCraft");
-                    ui.label("Version 0.19.0-android.1");
+                    ui.label("Version 0.19.0-android.2");
                     ui.label("ARM64 test candidate • separate package");
                     ui.label("PDF editor for Android");
                     ui.label("Updates: published PDFCraft releases only");

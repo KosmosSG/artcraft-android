@@ -81,6 +81,24 @@
                     });
                     ui.ctx().request_repaint();
                 }
+                // Dedicated verified-APK updater within the approved Gc top-left menu.
+                // Existing fonts, theme, read-only checks and guarded install APIs remain intact.
+                ui.menu_button("Verified APK updater", |ui| {
+                    let action_id = egui::Id::new("artcraft.updater.action");
+                    for (label, action) in [
+                        ("Check for updates", "check"),
+                        ("Download & install verified update…", "check"),
+                        ("Test APK download + SHA-256 (no install)", "test"),
+                        ("Toggle automatic check at startup", "toggle"),
+                    ] {
+                        if ui.button(label).clicked() {
+                            ui.ctx().data_mut(|d| d.insert_temp(action_id, action.to_owned()));
+                            ui.ctx().request_repaint();
+                            ui.close();
+                        }
+                    }
+                    ui.small("Published GitHub ARM64 releases only; Android confirms installation.");
+                });
                 ui.separator();
                 ui.label(egui::RichText::new("Appearance").strong());
                 let mut dark = ui.ctx().theme() == egui::Theme::Dark;

@@ -44,6 +44,24 @@ fn artcraft_android_menu(ui: &mut Ui) {
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("wc_menu_action"), "view_release".to_owned()));
             ui.close();
         }
+        // Verified APK updater uses the launcher JNI bridge, not the existing read-only checker.
+        // All controls live inside the approved Wc top-left icon menu; no floating overlay.
+        ui.menu_button("Verified APK updater", |ui| {
+            let action_id = egui::Id::new("artcraft.updater.action");
+            for (label, action) in [
+                ("Check for updates", "check"),
+                ("Download & install verified update…", "check"),
+                ("Test APK download + SHA-256 (no install)", "test"),
+                ("Toggle automatic check at startup", "toggle"),
+            ] {
+                if ui.button(label).clicked() {
+                    ui.ctx().data_mut(|d| d.insert_temp(action_id, action.to_owned()));
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
+            }
+            ui.small("Published GitHub ARM64 releases only; Android confirms installation.");
+        });
         ui.separator();
         let mut pad = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("wc_menu_pad"))).unwrap_or(false);
         if ui.checkbox(&mut pad, "Show Shortcut Pad").changed() {

@@ -96,11 +96,21 @@ fn android_save_changes_key(app: &mut VectorcraftApp, ctx: &egui::Context) -> bo
     let Some(key)=key else { return true; };
     ctx.input_mut(|i| i.events.retain(|e| !matches!(e,
         egui::Event::Key{..}|egui::Event::Text(_)|egui::Event::Ime(_))));
+    // ui.dialog.* are CONTROL-protocol requests, not app.run commands.
+    // Call the same native dialog actions as the actual buttons; otherwise
+    // all three keyboard actions fail silently in production.
     let result=match key {
-        Key::C|Key::Escape=>app.run("ui.dialog.cancel",json!({})),
-        Key::D=>app.run("ui.dialog.set",json!({"field":"discard","value":true}))
-            .and_then(|_|app.run("ui.dialog.confirm",json!({}))),
-        Key::S=>app.run("ui.dialog.confirm",json!({})),
+        Key::C|Key::Escape=>{
+            crate::dialogs::cancel(app);
+            Ok(serde_json::Value::Null)
+        },
+        Key::D=>{
+            if let Some(dialog)=app.ui.dialog.as_mut() {
+                crate::dialogs::set_field(dialog,"discard".into(),json!(true));
+            }
+            crate::dialogs::confirm(app)
+        },
+        Key::S=>crate::dialogs::confirm(app),
         _=>return true,
     };
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("vc.keyboard.command"),

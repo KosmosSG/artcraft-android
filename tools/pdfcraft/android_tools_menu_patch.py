@@ -70,6 +70,7 @@ replace('        let ctx = ui.ctx().clone();',
         '''        // PDFCRAFT_ANDROID_ICON_MENU: approved logo at top-left, before File.
         #[cfg(target_os = "android")]
         {
+            let mut theme_choice: Option<ThemePreference> = None;
             let (rect, response) = ui.allocate_exact_size(
                 egui::vec2(28.0, 28.0), egui::Sense::click());
             crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0));
@@ -90,6 +91,24 @@ replace('        let ctx = ui.ctx().clone();',
                     }
                 }
                 ui.separator();
+                // PDFCRAFT_ANDROID_PC_APPEARANCE: the Pc launcher menu is
+                // where Android users choose Light/Dark. Reuse upstream
+                // theme preferences so the choice persists across relaunches.
+                ui.menu_button("Appearance", |ui| {
+                    if ui.selectable_label(
+                        self.theme_preference == ThemePreference::Light, "Light"
+                    ).clicked() {
+                        theme_choice = Some(ThemePreference::Light);
+                        ui.close();
+                    }
+                    if ui.selectable_label(
+                        self.theme_preference == ThemePreference::Dark, "Dark"
+                    ).clicked() {
+                        theme_choice = Some(ThemePreference::Dark);
+                        ui.close();
+                    }
+                });
+                ui.separator();
                 for (name, action) in [
                     ("Check updates", 4u8),
                     ("Automatic update check…", 5),
@@ -107,6 +126,9 @@ replace('        let ctx = ui.ctx().clone();',
                     ui.close();
                 }
             });
+            if let Some(preference) = theme_choice {
+                self.set_theme_preference(preference);
+            }
         }
         let ctx = ui.ctx().clone();''')
 text += """

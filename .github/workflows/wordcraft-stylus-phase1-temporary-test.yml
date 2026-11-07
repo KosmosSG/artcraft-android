@@ -134,6 +134,9 @@ jobs:
           set -euo pipefail
           python3 -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_stylus_ink.py
           python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
+          # Pressure-buffer regression now verifies the source owning each
+          # symbol: native sample buffer in patch_stylus_ink, variable-width
+          # persistence in patch_pressure_ink. No Android tools until this passes.
           python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
           echo "PASS: D/C/S, clipboard, two-finger scrolling, pressure and hover regressions."
 

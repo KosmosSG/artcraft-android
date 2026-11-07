@@ -31,7 +31,7 @@ def apply(src: Path):
             continue
         old = "egui::ScrollArea::vertical().auto_shrink([false, false])"
         assert content.count(old) == expected, f"{relative}: upstream sidebar changed"
-        content = HELPER + content.replace(old, "pdfcraft_tools_scroll_area().auto_shrink([false, false])")
+        content = content.replace(old, "pdfcraft_tools_scroll_area().auto_shrink([false, false])") + "\n" + HELPER
         path.write_text(content)
 
 if __name__ == "__main__":

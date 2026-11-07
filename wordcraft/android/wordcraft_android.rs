@@ -207,12 +207,16 @@ impl Tools {
         if !scale.is_finite() || scale <= 0.0 { return; }
         let samples = self.call_string("wcTakeStylusTrail").ok().flatten()
             .map(|text| text.split(';').take(256).filter_map(|sample| {
-                let (x, y) = sample.split_once(',')?;
-                let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else {
-                    return None;
-                };
-                (x.is_finite() && y.is_finite()).then_some([x / scale, y / scale])
-            }).collect::<Vec<[f32; 2]>>())
+                let mut parts = sample.split(',');
+                let (Some(x), Some(y), Some(p), None) =
+                    (parts.next(), parts.next(), parts.next(), parts.next())
+                else { return None; };
+                let (Ok(x), Ok(y), Ok(p)) =
+                    (x.parse::<f32>(), y.parse::<f32>(), p.parse::<f32>())
+                else { return None; };
+                (x.is_finite() && y.is_finite() && p.is_finite())
+                    .then_some([x / scale, y / scale, p.clamp(0.0, 1.0)])
+            }).collect::<Vec<[f32; 3]>>())
             .unwrap_or_default();
         let hover = self.call_string("wcStylusHoverPosition").ok().flatten()
             .and_then(|sample| {
@@ -227,7 +231,7 @@ impl Tools {
             if got_samples {
                 d.insert_temp(egui::Id::new("wc_stylus.path_samples"), samples);
             } else {
-                d.remove::<Vec<[f32; 2]>>(egui::Id::new("wc_stylus.path_samples"));
+                d.remove::<Vec<[f32; 3]>>(egui::Id::new("wc_stylus.path_samples"));
             }
             if let Some(pos) = hover {
                 d.insert_temp(egui::Id::new("wc_stylus.hover_pos"), pos);
@@ -671,9 +675,12 @@ impl Tools {
         if probe {
             let status = self.call_string("wcStylusStatus").ok().flatten()
                 .unwrap_or_else(|| "Stylus: Android status unavailable".to_owned());
+            // Native preference is the only persistent source of truth.
+            let pressure_enabled = self.call_bool("wcPressureInkEnabled").unwrap_or(false);
             ctx.data_mut(|d| {
                 d.insert_temp(probe_id, Instant::now());
                 d.insert_temp(egui::Id::new("wc_menu_stylus_status"), status);
+                d.insert_temp(egui::Id::new("wc_stylus.pressure_enabled"), pressure_enabled);
             });
         }
         let gpu = if let Some(render) = frame.wgpu_render_state() {
@@ -780,6 +787,22 @@ impl Tools {
                         "Document pages: normal".to_owned()
                     },
                     Err(error) => self.status = format!("Could not change page mode: {error}"),
+                }
+            }
+            "pressure_on" | "pressure_off" => {
+                let on = action == "pressure_on";
+                match self.call_bool_arg("wcSetPressureInkEnabled", on) {
+                    Ok(_) => {
+                        ctx.data_mut(|d|
+                            d.insert_temp(egui::Id::new("wc_stylus.pressure_enabled"), on)
+                        );
+                        self.status = if on {
+                            "Pressure-responsive ink enabled (pen/pencil only).".into()
+                        } else {
+                            "Pressure-responsive ink disabled; fixed-width drawing.".into()
+                        };
+                    }
+                    Err(error) => self.status = format!("Cannot save pen pressure setting: {error}"),
                 }
             }
             "pad_on" => self.show_pad = true,

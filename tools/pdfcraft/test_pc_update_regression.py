@@ -32,9 +32,18 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         self.assertNotIn("INSTALL_PACKAGES", updater)
         self.assertIn("DownloadManager", updater)
 
+    def test_compact_updater_separated_from_diagnostics(self):
+        rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
+        self.assertIn('egui::Window::new("PDFCraft updates")', rust)
+        self.assertIn('egui::Window::new("Android tools")', rust)
+        self.assertIn("self.updater_dialog(ctx)", rust)
+        self.assertIn('egui::Button::new("Check again")', rust)
+        self.assertIn("Check for updates at startup", rust)
+        self.assertIn("self.download_ready", rust)
+
     def test_updater_does_not_automatic_install(self):
         rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
-        self.assertIn('ui.button("Download APK")', rust)
+        self.assertIn('egui::Button::new("Download APK")', rust)
         self.assertIn('ui.button("Install downloaded APK…")', rust)
         self.assertIn("self.download_ready", rust)
         self.assertIn("pdfInstallDownloadedUpdate", rust)

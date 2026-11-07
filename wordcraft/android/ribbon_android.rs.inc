@@ -102,6 +102,10 @@ fn artcraft_android_menu(ui: &mut Ui) {
         }
         ui.separator();
         ui.label("Recursive shared fonts: 5,000 files / 4 GiB maximum.");
+        let stylus = ui.ctx().data(|d|
+            d.get_temp::<String>(egui::Id::new("wc_menu_stylus_status"))
+        ).unwrap_or_else(|| "Stylus: Checking Android input…".to_owned());
+        ui.label(stylus);
         let gpu = ui.ctx().data(|d| d.get_temp::<String>(egui::Id::new("wc_menu_gpu"))).unwrap_or_default();
         ui.label(gpu);
         let status = ui.ctx().data(|d| d.get_temp::<String>(egui::Id::new("wc_menu_status"))).unwrap_or_default();

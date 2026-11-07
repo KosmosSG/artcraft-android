@@ -20,6 +20,32 @@ def text(path: Path) -> str:
 
 
 class WordCraftDeviceFixes(unittest.TestCase):
+    def test_opt_in_pressure_responsive_ink_uses_native_samples_and_standard_shapes(self):
+        from pathlib import Path
+        base = Path(__file__).parent
+        java, native, menu, build = text(JAVA), text(RUST), text(RIBBON), text(BUILD)
+        overlay = (base / "patch_pressure_ink.py").read_text()
+        pressure = (base / "stylus_pressure.rs.inc").read_text()
+        for marker in ("wcPressureInkEnabled()", "wcSetPressureInkEnabled(boolean on)",
+                       "getHistoricalPressure(i, h)", "wcPenLastContactPressure",
+                       'Float.toString(pressure)'):
+            self.assertIn(marker, java)
+        for marker in ("Vec<[f32; 3]>", "wcPressureInkEnabled", "wcSetPressureInkEnabled",
+                       '"pressure_on"', '"pressure_off"'):
+            self.assertIn(marker, native)
+        for marker in ('"Pressure-responsive stroke width"', '"pressure_on"', '"pressure_off"'):
+            self.assertIn(marker, menu)
+        for marker in ("apply_pressure_ink", "stylus_pressure.rs.inc"):
+            self.assertIn(marker, build)
+        for marker in ("WC_ANDROID_PRESSURE_STROKES_V1", "wc_pressure_width",
+                       "wc_pressure_segments", "wc_smooth_pressures"):
+            self.assertIn(marker, pressure)
+        for marker in ("join_next_undo", "draw.stroke", '"width": width',
+                       "pressure_on", "wc_stylus.path_samples"):
+            self.assertIn(marker, overlay)
+        self.assertIn("app.session.view.draw.ink_to_shape = auto_shape", overlay)
+        self.assertNotIn("Pressure-responsive stroke width: Not yet available.", menu)
+
     def test_stylus_hover_and_curve_smoothing_is_isolated_and_regression_guarded(self):
         from pathlib import Path
         base = Path(__file__).parent

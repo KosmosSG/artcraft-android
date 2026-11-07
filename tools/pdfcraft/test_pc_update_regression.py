@@ -11,7 +11,7 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         icon = base64.b64decode(icon_b64, validate=True)
         self.assertEqual(hashlib.sha256(icon).hexdigest(),
             "690439cf43b99f6d5e5f233f2cbb55877cfbe089e823ae2de600035884d5a3f8")
-        self.assertTrue(icon.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+        self.assertEqual(icon[:8], bytes.fromhex("89504e470d0a1a0a"))
 
     def test_sidebar_scroll_patch_preserves_touch_and_disables_wheel(self):
         patch = (ROOT / "tools/pdfcraft/sidebar_scroll_patch.py").read_text()

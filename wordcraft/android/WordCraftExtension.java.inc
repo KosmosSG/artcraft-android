@@ -460,6 +460,13 @@
     private volatile boolean wcPenContact = false;
     private volatile float wcPenPressure = 0f;
     private volatile float wcPenTilt = 0f;
+    private volatile float wcPenPeakPressure = 0f;
+    private volatile float wcPenHoverX = Float.NaN;
+    private volatile float wcPenHoverY = Float.NaN;
+    // Keep historical stylus events that the egui frame-based pointer misses.
+    private final Object wcStylusTrailLock = new Object();
+    private final java.util.ArrayDeque<String> wcStylusTrail = new java.util.ArrayDeque<>();
+    private static final int WC_STYLUS_TRAIL_LIMIT = 256;
     private volatile long wcPenEventAt = 0L;
     private boolean wcPalmSuppressed = false;
     private int wcPalmSuppressedCount = 0;
@@ -506,17 +513,90 @@
             int tool = event.getToolType(i);
             if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
                     || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
+                if (hover) {
+                    wcPenHoverX = event.getX(i);
+                    wcPenHoverY = event.getY(i);
+                }
+                if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+                    wcPenHoverX = Float.NaN;
+                    wcPenHoverY = Float.NaN;
+                }
                 wcPenPressure = event.getPressure(i);
+                if (wcPenContact && Float.isFinite(wcPenPressure))
+                    wcPenPeakPressure = Math.max(wcPenPeakPressure, wcPenPressure);
                 wcPenTilt = event.getAxisValue(android.view.MotionEvent.AXIS_TILT, i);
                 break;
             }
         }
     }
 
+    // WC_ANDROID_STYLUS_HISTORY_V1: preserve Android's historical pen movement
+    // while forwarding the original event to GameActivity unmodified.
+    private void wcAppendStylusPoint(float x, float y) {
+        if (!Float.isFinite(x) || !Float.isFinite(y)) return;
+        synchronized (wcStylusTrailLock) {
+            while (wcStylusTrail.size() >= WC_STYLUS_TRAIL_LIMIT)
+                wcStylusTrail.pollFirst();
+            wcStylusTrail.addLast(Float.toString(x) + "," + Float.toString(y));
+        }
+    }
+
+    private void wcCaptureStylusHistory(android.view.MotionEvent event) {
+        if (!wcHasStylus(event)) return;
+        int action = event.getActionMasked();
+        if (action != android.view.MotionEvent.ACTION_DOWN
+                && action != android.view.MotionEvent.ACTION_MOVE
+                && action != android.view.MotionEvent.ACTION_UP
+                && action != android.view.MotionEvent.ACTION_POINTER_DOWN
+                && action != android.view.MotionEvent.ACTION_POINTER_UP) return;
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            synchronized (wcStylusTrailLock) { wcStylusTrail.clear(); }
+            wcPenPeakPressure = 0f;
+        }
+        for (int i = 0; i < event.getPointerCount(); ++i) {
+            int tool = event.getToolType(i);
+            if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) continue;
+            final int count = event.getHistorySize();
+            for (int h = Math.max(0, count - 80); h < count; ++h) {
+                wcAppendStylusPoint(event.getHistoricalX(i, h), event.getHistoricalY(i, h));
+                float pressure = event.getHistoricalPressure(i, h);
+                if (Float.isFinite(pressure))
+                    wcPenPeakPressure = Math.max(wcPenPeakPressure, pressure);
+            }
+            wcAppendStylusPoint(event.getX(i), event.getY(i));
+        }
+    }
+
+    /** One-shot batched pen samples; safe to poll from the native UI thread. */
+    public String wcTakeStylusTrail() {
+        synchronized (wcStylusTrailLock) {
+            if (wcStylusTrail.isEmpty()) return null;
+            StringBuilder result = new StringBuilder(wcStylusTrail.size() * 20);
+            for (String sample : wcStylusTrail) {
+                if (result.length() > 0) result.append(';');
+                result.append(sample);
+            }
+            wcStylusTrail.clear();
+            return result.toString();
+        }
+    }
+
+    /** Non-contact cursor position. Does not synthesize drawing/press events. */
+    public String wcStylusHoverPosition() {
+        if (!wcPenHover || !Float.isFinite(wcPenHoverX) || !Float.isFinite(wcPenHoverY))
+            return null;
+        return Float.toString(wcPenHoverX) + "," + Float.toString(wcPenHoverY);
+    }
+
     /** Read-only, throttled by the Rust UI; diagnostic status in the Wc icon menu. */
     public String wcStylusStatus() {
         if (!wcPenSeen) return "Stylus: Not detected yet";
-        if (wcPenContact) return "Stylus: Contact (pressure " + wcPenPressure + ")";
+        if (wcPenContact) return "Stylus: Contact | pressure " + wcPenPressure
+                + " | peak " + wcPenPeakPressure;
+        if (wcPenSeen && wcPenPeakPressure > 0f && !wcPenHover)
+            return "Stylus: Detected | last pressure " + wcPenPressure
+                    + " | peak " + wcPenPeakPressure;
         if (wcPenHover) return "Stylus: Hovering";
         return "Stylus: Detected";
     }
@@ -614,7 +694,10 @@
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        if (wcHasStylus(event)) wcRecordStylus(event);
+        if (wcHasStylus(event)) {
+            wcRecordStylus(event);
+            wcCaptureStylusHistory(event);
+        }
         if (wcRejectPalm(event)) return true;
         if (wcHasStylus(event)) {
             synchronized (wcTouchPanLock) { wcTouchPairActive = false; }

@@ -171,12 +171,6 @@ def apply_pressure_ink(source_root: Path, pressure_module: Path) -> None:
                         "page": d.page, "points": points, "tool": d.tool.name()
                     }));
                 }
-                #[cfg(not(target_os = "android"))]
-                if !dynamic {
-                    let _ = app.run("draw.stroke", json!({
-                        "page": d.page, "points": points, "tool": d.tool.name()
-                    }));
-                }
             }""",
         "persist pressure widths as bounded standard freeforms",
     )

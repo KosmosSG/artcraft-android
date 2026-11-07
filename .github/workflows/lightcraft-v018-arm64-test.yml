@@ -148,6 +148,9 @@ jobs:
               s = s[:a] + 'echo "LightCraft v0.18: retaining pinned egui/winit IME-compatible forks"\n' + s[b:]
           p.write_text(s)
           PY
+          # The removed vendor blocks also created this directory. Preserve it
+          # for the builder's separate egui-wgpu surface and Android rfd adapters.
+          mkdir -p builder/source/lightcraft/vendor
           bash -n builder/lib/build-common.sh
           # No permanent-signing secrets, no production certificate, no release publishing.
           bash builder/build.sh -lightcraft \

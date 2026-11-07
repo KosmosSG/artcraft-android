@@ -242,6 +242,8 @@ def main() -> None:
     apply_stylus_ink(root / "source" / "wordcraft", Path(__file__).with_name("stylus_curve.rs.inc"))
     from patch_pressure_ink import apply_pressure_ink
     apply_pressure_ink(root / "source" / "wordcraft", Path(__file__).with_name("stylus_pressure.rs.inc"))
+    from patch_touch_guard import apply_touch_guard
+    apply_touch_guard(root / "source" / "wordcraft")
     source.write_text(patched, encoding="utf-8")
     print("Applied WordCraft font persistence and scoped-storage overlay to isolated builder")
     print("WordCraft SAF shared font folder, manual/opt-in updater, shortcut pad and GPU info installed; device testing pending")

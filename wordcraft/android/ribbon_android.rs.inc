@@ -182,7 +182,18 @@ fn artcraft_android_menu(ui: &mut Ui) {
             ui.separator();
             ui.small("Use the Draw tab for pen, pencil, eraser and ink.");
             ui.small("Handwriting-to-editable-text: In development.");
-            ui.small("Pressure-responsive stroke width: Not yet available.");
+            let mut pressure_on = ui.ctx().data(|d|
+                d.get_temp::<bool>(egui::Id::new("wc_stylus.pressure_enabled"))
+            ).unwrap_or(false);
+            if ui.checkbox(&mut pressure_on, "Pressure-responsive stroke width").changed() {
+                ui.ctx().data_mut(|d| d.insert_temp(
+                    egui::Id::new("wc_menu_action"),
+                    if pressure_on { "pressure_on" } else { "pressure_off" }.to_owned()
+                ));
+                ui.ctx().request_repaint();
+            }
+            ui.small("Pen and pencil: softer touch = thinner; harder press = thicker.");
+            ui.small("Experimental: save, reopen and undo tests recommended.");
         });
         ui.separator();
         ui.menu_button("About WordCraft", |ui| {

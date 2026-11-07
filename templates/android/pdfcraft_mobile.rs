@@ -28,6 +28,7 @@ pub struct Mobile {
     trackpad_java_status: String,
     trackpad_last_poll: Option<std::time::Instant>,
     updates_open: bool,
+    about_open: bool,
     toolbar_shown: bool,
     font_status: String,
     update_status: String,
@@ -51,7 +52,7 @@ impl Mobile {
             trackpad_scroll_events: 0, trackpad_zoom_events: 0,
             trackpad_last_native: "No egui scroll/zoom events yet".into(),
             trackpad_java_status: "No Java input diagnostic sample yet".into(),
-            trackpad_last_poll: None, updates_open: false, toolbar_shown: false,
+            trackpad_last_poll: None, updates_open: false, about_open: false, toolbar_shown: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, update_asset_url: None, update_digest: String::new(),
@@ -450,6 +451,10 @@ impl Mobile {
                 self.panel_open = true;
                 return;
             }
+            9 => {
+                self.about_open = true;
+                return;
+            }
             8 => {
                 self.panel_open = true;
                 self.fonts_open = false;
@@ -524,6 +529,22 @@ impl Mobile {
     }
     pub fn dialog(&mut self, ctx: &egui::Context) {
         if self.updates_open { self.updater_dialog(ctx); }
+        if self.about_open {
+            let mut open = self.about_open;
+            egui::Window::new("About PDFCraft")
+                .open(&mut open)
+                .default_width(340.0)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.heading("PDFCraft");
+                    ui.label("Version 0.18.0-android.14");
+                    ui.label("ARM64 test candidate • separate package");
+                    ui.label("PDF editor for Android");
+                    ui.label("Updates: published PDFCraft releases only");
+                    ui.label("Temporary signing — not a production release");
+                });
+            self.about_open = open;
+        }
         if !self.panel_open { return; }
         let mut open = self.panel_open;
         egui::Window::new("Android tools").open(&mut open)

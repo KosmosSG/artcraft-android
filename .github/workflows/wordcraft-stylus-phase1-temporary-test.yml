@@ -97,6 +97,15 @@ jobs:
           rustc --edition=2024 --crate-name wc_smoothing_test --test /tmp/wc_smoothing_test.rs -o /tmp/wc_smoothing_test
           /tmp/wc_smoothing_test
 
+      - name: Regression gate before installing expensive Android tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_stylus_ink.py
+          python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
+          python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
+          echo "PASS: D/C/S, clipboard, two-finger scrolling, pressure and hover regressions."
+
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
         run: |
@@ -140,7 +149,7 @@ jobs:
           print("Candidate icon generated from tools/approved-branding/assets/WordCraft.png")
           PY
 
-      - name: Regression-test upstream v0.15.2 D/C/S migration without touching source
+      - name: Verify regression gate remains valid after preparing build tools
         shell: bash
         run: |
           set -euo pipefail

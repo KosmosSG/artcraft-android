@@ -348,10 +348,8 @@ impl Tools {
                 }
             }
         }
-        if tools.startup_updates && tools.call_void("wcCheckForUpdates").is_ok() {
-            tools.update_checking = true;
-            tools.update_started = Some(Instant::now());
-        }
+        // The unified verified updater owns startup checks. Keep the legacy
+        // read-only methods for compatibility, but never trigger a second check here.
         if tools.call_bool("wcHasFontFolder").unwrap_or(false) {
             tools.status = tools.fonts.start();
             if let Err(error) = tools.call_void("wcRefreshFontFolder") {

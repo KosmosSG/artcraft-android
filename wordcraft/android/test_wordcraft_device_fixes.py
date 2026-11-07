@@ -20,12 +20,37 @@ def text(path: Path) -> str:
 
 
 class WordCraftDeviceFixes(unittest.TestCase):
+    def test_stylus_hover_and_curve_smoothing_is_isolated_and_regression_guarded(self):
+        from pathlib import Path
+        base = Path(__file__).parent
+        java = text(JAVA)
+        native = text(RUST)
+        build = text(BUILD)
+        overlay = (base / "patch_stylus_ink.py").read_text()
+        curve = (base / "stylus_curve.rs.inc").read_text()
+        for marker in ("wcStylusHoverPosition()", "wcTakeStylusTrail()",
+                       "getHistoricalX(i, h)", "getHistoricalPressure(i, h)",
+                       "wcPenPeakPressure", "wcPenLastContactPressure"):
+            self.assertIn(marker, java)
+        for marker in ("inject_stylus_motion(&self", "wc_stylus.hover_pos",
+                       "wc_stylus.path_samples"):
+            self.assertIn(marker, native)
+        for marker in ("wc_stylus_samples", "apply_stylus_ink", "stylus_curve.rs.inc"):
+            self.assertIn(marker, build)
+        for marker in ("WC_ANDROID_STYLUS_HOVER_CURSOR_V1", "wc_smooth_stroke",
+                       "get_temp::<[f32; 2]>", "painter.circle_stroke",
+                       "source = one(source, old_pen, new_pen"):
+            self.assertIn(marker, overlay)
+        self.assertIn("WC_STYLUS_CURVE_SMOOTHING_V1", curve)
+        self.assertNotIn("secrets.", build)
+        self.assertIn("wcRejectPalm(", java)
+
     def test_builder_shim_parses_and_wires_raw_keys_before_clipboard(self):
         s = text(BUILD)
         ast.parse(s)
         self.assertIn('wc_raw_dcs = ', s)
         self.assertIn('self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw)', s)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);', s)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}        self.handle_clipboard_shortcuts(raw);', s)
 
     def test_approved_icon_is_derived_from_launcher_and_not_unrelated_asset(self):
         s = text(BUILD)
@@ -145,7 +170,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'ctx.request_repaint();',
         ):
             self.assertIn(line, rust)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}        self.handle_clipboard_shortcuts(raw);', build)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}        self.handle_clipboard_shortcuts(raw);', build)
         self.assertIn("wc_trackpad_scroll = ", build)
         # No JNI bridge is created for other apps; no fake touchscreen drag events.
         self.assertIn("if app == 'wordcraft' else ''", build)

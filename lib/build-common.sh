@@ -338,6 +338,8 @@ if app == "pdfcraft":
         check=True,
     )
     fixed.append("PDFCraft Android D/C/S save dialog, repeated tools and touch hints")
+    subprocess.run([sys.executable, str(Path.cwd() / "tools/pdfcraft/sidebar_scroll_patch.py"), str(src)], check=True)
+    fixed.append("Android tools sidebar touch-only scrolling; no trackpad wheel capture")
 
     # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
     update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]
@@ -2186,6 +2188,9 @@ icon = "@mipmap/ic_launcher"
         permission = '''[[package.metadata.android.uses_permission]]
 name = "android.permission.INTERNET"
 
+[[package.metadata.android.uses_permission]]
+name = "android.permission.REQUEST_INSTALL_PACKAGES"
+
 '''
         header = "[package.metadata.android.application]"
         if manifest.count(header) != 1:
@@ -2202,7 +2207,8 @@ name = "android.permission.INTERNET"
             .replace("__TAG__", saf["activity"])
         )
         if app == "pdfcraft":
-            extension = (root / "templates" / "android" / "pdfcraft_mobile_java.txt").read_text()
+            extension = ((root / "templates" / "android" / "pdfcraft_mobile_java.txt").read_text()
+                         + "\n" + (root / "templates" / "android" / "pdfcraft_update_java.txt").read_text())
             marker = "public String safPoll() { return results.poll(); }"
             if java_src.count(marker) != 1:
                 raise SystemExit("Cannot safely extend PDFCraft Activity: SAF poll anchor changed")

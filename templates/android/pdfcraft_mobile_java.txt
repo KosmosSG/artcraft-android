@@ -90,7 +90,7 @@ public String pdfTrackpadStatus() {
 }
 
 public String pdfFontPoll() { return pdfFontResults.poll(); }
-public String pdfUpdatePoll() { return pdfUpdateResults.poll(); }
+public String pdfUpdatePoll() { String queued = pdfUpdateResults.poll(); return queued != null ? queued : pdfDownloadStatus(); }
 public boolean pdfStartupUpdateEnabled() {
     return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, false);
 }
@@ -325,6 +325,8 @@ public void pdfCheckForUpdates() {
             if (installed == null) installed = "0.0.0-android.0";
             String latest = null;
             String releaseUrl = null;
+            String assetUrl = null;
+            String assetDigest = null;
             boolean pageLimitReached = false;
             for (int page = 1; page <= PDF_RELEASES_MAX_PAGES; page++) {
                 java.net.HttpURLConnection conn = null;
@@ -367,15 +369,27 @@ public void pdfCheckForUpdates() {
                         continue;
                     JSONArray assets = release.optJSONArray("assets");
                     boolean apkPresent = false;
+                    String candidateAssetUrl = null;
+                    String candidateAssetDigest = null;
                     if (assets != null) for (int j = 0; j < assets.length(); j++) {
                         JSONObject asset = assets.optJSONObject(j);
                         if (asset != null && ("PDFCraft-v" + candidate.split("-android\\.")[0] + "-arm64-release.apk")
-                                .equals(asset.optString("name", ""))) apkPresent = true;
+                                .equals(asset.optString("name", ""))) {
+                            String raw = asset.optString("browser_download_url", "");
+                            if (raw.startsWith("https://github.com/KosmosSG/artcraft-android/releases/download/"
+                                    + tag + "/")) {
+                                apkPresent = true;
+                                candidateAssetUrl = raw;
+                                candidateAssetDigest = asset.optString("digest", "");
+                            }
+                        }
                     }
                     if (!apkPresent) continue;
                     if (latest == null || pdfCompareVersions(candidate, latest) > 0) {
                         latest = candidate;
                         releaseUrl = url;
+                        assetUrl = candidateAssetUrl;
+                        assetDigest = candidateAssetDigest;
                     }
                 }
                 // Partial pages are the last page in GitHub's chronological feed.
@@ -390,7 +404,11 @@ public void pdfCheckForUpdates() {
                         : "No published PDFCraft Android APK release found.");
             } else {
                 reply.put("latest", latest);
-                if (pdfCompareVersions(latest, installed) > 0) reply.put("url", releaseUrl);
+                if (pdfCompareVersions(latest, installed) > 0) {
+                    reply.put("url", releaseUrl);
+                    reply.put("asset_url", assetUrl);
+                    reply.put("digest", assetDigest == null ? "" : assetDigest);
+                }
                 reply.put("message", pdfCompareVersions(latest, installed) > 0
                         ? "New PDFCraft Android release: " + latest
                         : pageLimitReached

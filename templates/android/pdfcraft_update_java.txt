@@ -1,0 +1,176 @@
+// PDFCraft-only, opt-in published release installer. App-private download, system confirmation.
+// Neither Android nor this code can overwrite a different package or signing identity.
+private volatile long pdfUpdateDownloadId = -1L;
+private volatile File pdfUpdateFile = null;
+private volatile String pdfUpdateExpectedDigest = "";
+private volatile boolean pdfUpdateDownloaded = false;
+private volatile long pdfUpdateLastQuery = 0L;
+private void pdfUpdateNotice(String message, boolean ready) {
+    try {
+        JSONObject result = new JSONObject();
+        result.put("kind", "download");
+        result.put("message", message);
+        result.put("ready", ready);
+        pdfUpdateResults.offer(result.toString());
+    } catch (Exception e) { Log.e(TAG, "PDFCraft download status unavailable", e); }
+}
+public void pdfDownloadUpdate(String url, String sha256Digest) {
+    // The URL is an API-provided ASSET, not an arbitrary browser destination.
+    // Stable releases only; the tag and APK filename must match one another.
+    if (url == null || !url.matches(
+        "https://github\\.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v"
+        + "([0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*)/"
+        + "PDFCraft-v[0-9]+\\.[0-9]+\\.[0-9]+-arm64-release\\.apk")) {
+        pdfUpdateNotice("Refused: update must be a published PDFCraft APK asset.", false);
+        return;
+    }
+    try {
+        String tag = url.substring(url.indexOf("/pdfcraft-v") + "/pdfcraft-v".length(), url.lastIndexOf('/'));
+        String apkName = url.substring(url.lastIndexOf('/') + 1);
+        String core = tag.split("-android\\.")[0];
+        if (!apkName.equals("PDFCraft-v" + core + "-arm64-release.apk"))
+            throw new SecurityException("Release tag and APK version do not match");
+        // GitHub may not provide the newer asset digest field; the APK's signing
+        // certificate and package/version identity are still mandatory at install.
+        String digest = sha256Digest == null ? "" : sha256Digest.trim();
+        if (!digest.isEmpty() && !digest.matches("sha256:[a-fA-F0-9]{64}"))
+            throw new SecurityException("Unexpected GitHub asset digest");
+        if (pdfUpdateDownloadId > 0 && !pdfUpdateDownloaded)
+            throw new IllegalStateException("An update is already downloading");
+        File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        if (dir == null || (!dir.isDirectory() && !dir.mkdirs()))
+            throw new java.io.IOException("Application download directory unavailable");
+        File target = new File(dir, apkName);
+        if (target.exists() && !target.delete())
+            throw new java.io.IOException("Cannot replace previous downloaded APK");
+        android.app.DownloadManager.Request request =
+            new android.app.DownloadManager.Request(Uri.parse(url));
+        request.setAllowedOverMetered(true);
+        request.setAllowedOverRoaming(false);
+        request.setMimeType("application/vnd.android.package-archive");
+        request.setTitle("PDFCraft " + tag + " update");
+        request.setDescription("Tap Install in PDFCraft after download completes");
+        request.setNotificationVisibility(
+            android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, apkName);
+        android.app.DownloadManager manager =
+            (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (manager == null) throw new java.io.IOException("Android Download Manager unavailable");
+        pdfUpdateDownloadId = manager.enqueue(request);
+        pdfUpdateFile = target;
+        pdfUpdateExpectedDigest = digest;
+        pdfUpdateDownloaded = false;
+        pdfUpdateLastQuery = 0L;
+        pdfUpdateNotice("Downloading PDFCraft " + tag + "…", false);
+    } catch (Exception e) { pdfUpdateNotice("Download not started: " + e.getMessage(), false); }
+}
+private String pdfDownloadStatus() {
+    long id = pdfUpdateDownloadId;
+    if (id <= 0 || pdfUpdateDownloaded) return null;
+    long now = android.os.SystemClock.elapsedRealtime();
+    if (now - pdfUpdateLastQuery < 700) return null;
+    pdfUpdateLastQuery = now;
+    try {
+        android.app.DownloadManager manager =
+            (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (manager == null) return null;
+        try (Cursor cursor = manager.query(
+                new android.app.DownloadManager.Query().setFilterById(id))) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                pdfUpdateDownloadId = -1L;
+                pdfUpdateNotice("Download not found in Android Download Manager", false);
+                return pdfUpdateResults.poll();
+            }
+            int status = cursor.getInt(cursor.getColumnIndexOrThrow(
+                android.app.DownloadManager.COLUMN_STATUS));
+            if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                if (pdfUpdateFile == null || !pdfUpdateFile.isFile()
+                        || pdfUpdateFile.length() < 1024L) {
+                    pdfUpdateDownloadId = -1L;
+                    pdfUpdateNotice("Downloaded APK missing or empty", false);
+                } else {
+                    pdfUpdateDownloaded = true;
+                    pdfUpdateNotice("Download complete. Choose Install to verify the APK and open Android's installer.", true);
+                }
+                return pdfUpdateResults.poll();
+            }
+            if (status == android.app.DownloadManager.STATUS_FAILED) {
+                pdfUpdateDownloadId = -1L;
+                pdfUpdateNotice("Android Download Manager reported a download failure", false);
+                return pdfUpdateResults.poll();
+            }
+        }
+    } catch (Exception e) {
+        pdfUpdateDownloadId = -1L;
+        pdfUpdateNotice("Cannot check download: " + e.getMessage(), false);
+        return pdfUpdateResults.poll();
+    }
+    return null;
+}
+public void pdfInstallDownloadedUpdate() {
+    pdfBackground.execute(() -> {
+        try {
+            File file = pdfUpdateFile;
+            long id = pdfUpdateDownloadId;
+            if (!pdfUpdateDownloaded || id <= 0 || file == null || !file.isFile())
+                throw new java.io.IOException("Download has not completed");
+            if (Build.VERSION.SDK_INT < 28)
+                throw new SecurityException("Secure in-app installer requires Android 9 or later");
+            if (file.length() > 800L * 1024 * 1024)
+                throw new SecurityException("Downloaded APK exceeds permitted size");
+            if (!pdfUpdateExpectedDigest.isEmpty()) {
+                java.security.MessageDigest digest =
+                    java.security.MessageDigest.getInstance("SHA-256");
+                try (InputStream in = new FileInputStream(file)) {
+                    byte[] buffer = new byte[65536];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) digest.update(buffer, 0, read);
+                }
+                StringBuilder actual = new StringBuilder("sha256:");
+                for (byte v : digest.digest())
+                    actual.append(String.format(java.util.Locale.ROOT, "%02x", v & 255));
+                if (!actual.toString().equalsIgnoreCase(pdfUpdateExpectedDigest))
+                    throw new SecurityException("GitHub asset SHA-256 mismatch");
+            }
+            PackageManager pm = getPackageManager();
+            int verify = PackageManager.GET_SIGNING_CERTIFICATES;
+            android.content.pm.PackageInfo current = pm.getPackageInfo(getPackageName(), verify);
+            android.content.pm.PackageInfo incoming =
+                pm.getPackageArchiveInfo(file.getAbsolutePath(), verify);
+            if (incoming == null || !getPackageName().equals(incoming.packageName))
+                throw new SecurityException("Different app package: testing builds cannot replace the stable PDFCraft app");
+            if (incoming.getLongVersionCode() <= current.getLongVersionCode())
+                throw new SecurityException("APK versionCode is not newer than installed PDFCraft");
+            android.content.pm.Signature[] before = current.signingInfo == null ? null
+                : current.signingInfo.getApkContentsSigners();
+            android.content.pm.Signature[] after = incoming.signingInfo == null ? null
+                : incoming.signingInfo.getApkContentsSigners();
+            if (before == null || after == null || before.length != 1 || after.length != 1
+                || !java.util.Arrays.equals(before[0].toByteArray(), after[0].toByteArray()))
+                throw new SecurityException("APK signing certificate differs from installed PDFCraft");
+            runOnUiThread(() -> {
+                try {
+                    if (Build.VERSION.SDK_INT >= 26 && !pm.canRequestPackageInstalls()) {
+                        pdfUpdateNotice("Allow PDFCraft to install apps, then tap Install again.", true);
+                        startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + getPackageName())));
+                        return;
+                    }
+                    android.app.DownloadManager manager =
+                        (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    Uri contentUri = manager == null ? null : manager.getUriForDownloadedFile(id);
+                    if (contentUri == null) throw new java.io.IOException("Android download URI unavailable");
+                    Intent installer = new Intent(Intent.ACTION_VIEW);
+                    installer.setDataAndType(contentUri, "application/vnd.android.package-archive");
+                    installer.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(installer); // User must confirm in system Package Installer.
+                    pdfUpdateNotice("Android installer opened; confirm the installation in the system dialog.", true);
+                } catch (Exception e) {
+                    pdfUpdateNotice("Unable to open Android installer: " + e.getMessage(), true);
+                }
+            });
+        } catch (Exception error) {
+            pdfUpdateNotice("Cannot install update: " + error.getMessage(), false);
+        }
+    });
+}

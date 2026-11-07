@@ -154,7 +154,24 @@ jobs:
           assert "egui::Area::new" not in floating, "Floating update button must not ship"
           assert "egui::Window::new" not in floating, "Old update popup must not ship"
           assert "artcraft.updater.action" in floating, "Menu bridge absent"
-          assert 'ui.menu_button("Verified APK updater"' in icon_menu
+          assert icon_menu.count('ui.menu_button("App Updates"') == 1, "App Updates must be unified"
+          assert icon_menu.count('ui.button("Check for Updates")') == 1, "Duplicate Check for Updates"
+          assert 'ui.menu_button("Verified APK updater"' not in icon_menu, "Legacy updater submenu remains"
+          assert 'ui.button("Download & Install Update…")' in icon_menu
+          assert 'ui.checkbox(&mut startup, "Check at Startup")' in icon_menu
+          assert 'ui.button("View Release Notes…")' in icon_menu
+          assert '"artcraft.updater.available"' in icon_menu
+          assert '"artcraft.updater.diagnostics"' in icon_menu
+          assert '"Check for GridCraft Updates"' not in icon_menu
+          overlay = Path("tools/gridcraft/android_addons/overlay.py").read_text()
+          assert 'gcStartIfEnabled();' not in overlay, "Legacy GridCraft startup check must not run"
+
+          assert 'invoke(android, "download")' in floating
+          assert 'invoke(android, "view")' in floating
+          assert 'poll_menu_state(ctx, android)' in floating
+          assert "downloadAvailable" in java and "menuState" in java and "viewAvailable" in java
+          assert "egui::Window::new" not in floating
+
           for action in ('"check"', '"test"', '"toggle"'):
               assert action in icon_menu, f"Missing menu action {action}"
           java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
@@ -195,7 +212,7 @@ jobs:
           test -s builder/source/gridcraft/apps/gridcraft-android/java/com/artcraft/gridcraft/candidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/gridcraft/apps/gridcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$APK" candidate/GridCraft-v0.16.1-android.4-ARM64-ICON-MENU-TEMP-TEST.apk
+          cp "$APK" candidate/GridCraft-v0.16.1-android.4-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp apk-signing.txt apk-badging.txt candidate/
 
@@ -204,9 +221,9 @@ jobs:
       - name: Upload GridCraft ARM64 disposable-signed updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: GridCraft-Updater-IconMenu-ARM64-TEMP-TEST
+          name: GridCraft-Unified-Updater-ARM64-TEMP-TEST
           path: |
-            candidate/GridCraft-v0.16.1-android.4-ARM64-ICON-MENU-TEMP-TEST.apk
+            candidate/GridCraft-v0.16.1-android.4-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
             candidate/apk-signing.txt
             candidate/apk-badging.txt

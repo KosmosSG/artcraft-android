@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: pdfcraft-ephemeral-candidate-${{ github.ref }}
@@ -234,3 +235,20 @@ jobs:
             approved-icon-candidate/**
           if-no-files-found: error
           retention-days: 30
+
+      - name: Report PDFCraft test APK build result to draft PR
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$BUILD_STATUS" = "success" ]; then
+            MESSAGE="✅ PDFCraft v0.18.0-android.14 temporary-signed ARM64 test APK: GitHub Actions succeeded. [Build and download artifact]($RUN_URL). Artifact: \`PDFCraft-0.18.0-android.14-PC-UPDATER-SIDEBAR-TEST\`. Device testing still required. No permanent signing, merge or publication."
+          else
+            MESSAGE="⚠️ PDFCraft v0.18.0-android.14 isolated test build status: **$BUILD_STATUS**. [View GitHub Actions logs]($RUN_URL). No production signing or publication performed."
+          fi
+          gh pr comment 124 --repo "$GITHUB_REPOSITORY" --body "$MESSAGE" ||
+            echo "::warning::Could not post the CI result to PR 124; inspect $RUN_URL"

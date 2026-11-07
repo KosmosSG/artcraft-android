@@ -120,6 +120,35 @@ jobs:
           mkdir -p builder/source
           mv source builder/source/lightcraft
           test "$(git -C builder/source/lightcraft rev-parse HEAD)" = '32d569ad5d19a6b55cf8d5c077127faa0f44a83b'
+          # LightCraft 0.18 uses an inseparable reviewed egui 0.37 + custom winit fork.
+          # The shared builder vendors egui-winit 0.36 and winit 0.30.13; replacing
+          # the fork caused Rust E0599 for ImeResetCompleted/reset_ime_with_request.
+          # Remove ONLY the two incompatible vendor blocks in this disposable builder,
+          # leaving every other Android integration (SAF, launcher, updates) intact.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/build-common.sh")
+          s = p.read_text()
+          blocks = (
+              ("echo \"Vendoring the Android-compatible egui-winit for $TITLE (system clipboard via JNI)...\"",
+               "# Some apps call `rfd` directly"),
+              ("echo \"Vendoring the mouse/scroll-aware winit for $TITLE...\"",
+               "# egui-wgpu's lost-surface recovery"),
+          )
+          for start, end in blocks:
+              if s.count(start) != 1 or s.count(end) != 1:
+                  raise SystemExit(f"STOP: LightCraft builder vendor anchor drift: {start}")
+              a = s.index(start)
+              b = s.index(end, a)
+              if b <= a:
+                  raise SystemExit("STOP: unexpected Android builder ordering")
+              block = s[a:b]
+              if "python3 - \"$SRC/Cargo.toml\" <<'PY'" not in block:
+                  raise SystemExit("STOP: missing expected vendor-patch block")
+              s = s[:a] + 'echo "LightCraft v0.18: retaining pinned egui/winit IME-compatible forks"\\n' + s[b:]
+          p.write_text(s)
+          PY
+          bash -n builder/lib/build-common.sh
           # No permanent-signing secrets, no production certificate, no release publishing.
           bash builder/build.sh -lightcraft \
             -packagename=com.artcraft.lightcraft.test \

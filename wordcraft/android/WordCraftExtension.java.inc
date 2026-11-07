@@ -708,33 +708,71 @@
     }
 
 
-    // WC_TWOFINGER_SCROLL_HISTORY_V1: preserve Android batched two-finger
-    // motion so the canvas keeps up with fast touchscreen scrolling.
-    // No one-finger scrolling, no fake finger presses, no interference with
-    // stylus/palm rejection, pinching or the original touch dispatch.
+    // WC_TWOFINGER_NAV_NO_SELECTION_V2: a two-finger gesture owns the canvas;
+    // never dispatch its MOVE/UP as editing, object drag or pen input.
     private final Object wcTouchPanLock = new Object();
-    private boolean wcTouchPairActive;
-    private float wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
+    private boolean wcTouchPairActive, wcTouchNavConsuming;
+    private volatile boolean wcTouchNavSuppressInk;
+    private int wcTouchMode; // 0 unknown, 1 pan, 2 pinch
+    private float wcTouchStartSpan, wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
+    private float wcTouchZoom = 1f;
+    private volatile float wcCanvasLeft = Float.NaN, wcCanvasTop = Float.NaN;
+    private volatile float wcCanvasRight = Float.NaN, wcCanvasBottom = Float.NaN;
+
+    public void wcSetTouchCanvasBounds(String bounds) {
+        if (bounds == null) return;
+        String[] p = bounds.split(",", -1);
+        if (p.length != 4) return;
+        try {
+            float l = Float.parseFloat(p[0]), t = Float.parseFloat(p[1]);
+            float r = Float.parseFloat(p[2]), b = Float.parseFloat(p[3]);
+            if (Float.isFinite(l) && Float.isFinite(t)
+                    && Float.isFinite(r) && Float.isFinite(b) && r > l && b > t) {
+                wcCanvasLeft = l; wcCanvasTop = t;
+                wcCanvasRight = r; wcCanvasBottom = b;
+            } else {
+                wcCanvasLeft = wcCanvasTop = wcCanvasRight = wcCanvasBottom = Float.NaN;
+            }
+        } catch (NumberFormatException ex) {
+            wcCanvasLeft = wcCanvasTop = wcCanvasRight = wcCanvasBottom = Float.NaN;
+        }
+    }
+
+    public boolean wcTouchNavigationCancellingInk() { return wcTouchNavSuppressInk; }
+
+    private boolean wcTouchOnCanvas(float x, float y) {
+        return Float.isFinite(x) && Float.isFinite(y)
+                && x >= wcCanvasLeft && x <= wcCanvasRight
+                && y >= wcCanvasTop && y <= wcCanvasBottom;
+    }
 
     private void wcAccumulateTwoFingerSample(float x, float y, float span) {
         if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(span)) return;
         if (wcTouchPairActive) {
             float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
-            // A changing finger span belongs to pinch zoom; do not add
-            // synthetic wheel input on top of Android's native pinch events.
-            if (Math.abs(span - wcTouchLastSpan) < Math.max(6f, wcTouchLastSpan * .025f)
-                    && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
-                wcTouchPanX += dx;
-                wcTouchPanY += dy;
-                wcTouchPanCenterX = x;
-                wcTouchPanCenterY = y;
+            float spanChange = span - wcTouchStartSpan;
+            if (wcTouchMode == 0) {
+                if (Math.abs(spanChange) > Math.max(8f, wcTouchStartSpan * .03f))
+                    wcTouchMode = 2;
+                else if (Math.hypot(dx, dy) > 2.5f
+                        && Math.abs(spanChange) < Math.max(8f, wcTouchStartSpan * .03f))
+                    wcTouchMode = 1;
             }
+            if (wcTouchMode == 2 && wcTouchLastSpan > 0f) {
+                float ratio = span / wcTouchLastSpan;
+                if (Float.isFinite(ratio) && ratio > 0f)
+                    wcTouchZoom = Math.max(.2f, Math.min(5f,
+                            wcTouchZoom * Math.max(.75f, Math.min(1.33f, ratio))));
+            } else if (wcTouchMode == 1 && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
+                wcTouchPanX += dx; wcTouchPanY += dy;
+            }
+        } else {
+            wcTouchStartSpan = Math.max(span, 1f);
         }
         wcTouchPairActive = true;
-        wcTouchLastX = x;
-        wcTouchLastY = y;
-        wcTouchLastSpan = span;
+        wcTouchLastX = x; wcTouchLastY = y; wcTouchLastSpan = span;
+        wcTouchPanCenterX = x; wcTouchPanCenterY = y;
     }
 
     private void wcAccumulateTwoFingerEvent(android.view.MotionEvent event, int historyIndex) {
@@ -752,44 +790,70 @@
             wcCaptureStylusHistory(event);
         }
         if (wcRejectPalm(event)) return true;
-        if (wcHasStylus(event)) {
-            synchronized (wcTouchPanLock) { wcTouchPairActive = false; }
-        }
-        if (event != null
-                && event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)
-                && !wcHasStylus(event)) {
-            synchronized (wcTouchPanLock) {
-                int action = event.getActionMasked();
+        if (event == null || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)
+                || wcHasStylus(event)) return super.dispatchTouchEvent(event);
+        int action = event.getActionMasked();
+        boolean mustCancel = false, consume = false;
+        synchronized (wcTouchPanLock) {
+            if (action == android.view.MotionEvent.ACTION_DOWN && !wcTouchNavConsuming) {
+                wcTouchNavSuppressInk = false;
+                wcTouchPairActive = false;
+                wcTouchMode = 0;
+            }
+            if (!wcTouchNavConsuming && action == android.view.MotionEvent.ACTION_POINTER_DOWN
+                    && event.getPointerCount() == 2 && wcOnlyFingers(event)
+                    && wcTouchOnCanvas((event.getX(0) + event.getX(1)) * .5f,
+                                       (event.getY(0) + event.getY(1)) * .5f)) {
+                wcTouchNavConsuming = true;
+                wcTouchNavSuppressInk = true;
+                wcTouchPairActive = false; wcTouchMode = 0; wcTouchZoom = 1f;
+                wcTouchPanX = wcTouchPanY = 0f;
+                wcAccumulateTwoFingerEvent(event, -1);
+                mustCancel = true;
+            }
+            if (wcTouchNavConsuming) {
+                consume = true;
                 if (event.getPointerCount() == 2 && wcOnlyFingers(event)
-                        && (action == android.view.MotionEvent.ACTION_POINTER_DOWN
-                            || action == android.view.MotionEvent.ACTION_MOVE)) {
-                    if (action == android.view.MotionEvent.ACTION_MOVE) {
-                        // Read the historical centroids in chronological order:
-                        // GameActivity typically forwards only the final position
-                        // to egui, which causes visibly uneven touch scrolling.
-                        int history = event.getHistorySize();
-                        for (int h = Math.max(0, history - 64); h < history; ++h)
-                            wcAccumulateTwoFingerEvent(event, h);
-                    }
+                        && action == android.view.MotionEvent.ACTION_MOVE) {
+                    int history = event.getHistorySize();
+                    for (int h = Math.max(0, history - 64); h < history; ++h)
+                        wcAccumulateTwoFingerEvent(event, h);
                     wcAccumulateTwoFingerEvent(event, -1);
-                } else if (action == android.view.MotionEvent.ACTION_POINTER_UP
-                        || action == android.view.MotionEvent.ACTION_UP
-                        || action == android.view.MotionEvent.ACTION_CANCEL
-                        || event.getPointerCount() != 2) {
+                }
+                // Consume the remaining one-finger events until the full
+                // gesture ends; otherwise the last finger selects text.
+                if (action == android.view.MotionEvent.ACTION_UP
+                        || action == android.view.MotionEvent.ACTION_CANCEL) {
+                    wcTouchNavConsuming = false;
                     wcTouchPairActive = false;
+                    wcTouchMode = 0;
                 }
             }
         }
+        if (mustCancel) {
+            // Explicitly terminate the first finger's pending upstream
+            // selection/pen drag. Do not forward second-finger button presses.
+            android.view.MotionEvent cancel = android.view.MotionEvent.obtain(event);
+            try {
+                cancel.setAction(android.view.MotionEvent.ACTION_CANCEL);
+                super.dispatchTouchEvent(cancel);
+            } finally {
+                cancel.recycle();
+            }
+        }
+        if (consume) return true;
         return super.dispatchTouchEvent(event);
     }
 
     public String wcTakeTwoFingerPan() {
         synchronized (wcTouchPanLock) {
-            if (wcTouchPanX == 0f && wcTouchPanY == 0f) return null;
-            String value = wcTouchPanX + "," + wcTouchPanY + ","
-                         + wcTouchPanCenterX + "," + wcTouchPanCenterY;
+            if (wcTouchPanX == 0f && wcTouchPanY == 0f && wcTouchZoom == 1f)
+                return null;
+            String result = wcTouchPanX + "," + wcTouchPanY + ","
+                    + wcTouchPanCenterX + "," + wcTouchPanCenterY + "," + wcTouchZoom;
             wcTouchPanX = wcTouchPanY = 0f;
-            return value;
+            wcTouchZoom = 1f;
+            return result;
         }
     }
 

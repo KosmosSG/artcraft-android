@@ -99,6 +99,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'ARTCRAFT_ANDROID_REPEAT_KEYS' in app
     assert 'QuickTool::Hand' in app and 'Key::H' in app and 'QuickTool::Select' in app
     assert 'ARTCRAFT_ANDROID_TOOLS_VISIBLE' in menu
+    assert 'PDFCRAFT_ANDROID_PC_APPEARANCE' in menu
+    assert 'ui.menu_button("Appearance", |ui|' in menu
+    assert 'self.set_theme_preference(preference)' in menu
+    assert 'PDFCRAFT_ANDROID_INK_PRESSURE_CAPTURE' in (dst / 'crates/ui-egui/src/tools/comments/input.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_INK_PRESSURE_STATE' in (dst / 'crates/ui-egui/src/tools/comments/state.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_INK_PRESSURE_COMMIT' in (dst / 'crates/ui-egui/src/tools/comments/input.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'pub fn android_tools_visible(&self) -> bool' in menu
     assert 'pub fn set_android_tools_visible(&self, visible: bool)' in menu
     assert 'view.push(self.menu_item(ANDROID_TOOLS, None))' in menu

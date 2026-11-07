@@ -75,21 +75,36 @@ replace('        let ctx = ui.ctx().clone();',
             crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0));
             let response = response.on_hover_text("PDFCraft Android settings");
             let _ = egui::Popup::menu(&response).show(|ui| {
+                ui.set_min_width(230.0);
+                // Keep advanced diagnostics accessible through View > Android
+                // tools panel, but not in the streamlined Pc menu.
                 for (name, action) in [
                     ("Import Fonts…", 1u8),
                     ("Select Shared Font Folder…", 2),
                     ("Refresh Fonts Folder", 3),
-                    ("Check updates", 4),
-                    ("Startup update check settings…", 5),
-                    ("GPU diagnostics…", 6),
-                    ("Android tools…", 7),
-                    ("Trackpad diagnostics…", 8),
                 ] {
                     if ui.button(name).clicked() {
                         PDFCRAFT_ANDROID_HELP_REQUEST.store(
                             action, std::sync::atomic::Ordering::Release);
                         ui.close();
                     }
+                }
+                ui.separator();
+                for (name, action) in [
+                    ("Check updates", 4u8),
+                    ("Automatic update check…", 5),
+                ] {
+                    if ui.button(name).clicked() {
+                        PDFCRAFT_ANDROID_HELP_REQUEST.store(
+                            action, std::sync::atomic::Ordering::Release);
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button("About PDFCraft").clicked() {
+                    PDFCRAFT_ANDROID_HELP_REQUEST.store(
+                        9, std::sync::atomic::Ordering::Release);
+                    ui.close();
                 }
             });
         }

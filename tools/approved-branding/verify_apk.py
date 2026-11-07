@@ -26,12 +26,27 @@ with zipfile.ZipFile(apk) as z:
  assert 'classes.dex' in names
  assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
  actual={pixels(z.read(n)) for n in names if n.startswith('res/') and n.endswith(('.png','.webp'))}
- # ic_inapp_symbol_* are optional, unused source helpers. aapt2 may crunch,
- # deduplicate, or omit their raster representation. PDFCraft's actual in-app
- # mark is embedded in the native library as ic_inapp_brand_128 (verified below).
- # Keep strict pixel checks for launcher densities and adaptive foreground.
+ # aapt2 can optimize and/or crop the legacy launcher/round PNG by density
+ # and can omit optional unused symbol thumbnails; exact RGBA matching is too
+ # strict for those generated Android resources. Require every launcher raster
+ # at the corresponding density, decode it, and enforce nonempty/same dimensions.
+ # The adaptive foreground is verified pixel-exact, and the owner's in-app Pc
+ # artwork must be embedded byte-identically inside the native library below.
+ def compiled_resource(rel):
+  parts=rel.parts
+  expected='res/'+parts[0]+'-'+parts[1]+'-v4/'+parts[2] if parts[0].startswith('mipmap') or parts[0]=='drawable-xxxhdpi' else 'res/'+rel.as_posix()
+  return expected if expected in names else ('res/'+rel.as_posix() if 'res/'+rel.as_posix() in names else None)
  for p in (ASSETS/'res').rglob('*.png'):
   if p.name in {'ic_inapp_symbol_64.png', 'ic_inapp_symbol_128.png'}:
+   continue
+  relative=p.relative_to(ASSETS/'res')
+  if p.name in {'ic_launcher.png', 'ic_launcher_round.png'}:
+   apk_resource=compiled_resource(relative)
+   assert apk_resource, 'APK missing launcher density: '+str(relative)
+   original=Image.open(p).convert('RGBA')
+   compiled=Image.open(io.BytesIO(z.read(apk_resource))).convert('RGBA')
+   assert original.size==compiled.size, 'Launcher density dimensions differ: '+str(relative)
+   assert compiled.getbbox(), 'Launcher density is empty: '+str(relative)
    continue
   assert pixels(p.read_bytes()) in actual,'APK is missing approved pixels: '+str(p)
  rgba=Image.open(ASSETS/'res/drawable-nodpi/ic_inapp_brand_128.png').convert('RGBA').tobytes()

@@ -68,6 +68,7 @@ jobs:
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
+          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
           "$RUNNER_TEMP/vc-pointer-tests"

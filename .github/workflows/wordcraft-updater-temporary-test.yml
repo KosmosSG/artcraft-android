@@ -219,7 +219,24 @@ jobs:
           assert "egui::Area::new" not in floating, "Floating update button must not ship"
           assert "egui::Window::new" not in floating, "Old update popup must not ship"
           assert "artcraft.updater.action" in floating, "Menu bridge absent"
-          assert 'ui.menu_button("Verified APK updater"' in icon_menu
+          assert icon_menu.count('ui.menu_button("App Updates"') == 1, "App Updates must be unified"
+          assert icon_menu.count('ui.button("Check for Updates")') == 1, "Duplicate Check for Updates"
+          assert 'ui.menu_button("Verified APK updater"' not in icon_menu, "Legacy updater submenu remains"
+          assert 'ui.button("Download & Install Update…")' in icon_menu
+          assert 'ui.checkbox(&mut startup, "Check at Startup")' in icon_menu
+          assert 'ui.button("View Release Notes…")' in icon_menu
+          assert '"artcraft.updater.available"' in icon_menu
+          assert '"artcraft.updater.diagnostics"' in icon_menu
+          legacy = Path("wordcraft/android/wordcraft_android.rs").read_text()
+          assert 'if tools.startup_updates && tools.call_void("wcCheckForUpdates")' not in legacy
+          assert '"check_updates"' not in icon_menu, "Duplicate legacy WordCraft update option"
+
+          assert 'invoke(android, "download")' in floating
+          assert 'invoke(android, "view")' in floating
+          assert 'poll_menu_state(ctx, android)' in floating
+          assert "downloadAvailable" in java and "menuState" in java and "viewAvailable" in java
+          assert "egui::Window::new" not in floating
+
           for action in ('"check"', '"test"', '"toggle"'):
               assert action in icon_menu, f"Missing menu action {action}"
           java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
@@ -292,15 +309,15 @@ jobs:
           test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/updatercandidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$apk" candidate/WordCraft-v0.15.2-android.3-ARM64-ICON-MENU-TEMP-TEST.apk
+          cp "$apk" candidate/WordCraft-v0.15.2-android.3-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload temporary signed ARM64 updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: WordCraft-Updater-IconMenu-ARM64-TEMP-TEST
+          name: WordCraft-Unified-Updater-ARM64-TEMP-TEST
           path: |
-            candidate/WordCraft-v0.15.2-android.3-ARM64-ICON-MENU-TEMP-TEST.apk
+            candidate/WordCraft-v0.15.2-android.3-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

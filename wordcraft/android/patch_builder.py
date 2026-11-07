@@ -93,6 +93,10 @@ def main() -> None:
         java,
         "        super.onActivityResult(requestCode, resultCode, data);\n",
         "        super.onActivityResult(requestCode, resultCode, data);\n"
+        "        if (requestCode == WC_FONT_IMPORT_REQUEST) {\n"
+        "            wcHandleImportedFonts(resultCode, data);\n"
+        "            return;\n"
+        "        }\n"
         "        if (requestCode == WC_FONT_FOLDER_REQUEST) {\n"
         "            wcHandleFontFolderResult(resultCode, data);\n"
         "            return;\n"

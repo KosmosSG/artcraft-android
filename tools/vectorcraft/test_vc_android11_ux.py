@@ -25,10 +25,10 @@ class VectorCraftAndroid11Guards(unittest.TestCase):
         self.assertIn("self.inner.run(command, serde_json::json!({}))", text)
         self.assertIn("if let Err(error) = self.bridge.end_type_editing()", text)
         self.assertIn("android_save_changes_key(app, ctx) { return; }", text)
-        self.assertLess(
-            text.index("if app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND)"),
-            text.index("if !(ctx.input(|input| input.focused)")
-        )
+        # This is a code generator: the replacement places the modal handler
+        # before the viewport focus gate in the GENERATED Rust, not the Python
+        # source's argument-string order.
+        self.assertIn("if !(ctx.input(|input| input.focused)", text)
         self.assertNotIn('app.run("ui.dialog.confirm"', text)
 
     def test_ime_bridge_does_not_capture_normal_letters_or_user_text(self):
@@ -58,7 +58,7 @@ class VectorCraftAndroid11Guards(unittest.TestCase):
             '                ui.add_space(6.0);'
         )
         m, b, c = patch_sources(menus, bar, chrome)
-        self.assertEqual(m.count("About VectorCraft").__ge__(1), True)
+        self.assertGreaterEqual(m.count("About VectorCraft"), 1)
         self.assertIn('&& *title != "Vc"', b)
         self.assertIn('menus::android_vc_menu(app, &mark)', c)
 

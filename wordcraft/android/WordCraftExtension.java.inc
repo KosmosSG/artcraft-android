@@ -708,11 +708,43 @@
     }
 
 
-    // Two-finger touchscreen canvas pan; do not swallow native touch/pinch.
+    // WC_TWOFINGER_SCROLL_HISTORY_V1: preserve Android batched two-finger
+    // motion so the canvas keeps up with fast touchscreen scrolling.
+    // No one-finger scrolling, no fake finger presses, no interference with
+    // stylus/palm rejection, pinching or the original touch dispatch.
     private final Object wcTouchPanLock = new Object();
     private boolean wcTouchPairActive;
     private float wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
+
+    private void wcAccumulateTwoFingerSample(float x, float y, float span) {
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(span)) return;
+        if (wcTouchPairActive) {
+            float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
+            // A changing finger span belongs to pinch zoom; do not add
+            // synthetic wheel input on top of Android's native pinch events.
+            if (Math.abs(span - wcTouchLastSpan) < Math.max(6f, wcTouchLastSpan * .025f)
+                    && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
+                wcTouchPanX += dx;
+                wcTouchPanY += dy;
+                wcTouchPanCenterX = x;
+                wcTouchPanCenterY = y;
+            }
+        }
+        wcTouchPairActive = true;
+        wcTouchLastX = x;
+        wcTouchLastY = y;
+        wcTouchLastSpan = span;
+    }
+
+    private void wcAccumulateTwoFingerEvent(android.view.MotionEvent event, int historyIndex) {
+        float x0 = historyIndex < 0 ? event.getX(0) : event.getHistoricalX(0, historyIndex);
+        float x1 = historyIndex < 0 ? event.getX(1) : event.getHistoricalX(1, historyIndex);
+        float y0 = historyIndex < 0 ? event.getY(0) : event.getHistoricalY(0, historyIndex);
+        float y1 = historyIndex < 0 ? event.getY(1) : event.getHistoricalY(1, historyIndex);
+        wcAccumulateTwoFingerSample((x0 + x1) * .5f, (y0 + y1) * .5f,
+                (float) Math.hypot(x1 - x0, y1 - y0));
+    }
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) {
@@ -728,29 +760,18 @@
                 && !wcHasStylus(event)) {
             synchronized (wcTouchPanLock) {
                 int action = event.getActionMasked();
-                if (event.getPointerCount() == 2
+                if (event.getPointerCount() == 2 && wcOnlyFingers(event)
                         && (action == android.view.MotionEvent.ACTION_POINTER_DOWN
                             || action == android.view.MotionEvent.ACTION_MOVE)) {
-                    float x = (event.getX(0) + event.getX(1)) * .5f;
-                    float y = (event.getY(0) + event.getY(1)) * .5f;
-                    float span = (float) Math.hypot(event.getX(1) - event.getX(0),
-                                                     event.getY(1) - event.getY(0));
-                    if (Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(span)) {
-                        if (wcTouchPairActive && action == android.view.MotionEvent.ACTION_MOVE) {
-                            float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
-                            if (Math.abs(span - wcTouchLastSpan) < Math.max(6f, wcTouchLastSpan * .025f)
-                                    && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
-                                wcTouchPanX += dx;
-                                wcTouchPanY += dy;
-                                wcTouchPanCenterX = x;
-                                wcTouchPanCenterY = y;
-                            }
-                        }
-                        wcTouchPairActive = true;
-                        wcTouchLastX = x;
-                        wcTouchLastY = y;
-                        wcTouchLastSpan = span;
+                    if (action == android.view.MotionEvent.ACTION_MOVE) {
+                        // Read the historical centroids in chronological order:
+                        // GameActivity typically forwards only the final position
+                        // to egui, which causes visibly uneven touch scrolling.
+                        int history = event.getHistorySize();
+                        for (int h = Math.max(0, history - 64); h < history; ++h)
+                            wcAccumulateTwoFingerEvent(event, h);
                     }
+                    wcAccumulateTwoFingerEvent(event, -1);
                 } else if (action == android.view.MotionEvent.ACTION_POINTER_UP
                         || action == android.view.MotionEvent.ACTION_UP
                         || action == android.view.MotionEvent.ACTION_CANCEL

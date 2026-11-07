@@ -101,7 +101,7 @@ jobs:
               assert "poll_hidden_ime_close" in rust
               assert "if self.last_type_editing && !editing_now" in rust
               assert "vcPollHiddenImeClose" in java
-              assert "verifiedNativeFrames >= 2" in java
+              assert "verifiedNativeFrames >= 3" in java
               assert "android_save_changes_key" in shortcuts
               assert "vcPollPhysicalShortcut" in java
               assert "verifiedNativeFrames >= 3" in java

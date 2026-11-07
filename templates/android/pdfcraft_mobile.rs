@@ -28,10 +28,15 @@ pub struct Mobile {
     trackpad_java_status: String,
     trackpad_last_poll: Option<std::time::Instant>,
     updates_open: bool,
+    about_open: bool,
     toolbar_shown: bool,
     font_status: String,
     update_status: String,
     update_url: Option<String>,
+    update_asset_url: Option<String>,
+    update_digest: String,
+    downloading: bool,
+    download_ready: bool,
     checking: bool,
     startup_check: bool,
     first_frame: bool,
@@ -47,10 +52,11 @@ impl Mobile {
             trackpad_scroll_events: 0, trackpad_zoom_events: 0,
             trackpad_last_native: "No egui scroll/zoom events yet".into(),
             trackpad_java_status: "No Java input diagnostic sample yet".into(),
-            trackpad_last_poll: None, updates_open: false, toolbar_shown: false,
+            trackpad_last_poll: None, updates_open: false, about_open: false, toolbar_shown: false,
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
-            update_url: None, checking: false, startup_check: false, first_frame: true,
+            update_url: None, update_asset_url: None, update_digest: String::new(),
+            downloading: false, download_ready: false, checking: false, startup_check: false, first_frame: true,
         };
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
         mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(false);
@@ -162,12 +168,40 @@ impl Mobile {
             Ok(())
         }).map_err(|err| err.to_string())
     }
+    fn download_update(&self, asset: &str) -> Result<(), String> {
+        if !asset.starts_with("https://github.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v") {
+            return Err("Unapproved PDFCraft APK download address".into());
+        }
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let address = JObject::from(env.new_string(asset)?);
+            let digest = JObject::from(env.new_string(&self.update_digest)?);
+            env.call_method(&*activity, jni_str!("pdfDownloadUpdate"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                &[JValue::Object(&address), JValue::Object(&digest)])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
+    fn install_download(&self) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfInstallDownloadedUpdate"),
+                jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
     pub fn do_update_check(&mut self) {
-        if self.checking { return; }
+        if self.checking || self.downloading { return; }
         self.update_url = None;
+        self.update_asset_url = None;
+        self.update_digest.clear();
+        self.download_ready = false;
         self.update_status = "Checking published PDFCraft Android releases…".into();
         self.updates_open = true;
-        self.panel_open = true;
         match self.request(Action::CheckUpdates) {
             Ok(()) => self.checking = true,
             Err(error) => self.update_status = format!("Update checker unavailable: {error}"),
@@ -201,25 +235,44 @@ impl Mobile {
                 Err(error) => { self.font_status = format!("Font bridge: {error}"); break; }
             }
         }
-        if self.checking {
+        if self.checking || self.downloading {
             match self.poll_java(true) {
                 Ok(Some(payload)) => {
-                    self.checking = false;
                     if let Ok(response) = serde_json::from_str::<Value>(&payload) {
                         self.update_status = response.get("message").and_then(Value::as_str)
-                            .unwrap_or("Invalid GitHub release response").into();
-                        self.update_url = response.get("url").and_then(Value::as_str)
-                            .filter(|u| u.starts_with(
-                                "https://github.com/KosmosSG/artcraft-android/releases/tag/pdfcraft-v"))
-                            .map(str::to_owned);
+                            .unwrap_or("Invalid update response").into();
+                        if response.get("kind").and_then(Value::as_str) == Some("download") {
+                            self.download_ready = response.get("ready").and_then(Value::as_bool)
+                                .unwrap_or(false);
+                            self.downloading = !self.download_ready
+                                && !self.update_status.starts_with("Cannot ")
+                                && !self.update_status.starts_with("Download not ")
+                                && !self.update_status.starts_with("Android Download Manager")
+                                && !self.update_status.starts_with("Refused:");
+                        } else {
+                            self.checking = false;
+                            self.update_url = response.get("url").and_then(Value::as_str)
+                                .filter(|u| u.starts_with(
+                                    "https://github.com/KosmosSG/artcraft-android/releases/tag/pdfcraft-v"))
+                                .map(str::to_owned);
+                            self.update_asset_url = response.get("asset_url").and_then(Value::as_str)
+                                .filter(|u| u.starts_with(
+                                    "https://github.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v"))
+                                .map(str::to_owned);
+                            self.update_digest = response.get("digest").and_then(Value::as_str)
+                                .unwrap_or("").into();
+                        }
                     } else {
+                        self.checking = false;
+                        self.downloading = false;
                         self.update_status = "Invalid update response".into();
                     }
                     ctx.request_repaint();
                 }
-                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
+                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(350)),
                 Err(error) => {
                     self.checking = false;
+                    self.downloading = false;
                     self.update_status = format!("Update checker: {error}");
                 }
             }
@@ -343,6 +396,28 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
+                    if let Some(asset) = self.update_asset_url.clone() {
+                        if !self.downloading && !self.download_ready
+                            && ui.button("Download APK").clicked() {
+                            match self.download_update(&asset) {
+                                Ok(()) => {
+                                    self.downloading = true;
+                                    self.update_status = "Starting Android download…".into();
+                                }
+                                Err(error) => self.update_status = error,
+                            }
+                        }
+                    }
+                    if self.downloading { ui.spinner(); }
+                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
+                        match self.install_download() {
+                            Ok(()) => {
+                                self.downloading = true;
+                                self.update_status = "Verifying downloaded APK…".into();
+                            }
+                            Err(error) => self.update_status = error,
+                        }
+                    }
                     if ui.button("Hide update status").clicked() { self.updates_open = false; }
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
@@ -350,7 +425,7 @@ impl Mobile {
                         self.update_status = format!("Could not save startup preference: {error}");
                     }
                 }
-                ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
+                ui.label(egui::RichText::new("Downloads only published PDFCraft Android APKs. Android requires explicit confirmation; test packages cannot replace stable apps.").small());
             }
         });
         hide_requested
@@ -358,13 +433,11 @@ impl Mobile {
     pub fn handle_menu(&mut self, action: u8) {
         match action {
             4 => {
-                self.panel_open = true;
                 self.fonts_open = false;
                 self.do_update_check();
                 return;
             }
             5 => {
-                self.panel_open = true;
                 self.fonts_open = false;
                 self.updates_open = true;
                 return;
@@ -376,6 +449,10 @@ impl Mobile {
             }
             7 => {
                 self.panel_open = true;
+                return;
+            }
+            9 => {
+                self.about_open = true;
                 return;
             }
             8 => {
@@ -402,7 +479,72 @@ impl Mobile {
             if let Err(error) = self.request(request) { self.font_status = error; }
         }
     }
+    fn updater_dialog(&mut self, ctx: &egui::Context) {
+        let mut open = self.updates_open;
+        egui::Window::new("PDFCraft updates")
+            .open(&mut open)
+            .default_width(380.0)
+            .min_width(300.0)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Installed: PDFCraft 0.18.0-android.14 (test candidate)");
+                ui.label(&self.update_status);
+                if self.checking || self.downloading { ui.spinner(); }
+                ui.horizontal_wrapped(|ui| {
+                    if ui.add_enabled(!self.checking && !self.downloading,
+                        egui::Button::new("Check again")).clicked() {
+                        self.do_update_check();
+                    }
+                    if let Some(url) = self.update_url.clone() {
+                        if ui.button("View release").clicked() {
+                            if let Err(error) = self.release_page(&url) { self.update_status = error; }
+                        }
+                    }
+                    if let Some(asset) = self.update_asset_url.clone() {
+                        if ui.add_enabled(!self.downloading && !self.download_ready,
+                            egui::Button::new("Download APK")).clicked() {
+                            match self.download_update(&asset) {
+                                Ok(()) => { self.downloading = true; self.update_status = "Starting Android download…".into(); }
+                                Err(error) => self.update_status = error,
+                            }
+                        }
+                    }
+                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
+                        match self.install_download() {
+                            Ok(()) => { self.downloading = true; self.update_status = "Verifying downloaded APK…".into(); }
+                            Err(error) => self.update_status = error,
+                        }
+                    }
+                });
+                if ui.checkbox(&mut self.startup_check, "Check for updates at startup").changed() {
+                    if let Err(error) = self.save_startup_setting(self.startup_check) {
+                        self.update_status = format!("Could not save startup preference: {error}");
+                    }
+                }
+                ui.label(egui::RichText::new(
+                    "Published releases only. Installation requires Android confirmation. Test packages cannot replace the stable app."
+                ).small());
+            });
+        self.updates_open = open;
+    }
     pub fn dialog(&mut self, ctx: &egui::Context) {
+        if self.updates_open { self.updater_dialog(ctx); }
+        if self.about_open {
+            let mut open = self.about_open;
+            egui::Window::new("About PDFCraft")
+                .open(&mut open)
+                .default_width(340.0)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.heading("PDFCraft");
+                    ui.label("Version 0.18.0-android.14");
+                    ui.label("ARM64 test candidate • separate package");
+                    ui.label("PDF editor for Android");
+                    ui.label("Updates: published PDFCraft releases only");
+                    ui.label("Temporary signing — not a production release");
+                });
+            self.about_open = open;
+        }
         if !self.panel_open { return; }
         let mut open = self.panel_open;
         egui::Window::new("Android tools").open(&mut open)
@@ -517,25 +659,7 @@ impl Mobile {
                 ui.label(&self.font_status);
                 ui.label(egui::RichText::new("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.").small());
             }
-            if self.updates_open {
-                ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(&self.update_status);
-                    if self.checking { ui.spinner(); }
-                    if let Some(url) = self.update_url.clone() {
-                        if ui.button("View GitHub release").clicked() {
-                            if let Err(error) = self.release_page(&url) { self.update_status = error; }
-                        }
-                    }
-                    if ui.button("Hide").clicked() { self.updates_open = false; }
-                });
-                if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
-                    if let Err(error) = self.save_startup_setting(self.startup_check) {
-                        self.update_status = format!("Could not save startup preference: {error}");
-                    }
-                }
-                ui.label(egui::RichText::new("Checks only published PDFCraft Android APKs; never installs automatically.").small());
-            }
+
         });
         self.panel_open = open;
     }

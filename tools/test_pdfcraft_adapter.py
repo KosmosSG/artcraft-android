@@ -100,8 +100,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_ICON_MENU' in menu
     assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
     assert '"Import Fonts…"' in menu and '"Check updates"' in menu
-    assert '"Startup update check settings…"' in menu
-    assert '"Trackpad diagnostics…"' in menu
+    assert '"Automatic update check…"' in menu
+    assert '"About PDFCraft"' in menu
+    assert '"Trackpad diagnostics…"' not in menu
+    assert '"GPU diagnostics…"' not in menu
     assert '"android.import_fonts"' not in menu
     assert 'PDFCRAFT_ANDROID_BIDIRECTIONAL_PINCH' in (root / 'tools/pdfcraft/android_input_patch.py').read_text()
     assert 'PDFCRAFT_ANDROID_TRACKPAD_PINCH' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()

@@ -81,6 +81,17 @@ def patch(source: str) -> str:
                         }, self.window_target());
                         self.pdfcraft_trackpad_pan_active = false;
                     }
+                    // PDFCRAFT_ANDROID_TRACKPAD_NO_SIDEBAR_CLICK:
+                    // A finger-down on a trackpad is not a mouse-button click.
+                    // Suppress it before the generic pointer-class path can
+                    // press a tool in the left sidebar. Actual mouse clicks
+                    // retain their normal button-state dispatch below.
+                    if touchpad_source && matches!(
+                        motion_event.action(), MotionAction::Down | MotionAction::PointerDown
+                    ) {
+                        self.pdfcraft_trackpad_last = None;
+                        return input_status;
+                    }
                     if (touchpad_source || self.pdfcraft_trackpad_origin.is_some() || self.pdfcraft_trackpad_pan_active)
                         && matches!(motion_event.action(), MotionAction::Down | MotionAction::Up
                         | MotionAction::PointerUp | MotionAction::Cancel) {

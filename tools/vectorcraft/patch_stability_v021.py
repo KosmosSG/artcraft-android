@@ -27,22 +27,54 @@ fi
 def patch_adapter(root):
     p=root/'adapters/vectorcraft/src/lib.rs';s=p.read_text()
     start=s.index('        // Treat Ctrl+Q as a native application quit request');end=s.index('        let selection_idle',start)
-    s=s[:start]+'''        // Finish inline editing before the normal upstream close/quit command.
-        let close_chord = !modal && !field_focused && !composing && editing
-            && raw.events.iter().any(|e| matches!(e, egui::Event::Key {
-                key: egui::Key::W | egui::Key::Q, pressed: true, repeat: false, modifiers, ..
-            } if modifiers.command && !modifiers.alt && !modifiers.shift));
-        if close_chord {
-            let view = self.inner.view_info();
-            match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
-                Ok(requests) => for request in requests {
-                    if let UiRequest::SwitchTool(tool) = request { self.inner.select_tool(&tool); }
-                },
-                Err(error) => log::warn!("Close edit commit failed: {error}"),
+    s=s[:start]+'''        // The Android shell owns Ctrl+W and Ctrl+Q even when Type holds focus.
+        // Do not invoke upstream twice: consume only the matching command press.
+        let close_request = if !modal && !composing {
+            raw.events.iter().find_map(|event| match event {
+                egui::Event::Key {
+                    key: egui::Key::W | egui::Key::Q,
+                    pressed: true, repeat: false, modifiers, ..
+                } if (modifiers.command || modifiers.ctrl) && !modifiers.alt && !modifiers.shift => {
+                    match event {
+                        egui::Event::Key { key: egui::Key::Q, .. } => Some("app.quit"),
+                        _ => Some("file.close"),
+                    }
+                }
+                _ => None,
+            })
+        } else { None };
+        if let Some(command) = close_request {
+            raw.events.retain(|event| !matches!(event,
+                egui::Event::Key {
+                    key: egui::Key::W | egui::Key::Q,
+                    pressed: true, modifiers, ..
+                } if (modifiers.command || modifiers.ctrl) && !modifiers.alt && !modifiers.shift
+            ));
+            if editing {
+                let view = self.inner.view_info();
+                match self.inner.session.tool_key(ToolKey::Escape, Mods::default(), view) {
+                    Ok(requests) => for request in requests {
+                        if let UiRequest::SwitchTool(tool) = request {
+                            self.inner.select_tool(&tool);
+                        }
+                    },
+                    Err(error) => log::warn!("Close: Type commit failed: {error}"),
+                }
             }
             if !self.inner.session.tool_wants_text() {
-                if let Err(error) = self.bridge.end_type_editing() { log::warn!("Close focus: {error}"); }
+                ctx.memory_mut(|memory| {
+                    if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+                });
+                if let Err(error) = self.bridge.end_type_editing() {
+                    log::warn!("Close: keyboard focus restore: {error}");
+                }
+                if let Err(error) = self.inner.run(command, serde_json::json!({})) {
+                    log::warn!("Close/quit request {command} failed: {error}");
+                }
+            } else {
+                log::warn!("Close/quit deferred while Type editor is still active");
             }
+            ctx.request_repaint();
         }
 '''+s[end:]
     start=s.index('                CanvasHardwareCommand::Selection\n');end=s.index('\n            }\n            if handled',start)
@@ -51,6 +83,21 @@ def patch_adapter(root):
     s=s.replace('AndroidModifiers, AndroidMenuScrollSmoother,','AndroidModifiers,').replace('consume_type_close_chord, ','')
     s=s.replace('    menu_scroll: AndroidMenuScrollSmoother,\n','').replace('                menu_scroll: AndroidMenuScrollSmoother::default(),\n','')
     s=once(s,'        self.menu_scroll.apply(ctx, raw);','        // egui is the only scroll integrator; preserve delta and phase.')
+    s=once(s,'    android_quit_finished: bool,','    android_quit_finished: bool,\n    last_type_editing: bool,')
+    s=once(s,'                android_quit_finished: false,','                android_quit_finished: false,\n                last_type_editing: false,')
+    s=once(s,'        self.inner.ui(ui);','''        self.inner.ui(ui);
+        // Tool/menu changes can end Type without Escape. Restore keyboard
+        // focus exactly once on this transition, never during composition.
+        let editing_now = self.inner.session.tool_wants_text();
+        if self.last_type_editing && !editing_now {
+            ui.ctx().memory_mut(|memory| {
+                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+            });
+            if let Err(error) = self.bridge.end_type_editing() {
+                log::warn!("Type exit: keyboard focus handoff failed: {error}");
+            }
+        }
+        self.last_type_editing = editing_now;''')
     s=once(s,'        let allow_letters = !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();',
         '        let allow_letters = !modal && !composing && !ctx.text_edit_focused() && !self.inner.session.tool_wants_text();')
     s=once(s,'            match self.bridge.finish_android_after_quit() {','''            self.persist_now();
@@ -75,6 +122,13 @@ def patch_adapter(root):
 
 def patch_dialog(root):
     src=root/'source/vectorcraft/crates/ui-egui/src';p=src/'shortcuts.rs';s=p.read_text()
+    // Handle Save Changes keys even if Android left egui's viewport unfocused.
+    s=once(s,'''    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {''','''    #[cfg(any(target_os = "android", test))]
+    if app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND)
+        && ctx.input(|input| input.events.iter().any(|event| matches!(event,
+            egui::Event::Key { pressed: true, .. })))
+        && android_save_changes_key(app, ctx) { return; }
+    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {''')
     s=once(s,'''    if app.ui.dialog.is_some() || app.ui.palette_open {
         crate::ime::controls_without_editor(app, ctx);''','''    if app.ui.dialog.is_some() || app.ui.palette_open {
         crate::ime::controls_without_editor(app, ctx);

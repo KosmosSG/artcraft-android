@@ -34,70 +34,53 @@
                 egui::ScrollArea::vertical().id_salt("gridcraft.font.diagnostics")
                     .max_height(200.0).show(ui, |ui| { ui.set_max_width(420.0); ui.small(catalog); });
                 ui.separator();
-                ui.label(egui::RichText::new("Android updates").strong());
-                if ui.button("Check for GridCraft Updates").clicked() {
-                    ui.ctx().data_mut(|d| d.insert_temp(command_id, "updates".to_owned()));
-                    ui.ctx().request_repaint();
-                    ui.close();
-                }
-                let checking = ui.ctx().data(|d|
-                    d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.checking"))
-                ).unwrap_or(false);
-                if checking {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label("Checking GitHub Releases...");
-                    });
-                }
-                let update_status = ui.ctx().data(|d|
-                    d.get_temp::<String>(egui::Id::new("gridcraft.android.menu.update_status"))
-                ).unwrap_or_default();
-                if !update_status.is_empty() {
-                    ui.small(update_status);
-                }
-                let has_release = ui.ctx().data(|d|
-                    d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.has_release"))
-                ).unwrap_or(false);
-                let install_available = ui.ctx().data(|d|
-                    d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.can_install"))
-                ).unwrap_or(false);
-                if install_available && ui.button("Download & Install Verified Update...").clicked() {
-                    ui.ctx().data_mut(|d| d.insert_temp(command_id, "download_install".to_owned()));
-                    ui.ctx().request_repaint();
-                    ui.close();
-                }
-                if has_release && ui.button("View verified GitHub Release...").clicked() {
-                    ui.ctx().data_mut(|d| d.insert_temp(command_id, "open_release".to_owned()));
-                    ui.ctx().request_repaint();
-                    ui.close();
-                }
-                let mut startup = ui.ctx().data(|d|
-                    d.get_temp::<bool>(egui::Id::new("gridcraft.android.menu.startup_check"))
-                ).unwrap_or(false);
-                if ui.checkbox(&mut startup, "Check for updates at startup").changed() {
-                    ui.ctx().data_mut(|d| {
-                        d.insert_temp(command_id, if startup { "startup_on" } else { "startup_off" }.to_owned());
-                        d.insert_temp(egui::Id::new("gridcraft.android.menu.startup_check"), startup);
-                    });
-                    ui.ctx().request_repaint();
-                }
-                // Dedicated verified-APK updater within the approved Gc top-left menu.
-                // Existing fonts, theme, read-only checks and guarded install APIs remain intact.
-                ui.menu_button("Verified APK updater", |ui| {
+                // One App Updates submenu; keep approved Gc icon, fonts and theme intact.
+                ui.menu_button("App Updates", |ui| {
+                    ui.set_min_width(250.0);
                     let action_id = egui::Id::new("artcraft.updater.action");
-                    for (label, action) in [
-                        ("Check for updates", "check"),
-                        ("Download & install verified update…", "check"),
-                        ("Test APK download + SHA-256 (no install)", "test"),
-                        ("Toggle automatic check at startup", "toggle"),
-                    ] {
-                        if ui.button(label).clicked() {
-                            ui.ctx().data_mut(|d| d.insert_temp(action_id, action.to_owned()));
+                    let installed = ui.ctx().data(|d|
+                        d.get_temp::<String>(egui::Id::new("artcraft.updater.installed"))
+                    ).unwrap_or_default();
+                    if !installed.is_empty() { ui.small(format!("Installed: {installed}")); }
+                    if ui.button("Check for Updates").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(action_id, "check".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    let available = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("artcraft.updater.available"))
+                    ).unwrap_or(false);
+                    if available && ui.button("Download & Install Update…").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(action_id, "download".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    let mut startup = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("artcraft.updater.startup"))
+                    ).unwrap_or(false);
+                    if ui.checkbox(&mut startup, "Check at Startup").changed() {
+                        ui.ctx().data_mut(|d| {
+                            d.insert_temp(action_id, "toggle".to_owned());
+                            d.insert_temp(egui::Id::new("artcraft.updater.startup"), startup);
+                        });
+                        ui.ctx().request_repaint();
+                    }
+                    let status = ui.ctx().data(|d|
+                        d.get_temp::<String>(egui::Id::new("artcraft.updater.status"))
+                    ).unwrap_or_default();
+                    if !status.is_empty() { ui.small(status); }
+                    // Diagnostics are visible only to separately installed, temporary-signed candidates.
+                    let diagnostics = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("artcraft.updater.diagnostics"))
+                    ).unwrap_or(false);
+                    if diagnostics {
+                        ui.separator();
+                        if ui.button("Test APK download + SHA-256 (no install)").clicked() {
+                            ui.ctx().data_mut(|d| d.insert_temp(action_id, "test".to_owned()));
                             ui.ctx().request_repaint();
                             ui.close();
                         }
                     }
-                    ui.small("Published GitHub ARM64 releases only; Android confirms installation.");
                 });
                 ui.separator();
                 ui.label(egui::RichText::new("Appearance").strong());

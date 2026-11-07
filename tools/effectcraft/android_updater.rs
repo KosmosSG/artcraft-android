@@ -86,7 +86,7 @@ impl Updater {
         } else if !seen_dialog {
             // A viewport-close request reaches the unsaved guard on the next logic tick.
             ctx.data_mut(|d| d.insert_temp(key, (params, false)));
-        } else if !inner.dialog_state.unsaved.quitting && inner.dialog.is_none() {
+        } else if !inner.android_quit_in_progress() && inner.dialog.is_none() {
             if let Err(error) = inner.session.execute("text.edit", params) {
                 log::warn!("Restore text editing after cancelled quit: {error}");
             }

@@ -652,14 +652,20 @@ impl Tools {
             value
         });
         match action.as_str() {
-            "font_folder" | "font_refresh" if !self.fonts.busy => {
+            "font_import" | "font_folder" | "font_refresh" if !self.fonts.busy => {
                 self.pending_fonts.clear();
                 self.status = self.fonts.start();
-                let method = if action == "font_folder" { "wcRequestFontFolder" } else { "wcRefreshFontFolder" };
+                let method = match action.as_str() {
+                    "font_import" => "wcImportFonts",
+                    "font_folder" => "wcRequestFontFolder",
+                    _ => "wcRefreshFontFolder",
+                };
                 if let Err(error) = self.call_void(method) {
                     self.status = self.fonts.stop(format!("Font folder error: {error}"));
                 } else if action == "font_folder" {
                     self.status = "Choose your shared font folder in Android Files".into();
+                } else if action == "font_import" {
+                    self.status = "Select TTF / OTF fonts in Android Files".into();
                 }
                 app.status(self.status.clone());
                 ctx.request_repaint_after(Duration::from_millis(100));

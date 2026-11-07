@@ -69,6 +69,36 @@ jobs:
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
           python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py
+          # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
+          # This keeps stale Java/Rust source anchors from burning build minutes.
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, tempfile, sys
+          sys.path.insert(0, "android-port/tools/vectorcraft")
+          from patch_stability_v021 import patch_adapter, patch_dialog, patch_startup
+          owner=Path("android-port/adapters/vectorcraft")
+          upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
+          with tempfile.TemporaryDirectory(prefix="vc-android11-overlay-") as temp:
+              root=Path(temp)
+              dst=root/"adapters/vectorcraft"
+              shutil.copytree(owner,dst)
+              target=root/"source/vectorcraft/crates/ui-egui/src"
+              target.mkdir(parents=True)
+              for filename in ("shortcuts.rs","dialogs.rs"):
+                  shutil.copyfile(upstream/filename,target/filename)
+              patch_adapter(root)
+              patch_dialog(root)
+              patch_startup(root)
+              rust=(dst/"src/lib.rs").read_text()
+              java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              shortcuts=(target/"shortcuts.rs").read_text()
+              assert "poll_hidden_ime_close" in rust
+              assert "if self.last_type_editing && !editing_now" in rust
+              assert "vcPollHiddenImeClose" in java
+              assert "verifiedNativeFrames >= 2" in java
+              assert "android_save_changes_key" in shortcuts
+          print("PASS: real Android.11 Rust/Java/dialog overlay anchors before SDK/NDK")
+          PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
           "$RUNNER_TEMP/vc-pointer-tests"

@@ -55,11 +55,11 @@
                         ui.ctx().request_repaint();
                         ui.close();
                     }
-if available && ui.button("View Release Notes…").clicked() {
-    ui.ctx().data_mut(|d| d.insert_temp(action_id, "view".to_owned()));
-    ui.ctx().request_repaint();
-    ui.close();
-}
+                    if available && ui.button("View Release Notes…").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(action_id, "view".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
                     let mut startup = ui.ctx().data(|d|
                         d.get_temp::<bool>(egui::Id::new("artcraft.updater.startup"))
                     ).unwrap_or(false);

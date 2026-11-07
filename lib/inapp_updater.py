@@ -104,9 +104,9 @@ def main() -> None:
     )
     marker = "        updater::show_ui(ui.ctx(), &self.app, &mut self.updater_open, &mut self.updater_initialized);"
     if marker not in rust:
-        pat = (r"(    fn ui\\(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame\\) \\{\\n)"
+        pat = (r"(    fn ui\(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame\) \{\n)"
                r"(.*?)"
-               r"(\\n    \\}\\n\\n    fn raw_input_hook)")
+               r"(\n    \}\n\n    fn raw_input_hook)")
         match = re.search(pat, rust, re.DOTALL)
         if match is None:
             raise RuntimeError("Could not locate egui shell UI hook")

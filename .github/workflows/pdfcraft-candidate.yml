@@ -1,9 +1,9 @@
-name: PDFCraft v0.18 isolated ARM64 Test APK (NOT PUBLIC)
+name: PDFCraft v0.18 Android.14 Pc Sidebar & Updater ARM64 TEST ONLY
 
 on:
   push:
     branches:
-      - fix/pdfcraft-trackpad-pacing-20261106
+      - feature/pdfcraft-v018-android14-pc-updater-20261107
     paths:
       - .github/workflows/pdfcraft-candidate.yml
       - lib/build-common.sh
@@ -16,6 +16,7 @@ on:
       - tools/test_pdfcraft_adapter.py
       - tools/pdfcraft/**
       - templates/android/pdfcraft_mobile_java.txt
+      - templates/android/pdfcraft_update_java.txt
       - tools/font_scan_budget_regression.py
       - tools/approved-branding/**
   workflow_dispatch:
@@ -29,16 +30,16 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/pdfcraft-trackpad-pacing-20261106'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/pdfcraft-v018-android14-pc-updater-20261107'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      PDFCRAFT_ANDROID_VERSION_NAME: 0.18.0-android.13
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.18.0-android.14
       PDFCRAFT_REF: v0.18.0
       PDFCRAFT_SHA: 3936f93a1479366a951206fc6d3094680fe2d3dc
-      PDFCRAFT_ICON_SHA256: 4c0ec54b8d0b85eb05a42c8f1e092199063aa786b2e333d8b50b2a826c342bab
+      PDFCRAFT_ICON_SHA256: 690439cf43b99f6d5e5f233f2cbb55877cfbe089e823ae2de600035884d5a3f8
       # Expected cargo-apk2 code for pinned v0.18.0, NOT reserved for published updates.
-      EXPECTED_EPHEMERAL_VERSION_CODE: '16781837'
+      EXPECTED_EPHEMERAL_VERSION_CODE: '16781838'
 
     steps:
       - name: Checkout isolated candidate only
@@ -145,6 +146,8 @@ jobs:
           # Install only on this disposable runner; preserve original published
           # approved icon resources and native UI branding exactly.
           python3 tools/approved-branding/install_packager.py
+          # Stage owner-supplied Pc artwork ONLY in this disposable candidate.
+          python3 tools/pdfcraft/pc_brand.py
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -153,8 +156,8 @@ jobs:
           assert data["app"] == "pdfcraft"
           assert data["version_name"] == "0.12.1-android.3"
           assert int(data["version_code"]) == 16780291
-          data["version_name"]="0.18.0-android.13"
-          data["version_code"]=16781837
+          data["version_name"]="0.18.0-android.14"
+          data["version_code"]=16781838
           data["package"]="com.artcraft.pdfcraft.ocrtest"
           p.write_text(json.dumps(data, indent=2)+"\n")
           PY
@@ -180,23 +183,23 @@ jobs:
           PY
           bash build.sh -pdfcraft -appname=PDFCraft-Test -packagename=com.artcraft.pdfcraft.ocrtest -appicon=assets/pdfcraft/approved-icon.png
           test -f output/pdfcraft-0.18.0.apk
-          mv output/pdfcraft-0.18.0.apk output/pdfcraft-0.18.0-android.13.apk
+          mv output/pdfcraft-0.18.0.apk output/pdfcraft-0.18.0-android.14.apk
           python3 tools/approved-branding/verify_apk.py . approved-icon-candidate
           test -f approved-icon-candidate/verification.json
-          echo "Approved published icon and native UI artwork preserved in APK." >> "$GITHUB_STEP_SUMMARY"
+          echo "User-supplied Pc launcher and native UI artwork staged in candidate only." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify packaged ABI, identity, version, icon and ephemeral signature
         shell: bash
         run: |
           set -euo pipefail
-          APK="output/pdfcraft-0.18.0-android.13.apk"
+          APK="output/pdfcraft-0.18.0-android.14.apk"
           SDK_ROOT="${ANDROID_HOME}"
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
           AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
           APKSIGNER="$SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner"
           "$AAPT2" dump badging "$APK" | tee output/pdfcraft-badging.txt
           grep -q "package: name='com.artcraft.pdfcraft.ocrtest'" output/pdfcraft-badging.txt
-          grep -q "versionName='0.18.0-android.13'" output/pdfcraft-badging.txt
+          grep -q "versionName='0.18.0-android.14'" output/pdfcraft-badging.txt
           grep -q "versionCode='$EXPECTED_EPHEMERAL_VERSION_CODE'" output/pdfcraft-badging.txt
           unzip -Z1 "$APK" | tee output/pdfcraft-archive.txt
           grep -q '^lib/arm64-v8a/.*\.so$' output/pdfcraft-archive.txt
@@ -216,9 +219,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: PDFCraft-0.18.0-android.13-OCR-TRACKPAD-TEST
+          name: PDFCraft-0.18.0-android.14-PC-UPDATER-SIDEBAR-TEST
           path: |
-            output/pdfcraft-0.18.0-android.13.apk
+            output/pdfcraft-0.18.0-android.14.apk
             output/pdfcraft-ocr-models.txt
             ocr-tests.log
             output/pdfcraft-badging.txt

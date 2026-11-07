@@ -204,6 +204,21 @@ jobs:
           print("PASS: two-finger scroll, pinch, palm, pen and document focus safeguards")
           PY
 
+      - name: Preflight candidate updater path derived from package name
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$WORDCRAFT_PACKAGE" = "com.artcraft.wordcraft.navcandidate"
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path(".github/workflows/wordcraft-v0152-android8-no-selection-test.yml").read_text()
+          assert 'java_pkg="$(printf' in workflow
+          assert 'java/$java_pkg/ArtCraftUpdater.java' in workflow
+          assert ("scroll" + "candidate/ArtCraftUpdater.java") not in workflow
+          assert ("stylus" + "candidate/ArtCraftUpdater.java") not in workflow
+          print("PASS: updater location follows actual candidate package")
+          PY
+
       - name: Set up Java, Rust and Android build prerequisites
         shell: bash
         run: |
@@ -517,7 +532,8 @@ jobs:
           # The generated Java source directory follows the candidate package;
           # never carry forward old candidate package paths from other builds.
           test "$WORDCRAFT_PACKAGE" = "com.artcraft.wordcraft.navcandidate"
-          test -f builder/source/wordcraft/apps/wordcraft-android/java/com/artcraft/wordcraft/scrollcandidate/ArtCraftUpdater.java
+          java_pkg="$(printf '%s' "$WORDCRAFT_PACKAGE" | tr '.' '/')"
+          test -f "builder/source/wordcraft/apps/wordcraft-android/java/$java_pkg/ArtCraftUpdater.java"
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
           cp "$apk" candidate/WordCraft-v0.15.2-android.8-ARM64-NO-SELECTION-TEMP-TEST.apk

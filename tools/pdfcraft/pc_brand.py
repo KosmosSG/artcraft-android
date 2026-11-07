@@ -1,6 +1,6 @@
 """Stage the user's supplied red Pc icon in the isolated PDFCraft TEST build only.
 
-The base64 asset is a 512px losslessly palettized derivative of the uploaded
+The base64 asset is a 256px losslessly palettized derivative of the uploaded
 1000px PNG; it is never substituted into historical/published release files.
 No effect on other apps. Called ONLY by the isolated PDFCraft workflow.
 """
@@ -21,16 +21,16 @@ def save(path: Path, im: Image.Image):
 
 def main():
     png = base64.b64decode(ICON.read_text().strip(), validate=True)
-    assert digest(png) == "9a3646e11ce19e34174df24d448c92ae3c82cd68ae2aec790c5a78adef18aff5"
+    assert digest(png) == "690439cf43b99f6d5e5f233f2cbb55877cfbe089e823ae2de600035884d5a3f8"
     icon = Image.open(io.BytesIO(png)).convert("RGBA")
-    assert icon.size == (512,512)
+    assert icon.size == (256,256)
     manifest_path = ASSETS / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     assert manifest["app"] == "pdfcraft"
     master = ASSETS / manifest["filename"]
     master.write_bytes(png)
     manifest["source_sha256"] = digest(png)
-    manifest["source_size"] = [512, 512]
+    manifest["source_size"] = [256, 256]
     manifest["bg_color"] = "#FB0E00"
     # The supplied full-square image is for legacy launcher and top-left icon.
     # On adaptive launchers only the pink Pc glyph goes in the safe foreground.

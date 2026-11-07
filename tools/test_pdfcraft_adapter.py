@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert native.count('finish_pdfcraft_android_activity(') >= 3
     assert 'fn on_exit(&mut self)' in native
     assert native.index('fn on_exit(&mut self)') < native.index('let result = eframe::run_native(')
-    assert 'self.persist_now();\\n        finish_pdfcraft_android_activity(&self.app);' in native
+    assert 'self.persist_now();\n        finish_pdfcraft_android_activity(&self.app);' in native
     assert native.index('let result = eframe::run_native(') < native.index('finish_pdfcraft_android_activity(&exit_activity);')
     # Stale singleTask intents must recreate rather than target a dead native loop.
     java_file = android / 'java' / 'com' / 'artcraft' / 'pdfcraft' / 'PdfCraftActivity.java'

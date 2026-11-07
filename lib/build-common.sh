@@ -2219,7 +2219,7 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
             # singleTask MAIN/document intent to a Java Activity whose native
             # editor has already exited, reconstruct a fresh NativeActivity
             # instead of handing the intent to a dead renderer.
-            intent_hook = "        setIntent(intent);\\n        applyImmersiveFullscreen();"
+            intent_hook = "        setIntent(intent);\n        applyImmersiveFullscreen();"
             intent_replacement = """        // PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT
         if (pdfNativeLoopFinished) {
             android.util.Log.w("PDFCraftLifecycle", "Stale native loop: recreate for new intent");
@@ -2743,7 +2743,7 @@ impl eframe::App for AndroidShell {{
         # NativeActivity/JVM are still alive. Persist first, then finish the
         # Java Activity so the next launcher tap starts a fresh native loop.
         # The earlier *post-run_native* finish often ran after native teardown.
-        exit_hook = "    fn on_exit(&mut self) {\\n        self.persist_now();\\n    }"
+        exit_hook = "    fn on_exit(&mut self) {\n        self.persist_now();\n    }"
         if shell.count(exit_hook) != 1:
             raise SystemExit("PDFCraft on_exit lifecycle anchor changed")
         shell = shell.replace(exit_hook, """    fn on_exit(&mut self) {

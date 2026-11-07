@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   isolated-candidate:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/wordcraft-v0152-android-side-by-side-test-20261106'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/wordcraft-inapp-updater-test-20261107'
     runs-on: ubuntu-24.04
     timeout-minutes: 110
     env:

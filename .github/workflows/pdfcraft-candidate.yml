@@ -78,9 +78,13 @@ jobs:
           set -euo pipefail
           python3 -m pip install Pillow==11.3.0
           python3 -m unittest discover -s tools/approved-branding -p 'test_*.py' -v
+          # Before any expensive Rust compile: stage the uploaded Pc image and validate
+          # the exact adaptive resources, generated manifests and updater preflight.
+          python3 tools/pdfcraft/pc_brand.py
+          python3 tools/approved-branding/approved_branding.py check
           python3 -m py_compile tools/pdfcraft/*.py tools/test_pdfcraft_adapter.py tools/font_scan_budget_regression.py
           bash -n lib/build-common.sh
-          echo "Source and approved branding assets validated before compilation." >> "$GITHUB_STEP_SUMMARY"
+          echo "Pc icon and Android test overlays validated before compilation." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -146,8 +150,7 @@ jobs:
           # Install only on this disposable runner; preserve original published
           # approved icon resources and native UI branding exactly.
           python3 tools/approved-branding/install_packager.py
-          # Stage owner-supplied Pc artwork ONLY in this disposable candidate.
-          python3 tools/pdfcraft/pc_brand.py
+          # Pc icon was staged and validated in the inexpensive preflight step.
           python3 - <<'PY'
           import json
           from pathlib import Path

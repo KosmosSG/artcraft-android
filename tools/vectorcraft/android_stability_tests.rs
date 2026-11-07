@@ -44,7 +44,11 @@ mod android_stability_tests {
             let mut app=app();
             if cancel {app.services.pick_save=Some(Box::new(|_:&crate::FilePick|None));}
             else {app.services.write=Some(Box::new(|_:&str,_:&[u8]|Err("provider failure".into())));}
-            dirty(&mut app);app.run("app.quit",json!({})).unwrap();press(&mut app,Key::S);
+            dirty(&mut app);app.run("app.quit",json!({})).unwrap();
+            assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND));
+            press(&mut app,Key::S);
+            // Do not permit a vacuous pass when the key handler was never called.
+            assert!(app.ui.dialog.is_none(), "S must attempt Save, even when the picker or provider fails");
             assert_eq!(app.session.documents().len(),1);
             assert!(app.session.active().unwrap().is_dirty()); assert_ne!(app.ui.status,"quit");
         }

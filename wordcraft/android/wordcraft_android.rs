@@ -199,6 +199,46 @@ impl Tools {
         ctx.request_repaint();
     }
 
+    /// WC_ANDROID_STYLUS_SAMPLES_V1: bring native MotionEvent history/hover
+    /// into egui, retaining all sampled points until upstream ink.rs consumes
+    /// this frame's bounded batch. This does not change normal touch events.
+    pub fn inject_stylus_motion(&self, ctx: &egui::Context) {
+        let scale = ctx.pixels_per_point();
+        if !scale.is_finite() || scale <= 0.0 { return; }
+        let samples = self.call_string("wcTakeStylusTrail").ok().flatten()
+            .map(|text| text.split(';').take(256).filter_map(|sample| {
+                let (x, y) = sample.split_once(',')?;
+                let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else {
+                    return None;
+                };
+                (x.is_finite() && y.is_finite()).then_some([x / scale, y / scale])
+            }).collect::<Vec<[f32; 2]>>())
+            .unwrap_or_default();
+        let hover = self.call_string("wcStylusHoverPosition").ok().flatten()
+            .and_then(|sample| {
+                let (x, y) = sample.split_once(',')?;
+                let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else {
+                    return None;
+                };
+                (x.is_finite() && y.is_finite()).then_some([x / scale, y / scale])
+            });
+        let got_samples = !samples.is_empty();
+        ctx.data_mut(|d| {
+            if got_samples {
+                d.insert_temp(egui::Id::new("wc_stylus.path_samples"), samples);
+            } else {
+                d.remove::<Vec<[f32; 2]>>(egui::Id::new("wc_stylus.path_samples"));
+            }
+            if let Some(pos) = hover {
+                d.insert_temp(egui::Id::new("wc_stylus.hover_pos"), pos);
+            } else {
+                d.remove::<[f32; 2]>(egui::Id::new("wc_stylus.hover_pos"));
+            }
+        });
+        if got_samples { ctx.request_repaint(); }
+        if hover.is_some() { ctx.request_repaint_after(Duration::from_millis(32)); }
+    }
+
     /// MagicOS may report hardware letters as Key, Text or IME Commit.
     /// Intercept only unmodified D/C/S while Save Changes is showing;
     /// Ctrl+Shift+S is a separate nonmodal Save As shortcut.

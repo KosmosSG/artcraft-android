@@ -1,4 +1,4 @@
-VectorCraft v0.21.0-android.10 — guarded test-only rerun after native dialog route fix.
-Source: 76670ef7e3648a6204c098455aa7498b2d85b1d6
-Required: pass D/C/S and multi-document quit tests BEFORE ARM64 compilation.
-Use com.artcraft.vectorcraft.test with disposable signing; never publish or use production keys.
+Retry VectorCraft v0.21.0-android.10 disposable ARM64 TEST ONLY.
+Source test-fix commit: 55df71f52b6b7a69ea4f96e2241b01dd02c5332d
+Assert real save attempts, preserve the upstream failure-message dialog, and retain dirty work on cancelled/unavailable file pickers.
+Behavioral tests mandatory before costly compilation. No permanent signing, release publication, or production app replacement.

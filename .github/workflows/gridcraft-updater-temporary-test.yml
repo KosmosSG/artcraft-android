@@ -25,7 +25,7 @@ jobs:
       TAG: gridcraft-v0.16.1-android.4
       APK: GridCraft-v0.16.1-android.4-arm64-v8a.apk
       APP: gridcraft
-      PACKAGE: com.artcraft.gridcraft
+      PACKAGE: com.artcraft.gridcraft.candidate
       VERSION: 0.16.1-android.4
       VERSION_CODE: '16781314'
     steps:
@@ -161,7 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
-          bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate.candidate -appicon="$ICON"
+          bash builder/build-debug.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate -appicon="$ICON"
       - name: Verify candidate package, temporary signature, ARM64 and artifact integrity
         shell: bash
         run: |

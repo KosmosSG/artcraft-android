@@ -234,6 +234,25 @@ class WordCraftDeviceFixes(unittest.TestCase):
         self.assertIn('egui::ViewportCommand::Close', rust)
         self.assertNotIn('android.os.Process.killProcess', java)
 
+    def test_two_finger_scroll_history_is_smooth_and_canvas_only(self):
+        java, native, builder = text(JAVA), text(RUST), text(BUILD)
+        self.assertIn("WC_TWOFINGER_SCROLL_HISTORY_V1", java)
+        self.assertIn("wcAccumulateTwoFingerSample", java)
+        self.assertIn("wcAccumulateTwoFingerEvent", java)
+        self.assertIn("event.getHistorySize()", java)
+        self.assertIn("event.getHistoricalX(0, historyIndex)", java)
+        self.assertIn("event.getHistoricalY(1, historyIndex)", java)
+        self.assertIn("wcOnlyFingers(event)", java)
+        self.assertIn("wcTouchLastSpan * .025f", java)
+        self.assertIn("wcRejectPalm(event)", java)
+        self.assertIn("return super.dispatchTouchEvent(event);", java)
+        self.assertIn("WC_TWOFINGER_CANVAS_GUARD_V1", native)
+        self.assertIn("let Some(canvas) = canvas_rect else { return; };", native)
+        self.assertIn("if !canvas.contains(center) { return; }", native)
+        self.assertIn("self.inner.canvas.canvas_rect", builder)
+        self.assertIn("self.wc.inject_trackpad_scroll(ctx, raw, self.modifiers)", builder)
+        self.assertNotIn("egui::Event::Touch {", native)
+
     def test_two_finger_touchscreen_pan_preserves_pinch_zoom(self):
         java, rust, build = text(JAVA), text(RUST), text(BUILD)
         for marker in (

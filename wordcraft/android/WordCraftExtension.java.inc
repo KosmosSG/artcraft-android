@@ -3,6 +3,7 @@
     // WordCraft candidate's generated Activity; other ArtCraft apps are unchanged.
     private static final int WC_FONT_FOLDER_REQUEST = 0x5751;
     private static final String WC_FONT_TREE_KEY = "wordcraft_shared_font_tree";
+    private static final int WC_FONT_IMPORT_REQUEST = 0x5752;
     private static final int WC_MAX_FONTS = 5_000;
     private static final int WC_MAX_FOLDERS = 20_000;
     private static final long WC_MAX_FONT_TOTAL_BYTES = 4L * 1024 * 1024 * 1024;
@@ -10,6 +11,125 @@
     private final ConcurrentLinkedQueue<String> wcFontEvents = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<String> wcUpdateEvents = new ConcurrentLinkedQueue<>();
     private final ExecutorService wcUpdateIo = Executors.newSingleThreadExecutor();
+
+    // WC_INDIVIDUAL_FONT_IMPORT_V1: SAF picker for one or many TTF/OTF fonts.
+    // Does not replace the selected persistent shared folder or require storage permission.
+    public void wcImportFonts() {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivityForResult(intent, WC_FONT_IMPORT_REQUEST);
+            } catch (Exception error) {
+                wcFontError("Could not open font import picker: " + error.getMessage());
+            }
+        });
+    }
+
+    private void wcHandleImportedFonts(int resultCode, Intent data) {
+        if (resultCode != RESULT_OK || data == null) {
+            try { wcFontEvents.offer(new JSONObject().put("state", "cancelled").toString()); }
+            catch (Exception ignored) { }
+            return;
+        }
+        final java.util.LinkedHashSet<Uri> selected = new java.util.LinkedHashSet<>();
+        if (data.getData() != null) selected.add(data.getData());
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount() && selected.size() < WC_MAX_FONTS; i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri != null) selected.add(uri);
+            }
+        }
+        if (selected.isEmpty()) {
+            wcFontError("No font file selected");
+            return;
+        }
+        io.execute(() -> wcStageImportedFonts(selected));
+    }
+
+    // Copies only selected font files to private, persistent app storage on the
+    // existing SAF I/O executor. Native 'font.add' validates actual font bytes.
+    private void wcStageImportedFonts(java.util.Set<Uri> selected) {
+        File store = new File(appStorageDir(), "wordcraft-imported-font-cache");
+        if (!store.isDirectory() && !store.mkdirs()) {
+            wcFontError("Cannot create imported-font cache");
+            return;
+        }
+        JSONArray paths = new JSONArray();
+        int count = 0, skipped = 0;
+        long bytes = 0L;
+        try {
+            for (Uri uri : selected) {
+                if (count >= WC_MAX_FONTS || bytes >= WC_MAX_FONT_TOTAL_BYTES) break;
+                String name = null;
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) name = cursor.getString(0);
+                } catch (Exception ignored) { }
+                if (name == null) { skipped++; continue; }
+                String lower = name.toLowerCase(java.util.Locale.ROOT);
+                if (!lower.endsWith(".ttf") && !lower.endsWith(".otf")
+                        && !lower.endsWith(".ttc") && !lower.endsWith(".otc")) {
+                    skipped++;
+                    continue;
+                }
+                String suffix = lower.substring(lower.lastIndexOf('.'));
+                String key = java.util.UUID.nameUUIDFromBytes(
+                        uri.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+                File target = new File(store, "imported-" + key + suffix);
+                if (target.isFile() && target.length() > 0
+                        && bytes + target.length() <= WC_MAX_FONT_TOTAL_BYTES) {
+                    paths.put(target.getAbsolutePath());
+                    bytes += target.length(); count++;
+                    continue;
+                }
+                File temp = new File(store, "imported-" + key + suffix + ".part");
+                long copied = 0;
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                     OutputStream out = new FileOutputStream(temp)) {
+                    if (in == null) throw new java.io.IOException("Cannot open selected font");
+                    byte[] buffer = new byte[65536];
+                    int n;
+                    while ((n = in.read(buffer)) != -1) {
+                        copied += n;
+                        if (copied > WC_MAX_SINGLE_FONT_BYTES
+                                || bytes + copied > WC_MAX_FONT_TOTAL_BYTES)
+                            throw new java.io.IOException("Font import size limit exceeded");
+                        out.write(buffer, 0, n);
+                    }
+                    if (copied == 0) throw new java.io.IOException("Empty font");
+                } catch (Exception ex) {
+                    temp.delete();
+                    skipped++;
+                    Log.w(TAG, "Skipping invalid/unreadable selected font", ex);
+                    continue;
+                }
+                if (target.isFile() && !target.delete()) {
+                    temp.delete(); skipped++; continue;
+                }
+                if (!temp.renameTo(target)) {
+                    temp.delete(); skipped++; continue;
+                }
+                paths.put(target.getAbsolutePath());
+                bytes += copied;
+                count++;
+            }
+            JSONObject result = new JSONObject();
+            result.put("state", "ok");
+            result.put("paths", paths);
+            result.put("count", count);
+            result.put("skipped", skipped);
+            result.put("limited", selected.size() > WC_MAX_FONTS || bytes >= WC_MAX_FONT_TOTAL_BYTES);
+            result.put("scannedBytes", bytes);
+            wcFontEvents.offer(result.toString());
+        } catch (Exception ex) {
+            wcFontError("Could not import selected fonts: " + ex.getMessage());
+        }
+    }
 
     public void wcRequestFontFolder() {
         runOnUiThread(() -> {

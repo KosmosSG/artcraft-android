@@ -50,38 +50,26 @@ fn invoke(android: &AndroidApp, method: &str) {
     }
 }
 
-/// Small top-left overlay, preserving the upstream menus and canvas layout.
-pub fn show_ui(ctx: &egui::Context, android: &AndroidApp, open: &mut bool, initialized: &mut bool) {
+/// The approved Wc/Gc icon menu queues a one-shot command in egui's context.
+/// No floating button, `egui::Area`, persistent popup or canvas-overlay window is created.
+/// This runs after the app's own ribbon UI renders, so menu clicks work the same frame.
+pub fn show_ui(ctx: &egui::Context, android: &AndroidApp, _open: &mut bool, initialized: &mut bool) {
     if !*initialized {
         *initialized = true;
         invoke(android, "startup");
     }
-    egui::Area::new(egui::Id::new("artcraft-update-entry"))
-        .fixed_pos(egui::pos2(8.0, 56.0))
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            if ui.small_button("↻ Updates").clicked() {
-                *open = !*open;
-            }
-        });
-    if *open {
-        egui::Window::new("App updates")
-            .open(open)
-            .default_pos(egui::pos2(12.0, 88.0))
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(format!("Installed release: {}", INSTALLED_TAG));
-                if ui.button("Check for updates").clicked() {
-                    invoke(android, "check");
-                }
-                if ui.button("Test download and SHA-256 (no installation)").clicked() {
-                    invoke(android, "test");
-                }
-                if ui.button("Toggle automatic check at startup").clicked() {
-                    invoke(android, "toggle");
-                }
-                ui.small("Only published ARM64 GitHub Releases are eligible.");
-                ui.small("Downloads and Android installation always need confirmation.");
-            });
+
+    let action = ctx.data_mut(|data| {
+        let id = egui::Id::new("artcraft.updater.action");
+        let current = data.get_temp::<String>(id).unwrap_or_default();
+        data.remove::<String>(id);
+        current
+    });
+    match action.as_str() {
+        "check" => invoke(android, "check"),
+        "test" => invoke(android, "test"),
+        "toggle" => invoke(android, "toggle"),
+        "" => {}
+        unknown => log::warn!("Unknown in-app updater menu action: {}", unknown),
     }
 }

@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/deckcraft-v0160-test.yml'
       - 'deckcraft/android/patch_v016_menu.py'
+      - 'deckcraft/android/patch_v016_ctrlw.py'
+      - 'deckcraft/android/patch_v016_pptx_save.py'
 permissions:
   contents: read
 concurrency:
@@ -28,15 +30,17 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --depth=1 origin 6d6935753f07cedb557206c0c641d3250971c69e
-          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0160-test.yml deckcraft/android/patch_v016_menu.py)"
+          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0160-test.yml deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_pptx_save.py)"
           ACTUAL="$(git diff --name-only 6d6935753f07cedb557206c0c641d3250971c69e HEAD)"
           test "$ACTUAL" = "$EXPECTED" || { echo 'STOP: published baseline modifications detected'; exit 1; }
           test -s deckcraft/android/patch_v016_menu.py
+          test -s deckcraft/android/patch_v016_ctrlw.py
+          test -s deckcraft/android/patch_v016_pptx_save.py
           test -s deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
           grep -Fx 'AUTHORIZED_PHASE2_PACKAGING_REPAIR_REBUILD_ONCE' deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
           test -s deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
           grep -Fx 'OWNER_APPROVES_V0150_ANDROID1_ONE_TEST_20261104' deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
-          python3 -m py_compile deckcraft/android/patch_v016_menu.py deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
+          python3 -m py_compile deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
           test -s deckcraft/android/dcs_bridge.rs
           test -s deckcraft/android/dcs_java.inc
           test -s deckcraft/android/dcs_tests.rs
@@ -134,6 +138,8 @@ jobs:
           python3 deckcraft/android/patch_gpu_cache.py builder
           python3 deckcraft/android/patch_app_menu_updater.py builder
           python3 deckcraft/android/patch_v016_menu.py builder
+          python3 deckcraft/android/patch_v016_ctrlw.py builder
+          python3 deckcraft/android/patch_v016_pptx_save.py builder
           python3 - <<'PY'
           from pathlib import Path
           ui=Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
@@ -148,7 +154,13 @@ jobs:
           java=Path('builder/templates/android/SafActivity.java').read_text()
           for marker in ('handleIncomingFiles(getIntent())', 'handleIncomingFiles(intent)', 'public String intentPoll()'):
               assert marker in java, marker
-          print('PASS: GridCraft-style menu, manual/startup verified updater and .pptx intent routing')
+          kotlin=Path('builder/templates/android/SafActivity.java').read_text()
+          assert 'private boolean dkCaptureCtrlW(' in kotlin
+          assert 'public boolean onKeyShortcut(' in kotlin
+          assert 'Intent.ACTION_EDIT.equals(action)' in kotlin
+          files=Path('builder/source/deckcraft/crates/ui-egui/src/app/files.rs').read_text()
+          assert 'deckcraft_engine::cmd::file::save_bytes(&doc.doc, "pptx")' in files
+          print('PASS: grouped Dk menu, verified updater, PPTX ACTION_VIEW+EDIT, nonblocking PPTX Save As, IME Ctrl+W')
           PY
           git -C builder/source/deckcraft diff --check
           python3 deckcraft/android/adaptive_safe.py builder deckcraft
@@ -370,6 +382,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.16.0-android.1.apk | grep -F "name='com.artcraft.deckcraft.candidate.up160menu'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree builder/output/deckcraft-0.16.0-android.1.apk AndroidManifest.xml > /tmp/deckcraft-v016-manifest.txt
           grep -F 'android.intent.action.VIEW' /tmp/deckcraft-v016-manifest.txt
+          grep -F 'android.intent.action.EDIT' /tmp/deckcraft-v016-manifest.txt
           grep -F 'application/vnd.openxmlformats-officedocument.presentationml.presentation' /tmp/deckcraft-v016-manifest.txt
           # Abort if any later packaging step reverted to Android.17.
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.16.0-android.1.apk | grep -F "versionName='0.16.0-android.1'"
@@ -456,7 +469,7 @@ jobs:
           Physical tablet testing and public release still require owner approval.
           TXT
           echo "### DeckCraft 0.16.0-android.1 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
-          echo 'GridCraft-style Dk menu, in-app updater and .pptx Android Open With associations.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Refined Dk menu, explicit Light/Dark, direct About, focused Ctrl+W, PPTX Open With and async Save As.' >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload temporary-signed and unsigned ARM64 testing APKs

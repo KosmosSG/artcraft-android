@@ -2705,6 +2705,11 @@ print("  Orientation: sensor (allows portrait and landscape rotation)")
 PY
 fi
 
+# Keep the opt-in in-app updater scoped to wordcraft and off other production apps.
+if [[ "$APP" == "wordcraft" ]]; then
+    python3 "$ROOT/lib/inapp_updater.py" "$APP" "$ANDROID_DIR" "$ROOT" || fail "Could not integrate the wordcraft updater."
+fi
+
 [[ -f "$ANDROID_DIR/Cargo.toml" && -f "$ANDROID_DIR/src/lib.rs" ]] || fail "Android wrapper is incomplete at $ANDROID_DIR. See the build log and adapters/README.md."
 
 # egui-winit's stock Android build gates its `arboard` clipboard backend behind

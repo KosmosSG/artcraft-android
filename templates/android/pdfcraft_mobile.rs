@@ -201,7 +201,6 @@ impl Mobile {
         self.download_ready = false;
         self.update_status = "Checking published PDFCraft Android releases…".into();
         self.updates_open = true;
-        self.panel_open = true;
         match self.request(Action::CheckUpdates) {
             Ok(()) => self.checking = true,
             Err(error) => self.update_status = format!("Update checker unavailable: {error}"),
@@ -433,13 +432,11 @@ impl Mobile {
     pub fn handle_menu(&mut self, action: u8) {
         match action {
             4 => {
-                self.panel_open = true;
                 self.fonts_open = false;
                 self.do_update_check();
                 return;
             }
             5 => {
-                self.panel_open = true;
                 self.fonts_open = false;
                 self.updates_open = true;
                 return;
@@ -477,7 +474,56 @@ impl Mobile {
             if let Err(error) = self.request(request) { self.font_status = error; }
         }
     }
+    fn updater_dialog(&mut self, ctx: &egui::Context) {
+        let mut open = self.updates_open;
+        egui::Window::new("PDFCraft updates")
+            .open(&mut open)
+            .default_width(380.0)
+            .min_width(300.0)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Installed: PDFCraft 0.18.0-android.14 (test candidate)");
+                ui.label(&self.update_status);
+                if self.checking || self.downloading { ui.spinner(); }
+                ui.horizontal_wrapped(|ui| {
+                    if ui.add_enabled(!self.checking && !self.downloading,
+                        egui::Button::new("Check again")).clicked() {
+                        self.do_update_check();
+                    }
+                    if let Some(url) = self.update_url.clone() {
+                        if ui.button("View release").clicked() {
+                            if let Err(error) = self.release_page(&url) { self.update_status = error; }
+                        }
+                    }
+                    if let Some(asset) = self.update_asset_url.clone() {
+                        if ui.add_enabled(!self.downloading && !self.download_ready,
+                            egui::Button::new("Download APK")).clicked() {
+                            match self.download_update(&asset) {
+                                Ok(()) => { self.downloading = true; self.update_status = "Starting Android download…".into(); }
+                                Err(error) => self.update_status = error,
+                            }
+                        }
+                    }
+                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
+                        match self.install_download() {
+                            Ok(()) => { self.downloading = true; self.update_status = "Verifying downloaded APK…".into(); }
+                            Err(error) => self.update_status = error,
+                        }
+                    }
+                });
+                if ui.checkbox(&mut self.startup_check, "Check for updates at startup").changed() {
+                    if let Err(error) = self.save_startup_setting(self.startup_check) {
+                        self.update_status = format!("Could not save startup preference: {error}");
+                    }
+                }
+                ui.label(egui::RichText::new(
+                    "Published releases only. Installation requires Android confirmation. Test packages cannot replace the stable app."
+                ).small());
+            });
+        self.updates_open = open;
+    }
     pub fn dialog(&mut self, ctx: &egui::Context) {
+        if self.updates_open { self.updater_dialog(ctx); }
         if !self.panel_open { return; }
         let mut open = self.panel_open;
         egui::Window::new("Android tools").open(&mut open)
@@ -592,47 +638,7 @@ impl Mobile {
                 ui.label(&self.font_status);
                 ui.label(egui::RichText::new("Only embeddable fonts accepted by PDFCraft are available for PDF text tools; existing embedded fonts are unchanged.").small());
             }
-            if self.updates_open {
-                ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(&self.update_status);
-                    if self.checking { ui.spinner(); }
-                    if let Some(url) = self.update_url.clone() {
-                        if ui.button("View GitHub release").clicked() {
-                            if let Err(error) = self.release_page(&url) { self.update_status = error; }
-                        }
-                    }
-                    if let Some(asset) = self.update_asset_url.clone() {
-                        if !self.downloading && !self.download_ready
-                            && ui.button("Download APK").clicked() {
-                            match self.download_update(&asset) {
-                                Ok(()) => {
-                                    self.downloading = true;
-                                    self.update_status = "Starting Android download…".into();
-                                }
-                                Err(error) => self.update_status = error,
-                            }
-                        }
-                    }
-                    if self.downloading { ui.spinner(); }
-                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
-                        match self.install_download() {
-                            Ok(()) => {
-                                self.downloading = true;
-                                self.update_status = "Verifying downloaded APK…".into();
-                            }
-                            Err(error) => self.update_status = error,
-                        }
-                    }
-                    if ui.button("Hide").clicked() { self.updates_open = false; }
-                });
-                if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
-                    if let Err(error) = self.save_startup_setting(self.startup_check) {
-                        self.update_status = format!("Could not save startup preference: {error}");
-                    }
-                }
-                ui.label(egui::RichText::new("Downloads only published PDFCraft Android APKs. Android requires explicit confirmation; test packages cannot replace stable apps.").small());
-            }
+
         });
         self.panel_open = open;
     }

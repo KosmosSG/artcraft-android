@@ -175,6 +175,16 @@ jobs:
 
           for action in ('"check"', '"test"', '"toggle"'):
               assert action in icon_menu, f"Missing menu action {action}"
+          assert icon_menu.count('ui.menu_button("GridCraft Tools"') == 1
+          for submenu in ("Font Catalog & Diagnostics", "Appearance",
+                          "Spreadsheet Shortcuts", "About GridCraft"):
+              assert icon_menu.count('ui.menu_button("' + submenu + '"') == 1
+          assert '("Import Fonts (TTF / OTF)…", "import")' in icon_menu
+          assert '("Choose Shared Font Folder…", "folder")' in icon_menu
+          assert '"diagnose_fonts"' in icon_menu and 'ScrollArea::vertical()' in icon_menu
+          assert 'view.darkMode' in icon_menu and 'gridcraft.android.touch_select' in icon_menu
+          assert 'edit.undo' in icon_menu and 'view.zoom' in icon_menu
+          assert 'gridcraft.android.menu.action' in icon_menu
           assert "PackageInstaller" in java and "verifyPackageAndSigner" in java
           PY
           bash -n builder/lib/build-common.sh
@@ -212,7 +222,7 @@ jobs:
           test -s builder/source/gridcraft/apps/gridcraft-android/java/com/artcraft/gridcraft/candidate/ArtCraftUpdater.java
           grep -F 'mod updater;' builder/source/gridcraft/apps/gridcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$APK" candidate/GridCraft-v0.16.1-android.4-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
+          cp "$APK" candidate/GridCraft-v0.16.1-android.4-ARM64-COMPACT-MENU-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp apk-signing.txt apk-badging.txt candidate/
 
@@ -221,9 +231,9 @@ jobs:
       - name: Upload GridCraft ARM64 disposable-signed updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: GridCraft-Unified-Updater-ARM64-TEMP-TEST
+          name: GridCraft-CompactMenu-ARM64-TEMP-TEST
           path: |
-            candidate/GridCraft-v0.16.1-android.4-ARM64-UNIFIED-UPDATER-TEMP-TEST.apk
+            candidate/GridCraft-v0.16.1-android.4-ARM64-COMPACT-MENU-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
             candidate/apk-signing.txt
             candidate/apk-badging.txt

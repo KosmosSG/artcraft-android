@@ -112,6 +112,28 @@ mod android_stability_tests {
         press(&mut app,Key::D);assert!(app.session.documents().is_empty());assert_eq!(app.ui.status,"quit");
     }
     #[test]
+    fn android_stability_unfocused_modal_still_receives_physical_discard() {
+        // The hidden Android EditText may leave egui's viewport unfocused.
+        // A Save Changes modal must still accept physical D/C/S key presses.
+        let mut app = app();
+        dirty(&mut app);
+        app.run("file.close", json!({})).unwrap();
+        assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND));
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput {
+            focused: false,
+            events: vec![egui::Event::Key {
+                key: Key::D, physical_key: Some(Key::D), pressed: true,
+                repeat: false, modifiers: Modifiers::NONE,
+            }],
+            ..Default::default()
+        }, |_| { handle(&mut app, &ctx); });
+        output.textures_delta.clear();
+        assert!(app.session.documents().is_empty());
+        assert!(app.ui.dialog.is_none());
+    }
+
+    #[test]
     fn android_stability_no_modal_no_action() {
         let mut app=app();dirty(&mut app);
         for key in [Key::D,Key::C,Key::S] {press(&mut app,key);}

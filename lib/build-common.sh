@@ -2852,6 +2852,48 @@ fn android_main(android_app: android_activity::AndroidApp) {{
     }}
 }}
 '''
+    # PDFCRAFT_ANDROID_ACTIVITY_FINISH: the default singleTask Activity must be
+    # finished after eframe's native loop returns. Otherwise the launcher icon
+    # delivers onNewIntent to a stopped native loop, leaving a blank/unlaunchable
+    # activity until app data is cleared. Never kill the process or clear data.
+    if app == "pdfcraft":
+        helper = r'''
+#[cfg(target_os = "android")]
+fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
+    let app = app.clone();
+    app.run_on_java_main_thread(Box::new(move || {
+        let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("finish"), jni_sig!("()V"), &[])?;
+            Ok(())
+        });
+        if let Err(error) = result {
+            log::error!("PDFCraft Android Activity.finish failed: {error}");
+        }
+    }));
+}
+'''
+        main_anchor = '#[cfg(target_os = "android")]\n#[unsafe(no_mangle)]\nfn android_main('
+        if entry.count(main_anchor) != 1:
+            raise SystemExit("PDFCraft activity lifecycle anchor changed")
+        entry = entry.replace(main_anchor, helper + '\n' + main_anchor, 1)
+        options_anchor = '    let options = eframe::NativeOptions {'
+        if entry.count(options_anchor) != 1:
+            raise SystemExit("PDFCraft native options anchor changed")
+        entry = entry.replace(options_anchor,
+                              '    let exit_activity = android_app.clone();\n' + options_anchor, 1)
+        footer_anchor = '    if let Err(error) = result {\n        log::error!("'
+        # The final result is eframe::run_native; after it returns, close the Java
+        # NativeActivity on the main thread so MagicOS can create a new instance.
+        footer_index = entry.rfind(footer_anchor)
+        if footer_index < entry.index('let result = eframe::run_native('):
+            raise SystemExit("PDFCraft run_native completion anchor changed")
+        entry = entry[:footer_index] + (
+            '    finish_pdfcraft_android_activity(&exit_activity);\n'
+            + entry[footer_index:]
+        )
     (staging_dir / "src").mkdir()
 
     # The shared Android system-font module, referenced by `mod system_fonts;` in the entry above.
@@ -3015,7 +3057,7 @@ fi
 # builder's older mouse-aware vendor copy lacks it. For this disposable candidate
 # only, restore the exact official winit commit and reapply the guarded Android
 # mouse/scroll/hover backend. Do not silently fall back to touch-only input.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
 fi
@@ -3076,7 +3118,7 @@ fi
 # Select the already reviewed Android JNI implementation for this *candidate only*;
 # never silently replace it with a stub or bypass clipboard tests. Cargo will fail
 # closed if a newer upstream dependency actually requires arboard >=3.7.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" ) ]]; then
     grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
         fail "PDFCraft Android clipboard patch missing; refusing pinned v0.17/v0.18 build"
     cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||

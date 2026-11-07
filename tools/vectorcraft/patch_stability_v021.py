@@ -20,6 +20,8 @@ fi
     patch_adapter(root)
     patch_dialog(root)
     patch_startup(root)
+    from patch_smooth_menu_scroll_v021 import patch as smooth_menu
+    smooth_menu(root)
     from patch_keyboard_diagnostics_v021 import patch as diagnostics
     diagnostics(root)
 

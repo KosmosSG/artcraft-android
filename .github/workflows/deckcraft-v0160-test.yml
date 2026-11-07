@@ -228,8 +228,14 @@ jobs:
           # left-aligned and duplicate Help-only commands remain in Help.
           popup=ui.split('let launcher = ui.menu_button(',1)[1].split('dialogs::paint_logo(ui.painter(), launcher.response.rect.shrink(2.0))',1)[0]
           assert 'egui::Button::new("").left_text(label)' in popup
-          for section in ('App Updates', 'Appearance', 'Presentation Shortcuts', 'About DeckCraft'):
-              assert section in popup, section
+          for section in ('App Updates', 'Appearance', 'Presentation Shortcuts'):
+              assert f'ui.menu_button("{section}",' in popup, section
+          assert '   ›' not in popup, 'Duplicated submenu arrows'
+          assert 'ui.menu_button("About DeckCraft' not in popup, 'About must be direct'
+          assert 'left_text("About DeckCraft")' in popup
+          assert 'serde_json::json!({"on": false})' in popup
+          assert 'serde_json::json!({"on": true})' in popup
+          assert '✓  Light Theme' in popup and '✓  Dark Theme' in popup
           assert 'app.gpuDiagnostics' not in popup
           assert popup.count('app.about') == 1  # owner requested About in Dk launcher
           for command in ('app.importFont', 'app.fontFolder', 'app.refreshFonts',

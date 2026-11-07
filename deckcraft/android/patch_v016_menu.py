@@ -35,7 +35,7 @@ menu='''                    let launcher = ui.menu_button("      ", |ui| {
                             }
                         }
                         ui.separator();
-                        ui.menu_button("App Updates   ›", |ui| {
+                        ui.menu_button("App Updates", |ui| {
                             ui.set_min_width(235.0);
                             for (label, command) in [
                                 ("Check for Updates…", "app.checkUpdates"),
@@ -47,14 +47,25 @@ menu='''                    let launcher = ui.menu_button("      ", |ui| {
                                 }
                             }
                         });
-                        ui.menu_button("Appearance   ›", |ui| {
+                        ui.menu_button("Appearance", |ui| {
+                            ui.set_min_width(235.0);
+                            // Explicit on/off arguments, not the current-theme toggle.
+                            // A check mark shows the active appearance.
+                            let dark = self.ui.brightness == theme::Brightness::Dark;
+                            let light_label = if dark { "    Light Theme" } else { "✓  Light Theme" };
                             if ui.add_sized([235.0, 28.0],
-                                egui::Button::new("").left_text("Toggle Dark Theme")).clicked() {
-                                let _ = self.run("view.dark", serde_json::json!({}));
+                                egui::Button::new("").left_text(light_label)).clicked() {
+                                let _ = self.run("view.dark", serde_json::json!({"on": false}));
+                                ui.close();
+                            }
+                            let dark_label = if dark { "✓  Dark Theme" } else { "    Dark Theme" };
+                            if ui.add_sized([235.0, 28.0],
+                                egui::Button::new("").left_text(dark_label)).clicked() {
+                                let _ = self.run("view.dark", serde_json::json!({"on": true}));
                                 ui.close();
                             }
                         });
-                        ui.menu_button("Presentation Shortcuts   ›", |ui| {
+                        ui.menu_button("Presentation Shortcuts", |ui| {
                             ui.set_min_width(235.0);
                             ui.label("Ctrl+W · Close document");
                             ui.label("Ctrl+S · Save");
@@ -62,16 +73,24 @@ menu='''                    let launcher = ui.menu_button("      ", |ui| {
                             ui.label("Ctrl+C / X / V · Copy / Cut / Paste");
                             ui.label("Esc · Leave text editing");
                         });
-                        ui.menu_button("About DeckCraft   ›", |ui| {
-                            if ui.add_sized([235.0, 28.0],
-                                egui::Button::new("").left_text("About DeckCraft")).clicked() {
-                                let _ = self.run("app.about", serde_json::json!({}));
-                                ui.close();
-                            }
-                        });
+                        ui.separator();
+                        if ui.add_sized([260.0, 28.0],
+                            egui::Button::new("").left_text("About DeckCraft")).clicked() {
+                            let _ = self.run("app.about", serde_json::json!({}));
+                            ui.close();
+                        }
                     });
                     // Keep exactly the same owner-approved glossy Dk mark.
 '''
 host.write_text(source[:a]+menu+source[b:], encoding="utf-8")
 assert 'dialogs::paint_logo(ui.painter(), launcher.response.rect.shrink(2.0));' in host.read_text()
-print("PASS: GridCraft-style nested DeckCraft menu, font controls, updater, appearance and About preserved")
+result=host.read_text(encoding="utf-8")
+for name in ("App Updates", "Appearance", "Presentation Shortcuts"):
+    assert f'ui.menu_button("{name}",' in result, f"Missing {name} submenu"
+assert 'ui.menu_button("About DeckCraft' not in result, "About must open directly, not through a submenu"
+assert 'left_text("About DeckCraft")' in result, "Direct About action missing"
+assert '("view.dark", serde_json::json!({"on": false}))' in result
+assert '("view.dark", serde_json::json!({"on": true}))' in result
+assert '   ›' not in result[a:result.index(end)], "Duplicate native egui submenu chevrons"
+print("PASS: single-arrow GridCraft-style Dk submenus, explicit Light/Dark radio-style selection, direct About")
+print("PASS: font imports, app updater, keyboard, styling, original branded icon left unchanged")

@@ -498,6 +498,23 @@ private android.view.View findPdfAdaptiveSurface(android.view.View root, int lev
     return null;
 }
 
+// PDFCRAFT_ANDROID_RELAUNCH_LIFECYCLE: mark the native render loop as
+// stopped while Java main is still alive. singleTask relaunch must NEVER
+// hand a launcher/document intent to a dead renderer; no user data is cleared.
+private volatile boolean pdfNativeLoopFinished = false;
+
+// Called only by the AndroidShell's confirmed on_exit, after the app has
+// persisted preferences/recovery. AndroidApp schedules this on the Java UI
+// thread; finishAndRemoveTask closes the stale singleTask root activity.
+public void pdfFinishNativeLoop() {
+    if (pdfNativeLoopFinished) return;
+    pdfNativeLoopFinished = true;
+    android.util.Log.i("PDFCraftLifecycle", "Native loop exited: finish task");
+    if (!isFinishing()) {
+        finishAndRemoveTask();
+    }
+}
+
 // PDFCRAFT_ANDROID_ACTIVITY_CLEANUP: release worker threads on an actual finish,
 // not on background/rotation. Never delete settings, staged PDFs, or recovery.
 @Override

@@ -497,3 +497,11 @@ private android.view.View findPdfAdaptiveSurface(android.view.View root, int lev
     }
     return null;
 }
+
+// PDFCRAFT_ANDROID_ACTIVITY_CLEANUP: release worker threads on an actual finish,
+// not on background/rotation. Never delete settings, staged PDFs, or recovery.
+@Override
+protected void onDestroy() {
+    pdfBackground.shutdownNow();
+    super.onDestroy();
+}

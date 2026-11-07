@@ -18,7 +18,23 @@ class VectorCraftAndroid3Guards(unittest.TestCase):
                 ui.add_space(6.0);'''
         menu, bar, chrome = patch_sources(menu, bar, chrome)
         self.assertIn("pub(crate) fn android_vc_menu", menu)
-        self.assertIn('menu_body(app, ui, items, &mut clicked)', menu)
+        # Android.11 intentionally renders a compact GridCraft-style grouped Vc
+        # menu instead of reusing the old flat upstream menu body. Keep the
+        # original icon, command bridge, About item and all approved controls.
+        for required in (
+            'ui.menu_button("App Updates"',
+            'ui.menu_button("Appearance"',
+            'ui.menu_button("Diagnostics"',
+            'ui.button("About VectorCraft")',
+            '"android.vectorcraft.fontImport"',
+            '"android.vectorcraft.fontFolder"',
+            '"android.vectorcraft.fontRefresh"',
+            '"android.vectorcraft.updates"',
+            '"android.vectorcraft.startupUpdates"',
+            '"android.vectorcraft.keyboardDiagnostics"',
+            '"edit.keyboardShortcuts"',
+        ):
+            self.assertIn(required, menu)
         self.assertIn('&& *title != "Vc"', bar)
         self.assertIn('menus::android_vc_menu(app, &mark);', chrome)
         self.assertIn('crate::brand::paint_mark(ui, r);', chrome)

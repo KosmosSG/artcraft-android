@@ -231,7 +231,7 @@ jobs:
           for section in ('App Updates', 'Appearance', 'Presentation Shortcuts', 'About DeckCraft'):
               assert section in popup, section
           assert 'app.gpuDiagnostics' not in popup
-          assert 'app.about' not in popup
+          assert popup.count('app.about') == 1  # owner requested About in Dk launcher
           for command in ('app.importFont', 'app.fontFolder', 'app.refreshFonts',
                           'app.checkUpdates', 'app.updateSettings'):
               assert popup.count(command)==1, command

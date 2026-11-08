@@ -55,7 +55,7 @@ def main() -> None:
     candidates = list(cargo_home.glob("git/checkouts/egui-*/*/crates/eframe/src/native/run.rs"))
     verified = []
     for p in candidates:
-        checkout = p.parents[3]
+        checkout = p.parents[4]
         sha = subprocess.check_output(
             ["git", "-C", str(checkout), "rev-parse", "HEAD"],
             text=True, stderr=subprocess.DEVNULL

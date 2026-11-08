@@ -35,8 +35,8 @@ class Android18Guards(unittest.TestCase):
         self.assertNotIn('delete_file',p)
     def test_test_only_release_rules(self):
         w=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.18",w)
-        self.assertIn("VERSION_CODE: '16783378'",w)
+        self.assertIn("VERSION_NAME: 0.21.0-android.19",w)
+        self.assertIn("VERSION_CODE: '16783379'",w)
         self.assertIn("patch_android18_modal_and_gestures.py",w)
         self.assertIn("com.artcraft.vectorcraft.test",w)
         self.assertIn("Delete disposable builder signing materials",w)

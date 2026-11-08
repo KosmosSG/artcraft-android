@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.12 ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.13 ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.21.0-android.12
-      VERSION_CODE: '16783372'
+      VERSION_NAME: 0.21.0-android.13
+      VERSION_CODE: '16783373'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -68,7 +68,7 @@ jobs:
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
-          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py
           # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
           # This keeps stale Java/Rust source anchors from burning build minutes.
           python3 - <<'PY'
@@ -79,6 +79,9 @@ jobs:
           from patch_android12_keyboard import patch as keyboard12
           from patch_android12_startup import patch as startup12
           from patch_android12_menu_scroll import patch as scroll12
+          from patch_android13_recovery import patch as recovery13
+          from patch_android13_menu_scroll import patch as scroll13
+          from patch_smooth_menu_scroll_v021 import patch as smooth_scroll
           owner=Path("android-port/adapters/vectorcraft")
           upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
           with tempfile.TemporaryDirectory(prefix="vc-android11-overlay-") as temp:
@@ -87,14 +90,18 @@ jobs:
               shutil.copytree(owner,dst)
               target=root/"source/vectorcraft/crates/ui-egui/src"
               target.mkdir(parents=True)
-              for filename in ("shortcuts.rs","dialogs.rs"):
+              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs"):
+                  (target/filename).parent.mkdir(parents=True,exist_ok=True)
                   shutil.copyfile(upstream/filename,target/filename)
               patch_adapter(root)
               patch_dialog(root)
               patch_startup(root)
+              smooth_scroll(root)
               keyboard12(root)
               startup12(root)
               scroll12(root)
+              recovery13(root)
+              scroll13(root)
               rust=(dst/"src/lib.rs").read_text()
               java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
               shortcuts=(target/"shortcuts.rs").read_text()
@@ -107,7 +114,14 @@ jobs:
               assert "verifiedNativeFrames >= 3" in java
               assert "menu_scroll.apply(ctx, raw)" in rust
               assert "hardwareShortcutMode" in java
-          print("PASS: real Android.12 Rust/Java/dialog overlay anchors before SDK/NDK")
+              assert "final boolean canvasKey = mode == 1" in java
+              assert "finishAndRemoveTask();" not in java
+              assert "firstFrameProbeStartMs = System.currentTimeMillis();" in java
+              assert "android_owner_unsaved_key" in shortcuts and "android_owner_unsaved_key" in rust
+              assert 'self.inner.select_tool(tool_id)' in rust
+              assert '.wheel_scroll_multiplier(egui::vec2(1.0, 1.0))' in (target/"widgets/dropdowns.rs").read_text()
+              assert 'let hovered_menu = egui::Popup::is_any_open(ctx);' in (dst/"src/android_modifiers.rs").read_text()
+          print("PASS: real Android.13 Rust/Java/dialog/menu overlay anchors before SDK/NDK")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
@@ -301,7 +315,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.12-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.13-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

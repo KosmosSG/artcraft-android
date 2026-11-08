@@ -81,8 +81,8 @@ class VectorCraftAndroid11Guards(unittest.TestCase):
 
     def test_workflow_is_android11_disposable_arm64_only(self):
         workflow = WORKFLOW.read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.19", workflow)
-        self.assertIn("VERSION_CODE: '16783379'", workflow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.20", workflow)
+        self.assertIn("VERSION_CODE: '16783380'", workflow)
         self.assertIn("com.artcraft.vectorcraft.test", workflow)
         self.assertIn("Behavioral gates on generated code before ARM64 compilation", workflow)
         self.assertIn("Delete disposable builder signing materials", workflow)

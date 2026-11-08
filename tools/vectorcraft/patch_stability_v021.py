@@ -31,6 +31,10 @@ fi
     physical_keys(root)
     startup_cover(root)
     menu_scroll(root)
+    from patch_android13_recovery import patch as recovery13
+    from patch_android13_menu_scroll import patch as menu_scroll13
+    recovery13(root)
+    menu_scroll13(root)
 
 
 def patch_adapter(root):

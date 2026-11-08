@@ -15,7 +15,9 @@ class LifecycleTraceTests(unittest.TestCase):
             self.assertIn('pdfLifecycleTrace("' + callback + ':after")', s)
         self.assertIn('android.util.Log.i("PDFCraftLifecycle"', s)
         self.assertIn("android.os.Process.myPid()", s)
-        self.assertIn("finishAndRemoveTask();", s)
+        self.assertNotIn("finishAndRemoveTask();", s)
+        self.assertIn('pdfLifecycleTrace("finish:before")', s)
+        self.assertIn("finish();", s)
         self.assertNotIn("System.exit(", s)
         self.assertNotIn("clearApplicationUserData(", s)
 

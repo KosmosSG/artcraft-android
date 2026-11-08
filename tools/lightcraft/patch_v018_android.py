@@ -100,7 +100,7 @@ def source_changes(source: Path) -> dict[Path, str]:
     # Android-only compact Lc menu: reuse existing appearance/update commands.
     # Keep the desktop menu unchanged and do not add font controls.
     m = once(m,
-        'pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {\\n',
+        'pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {\n',
         '''pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {
     #[cfg(target_os = "android")]
     {

@@ -3152,6 +3152,17 @@ if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_
     echo "PDFCraft Android clipboard uses reviewed JNI-backed arboard 3.6.1."
 fi
 
+# PDFCRAFT_ANDROID6_EFRAME_CLOSE_EXITS_LOOP: opt-in only for the isolated
+# Android.6 PDFCraft disposable APK workflow. The published stable baseline,
+# other ArtCraft apps and reusable repository vendor sources remain untouched.
+# The GitHub Actions job is ephemeral; no cache upload or release occurs.
+if [[ "$APP" == "pdfcraft" && "${PDFCRAFT_ANDROID6_EFRAME_CLOSE_EXIT:-0}" == "1" ]]; then
+    cargo fetch --manifest-path "$SRC/Cargo.toml" --target aarch64-linux-android ||
+        fail "Could not fetch pinned eframe for Android6 lifecycle patch"
+    python3 "$ROOT/tools/pdfcraft/eframe_android_close_exit_patch.py" ||
+        fail "Pinned eframe close/exit patch refused; stop before ARM64 build"
+fi
+
 # A `target/` directory left behind by running cargo inside a vendored crate must never be
 # copied into the app tree: it is hundreds of megabytes and cargo ignores nested target dirs
 # of path dependencies anyway. `rm -rf` is a no-op when the glob matches nothing.

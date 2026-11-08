@@ -53,6 +53,9 @@ fi
     # Port MostafaXS1 2026-11-05 hidden input view lifecycle without overwriting owner bridge.
     from patch_android19_reference_ime import patch as reference_ime19
     reference_ime19(root)
+    # Android.20: forward real hardware key to wake native winit and use responsive startup.
+    from patch_android20_native_keyboard_splash import patch as android20
+    android20(root)
 
 
 def patch_adapter(root):

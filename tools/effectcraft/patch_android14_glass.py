@@ -217,7 +217,7 @@ def apply(root: Path):
         raise RuntimeError("STOP: missing Android.13 working gesture bridge")
     for fragment in ("MotionAction::Move if pointer_class",
                      "MotionAction::Scroll => {", "Axis::__Unknown(51)",
-                     "EC11 time_ms=", "MouseInput", "MotionAction::Cancel"):
+                     "MouseInput", "MotionAction::Cancel"):
         if fragment not in original:
             raise RuntimeError("STOP: Android.14 baseline drift: " + fragment)
     path.write_text(original.replace(ANCHOR, INSERT, 1), encoding="utf-8")

@@ -13,7 +13,7 @@ class GlassNavigationTests(unittest.TestCase):
             path.write_text("\n".join([
                 "EC13_PAD_CONTACT", "MotionAction::Move if pointer_class",
                 "MotionAction::Scroll => {", "Axis::__Unknown(51)",
-                "EC11 time_ms=", "MouseInput", "MotionAction::Cancel",
+                "MouseInput", "MotionAction::Cancel",
                 ANCHOR, "}"]))
             apply(root)
             data=path.read_text()

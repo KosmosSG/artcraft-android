@@ -21,15 +21,6 @@ REPLACEMENT = '''    #[cfg(target_os = "android")]
                     .max_height(236.0)
                     .auto_shrink([true, true])
                     .show(ui, |ui| {
-                        // Android.12: visible at top even when the menu's
-                        // broken two-finger scrolling cannot reach lower rows.
-                        if ui.button("Export Gesture Log…").clicked() {
-                            ui.ctx().data_mut(|d| d.insert_temp(
-                                egui::Id::new("artcraft.effectcraft.export_gesture_log"), true,
-                            ));
-                            ui.close();
-                        }
-                        ui.separator();
                         for (title, key) in [
                             ("Import Fonts…", "artcraft.effectcraft.import_font"),
                             ("Select Font Folder…", "artcraft.effectcraft.select_fonts"),

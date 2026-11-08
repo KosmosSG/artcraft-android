@@ -15,21 +15,11 @@ class MenuAndPickerTest(unittest.TestCase):
             patch_header(root)
             result = path.read_text()
             self.assertEqual(result.count("egui::Popup::menu(&bresp)"), 1)
-            # Android.12: export MUST be the first entry, even if a menu
-            # can't scroll on the physical trackpad.
-            self.assertIn('ui.button("Export Gesture Log…")', result)
-            self.assertIn('"artcraft.effectcraft.export_gesture_log"', result)
-            self.assertLess(
-                result.index('ui.button("Export Gesture Log…")'),
-                result.index('("Import Fonts…",'),
-            )
-            rust = (ROOT / "android_updater.rs").read_text()
-            java_patch = (ROOT / "patch_android_local_diag.py").read_text()
-            self.assertIn('dispatch!("artcraft.effectcraft.export_gesture_log", "ec11RequestExport")', rust)
-            self.assertIn('public void ec11RequestExport()', java_patch)
-            self.assertIn('Intent.ACTION_CREATE_DOCUMENT', java_patch)
-            self.assertNotIn('addContentView(button, params);', java_patch)
-
+            self.assertNotIn("Export Gesture Log", result)
+            self.assertNotIn("artcraft.effectcraft.export_gesture_log", result)
+            self.assertNotIn("ec11RequestExport", (ROOT / "android_updater.rs").read_text())
+            self.assertNotIn("patch_android_local_diag.py", (
+                ROOT / "integrate_updater.py").read_text())
             for title in ("Import Fonts", "Select Font Folder", "Refresh Fonts Folder",
                           "Check for Updates", "Startup Update Check", "About EffectCraft"):
                 self.assertIn(title, result)

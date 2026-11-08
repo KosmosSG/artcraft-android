@@ -37,6 +37,10 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn("app.session.wants_text()", self.native)
         self.assertIn("event.hasNoModifiers()", self.java)
         self.assertIn("imeView.setFocusable(false)", self.java)
+        self.assertIn("imeView.setVisibility(View.GONE)", self.java)
+        self.assertIn("dcFocusNativeSurface()", self.java)
+        self.assertIn("view.setVisibility(View.VISIBLE)", self.java)
+        self.assertIn("super.onKeyDown(code, event)", self.java)
         self.assertIn("text.chars().count() == 1", self.native)
         for key in "'t'", "'v'", "'h'", "'z'", "'a'", "'p'", "'n'", "'f'", "'m'", "'b'":
             self.assertIn("Some(" + key + ")", self.native)
@@ -58,13 +62,18 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn('take_dc_menu_actions()', self.native)
         self.assertNotIn('egui::Panel::top("artcraft-designcraft-android-tools")', self.native)
         self.assertIn('mipmap-xxxhdpi/ic_launcher.png', self.stager)
-        for text in ("Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
-                     "Reload Font Catalog", "Check Updates", "Startup Update Check",
-                     "Android Tools"):
+        for text in ("Import Fonts", "Choose Shared Font Folder", "Refresh Shared Fonts",
+                     "Font Catalog & Diagnostics", "Reload Font Catalog", "App Updates",
+                     "Check Updates", "Startup Update Check", "Appearance",
+                     "DesignCraft Shortcuts", "About DesignCraft"):
             self.assertIn(text, self.dc_menu)
         self.assertNotIn('"Android",\n        &[', self.java)
         self.assertIn('pub use bar::take_dc_menu_actions', self.java)
         self.assertIn('dc_launcher_menu(app, ui)', self.java)
+        self.assertIn('appbar=base/"chrome/app_bar.rs"', self.java)
+        self.assertIn('Dc first then Home', self.java)
+        self.assertIn('pub(crate) use bar::dc_launcher_menu', self.java)
+        self.assertIn('pub(crate) fn dc_launcher_menu(', self.dc_menu)
 
     def test_cursor_is_fork_port_not_entire_app_merge(self):
         self.assertIn('pub fn pointer_icon_type', self.pointer)

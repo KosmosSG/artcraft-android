@@ -184,13 +184,16 @@ def apply(root: Path) -> None:
             d.get_temp(egui::Id::new("effectcraft.android.touch.pan"))
         ).unwrap_or(egui::Vec2::ZERO);
         #[cfg(not(target_os = "android"))]
-        let ec_touch_pan = egui::Vec2::ZERO;''', 1)
-    data[2] = data[2].replace(
-        '} else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {',
-        '} else if (scroll.pan + ec_touch_pan) != egui::Vec2::ZERO && area.contains(hp) {', 1)
-    data[2] = data[2].replace(
-        'app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];',
-        'app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x + ec_touch_pan.x, app.ui.viewer.pan[1] + scroll.pan.y + ec_touch_pan.y];', 1)
+        let ec_touch_pan = egui::Vec2::ZERO;
+        // The native two-touch finger pan is viewer-only and must not be
+        // blocked by viewerWheelScrubbing or by panel scroll ownership.
+        // The centroid/area gate already ran in android_route_touch_navigation.
+        if ec_touch_pan != egui::Vec2::ZERO {
+            app.ui.viewer.pan = [
+                app.ui.viewer.pan[0] + ec_touch_pan.x,
+                app.ui.viewer.pan[1] + ec_touch_pan.y,
+            ];
+        }''', 1)
     data[3] = data[3].replace(PANELS_ANCHOR, PANELS_INSERT, 1)
     for path, source in zip(paths, data):
         path.write_text(source, encoding="utf-8")

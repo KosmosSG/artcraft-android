@@ -15,7 +15,14 @@ class PinnedWinitTests(unittest.TestCase):
         self.new = self.root / "new.rs"
 
     def sources(self, *, old_motion=None, new_motion=None, new_ime=True):
-        old_motion = old_motion or 'let pointer_class = true;\n                MotionAction::Scroll if pointer_class => { let wheel = MouseWheel; }\n                let click = MouseInput;\n'
+        old_motion = old_motion or ('let pointer_class = true;\n'
+            '                MotionAction::Scroll if pointer_class => {\n'
+            '                    if vertical != 0.0 || horizontal != 0.0 {\n'
+            '                        let delta = if vertical.abs() <= MAX_LINE_SCROLL\n'
+            '                            && horizontal.abs() <= MAX_LINE_SCROLL { MouseWheel } else { MouseWheel };\n'
+            '                    }\n'
+            '                }\n'
+            '                let click = MouseInput;\n')
         new_motion = new_motion or '// None // TODO mouse events\n'
         old = OLD_IMPORT + "\n" + HELPER_START + "\nconst MAX_LINE_SCROLL: f32 = 3.0;\nfn android_mouse_button() {}\n" + HELPER_END + "\n" + START + "\n" + old_motion + "            },\n" + END + "\n// keep keyboard\n"
         new = PINNED_IMPORT + "\n" + HELPER_END + "\nfn reset_ime_with_request() {}\n" * int(new_ime) + START + "\n" + new_motion + "            },\n" + END + "\n// official keyboard untouched\n"
@@ -32,6 +39,8 @@ class PinnedWinitTests(unittest.TestCase):
         self.assertIn("MouseWheel", merged)
         self.assertIn("MotionAction::Scroll => {", merged)
         self.assertIn("WindowEvent::PinchGesture", merged)
+        self.assertIn('!matches!(motion_event.source(), Source::Touchpad)', merged)
+        self.assertIn('WindowEvent::CursorMoved { device_id, position }', merged)
         self.assertIn("EC_PAD_LAST", merged)
         self.assertIn("motion_event.pointer_count() >= 2", merged)
         self.assertNotIn("MotionAction::Scroll if pointer_class => {", merged)
@@ -63,7 +72,8 @@ class PinnedWinitTests(unittest.TestCase):
     def test_missing_existing_pointer_support_rejected(self):
         # Keep the scroll branch present so this test targets the separate
         # missing-mouse-feature guard (not the new scroll-source guard).
-        self.sources(old_motion='let pointer_class = true;\n                MotionAction::Scroll if pointer_class => { let wheel = MouseWheel; }\n')
+        self.sources()
+        self.local.write_text(self.local.read_text().replace('let click = MouseInput;', 'let click = None;'))
         with self.assertRaisesRegex(RuntimeError, "features missing"):
             apply(self.local, self.new)
 

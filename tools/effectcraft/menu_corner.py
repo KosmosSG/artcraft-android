@@ -21,7 +21,6 @@ REPLACEMENT = '''    #[cfg(target_os = "android")]
                     .max_height(236.0)
                     .auto_shrink([true, true])
                     .show(ui, |ui| {
-                        ui.label(egui::RichText::new("Fonts").strong());
                         for (title, key) in [
                             ("Import Fonts…", "artcraft.effectcraft.import_font"),
                             ("Select Font Folder…", "artcraft.effectcraft.select_fonts"),
@@ -33,7 +32,6 @@ REPLACEMENT = '''    #[cfg(target_os = "android")]
                             }
                         }
                         ui.separator();
-                        ui.label(egui::RichText::new("Updates").strong());
                         for (title, key) in [
                             ("Check for Updates", "artcraft.effectcraft.check_updates_requested"),
                             ("Startup Update Check", "artcraft.effectcraft.update_settings_requested"),

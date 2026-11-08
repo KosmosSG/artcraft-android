@@ -50,6 +50,9 @@ impl EffectcraftApp {
             d.get_temp(egui::Id::new("effectcraft.android.viewer.area"))
         });
         let mut moves: Vec<(egui::Pos2, egui::Vec2, f32)> = Vec::new();
+        // Avoid stale deltas when a viewer is hidden or a pass has no moves.
+        let pan_key = egui::Id::new("effectcraft.android.touch.pan");
+        ctx.data_mut(|d| d.remove::<egui::Vec2>(pan_key));
         let mut suppress = state.suppress_until_lift;
         for e in raw.events.clone() {
             if let egui::Event::Touch { id, phase, pos, .. } = e {
@@ -97,6 +100,7 @@ impl EffectcraftApp {
                 }
             }
         }
+        let mut direct_pan = egui::Vec2::ZERO;
         if suppress {
             // Cancel first-finger mouse emulation while navigating with two
             // fingers; this must not select/move layers or draw with a tool.
@@ -110,19 +114,20 @@ impl EffectcraftApp {
             raw.events.push(egui::Event::PointerGone);
             for (center, delta, scale) in moves {
                 raw.events.push(egui::Event::PointerMoved(center));
+                // The viewer's smooth_scroll_delta is not reliable for
+                // touchscreen contacts: menu/panel scroll containers can own
+                // or consume it first. Queue a VIEW-only pan instead, just
+                // as PhotoCraft queues its editor view transforms.
                 if delta.length_sq() > 0.01 {
-                    raw.events.push(egui::Event::MouseWheel {
-                        unit: egui::MouseWheelUnit::Point,
-                        delta,
-                        phase: egui::TouchPhase::Move,
-                        modifiers: egui::Modifiers::NONE,
-                        source: egui::MouseWheelSource::Trackpad,
-                    });
+                    direct_pan += delta;
                 }
                 if (scale - 1.0).abs() > 0.002 {
                     raw.events.push(egui::Event::Zoom(scale));
                 }
             }
+        }
+        if suppress && direct_pan.length_sq() > 0.01 {
+            ctx.data_mut(|d| d.insert_temp(pan_key, direct_pan));
         }
         ctx.data_mut(|d| d.insert_temp(key, state));
     }
@@ -137,6 +142,10 @@ def apply(root: Path) -> None:
     if (data[0].count(APP_ANCHOR) != 1 or data[2].count(VIEW_ANCHOR) != 1
             or data[3].count(PANELS_ANCHOR) != 1):
         raise RuntimeError("STOP: upstream EffectCraft viewer/raw_input_hook drift")
+    if (data[2].count('        let scroll = super::viewer_scroll(&ctx);') != 1
+            or data[2].count('} else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {') != 1
+            or data[2].count('app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];') != 1):
+        raise RuntimeError("STOP: viewer pan hooks changed")
     if "pub fn feed_synthetic" not in data[1]:
         raise RuntimeError("STOP: upstream EffectCraft input extension changed")
     data[0] = data[0].replace(
@@ -151,6 +160,23 @@ def apply(root: Path) -> None:
         '    ui.ctx().data_mut(|d| d.insert_temp(\n'
         '        egui::Id::new("effectcraft.android.viewer.area"), area,\n'
         '    ));\n' + VIEW_ANCHOR, 1)
+    data[2] = data[2].replace(
+        '        let scroll = super::viewer_scroll(&ctx);',
+        '''        let scroll = super::viewer_scroll(&ctx);
+        // Android two-touchscreen-finger panning bypasses egui's general
+        // scroll routing. Never alter editor layers or ordinary stylus input.
+        #[cfg(target_os = "android")]
+        let ec_touch_pan: egui::Vec2 = ctx.data(|d|
+            d.get_temp(egui::Id::new("effectcraft.android.touch.pan"))
+        ).unwrap_or(egui::Vec2::ZERO);
+        #[cfg(not(target_os = "android"))]
+        let ec_touch_pan = egui::Vec2::ZERO;''', 1)
+    data[2] = data[2].replace(
+        '} else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {',
+        '} else if (scroll.pan + ec_touch_pan) != egui::Vec2::ZERO && area.contains(hp) {', 1)
+    data[2] = data[2].replace(
+        'app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];',
+        'app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x + ec_touch_pan.x, app.ui.viewer.pan[1] + scroll.pan.y + ec_touch_pan.y];', 1)
     data[3] = data[3].replace(PANELS_ANCHOR, PANELS_INSERT, 1)
     for path, source in zip(paths, data):
         path.write_text(source, encoding="utf-8")

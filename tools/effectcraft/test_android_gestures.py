@@ -14,7 +14,12 @@ class TouchNavigationTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
         a.write_text("test\\n" + APP_ANCHOR + "\\n")
         b.write_text("pub fn feed_synthetic(&self) {}")
-        c.write_text("viewer\\n" + VIEW_ANCHOR + "\\n")
+        c.write_text(
+            "viewer\\n" + VIEW_ANCHOR + "\\n"
+            + "        let scroll = super::viewer_scroll(&ctx);\\n"
+            + "        } else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {\\n"
+            + "            app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];\\n"
+        )
         d.write_text(PANELS_ANCHOR)
         return a, b, c
 
@@ -27,8 +32,14 @@ class TouchNavigationTests(unittest.TestCase):
             self.assertIn(MARKER, content)
             self.assertIn("state.contacts.len() == 2", content)
             self.assertIn("egui::Event::PointerGone", content)
-            self.assertIn("egui::Event::MouseWheel", content)
-            self.assertIn("egui::MouseWheelSource::Trackpad", content)
+            self.assertIn('effectcraft.android.touch.pan', content)
+            self.assertIn('direct_pan += delta', content)
+            self.assertNotIn('raw.events.push(egui::Event::MouseWheel', content)
+            self.assertIn('egui::Event::PointerGone', content)
+            self.assertIn('ctx.data_mut(|d| d.insert_temp(pan_key, direct_pan))', content)
+            viewer = c.read_text()
+            self.assertIn('scroll.pan + ec_touch_pan', viewer)
+            self.assertIn('app.ui.viewer.pan[0] + scroll.pan.x + ec_touch_pan.x', viewer)
             self.assertIn("egui::Event::Zoom(scale)", content)
             self.assertIn("self.android_route_touch_navigation(ctx, raw_input)", a.read_text())
             self.assertIn("effectcraft.android.viewer.area", c.read_text())

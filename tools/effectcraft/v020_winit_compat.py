@@ -60,6 +60,31 @@ def apply(local: Path, pinned: Path) -> None:
     # when a pointer is classified as a mouse. The rest of pointer and
     # touch/stylus gesture handling remains unchanged.
     old_motion = old_motion.replace(scroll_anchor, "MotionAction::Scroll => {", 1)
+    # PhotoCraft's smooth menu rule: a TOUCHPAD wheel is pixel/point motion,
+    # even when its tiny deltas resemble a mouse notch. Keep physical mouse
+    # LineDelta semantics and never quantize a trackpad swipe into notches.
+    wheel_kind = "let delta = if vertical.abs() <= MAX_LINE_SCROLL"
+    if old_motion.count(wheel_kind) != 1:
+        raise RuntimeError("STOP: wheel delta classification drift")
+    old_motion = old_motion.replace(
+        wheel_kind,
+        "let delta = if !matches!(motion_event.source(), Source::Touchpad) "
+        "&& vertical.abs() <= MAX_LINE_SCROLL", 1)
+    # Unlike a viewer, egui popup scrolling is hover-targeted. On Android
+    # ACTION_SCROLL the pointer's *current* position must reach egui before
+    # its wheel event or the popup keeps the previous (often Ec badge) hover.
+    wheel_action = "if vertical != 0.0 || horizontal != 0.0 {"
+    if old_motion.count(wheel_action) != 1:
+        raise RuntimeError("STOP: Android wheel dispatch drift")
+    old_motion = old_motion.replace(wheel_action, r"""if vertical != 0.0 || horizontal != 0.0 {
+                            if let Some(position) = motion_event.pointers().next()
+                                .map(|pointer| pointer_position(&pointer)) {
+                                callback(event::Event::WindowEvent {
+                                    window_id,
+                                    event: event::WindowEvent::CursorMoved { device_id, position },
+                                }, self.window_target());
+                            }""", 1)
+
     # Android 14+ reports trackpad view gestures through axes 50/51/52.
     # Match before the legacy pointer-move path: two contact gestures should
     # never become layer selection / canvas mouse drags.
@@ -137,6 +162,8 @@ def apply(local: Path, pinned: Path) -> None:
         "MotionAction::Scroll => {",
         move_arm.lstrip() + "                    MotionAction::Scroll => {", 1,
     )
+    if "Source::Touchpad" not in old_motion or "CursorMoved { device_id, position }" not in old_motion:
+        raise RuntimeError("STOP: PhotoCraft-like menu wheel routing missing")
     if old_motion.count("EC_PAD_LAST") < 2:
         raise RuntimeError("STOP: touchpad pan/pinch branch failed")
 

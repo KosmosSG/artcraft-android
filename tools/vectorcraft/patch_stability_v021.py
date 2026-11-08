@@ -35,6 +35,9 @@ fi
     from patch_android13_menu_scroll import patch as menu_scroll13
     recovery13(root)
     menu_scroll13(root)
+    # Diagnostics-only candidate: no additional keyboard or lifecycle changes.
+    from patch_android14_diagnostic_session import patch as diagnostic_session14
+    diagnostic_session14(root)
 
 
 def patch_adapter(root):

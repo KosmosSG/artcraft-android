@@ -50,6 +50,11 @@ class DesignCraftV017Contract(unittest.TestCase):
         self.assertIn('bridge.dc_update_action(3)', updater)
         self.assertIn('bridge.dc_update_action(4)', updater)
         self.assertIn('MenuButton::from_button(button).ui(', menu)
+        self.assertIn('Choose Shared Font Folder', menu)
+        self.assertIn('App Updates', menu)
+        self.assertIn('DesignCraft Shortcuts', menu)
+        self.assertIn('dcFocusNativeSurface', self.java)
+        self.assertIn('dc_launcher_menu(app, ui)', self.java)
         self.assertIn('dc_update_action(3)', native)
         self.assertIn('dc_update_action(4)', native)
 

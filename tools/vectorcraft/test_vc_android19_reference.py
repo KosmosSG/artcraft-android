@@ -14,7 +14,7 @@ class Android19MostafaCompatibilityTests(unittest.TestCase):
             'view.setFocusable(false);',
             'view.setFocusableInTouchMode(false);',
             'vcWakeNativeLoop();',
-            'vcOfferModalShortcut',
+            'vcLastModalKeyDownTime = downTime',
             'PixelCopy.request(source, bitmap',
             'native_window_painted',
         ): self.assertIn(token,s)

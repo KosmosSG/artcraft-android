@@ -78,8 +78,10 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
         raise ValueError("Unexpected old Android top-level menu; review before patching")
     dc_menu = (ui_root / "menus/bar.rs").read_text()
     for label in ("dc-launcher-icon.rgba", "Check Updates", "Startup Update Check",
-                  "Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
-                  "Reload Font Catalog", "Android Tools"):
+                  "Import Fonts", "Choose Shared Font Folder", "Refresh Shared Fonts",
+                  "Reload Font Catalog", "Font Catalog & Diagnostics",
+                  "App Updates", "Appearance", "DesignCraft Shortcuts",
+                  "About DesignCraft"):
         if label not in dc_menu:
             raise ValueError(f"Missing approved Dc launcher menu action: {label}")
 

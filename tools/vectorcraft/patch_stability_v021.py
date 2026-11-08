@@ -44,6 +44,9 @@ fi
     # Android.16 applies modal actions in the actual UI frame; no other app changes.
     from patch_android16_modal_frame import patch as modal_frame16
     modal_frame16(root)
+    # Adopt only tested reference startup/input/wake paths, preserving owner UI.
+    from patch_android17_reference_adoption import patch as reference17
+    reference17(root)
 
 
 def patch_adapter(root):

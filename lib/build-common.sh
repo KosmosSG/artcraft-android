@@ -3078,6 +3078,10 @@ fi
 if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
+    # PDFCRAFT_ANDROID5_DESTROY_EXITS_NATIVE_LOOP: pinned Android winit
+    # ignores MainEvent::Destroy, leaving run_app_on_demand alive after
+    # Java finishAndRemoveTask. Patch only this staged PDFCraft vendor copy.
+    python3 "$ROOT/tools/pdfcraft/android_native_exit_patch.py" "$SRC/vendor/winit"
 fi
 python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path

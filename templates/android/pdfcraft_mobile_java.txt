@@ -584,6 +584,14 @@ protected void onStop() {
 protected void onDestroy() {
     pdfLifecycleTrace("onDestroy:before");
     pdfBackground.shutdownNow();
+    // PDFCRAFT_UPSTREAM_RELAUNCH_PROCESS_EXIT: Upstream MostafaXS1 uses a
+    // process-scoped exit for a finishing NativeActivity. Winit's Android
+    // event loop cannot safely be restarted inside the same process.
+    // Only do this for a genuine finish, never for rotation/background.
+    if (isFinishing()) {
+        pdfLifecycleTrace("onDestroy:finishing-killProcess");
+        android.os.Process.killProcess(android.os.Process.myPid());
+    }
     super.onDestroy();
     pdfLifecycleTrace("onDestroy:after");
 }

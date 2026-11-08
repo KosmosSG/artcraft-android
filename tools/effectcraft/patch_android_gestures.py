@@ -10,9 +10,22 @@ from pathlib import Path
 APP = "crates/ui-egui/src/app.rs"
 INPUT = "crates/ui-egui/src/app/input.rs"
 VIEW = "crates/ui-egui/src/panels/viewer.rs"
+PANELS = "crates/ui-egui/src/panels.rs"
 
 APP_ANCHOR = "            self.feed_synthetic(raw_input);"
 VIEW_ANCHOR = '    let resp = ui.interact(area, egui::Id::unique("viewer-interact"), Sense::click_and_drag());'
+PANELS_ANCHOR = '''    if trackpad != was {
+        ctx.data_mut(|d| d.insert_temp(id, trackpad));
+    }'''
+PANELS_INSERT = '''    // On Android, high-resolution touchpad wheels arrive as Point deltas
+    // (winit does not preserve the OS source classification). Keep them as
+    // view panning, never accidental mouse-wheel zoom.
+    #[cfg(target_os = "android")]
+    let trackpad = trackpad || ctx.input(|i| i.events.iter().any(|e| matches!(e,
+        egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, modifiers, .. }
+            if !modifiers.any()
+    )));
+''' + PANELS_ANCHOR
 MARKER = "effectcraft.android.touch.navigation"
 
 TOUCH_SOURCE = r'''
@@ -117,11 +130,12 @@ impl EffectcraftApp {
 '''
 
 def apply(root: Path) -> None:
-    paths = [root / APP, root / INPUT, root / VIEW]
+    paths = [root / APP, root / INPUT, root / VIEW, root / PANELS]
     data = [p.read_text(encoding="utf-8") for p in paths]
     if MARKER in "".join(data):
         raise RuntimeError("STOP: EffectCraft gesture patch already applied")
-    if data[0].count(APP_ANCHOR) != 1 or data[2].count(VIEW_ANCHOR) != 1:
+    if (data[0].count(APP_ANCHOR) != 1 or data[2].count(VIEW_ANCHOR) != 1
+            or data[3].count(PANELS_ANCHOR) != 1):
         raise RuntimeError("STOP: upstream EffectCraft viewer/raw_input_hook drift")
     if "pub fn feed_synthetic" not in data[1]:
         raise RuntimeError("STOP: upstream EffectCraft input extension changed")
@@ -137,6 +151,7 @@ def apply(root: Path) -> None:
         '    ui.ctx().data_mut(|d| d.insert_temp(\n'
         '        egui::Id::new("effectcraft.android.viewer.area"), area,\n'
         '    ));\n' + VIEW_ANCHOR, 1)
+    data[3] = data[3].replace(PANELS_ANCHOR, PANELS_INSERT, 1)
     for path, source in zip(paths, data):
         path.write_text(source, encoding="utf-8")
     print("PASS: EffectCraft Android view-only dual-touch navigation staged")

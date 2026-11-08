@@ -207,6 +207,9 @@ jobs:
               assert "decor.requestFocus();" in java
               assert "physical_key.unwrap_or(*native) != key" in rust
               assert "The real key is needed by NativeActivity to wake its looper." in java
+              assert "com.artcraft.ime.ArtCraftIme.wake();" in java
+              assert "vc_after_type_exit_frames" in rust
+              assert "just_exited_type" in rust
               assert "vcWakeNativeLoop();" in java
           print("PASS: Android.20 real key wake, owner focus return, responsive launch before SDK/NDK")
           PY

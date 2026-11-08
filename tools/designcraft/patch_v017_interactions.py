@@ -104,6 +104,24 @@ def java_source(root,android):
         raise ValueError("Refusing to patch an unrelated Android application ID")
     p = android / "java" / Path(*package.split(".")) / "DesignCraftActivity.java"
     s=p.read_text()
+    # DesignCraft-specific adaptation of MostafaXS1's IME focus lifecycle.
+    # Never change the shared launcher template used by other apps.
+    s=put_once(s, '            addContentView(imeView, params);',
+        '''            addContentView(imeView, params);
+            // Only an explicitly active text editor may receive physical keys.
+            imeView.setVisibility(View.GONE);
+            imeView.setFocusable(false);
+            imeView.setFocusableInTouchMode(false);''', "IME host hidden outside typing")
+    s=put_once(s, '                view.setFocusable(true);',
+        '''                view.setVisibility(View.VISIBLE);
+                view.setFocusable(true);''', "IME host shown for typing")
+    s=put_once(s, '                view.clearFocus();\n                // Drop the scratch buffer',
+        '''                view.clearFocus();
+                view.setFocusable(false);
+                view.setFocusableInTouchMode(false);
+                view.setVisibility(View.GONE);
+                dcFocusNativeSurface();
+                // Drop the scratch buffer''', "IME host returned native focus")
     s=put_once(s,'    private static final int REQ_FOLDER = 0x5046;',
                  '''    private static final int REQ_FOLDER = 0x5046;
     private static final int REQ_FONT_FOLDER = 0x6041;
@@ -158,6 +176,24 @@ def java_source(root,android):
             android.view.View content = findViewById(android.R.id.content);
             if (content != null) dcSetSurfaceIcon(content, icon);
         });
+    }
+
+    private void dcFocusNativeSurface() {
+        android.view.View content = findViewById(android.R.id.content);
+        if (content instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) content;
+            for (int i = 0; i < group.getChildCount(); ++i) {
+                android.view.View child = group.getChildAt(i);
+                if (child != imeView && child.getVisibility() == android.view.View.VISIBLE) {
+                    child.setFocusable(true);
+                    child.setFocusableInTouchMode(true);
+                    child.requestFocus();
+                    return;
+                }
+            }
+        }
+        if (getWindow() != null && getWindow().getDecorView() != null)
+            getWindow().getDecorView().requestFocus();
     }
 
     private void dcSetSurfaceIcon(android.view.View view, android.view.PointerIcon icon) {
@@ -231,7 +267,7 @@ def java_source(root,android):
                     : code == KeyEvent.KEYCODE_F ? 8
                     : code == KeyEvent.KEYCODE_M ? 9
                     : code == KeyEvent.KEYCODE_B ? 10 : 0;
-                if (tool != 0) dcToolAction.set(tool);
+                if (tool != 0 && !imeWanted) dcToolAction.set(tool);
             }
         }
         // Let native egui still process ordinary key events when available.
@@ -246,8 +282,26 @@ def java_source(root,android):
                 imeView.clearFocus();
                 imeView.setFocusable(false);
                 imeView.setFocusableInTouchMode(false);
+                imeView.setVisibility(android.view.View.GONE);
             }
-            getWindow().getDecorView().requestFocus();
+            dcFocusNativeSurface();
+        }
+        // NativeActivity's hidden IME view can swallow physical tool keys.
+        // Route them through the native Activity only while outside typing.
+        boolean toolKey = code == KeyEvent.KEYCODE_T || code == KeyEvent.KEYCODE_V
+            || code == KeyEvent.KEYCODE_H || code == KeyEvent.KEYCODE_Z
+            || code == KeyEvent.KEYCODE_A || code == KeyEvent.KEYCODE_P
+            || code == KeyEvent.KEYCODE_N || code == KeyEvent.KEYCODE_F
+            || code == KeyEvent.KEYCODE_M || code == KeyEvent.KEYCODE_B;
+        if (!imeWanted && !dcDialogActive && toolKey && event.hasNoModifiers()) {
+            if (state == KeyEvent.ACTION_DOWN) {
+                super.onKeyDown(code, event);
+                return true;
+            }
+            if (state == KeyEvent.ACTION_UP) {
+                super.onKeyUp(code, event);
+                return true;
+            }
         }
         if (escape || close) {
             if (state == KeyEvent.ACTION_DOWN) {

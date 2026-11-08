@@ -27,6 +27,8 @@ HEADER_END = '''                        if ui.button("About EffectCraft").clicke
                             ui.close();
                         }
                     });'''
+HOVER_OLD = "    let hover_pos = resp.hover_pos().or_else(|| if resp.contains_pointer() { ui.input(|i| i.pointer.hover_pos()) } else { None });"
+HOVER_NEW = "    let hover_pos = resp.hover_pos().or_else(|| if resp.contains_pointer() {\n        ui.input(|i| i.pointer.hover_pos())\n    } else { None })\n    // Some MagicOS two-finger gestures cancel the underlying mouse pointer.\n    // Use the real touchscreen centroid to apply viewer-only pan, not egui hover.\n    .or_else(|| {\n        #[cfg(target_os = \"android\")]\n        {\n            let navigating = ctx.data(|d| d.get_temp::<bool>(\n                egui::Id::new(\"effectcraft.android.touch.navigation.active\")\n            )).unwrap_or(false);\n            if navigating { ctx.data(|d| d.get_temp::<egui::Pos2>(\n                egui::Id::new(\"effectcraft.android.touch.navigation.center\")\n            )) } else { None }\n        }\n        #[cfg(not(target_os = \"android\"))]\n        { None }\n    });"
 VIEWER_OLD = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
     phase_press(app, ui, &ectx, &resp, &mut v);
     phase_dragstart(app, ui, &ectx, &resp, &mut v);
@@ -45,6 +47,10 @@ VIEWER_NEW = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
     )).unwrap_or(false);
     #[cfg(not(target_os = "android"))]
     let ec_navigating = false;
+    if ec_navigating {
+        // Stop any first-finger drag already started before finger two arrived.
+        ui.data_mut(|d| d.remove::<Gesture>(egui::Id::unique("viewer-gesture")));
+    }
     if !ec_navigating {
         phase_press(app, ui, &ectx, &resp, &mut v);
         phase_dragstart(app, ui, &ectx, &resp, &mut v);
@@ -139,6 +145,7 @@ def apply(root: Path):
         (HEADER, HEADER_START, "Ec popup scroll area"),
         (HEADER, HEADER_END, "Ec popup closing"),
         (VIEWER, VIEWER_OLD, "viewer editing phases"),
+        (VIEWER, HOVER_OLD, "viewer lost-hover fallback"),
     ):
         exactly(data[key], anchor, title)
     if ("android_route_trackpad_menu_scroll" in data[WIDGETS] or
@@ -182,6 +189,7 @@ def apply(root: Path):
         HEADER_END, HEADER_END + '''
                 crate::widgets::android_record_menu_scroll(ui, &ec_out, ec_scroll_key);''', 1)
     data[VIEWER] = data[VIEWER].replace(VIEWER_OLD, VIEWER_NEW, 1)
+    data[VIEWER] = data[VIEWER].replace(HOVER_OLD, HOVER_NEW, 1)
     for key, path in files.items():
         path.write_text(data[key], encoding="utf-8")
     print("PASS: EffectCraft Android.8 menu scroll target and viewer edit guards staged")

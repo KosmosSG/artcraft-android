@@ -62,6 +62,21 @@ pub fn take_android_tools_toggle() -> bool {
     p=base/"menus.rs"
     edit(p,'pub use run::take_android_font_import;',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',"UI action exports")
+    # Keep the native Dc menu on DesignCraft's existing application bar,
+    # immediately following Home, rather than allocating a second full-width panel.
+    bar=base/"menus/bar.rs"
+    source=bar.read_text()
+    source=put_once(source,
+        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {',
+        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {\\n'
+        '    #[cfg(target_os = "android")]\\n'
+        '    dc_launcher_menu(app, ui);', "existing app-bar menu")
+    source += "\\n" + (Path(__file__).with_name("dc_menu_v017.rs")).read_text()
+    bar.write_text(source)
+    edit(base/"menus.rs",
+         "pub use bar::{menu_bar, menu_button};",
+         'pub use bar::{menu_bar, menu_button};\\n#[cfg(target_os = "android")]\\npub use bar::take_dc_menu_actions;',
+         "Dc app-bar action bridge")
     # Android commands remain registered for keyboard/updater compatibility.
     # Android-specific menu rows are consolidated under the approved Dc icon
     # in v016_android.rs; do not create a duplicate top-level Android menu.
@@ -132,9 +147,8 @@ def java_source(root,android):
     private final java.util.concurrent.atomic.AtomicInteger dcCloseAction =
         new java.util.concurrent.atomic.AtomicInteger(0);
 
-    // A physical tool key can be swallowed by a stale Android IME focus. Queue
-    // the key once regardless of IME focus; Rust checks whether text is actually
-    // being edited before changing tools.
+    // Queue hardware keys independently of Android IME focus. The Rust
+    // editor checks whether document typing is active before selecting tools.
     public void dcApplyPointerIcon(int type) {
         runOnUiThread(() -> {
             android.view.PointerIcon icon = android.view.PointerIcon.getSystemIcon(this, type);
@@ -220,13 +234,17 @@ def java_source(root,android):
         // Let native egui still process ordinary key events when available.
         // Rust deduplicates the native fallback against the same raw event.
         if (escape && imeWanted && state == KeyEvent.ACTION_DOWN) {
+            // Return focus to the native input surface after exiting text mode:
+            // leaving a 1px EditText focused can swallow all subsequent tool keys.
             imeWanted = false;
             if (imeView != null) {
                 android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
                 if (imm != null) imm.hideSoftInputFromWindow(imeView.getWindowToken(), 0);
                 imeView.clearFocus();
+                imeView.setFocusable(false);
+                imeView.setFocusableInTouchMode(false);
             }
-            getWindow().getDecorView().restoreDefaultFocus();
+            getWindow().getDecorView().requestFocus();
         }
         if (escape || close) {
             if (state == KeyEvent.ACTION_DOWN) {

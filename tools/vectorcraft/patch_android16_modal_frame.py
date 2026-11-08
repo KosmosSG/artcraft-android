@@ -86,9 +86,9 @@ def patch(root: Path) -> None:
         '''    private volatile String vcDiagPixel = "not sampled";
     // Only SAF stage names. Never a picked file's name/path/URI.
     private volatile String vcDiagSavePickerStage = "none";''')
-    s=once(s,'            + "\\\\nprior_process_stage=" + vcDiagPreviousStage',
-        '''            + "\\\\nprior_process_stage=" + vcDiagPreviousStage
-            + "\\\\nsave_picker_stage=" + vcDiagSavePickerStage''')
+    s=once(s,'            + "\\nprior_process_stage=" + vcDiagPreviousStage',
+        '''            + "\\nprior_process_stage=" + vcDiagPreviousStage
+            + "\\nsave_picker_stage=" + vcDiagSavePickerStage''')
     # The request is made on Rust's thread; startActivityForResult is
     # executed asynchronously on the Java UI thread.
     s=once(s, '''    public void vcRequestSave(long id, String suggestedName, String mime) {
@@ -127,9 +127,9 @@ def patch(root: Path) -> None:
     s=once(s,'    private volatile String vcDiagSavePickerStage = "none";',
         '''    private volatile String vcDiagSavePickerStage = "none";
     private volatile String vcDiagFrameProbeStage = "not_started";''')
-    s=once(s,'            + "\\\\nsave_picker_stage=" + vcDiagSavePickerStage',
-        '''            + "\\\\nsave_picker_stage=" + vcDiagSavePickerStage
-            + "\\\\nframe_probe_stage=" + vcDiagFrameProbeStage''')
+    s=once(s,'            + "\\nsave_picker_stage=" + vcDiagSavePickerStage',
+        '''            + "\\nsave_picker_stage=" + vcDiagSavePickerStage
+            + "\\nframe_probe_stage=" + vcDiagFrameProbeStage''')
     s=once(s,'''        if (nativeEditorReady || firstFrameProbePending) return;
         if (System.currentTimeMillis() - firstFrameProbeStartMs > 16000L) {''',
     '''        if (nativeEditorReady || firstFrameProbePending) return;

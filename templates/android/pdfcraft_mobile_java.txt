@@ -507,11 +507,22 @@ private volatile boolean pdfNativeLoopFinished = false;
 // persisted preferences/recovery. AndroidApp schedules this on the Java UI
 // thread; finishAndRemoveTask closes the stale singleTask root activity.
 public void pdfFinishNativeLoop() {
+    // PDFCRAFT_ANDROID4_LIFECYCLE_HANDOFF: Native code invokes this synchronously
+    // via JNI before dropping its AndroidApp. Mark the native loop unusable
+    // immediately, so an onNewIntent during task teardown cannot target it.
     if (pdfNativeLoopFinished) return;
     pdfNativeLoopFinished = true;
-    android.util.Log.i("PDFCraftLifecycle", "Native loop exited: finish task");
-    if (!isFinishing()) {
-        finishAndRemoveTask();
+    android.util.Log.i("PDFCraftLifecycle", "Native loop exit committed; finish task on UI thread");
+    final Runnable finishNativeActivity = () -> {
+        if (!isFinishing() && !isDestroyed()) {
+            android.util.Log.i("PDFCraftLifecycle", "Finishing stale NativeActivity task");
+            finishAndRemoveTask();
+        }
+    };
+    if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+        finishNativeActivity.run();
+    } else {
+        runOnUiThread(finishNativeActivity);
     }
 }
 

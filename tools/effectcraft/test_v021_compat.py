@@ -12,8 +12,8 @@ from v020_compat import MODERN_ANCHOR
 class TrialGuards(unittest.TestCase):
     def test_exact_pinned_sources_and_separate_test_package(self):
         self.assertEqual(len(UPSTREAM_SHA), 40)
-        self.assertEqual(ANDROID_TEST_VERSION, "0.21.0-android.6")
-        self.assertEqual(TEST_PACKAGE, "com.artcraft.effectcraft.v021test6")
+        self.assertEqual(ANDROID_TEST_VERSION, "0.21.0-android.7")
+        self.assertEqual(TEST_PACKAGE, "com.artcraft.effectcraft.v021test7")
         self.assertGreater(TEST_VERSION_CODE, 16781320)
 
     def test_rewrite_disposable_metadata_once(self):
@@ -24,8 +24,8 @@ class TrialGuards(unittest.TestCase):
             path.write_text('version_line = f\'version = "{app_version}-android.3"\' if app == "effectcraft" else "version.workspace = true"\nversion_code = 16781315\n')
             stage_trial_metadata(root)
             data = path.read_text()
-            self.assertIn('version_code = 16820006', data)
-            self.assertIn('{app_version}-android.6', data)
+            self.assertIn('version_code = 16820007', data)
+            self.assertIn('{app_version}-android.7', data)
             with self.assertRaisesRegex(RuntimeError, "STOP"):
                 stage_trial_metadata(root)
 

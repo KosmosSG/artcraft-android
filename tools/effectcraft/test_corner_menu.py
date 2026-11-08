@@ -20,7 +20,10 @@ class MenuAndPickerTest(unittest.TestCase):
                 self.assertIn(title, result)
             self.assertIn('#[cfg(not(target_os = "android"))]', result)
             self.assertIn('egui::ScrollArea::vertical()', result)
-            self.assertIn('.max_height(250.0)', result)
+            self.assertIn('.max_height(236.0)', result)
+            self.assertIn('ui.set_width(268.0)', result)
+            self.assertIn('ui.set_max_width(278.0)', result)
+            self.assertNotIn('.auto_shrink([false, true])', result)
             self.assertIn('ui.menu_button("Appearance"', result)
             for mode in ('("System", "auto")', '("Light", "light")', '("Dark", "dark")'):
                 self.assertIn(mode, result)

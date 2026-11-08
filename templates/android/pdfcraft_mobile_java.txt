@@ -556,7 +556,8 @@ private void pdfWriteLifecycleTrace(String event) {
     }
 }
 private void pdfLifecycleTrace(String event) {
-    pdfWriteLifecycleTrace(event + " pid=" + android.os.Process.myPid() + " finishing=" + isFinishing() + " destroyed=" + isDestroyed() + " nativeLoopFinished=" + pdfNativeLoopFinished);\n    android.util.Log.i("PDFCraftLifecycle", event
+    pdfWriteLifecycleTrace(event + " pid=" + android.os.Process.myPid() + " finishing=" + isFinishing() + " destroyed=" + isDestroyed() + " nativeLoopFinished=" + pdfNativeLoopFinished);
+    android.util.Log.i("PDFCraftLifecycle", event
             + " pid=" + android.os.Process.myPid()
             + " finishing=" + isFinishing()
             + " destroyed=" + isDestroyed()

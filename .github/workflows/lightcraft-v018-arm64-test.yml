@@ -170,11 +170,13 @@ jobs:
               raise SystemExit("STOP: raw_input_hook launcher template anchor drift")
           s = s.replace(old, new, 1)
           old_activity = '    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());'
-          if s.count(old_activity) != 1:
-              raise SystemExit("STOP: egui-winit activity hook template anchor drift")
+          # The reference builder has two launcher variants; both include
+          # the removed API. This builder copy is LightCraft-only.
+          if s.count(old_activity) != 2:
+              raise SystemExit("STOP: expected two reference launcher activity hooks")
           s = s.replace(old_activity,
-              '    // LightCraft 0.18: egui-winit 0.37 has no builder-specific android_activity helper.',
-              1)
+              '    // LightCraft 0.18: egui-winit 0.37 does not expose android_activity.',
+              2)
           p.write_text(s)
           PY
           # The removed vendor blocks also created this directory. Preserve it

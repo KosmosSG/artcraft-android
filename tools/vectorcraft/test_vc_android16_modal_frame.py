@@ -34,8 +34,8 @@ class Android16ModalFrameTests(unittest.TestCase):
 
     def test_temp_signed_test_package_and_no_publish(self):
         flow=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("0.21.0-android.17",flow)
-        self.assertIn("16783377",flow)
+        self.assertIn("0.21.0-android.18",flow)
+        self.assertIn("16783378",flow)
         self.assertIn("patch_android16_modal_frame.py",flow)
         self.assertIn("com.artcraft.vectorcraft.test",flow)
         self.assertIn("Delete disposable builder signing materials",flow)

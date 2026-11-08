@@ -82,6 +82,7 @@ def source_changes(source: Path) -> dict[Path, str]:
         "menubar": source / "crates/ui-egui/src/menus/menubar.rs",
         "run": source / "crates/ui-egui/src/menus/run.rs",
         "dialogs": source / "crates/ui-egui/src/dialogs.rs",
+        "cargo_ui": source / "crates/ui-egui/Cargo.toml",
     }
     originals = {key: value.read_text(encoding="utf-8") for key, value in paths.items()}
 
@@ -97,6 +98,12 @@ def source_changes(source: Path) -> dict[Path, str]:
         '            "app.checkForUpdates",\n            "app.about",',
         '            "app.checkForUpdates",\n            "app.artcraftStartupUpdateSettings",\n            "app.about",',
         "Help menu layout")
+    # The upstream UI crate does not register an image loader. Without this,
+    # the embedded LC PNG renders as egui's red warning triangle.
+    cargo_ui = once(originals["cargo_ui"],
+        'egui = { workspace = true }',
+        'egui = { workspace = true }\negui_extras = { workspace = true, features = ["image"] }\nimage = { workspace = true, features = ["png"] }',
+        "LC PNG image loader dependencies")
     # Android-only compact Lc menu: reuse existing appearance/update commands.
     # Keep the desktop menu unchanged and do not add font controls.
     m = once(m,
@@ -104,6 +111,7 @@ def source_changes(source: Path) -> dict[Path, str]:
         '''pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {
     #[cfg(target_os = "android")]
     {
+        egui_extras::install_image_loaders(ui.ctx());
         let artwork = egui::Image::from_bytes("bytes://lightcraft/lc-menu.png", include_bytes!("lc-menu.png"))
             .fit_to_exact_size(egui::vec2(22.0, 22.0));
         let icon = ui.add(egui::Button::image(artwork).frame(false));
@@ -180,7 +188,7 @@ def source_changes(source: Path) -> dict[Path, str]:
         '        2 => crate::credits::models_ui(ui),\n        _ => {',
         '        2 => crate::credits::models_ui(ui),\n' + approved_updates_branch() + '        _ => {',
         "About Updates UI")
-    return {paths["commands"]: c, paths["menubar"]: m, paths["run"]: run, paths["dialogs"]: dlg}
+    return {paths["commands"]: c, paths["menubar"]: m, paths["run"]: run, paths["dialogs"]: dlg, paths["cargo_ui"]: cargo_ui}
 
 
 def builder_changes(builder: Path) -> dict[Path, str]:

@@ -37,6 +37,20 @@ class DesignCraftV017Contract(unittest.TestCase):
         self.assertNotIn('secrets.', self.wf)
         self.assertNotIn('action-gh-release', self.wf)
 
+    def test_updater_preserves_compact_dc_menu_not_obsolete_android_table(self):
+        """Regression: Android.2 failed before compilation on a removed menu anchor."""
+        updater = (ROOT/"tools/designcraft/install_v017_updater.py").read_text()
+        native = self.ui
+        self.assertNotIn("edit(table_file,", updater)
+        self.assertIn("Unexpected old Android top-level menu", updater)
+        self.assertIn("dc_menu.count(action) != 1", updater)
+        self.assertIn("dc-launcher-icon.rgba", updater)
+        self.assertIn('bridge.dc_update_action(3)', updater)
+        self.assertIn('bridge.dc_update_action(4)', updater)
+        self.assertIn('MenuButton::from_button(button).ui(', native)
+        self.assertIn('dc_update_action(3)', native)
+        self.assertIn('dc_update_action(4)', native)
+
     def test_published_font_keyboard_branding_parity_contract(self):
         self.assertIn("count < 5000", self.fonts)
         self.assertIn("4L * 1024 * 1024 * 1024", self.fonts)

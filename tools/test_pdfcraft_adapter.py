@@ -61,6 +61,14 @@ with tempfile.TemporaryDirectory() as folder:
     java_sources = list((android / 'java').rglob('*.java'))
     assert len(java_sources) == 1, java_sources
     java = java_sources[0].read_text()
+    # Android.6: validate the generated Activity, not only the extension template.
+    assert 'PDFCRAFT_ANDROID6_LIFECYCLE_TRACE' in java
+    for callback in ('onPause', 'onStop', 'onDestroy'):
+        assert java.count('protected void ' + callback + '()') == 1, callback
+        assert 'pdfLifecycleTrace("' + callback + ':before")' in java, callback
+        assert 'pdfLifecycleTrace("' + callback + ':after")' in java, callback
+    assert 'android.util.Log.i("PDFCraftLifecycle"' in java
+    assert 'android.os.Process.myPid()' in java
     assert 'PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT' in java
     assert 'if (pdfNativeLoopFinished)' in java
     assert 'recreate();' in java

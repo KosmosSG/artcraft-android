@@ -10,9 +10,9 @@ from v020_compat import menu_path_and_anchor
 
 UPSTREAM_SHA = "7870b5916ae0749d497d880989683bf2946d6c8b"
 UPSTREAM_TAG = "v0.21.0"
-ANDROID_TEST_VERSION = "0.21.0-android.13"
-TEST_VERSION_CODE = 16820013
-TEST_PACKAGE = "com.artcraft.effectcraft.v021test13"
+ANDROID_TEST_VERSION = "0.21.0-android.14"
+TEST_VERSION_CODE = 16820014
+TEST_PACKAGE = "com.artcraft.effectcraft.v021test14"
 
 def replace_exact(source: str, old: str, new: str) -> str:
     if source.count(old) != 1 or new in source:
@@ -27,7 +27,7 @@ def stage_trial_metadata(builder_root: Path) -> None:
     expected_version = '''version_line = f'version = "{app_version}-android.3"' if app == "effectcraft" else "version.workspace = true"'''
     if source.count(expected_version) != 1:
         raise RuntimeError("STOP: EffectCraft packager version drift")
-    source = replace_exact(source, expected_version, expected_version.replace("android.3", "android.13"))
+    source = replace_exact(source, expected_version, expected_version.replace("android.3", "android.14"))
     source = replace_exact(source, "version_code = 16781315", f"version_code = {TEST_VERSION_CODE}")
     path.write_text(source, encoding="utf-8")
 

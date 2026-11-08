@@ -33,6 +33,8 @@ def once(src, old, new, label):
 # Keep upstream File / Window / Help unchanged; use the existing top-left Ec icon.
 from menu_corner import patch_header
 patch_header(root / "source/effectcraft")
+from patch_android_gestures import apply as patch_android_gestures
+patch_android_gestures(root / "source/effectcraft")
 
 j = java.read_text().rstrip()
 if not j.endswith("}") or "ecCheckForUpdates" in j:

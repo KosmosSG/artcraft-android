@@ -113,15 +113,8 @@ fn artcraft_android_menu(ui: &mut Ui) {
         // theme (ui.theme) rather than GridCraft's page-only view.darkMode.
         ui.menu_button("Appearance", |ui| {
             ui.set_min_width(250.0);
-            let mut dark = ui.ctx().theme() == egui::Theme::Dark;
-            if ui.checkbox(&mut dark, "Dark mode").changed() {
-                let action = if dark { "theme_dark" } else { "theme_light" };
-                ui.ctx().data_mut(|d| d.insert_temp(
-                    egui::Id::new("wc_menu_action"), action.to_owned()
-                ));
-                ui.ctx().request_repaint();
-                ui.close();
-            }
+            // WC_ANDROID11_APPEARANCE_SINGLE_THEME_V1:
+            // Theme preferences own System/Light/Dark; no duplicate Dark mode toggle.
             ui.menu_button("Theme preferences (System / Light / Dark)", |ui| {
                 let selected = ui.ctx().data(|d|
                     d.get_temp::<String>(egui::Id::new("wc_menu_interface_theme"))

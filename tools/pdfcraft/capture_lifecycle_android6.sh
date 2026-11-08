@@ -9,14 +9,18 @@ adb get-state | grep -qx device || { echo "ADB device unavailable"; exit 1; }
 echo "Collecting lifecycle evidence for $PKG in $OUT"
 adb shell pidof "$PKG" > "$OUT/pid-before.txt" || true
 adb shell dumpsys activity activities > "$OUT/activities-before.txt"
-adb logcat -c
+adb shell dumpsys package "$PKG" > "$OUT/package.txt"
+# Preserve pre-existing log buffers: some MagicOS configurations restrict logcat access.
+adb logcat -d -b main,system,crash,events -v threadtime > "$OUT/logcat-before.txt" 2> "$OUT/logcat-before-error.txt" || true
 echo "Now: launch PDFCraft, open a PDF, press Ctrl+Q, attempt to relaunch; DO NOT force stop. Press ENTER here afterward."
 read -r _
 adb shell pidof "$PKG" > "$OUT/pid-after.txt" || true
 adb shell ps -A > "$OUT/processes-after.txt"
 adb shell dumpsys activity activities > "$OUT/activities-after.txt"
 adb shell dumpsys activity processes > "$OUT/activity-processes-after.txt"
-adb logcat -d -b main,system,crash,events -v threadtime > "$OUT/logcat.txt"
+adb logcat -d -b main,system,crash,events -v threadtime > "$OUT/logcat.txt" 2> "$OUT/logcat-error.txt" || true
+adb shell dumpsys activity starter > "$OUT/activity-starter-after.txt" 2>&1 || true
+adb shell dumpsys window windows > "$OUT/windows-after.txt" 2>&1 || true
 grep -Ei 'pdfcraft|AndroidRuntime|ActivityTaskManager|ActivityManager|NativeActivity|zygote|tombstone|FATAL EXCEPTION|PDFCraftLifecycle|onDestroy|onStop|onPause' "$OUT/logcat.txt" > "$OUT/lifecycle-filtered.txt" || true
 python3 - "$OUT" <<'PY'
 import sys

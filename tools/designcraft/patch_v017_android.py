@@ -225,7 +225,7 @@ def install_icons(root: Path, src: Path, android: Path):
         raise ValueError("Missing generated launcher icon field")
     # Keep the upstream v0.17 core pinned while identifying the Android build
     # separately. Do not change the signing identity or published release.
-    candidate_version = "0.17.2-android.4"
+    candidate_version = "0.17.2-android.5"
     if updated.count("version.workspace = true") != 1:
         raise ValueError("Generated Android manifest version changed")
     updated = updated.replace("version.workspace = true",

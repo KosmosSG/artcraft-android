@@ -516,9 +516,13 @@ public void pdfFinishNativeLoop() {
     android.util.Log.i("PDFCraftLifecycle", "Native loop exit committed; finish task on UI thread");
     final Runnable finishNativeActivity = () -> {
         if (!isFinishing() && !isDestroyed()) {
-            pdfLifecycleTrace("finishAndRemoveTask:before");
-            android.util.Log.i("PDFCraftLifecycle", "Finishing stale NativeActivity task");
-            finishAndRemoveTask();
+            // PDFCRAFT_ANDROID7_ACTIVITY_ONLY_FINISH: device trace showed
+            // finishAndRemoveTask() followed by repeated onCreate -> finishing
+            // in the SAME PID. Avoid removing the task during relaunch.
+            // This changes only the quitting Activity, never user data.
+            pdfLifecycleTrace("finish:before");
+            android.util.Log.i("PDFCraftLifecycle", "Finishing native Activity without removing task");
+            finish();
         }
     };
     if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {

@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder:
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.19.0-android.3'})
+                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': '0.19.0-android.4'})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as folder:
     run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == '0.19.0-android.3'
+    assert cargo['package']['version'] == '0.19.0-android.4'
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['dependencies']['sha2'] == '0.10'
     assert cargo['package']['metadata']['android']['assets'] == 'ocr-assets'
@@ -47,13 +47,14 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'modifiers: AndroidModifiers' in native
     assert 'mod pdfcraft_ocr;' in native
     assert 'fn finish_pdfcraft_android_activity(' in native
-    assert 'finish_pdfcraft_android_activity(&exit_activity);' in native
+    assert 'finish_pdfcraft_android_activity(&exit_activity);' not in native
     assert 'jni_str!("pdfFinishNativeLoop")' in native
-    assert native.count('finish_pdfcraft_android_activity(') >= 3
+    assert native.count('finish_pdfcraft_android_activity(') == 2
     assert 'fn on_exit(&mut self)' in native
     assert native.index('fn on_exit(&mut self)') < native.index('let result = eframe::run_native(')
     assert 'self.persist_now();\n        finish_pdfcraft_android_activity(&self.app);' in native
-    assert native.index('let result = eframe::run_native(') < native.index('finish_pdfcraft_android_activity(&exit_activity);')
+    assert 'vm.attach_current_thread(' in native
+    assert 'run_on_java_main_thread' not in native
     # Stale singleTask intents must recreate rather than target a dead native loop.
     java_file = android / 'java' / 'com' / 'artcraft' / 'pdfcraft' / 'PdfCraftActivity.java'
     java_sources = list((android / 'java').rglob('*.java'))
@@ -65,8 +66,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'public void pdfFinishNativeLoop()' in java
     assert 'finishAndRemoveTask();' in java
     assert 'pdfNativeLoopFinished = true;' in java
+    assert 'PDFCRAFT_ANDROID4_LIFECYCLE_HANDOFF' in java
+    assert 'runOnUiThread(finishNativeActivity);' in java
     assert 'std::process::exit(' not in native
-    assert 'PDFCRAFT_ANDROID_ACTIVITY_FINISH' in (root/'lib/build-common.sh').read_text()
+    assert 'PDFCRAFT_ANDROID4_SYNC_EXIT_JNI' in (root/'lib/build-common.sh').read_text()
     assert native.index('pdfcraft_ocr::initialize(&android_app);') < native.index('let saf_bridge = saf::Bridge::new(&android_app);')
     assert (android / 'src/pdfcraft_ocr.rs').is_file()
     assert 'android_input_patch' in (root/'tools/pdfcraft/winit_v015_compat.py').read_text()
@@ -120,6 +123,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_INK_PRESSURE_CAPTURE' in (dst / 'crates/ui-egui/src/tools/comments/input.rs').read_text()
     assert 'PDFCRAFT_ANDROID_INK_PRESSURE_STATE' in (dst / 'crates/ui-egui/src/tools/comments/state.rs').read_text()
     assert 'PDFCRAFT_ANDROID_INK_PRESSURE_COMMIT' in (dst / 'crates/ui-egui/src/tools/comments/input.rs').read_text()
+    assert 'PDFCRAFT_ANDROID4_LOW_LATENCY_INK' in (dst / 'crates/ui-egui/src/tools/comments/input.rs').read_text()
     assert 'PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'pub fn android_tools_visible(&self) -> bool' in menu
     assert 'pub fn set_android_tools_visible(&self, visible: bool)' in menu
@@ -139,6 +143,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_GESTURE_AXES_34' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
+    assert 'PDFCRAFT_ANDROID4_TRACKPAD_NO_BUTTON_NO_CLICK' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'ANDROID_TOOLS => Some(ARTCRAFT_ANDROID_TOOLS_VISIBLE.load(' in menu
     # The optional View toolbar and the separately approved stable Help dialog
     # are different interfaces. The Help dialog legitimately retains fonts_open.

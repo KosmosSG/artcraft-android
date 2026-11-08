@@ -15,14 +15,14 @@ class PinnedWinitTests(unittest.TestCase):
         self.new = self.root / "new.rs"
 
     def sources(self, *, old_motion=None, new_motion=None, new_ime=True):
-        old_motion = old_motion or ('let pointer_class = true;\\n'
-            '                MotionAction::Scroll if pointer_class => {\\n'
-            '                    if vertical != 0.0 || horizontal != 0.0 {\\n'
-            '                        let delta = if vertical.abs() <= MAX_LINE_SCROLL\\n'
-            '                            && horizontal.abs() <= MAX_LINE_SCROLL { MouseWheel } else { MouseWheel };\\n'
-            '                    }\\n'
-            '                }\\n'
-            '                let click = MouseInput;\\n')
+        old_motion = old_motion or ('let pointer_class = true;\n'
+            '                MotionAction::Scroll if pointer_class => {\n'
+            '                    if vertical != 0.0 || horizontal != 0.0 {\n'
+            '                        let delta = if vertical.abs() <= MAX_LINE_SCROLL\n'
+            '                            && horizontal.abs() <= MAX_LINE_SCROLL { MouseWheel } else { MouseWheel };\n'
+            '                    }\n'
+            '                }\n'
+            '                let click = MouseInput;\n')
         new_motion = new_motion or '// None // TODO mouse events\n'
         old = OLD_IMPORT + "\n" + HELPER_START + "\nconst MAX_LINE_SCROLL: f32 = 3.0;\nfn android_mouse_button() {}\n" + HELPER_END + "\n" + START + "\n" + old_motion + "            },\n" + END + "\n// keep keyboard\n"
         new = PINNED_IMPORT + "\n" + HELPER_END + "\nfn reset_ime_with_request() {}\n" * int(new_ime) + START + "\n" + new_motion + "            },\n" + END + "\n// official keyboard untouched\n"

@@ -1,0 +1,326 @@
+name: EffectCraft v0.21.0 android.15 ORIGINAL-CERT production release
+
+on:
+  push:
+    branches:
+      - release/effectcraft-v0210-android15-approved-20261109
+    paths:
+      - .github/workflows/effectcraft-v0210-android15-permanent-release.yml
+      - tools/effectcraft/integrate_updater.py
+      - tools/effectcraft/menu_corner.py
+      - tools/effectcraft/test_corner_menu.py
+      - tools/effectcraft/patch_android_gestures.py
+      - tools/effectcraft/test_android_gestures.py
+      - tools/effectcraft/patch_android_menu_scroll.py
+      - tools/effectcraft/test_android_menu_scroll.py
+      - tools/effectcraft/patch_android13_input.py
+      - tools/effectcraft/test_android13_input.py
+      - tools/effectcraft/patch_android14_glass.py
+      - tools/effectcraft/test_android14_glass.py
+      - tools/effectcraft/test_keyboard_launcher.py
+      - tools/effectcraft/test_dcs_dispatch.py
+      - tools/effectcraft/test_android_shortcut_runtime.py
+      - tools/effectcraft/v020_compat.py
+      - tools/effectcraft/test_v020_compat.py
+      - tools/effectcraft/patch_android_lifecycle.py
+      - tools/effectcraft/android_event_loop_lifetime.rs
+      - tools/effectcraft/test_android_lifecycle.py
+      - tools/effectcraft/v021_compat.py
+      - tools/effectcraft/test_v021_compat.py
+      - tools/effectcraft/v020_winit_compat.py
+      - tools/effectcraft/test_v020_winit_compat.py
+      - tools/effectcraft/FontsBridge.java.inc
+      - tools/effectcraft/android_updater.rs
+      - tools/effectcraft/test_font_runtime_wiring.py
+      - tools/effectcraft/test_recursive_fonts.py
+      - tools/effectcraft/test_recursive_walk.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: effectcraft-v0210-android15-permanent-release
+  cancel-in-progress: false
+
+jobs:
+  check-and-compile:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release/effectcraft-v0210-android15-approved-20261109'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      UPSTREAM_SHA: 7870b5916ae0749d497d880989683bf2946d6c8b
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preflight original signing secrets (fail BEFORE paid ARM64 build)
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.EFFECTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.EFFECTCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.EFFECTCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.EFFECTCRAFT_KEY_ALIAS }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_B64 STOREPASS KEYPASS KEYALIAS; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Original EffectCraft signing prerequisite $name missing. No rebuild or release attempted."
+              exit 1
+            fi
+          done
+          if gh release view effectcraft-v0.21.0-android.15 -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists; no overwrite"
+            exit 1
+          fi
+          echo 'Original-key prerequisites found. Build may proceed.'
+      - name: Validate compatibility helper and existing EffectCraft regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+      - name: Fetch immutable official stable EffectCraft v0.21.0 (not upstream main)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          git clone --depth 1 --branch v0.21.0 https://github.com/storytold/effectcraft.git source/effectcraft
+          test "$(git -C source/effectcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
+      - name: Prepare isolated Android integration; stop on incompatible upstream hooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/effectcraft/prepare_candidate.py .
+          PYTHONPATH=tools/effectcraft python3 - <<'PY'
+          from pathlib import Path
+          from v021_compat import stage_trial_metadata, stage_trial_branding_metadata, menu_path_and_anchor
+          stage_trial_metadata(Path('.'))
+          stage_trial_branding_metadata(Path('.'))
+          path, anchor = menu_path_and_anchor(Path('source/effectcraft'))
+          print('Verified EffectCraft v0.20 menu location:', path)
+          PY
+          python3 tools/effectcraft/integrate_updater.py .
+          echo 'All legacy font/DCS/updater hooks accepted source changes (compile still required).'
+      - name: Configure Java 21, Rust 1.95, Android SDK 35 / NDK 27
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-linux-android
+      - name: Install Android compile prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 4 -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Rebase Android pointer input onto exact upstream winit fork; retain IME reset APIs
+        shell: bash
+        env:
+          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
+        run: |
+          set -euo pipefail
+          # Only the isolated runner's vendor directory is changed: the GitHub branch
+          # still retains the original shared Android winit for other app releases.
+          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
+          git init -q vendor/winit
+          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
+          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
+          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
+          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
+          python3 tools/effectcraft/v020_winit_compat.py \
+            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
+            "vendor/winit/src/platform_impl/android/mod.rs"
+          test "$(git -C vendor/winit diff --name-only)" = 'src/platform_impl/android/mod.rs'
+          python3 tools/effectcraft/patch_android_lifecycle.py vendor/winit
+          python3 tools/effectcraft/patch_android13_input.py vendor/winit
+          python3 tools/effectcraft/patch_android14_glass.py vendor/winit
+          rustc --test tools/effectcraft/android_event_loop_lifetime.rs -o "$RUNNER_TEMP/ec-lifetime-tests"
+          "$RUNNER_TEMP/ec-lifetime-tests" --nocapture
+          echo 'Android.14 adds glass touchscreen two-finger pan with deadzone, touch cancellation to block selection, preserves pinch, and guards canvas selection during trackpad scroll; approved Android.13 menu scroll remains unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          grep -Fq 'ImeResetCompleted' vendor/winit/src/event.rs
+          grep -Fq 'reset_ime_with_request' vendor/winit/src/window.rs
+          grep -Fq 'MouseWheel' vendor/winit/src/platform_impl/android/mod.rs
+          grep -Fq 'MouseInput' vendor/winit/src/platform_impl/android/mod.rs
+          echo 'Exact official pinned winit + limited Android motion adaptation, no production-signing job' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build final EffectCraft package with disposable pre-sign certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user Pillow==11.3.0
+          python3 tools/effectcraft/install_packager.py
+          test -s tools/effectcraft/icon/ec-approved-512.png
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
+          python3 tools/approved-branding/approved_branding.py install . effectcraft
+          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft -appname=EffectCraft -appicon=source/effectcraft/ec-approved-512.png
+          test -s output/effectcraft-0.21.0.apk
+          mkdir -p candidate
+          cp output/effectcraft-0.21.0.apk candidate/EffectCraft-v0.21.0-android.15-PRE-SIGN-arm64-v8a.apk
+      - name: Verify final production package, version, ABI, and pre-sign candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=candidate/EffectCraft-v0.21.0-android.15-PRE-SIGN-arm64-v8a.apk
+          SDK="$ANDROID_HOME/build-tools/35.0.0"
+          "$SDK/apksigner" verify --verbose --print-certs "$APK" > candidate/certificate.txt
+          if grep -iq '10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577' candidate/certificate.txt; then
+            echo 'STOP: test APK must NOT use the original EffectCraft production certificate' >&2
+            exit 1
+          fi
+          "$SDK/aapt" dump badging "$APK" > candidate/badging.txt
+          grep -F "name='com.artcraft.effectcraft'" candidate/badging.txt
+          grep -F "versionName='0.21.0-android.15'" candidate/badging.txt
+          grep -F "versionCode='16820015'" candidate/badging.txt
+          "$SDK/zipalign" -c -P 16 -v 4 "$APK"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, zipfile
+          apk = Path('candidate/EffectCraft-v0.21.0-android.15-PRE-SIGN-arm64-v8a.apk')
+          with zipfile.ZipFile(apk) as z:
+              names=z.namelist()
+              libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs)
+              assert any(x.endswith('.dex') for x in names)
+          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
+          (apk.parent/'SHA256SUMS.txt').write_text(digest+'  '+apk.name+'\n')
+          (apk.parent/'verification.json').write_text(json.dumps({
+              'upstream_tag':'v0.21.0','upstream_sha':'7870b5916ae0749d497d880989683bf2946d6c8b',
+              'package':'com.artcraft.effectcraft',
+              'versionName':'0.21.0-android.15','versionCode':16820015,
+              'apk_size_bytes':apk.stat().st_size,'builder_commit':__import__('os').environ['GITHUB_SHA'],
+              'apk_sha256':digest,'production_signing_verified':False,
+              'owner_approved':True,'permanent_signing_pending':True
+          },indent=2))
+          PY
+          cat candidate/verification.json
+          cat candidate/certificate.txt
+          echo 'This APK uses a temporary key and separate package; it is NOT a production upgrade or an approved release.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive pre-sign candidate (NOT a production upgrade)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-v0.21.0-android15-PRE-SIGN-ONLY
+          path: candidate/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Sign with original EffectCraft certificate verified against published Android.8
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.EFFECTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.EFFECTCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.EFFECTCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.EFFECTCRAFT_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          SDK="$ANDROID_HOME/build-tools/35.0.0"
+          KEY="$RUNNER_TEMP/effectcraft-original.p12"
+          REF="$RUNNER_TEMP/effectcraft-android8.apk"
+          trap 'rm -f "$KEY" "$REF" "$RUNNER_TEMP/aligned.apk" "$RUNNER_TEMP/certificate.pem"' EXIT
+          mkdir -p verified-release
+          SRC=candidate/EffectCraft-v0.21.0-android.15-PRE-SIGN-arm64-v8a.apk
+          OUT=verified-release/EffectCraft-v0.21.0-android.15-arm64-v8a.apk
+          curl -fsSL --retry 3 -o "$REF" 'https://github.com/KosmosSG/artcraft-android/releases/download/effectcraft-v0.16.0-android.8/EffectCraft-v0.16.0-android.8-arm64-v8a-EffectCraft-20261101-041514-signed.apk'
+          echo '2904be260656e7f02e711b41ccd404f866ad7b08fc019cd3932982f316ee8437  '"$REF" | sha256sum --check
+          "$SDK/apksigner" verify --verbose --print-certs "$REF" > "$RUNNER_TEMP/reference.txt"
+          REF_CERT="$(python3 - "$RUNNER_TEMP/reference.txt" <<'PY'
+          import re,sys
+          text=open(sys.argv[1]).read()
+          hits=re.findall(r'certificate SHA-256 digest:\s*([a-fA-F0-9:]{64,95})',text,re.I)
+          if len(hits)!=1: raise SystemExit("STOP: published cert could not be uniquely verified")
+          print(hits[0].replace(':','').lower())
+          PY
+          )"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KEY"
+          chmod 600 "$KEY"
+          keytool -exportcert -rfc -keystore "$KEY" -alias "$KEYALIAS" -storepass:env STOREPASS > "$RUNNER_TEMP/certificate.pem"
+          ACTUAL_CERT="$(openssl x509 -in "$RUNNER_TEMP/certificate.pem" -outform DER | sha256sum | cut -d' ' -f1)"
+          if [[ "$ACTUAL_CERT" != "$REF_CERT" ]]; then
+            echo '::error::Original EffectCraft release signer mismatch; refusing publication'
+            exit 1
+          fi
+          "$SDK/zipalign" -P 16 -f 4 "$SRC" "$RUNNER_TEMP/aligned.apk"
+          "$SDK/apksigner" sign --ks "$KEY" --ks-key-alias "$KEYALIAS" \
+            --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+            --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
+            --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          "$SDK/apksigner" verify --verbose --print-certs "$OUT" > "$RUNNER_TEMP/signed-report.txt"
+          python3 - "$RUNNER_TEMP/signed-report.txt" "$REF_CERT" <<'PY'
+          import re,sys
+          txt=open(sys.argv[1]).read()
+          vals=[x.replace(':','').lower() for x in re.findall(
+              r'certificate SHA-256 digest:\s*([a-fA-F0-9:]{64,95})',txt,re.I)]
+          assert vals==[sys.argv[2]], 'Signed release certificate DOES NOT match published EffectCraft'
+          print('PASS: original EffectCraft signing certificate and signature')
+          PY
+          "$SDK/aapt" dump badging "$OUT" | tee "$RUNNER_TEMP/signed-badging.txt"
+          grep -F "name='com.artcraft.effectcraft'" "$RUNNER_TEMP/signed-badging.txt"
+          grep -F "versionName='0.21.0-android.15'" "$RUNNER_TEMP/signed-badging.txt"
+          grep -F "versionCode='16820015'" "$RUNNER_TEMP/signed-badging.txt"
+          "$SDK/zipalign" -c -P 16 -v 4 "$OUT"
+          python3 - "$SRC" "$OUT" <<'PY'
+          import zipfile,sys,hashlib
+          def content(path):
+              with zipfile.ZipFile(path) as z:
+                  return {n:hashlib.sha256(z.read(n)).digest() for n in z.namelist()
+                          if not n.startswith('META-INF/') and not n.endswith('.idsig')}
+          assert content(sys.argv[1])==content(sys.argv[2]),'Production signing altered the app payload!'
+          print('PASS: exact approved binary payload preserved after permanent signing')
+          PY
+          (cd verified-release && sha256sum EffectCraft-v0.21.0-android.15-arm64-v8a.apk > SHA256SUMS.txt)
+          (cd verified-release && sha256sum --check SHA256SUMS.txt)
+      - name: Upload original-key permanently signed APK (recovery copy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-v0.21.0-android15-ORIGINAL-SIGNED
+          path: verified-release/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish original-key signed GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='effectcraft-v0.21.0-android.15'
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo '::error::Refusing to overwrite an existing release tag'; exit 1
+          fi
+          (cd verified-release && sha256sum --check SHA256SUMS.txt)
+          cat > verified-release/RELEASE_NOTES.md <<'EOF'
+          EffectCraft v0.21.0-android.15 — HONOR MagicPad 4 ARM64.
+          
+          Owner confirmed Android.14 on-device: menus and trackpad scrolling
+          smooth, touchscreen two-finger canvas pan, pinch zoom and normal
+          features working. This production build removes the temporary
+          Export Gesture Log entry and native diagnostic collector only.
+          
+          Features: touchscreen two-finger pan; trackpad two-finger scroll
+          without unintended canvas selections; reliable pinch zoom;
+          original approved keyboard shortcuts, Ctrl+W/Q, ESC, D/C/S,
+          custom/shared fonts, Appearance, in-app updates, branding.
+          
+          Production package: com.artcraft.effectcraft.
+          Verified original EffectCraft Android.8 release signing certificate.
+          Upgrades existing original-key-signed EffectCraft installations.
+          Separate TEST packages do not upgrade in place.
+          EOF
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'EffectCraft v0.21.0-android.15 — ARM64' \
+            --notes-file verified-release/RELEASE_NOTES.md \
+            verified-release/EffectCraft-v0.21.0-android.15-arm64-v8a.apk \
+            verified-release/SHA256SUMS.txt
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,assets
+          echo "Published verified release $TAG" >> "$GITHUB_STEP_SUMMARY"
+      - name: Purge temporary signing material
+        if: always()
+        run: rm -rf keys

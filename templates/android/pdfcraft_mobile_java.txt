@@ -512,9 +512,11 @@ public void pdfFinishNativeLoop() {
     // immediately, so an onNewIntent during task teardown cannot target it.
     if (pdfNativeLoopFinished) return;
     pdfNativeLoopFinished = true;
+    pdfLifecycleTrace("pdfFinishNativeLoop:committed");
     android.util.Log.i("PDFCraftLifecycle", "Native loop exit committed; finish task on UI thread");
     final Runnable finishNativeActivity = () -> {
         if (!isFinishing() && !isDestroyed()) {
+            pdfLifecycleTrace("finishAndRemoveTask:before");
             android.util.Log.i("PDFCraftLifecycle", "Finishing stale NativeActivity task");
             finishAndRemoveTask();
         }
@@ -530,8 +532,31 @@ public void pdfFinishNativeLoop() {
 // not on background/rotation. Never delete settings, staged PDFs, or recovery.
 // PDFCRAFT_ANDROID6_LIFECYCLE_TRACE: passive callbacks; never consume intents,
 // force-stop the process, or alter the normal NativeActivity teardown.
+// PDFCRAFT_ANDROID7_PERSISTENT_LIFECYCLE: app-owned bounded trace survives
+// inaccessible Android logcat buffers and Ctrl+Q process termination.
+// No document contents, URIs or user input are recorded.
+private static final Object PDF_LIFECYCLE_LOCK = new Object();
+private void pdfWriteLifecycleTrace(String event) {
+    synchronized (PDF_LIFECYCLE_LOCK) {
+        try {
+            java.io.File dir = getExternalFilesDir(null);
+            if (dir == null) dir = getFilesDir();
+            java.io.File file = new java.io.File(dir, "pdfcraft-lifecycle-trace.txt");
+            if (file.exists() && file.length() > 131072L) {
+                java.io.File rotated = new java.io.File(dir, "pdfcraft-lifecycle-previous.txt");
+                if (rotated.exists()) rotated.delete();
+                file.renameTo(rotated);
+            }
+            try (java.io.FileWriter out = new java.io.FileWriter(file, true)) {
+                out.write(java.lang.System.currentTimeMillis() + " " + event + "\\n");
+            }
+        } catch (Exception error) {
+            android.util.Log.w("PDFCraftLifecycle", "Persistent lifecycle trace unavailable", error);
+        }
+    }
+}
 private void pdfLifecycleTrace(String event) {
-    android.util.Log.i("PDFCraftLifecycle", event
+    pdfWriteLifecycleTrace(event + " pid=" + android.os.Process.myPid() + " finishing=" + isFinishing() + " destroyed=" + isDestroyed() + " nativeLoopFinished=" + pdfNativeLoopFinished);\n    android.util.Log.i("PDFCraftLifecycle", event
             + " pid=" + android.os.Process.myPid()
             + " finishing=" + isFinishing()
             + " destroyed=" + isDestroyed()

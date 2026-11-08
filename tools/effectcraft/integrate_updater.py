@@ -35,6 +35,8 @@ from menu_corner import patch_header
 patch_header(root / "source/effectcraft")
 from patch_android_gestures import apply as patch_android_gestures
 patch_android_gestures(root / "source/effectcraft")
+from patch_android_menu_scroll import apply as patch_android_menu_scroll
+patch_android_menu_scroll(root / "source/effectcraft")
 
 j = java.read_text().rstrip()
 if not j.endswith("}") or "ecCheckForUpdates" in j:

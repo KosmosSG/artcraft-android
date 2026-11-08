@@ -54,6 +54,7 @@ impl EffectcraftApp {
         let pan_key = egui::Id::new("effectcraft.android.touch.pan");
         ctx.data_mut(|d| d.remove::<egui::Vec2>(pan_key));
         let mut suppress = state.suppress_until_lift;
+        let mut viewer_center: Option<egui::Pos2> = None;
         for e in raw.events.clone() {
             if let egui::Event::Touch { id, phase, pos, .. } = e {
                 match phase {
@@ -80,11 +81,14 @@ impl EffectcraftApp {
                         suppress = true;
                         state.suppress_until_lift = true;
                         let center = a + (b - a) * 0.5;
+                        viewer_center = Some(center);
                         let distance = (b - a).length();
                         if let Some((old_center, old_dist)) = state.prior {
                             let delta = center - old_center;
                             let scale = if distance > 10.0 && old_dist > 10.0 {
-                                (distance / old_dist).clamp(0.8, 1.25)
+                                // Bound noisy MagicOS contact-distance updates,
+                                // while still responding to intentional pinch.
+                                (1.0 + (distance / old_dist - 1.0) * 0.7).clamp(0.94, 1.06)
                             } else { 1.0 };
                             if delta.length_sq() > 0.01 || (scale - 1.0).abs() > 0.002 {
                                 moves.push((center, delta, scale));
@@ -129,7 +133,17 @@ impl EffectcraftApp {
         if suppress && direct_pan.length_sq() > 0.01 {
             ctx.data_mut(|d| d.insert_temp(pan_key, direct_pan));
         }
-        ctx.data_mut(|d| d.insert_temp(key, state));
+        ctx.data_mut(|d| {
+            let active = egui::Id::new("effectcraft.android.touch.navigation.active");
+            let center_key = egui::Id::new("effectcraft.android.touch.navigation.center");
+            d.insert_temp(active, suppress);
+            if let Some(center) = viewer_center {
+                d.insert_temp(center_key, center);
+            } else {
+                d.remove::<egui::Pos2>(center_key);
+            }
+            d.insert_temp(key, state);
+        });
     }
 }
 '''

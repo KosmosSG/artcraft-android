@@ -50,6 +50,9 @@ fi
     # Android.18: restore startup splash until UI; transfer Save-modal focus; enable native touch navigation.
     from patch_android18_modal_and_gestures import patch as android18
     android18(root)
+    # Port MostafaXS1 2026-11-05 hidden input view lifecycle without overwriting owner bridge.
+    from patch_android19_reference_ime import patch as reference_ime19
+    reference_ime19(root)
 
 
 def patch_adapter(root):

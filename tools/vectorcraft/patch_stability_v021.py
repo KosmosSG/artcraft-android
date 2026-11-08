@@ -41,6 +41,9 @@ fi
     # Isolated modal keyboard correction; no canvas/font/scroll changes.
     from patch_android15_modal_keys import patch as modal_keys15
     modal_keys15(root)
+    # Android.16 applies modal actions in the actual UI frame; no other app changes.
+    from patch_android16_modal_frame import patch as modal_frame16
+    modal_frame16(root)
 
 
 def patch_adapter(root):

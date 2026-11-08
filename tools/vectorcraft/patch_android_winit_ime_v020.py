@@ -108,7 +108,7 @@ def patch_builder(builder: Path) -> None:
         if "pub fn reset_ime(&self)" not in android:
             android = replace_unique(android,
                 "    pub fn reset_ime_with_request(&self, _request_id: u64) {",
-                "    pub fn reset_ime(&self) {}\\n\\n    pub fn reset_ime_with_request(&self, _request_id: u64) {",
+                "    pub fn reset_ime(&self) {}\n\n    pub fn reset_ime_with_request(&self, _request_id: u64) {",
                 "latest builder Android reset method")
         replacements = (event, window, android)
         print("PASS: Mostafa main IME event and reset preserved; add only missing public Window forwarding methods")

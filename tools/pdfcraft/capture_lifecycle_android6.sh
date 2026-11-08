@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PDFCraft Android.5/6: capture lifecycle transitions without clearing user data.
+# PDFCraft Android.6: capture lifecycle transitions without clearing user data.
 set -euo pipefail
-PKG="com.artcraft.pdfcraft.v019test5"
+PKG="com.artcraft.pdfcraft.v019test6"
 OUT="${1:-pdfcraft-lifecycle-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
 adb get-state | grep -qx device || { echo "ADB device unavailable"; exit 1; }

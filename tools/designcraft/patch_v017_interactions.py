@@ -62,21 +62,24 @@ pub fn take_android_tools_toggle() -> bool {
     p=base/"menus.rs"
     edit(p,'pub use run::take_android_font_import;',
          'pub use run::{take_android_font_import, take_android_shared_actions, take_android_tools_toggle};',"UI action exports")
-    # Keep the native Dc menu on DesignCraft's existing application bar,
-    # immediately following Home, rather than allocating a second full-width panel.
+    # GridCraft parity: the Dc launcher is FIRST in the application's
+    # existing bar, directly before Home (not a separate top strip).
     bar=base/"menus/bar.rs"
-    source=bar.read_text()
-    source=put_once(source,
-        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {',
-        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {\n'
-        '    #[cfg(target_os = "android")]\n'
-        '    dc_launcher_menu(app, ui);', "existing app-bar menu")
-    source += "\n" + (Path(__file__).with_name("dc_menu_v017.rs")).read_text()
+    source=bar.read_text() + "\n" + (Path(__file__).with_name("dc_menu_v017.rs")).read_text()
     bar.write_text(source)
     edit(base/"menus.rs",
          "pub use bar::{menu_bar, menu_button};",
-         'pub use bar::{menu_bar, menu_button};\n#[cfg(target_os = "android")]\npub use bar::take_dc_menu_actions;',
+         'pub use bar::{menu_bar, menu_button};\n#[cfg(target_os = "android")]\npub use bar::take_dc_menu_actions;\n#[cfg(target_os = "android")]\npub(crate) use bar::dc_launcher_menu;',
          "Dc app-bar action bridge")
+    appbar=base/"chrome/app_bar.rs"
+    home='                        if icons::button(ui, "home", home, app.session.active().is_none(), crate::i18n::tr(&app.ui.language, "Home")).clicked() {'
+    edit(appbar, home,
+         '''                        #[cfg(target_os = "android")]
+                        {
+                            crate::menus::dc_launcher_menu(app, ui);
+                            ui.add_space(4.0);
+                        }
+'''+home, "Dc first then Home")
     # Android commands remain registered for keyboard/updater compatibility.
     # Android-specific menu rows are consolidated under the approved Dc icon
     # in v016_android.rs; do not create a duplicate top-level Android menu.

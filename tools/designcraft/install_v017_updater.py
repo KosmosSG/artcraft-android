@@ -76,7 +76,7 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     table_source = table_file.read_text()
     if '"Android",\n' in table_source or '"ui:app.artcraftToggleAndroidTools"' in table_source:
         raise ValueError("Unexpected old Android top-level menu; review before patching")
-    dc_menu = (android / "src/v016_android.rs").read_text()
+    dc_menu = (ui_root / "menus/bar.rs").read_text()
     for label in ("dc-launcher-icon.rgba", "Check Updates", "Startup Update Check",
                   "Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
                   "Reload Font Catalog", "Android Tools"):
@@ -112,11 +112,11 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     # Android.2 already routes both update actions from the top-left Dc menu.
     # The legacy Android Tools toolbar is intentionally absent; check the
     # action/bridge contract instead of trying to reinsert duplicate buttons.
-    dc_menu = toolbar_file.read_text()
+    dc_native = toolbar_file.read_text()
     for action, code in (('Check Updates', 'bridge.dc_update_action(3)'),
                          ('Startup Update Check', 'bridge.dc_update_action(4)')):
-        if dc_menu.count(action) != 1 or dc_menu.count(code) != 1:
-            raise ValueError(f"Dc menu updater action not wired exactly once: {action}")
+        if dc_menu.count(action) != 1 or dc_native.count(code) != 1:
+            raise ValueError(f"Dc app-bar updater action not wired exactly once: {action}")
 
 
     java_dir = android / "java" / Path(*package.split("."))

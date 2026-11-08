@@ -153,7 +153,9 @@ def patch(root: Path) -> None:
     vc_diag_history: std::collections::VecDeque<String>,
     vc_diag_snapshot: String,
     vc_diag_note: String,
-    vc_diag_egui_shortcuts: u64,''')
+    vc_diag_egui_shortcuts: u64,
+    vc_diag_focus_snapshot: String,
+    vc_diag_focus_refresh_at: Option<std::time::Instant>,''')
     s = once(s, '''                keyboard_diagnostics_open: false,''',
     '''                keyboard_diagnostics_open: false,
                 vc_diag_recording: false,
@@ -162,7 +164,9 @@ def patch(root: Path) -> None:
                 vc_diag_history: std::collections::VecDeque::new(),
                 vc_diag_snapshot: String::new(),
                 vc_diag_note: "Start capture, reproduce, then Copy Report.".into(),
-                vc_diag_egui_shortcuts: 0,''')
+                vc_diag_egui_shortcuts: 0,
+                vc_diag_focus_snapshot: String::new(),
+                vc_diag_focus_refresh_at: None,''')
 
     s = once(s, '''        let selection_idle = matches!(self.inner.session.tool_id(), "selection" | "directSelection")''',
     '''        // Diagnostic only; never consume, synthesize or change key input.
@@ -203,6 +207,15 @@ def patch(root: Path) -> None:
         let selection_idle = matches!(self.inner.session.tool_id(), "selection" | "directSelection")''')
     s = once(s, '''        if menu & 128 != 0 {self.keyboard_diagnostics_open=true;}''',
     '''        if menu & 128 != 0 {self.keyboard_diagnostics_open=true;}''')
+    s = once(s, '''            let focus=self.bridge.keyboard_focus().unwrap_or_else(|_|"focus unavailable".into());''',
+    '''            // Avoid scheduling a Java UI-thread callback on each repaint.
+            if self.vc_diag_focus_refresh_at.is_none_or(|at|
+                at.elapsed() >= std::time::Duration::from_millis(500)) {
+                self.vc_diag_focus_snapshot = self.bridge.keyboard_focus()
+                    .unwrap_or_else(|_|"focus unavailable".into());
+                self.vc_diag_focus_refresh_at = Some(std::time::Instant::now());
+            }
+            let focus=self.vc_diag_focus_snapshot.clone();''')
     s = once(s, '''            egui::Window::new("Keyboard Diagnostics").open(&mut self.keyboard_diagnostics_open)''',
     '''            let mut vc_diag_start = false;
             let mut vc_diag_stop = false;

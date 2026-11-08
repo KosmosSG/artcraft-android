@@ -92,6 +92,25 @@ inject = """        // PDFCRAFT_ANDROID_INK_PRESSURE_CAPTURE: winit's Android st
 if original.count(target) != 1:
     raise SystemExit("PDFCraft draw force sampling anchor changed")
 original = original.replace(target, inject, 1)
+# PDFCRAFT_ANDROID4_LOW_LATENCY_INK: upstream samples freehand at 1.5 logical
+# pixels and relies on a later frame for drawing. Keep desktop untouched.
+# Request the next native frame as soon as a new ink sample enters the preview.
+draw_sample = """                if last.distance(p) >= 1.5 {
+                    points.push(u);
+                }
+"""
+draw_preview = """                if last.distance(p) >= if cfg!(target_os = "android") { 1.0 } else { 1.5 } {
+                    points.push(u);
+                    // PDFCRAFT_ANDROID4_LOW_LATENCY_INK: present live ink promptly.
+                    #[cfg(target_os = "android")]
+                    if *tool == CommentTool::Ink {
+                        ui.ctx().request_repaint();
+                    }
+                }
+"""
+if original.count(draw_sample) != 1:
+    raise SystemExit("PDFCraft live-ink draw sample anchor changed")
+original = original.replace(draw_sample, draw_preview, 1)
 target = """                cv.settle(now, page, tool, &points);
                 view.pending_edit = Some(new_comment(cx, tool, shape, String::new()));
 """

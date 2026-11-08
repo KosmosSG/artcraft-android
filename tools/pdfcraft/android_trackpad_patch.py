@@ -91,8 +91,12 @@ def patch(source: str) -> str:
                     // ToolType::Finger. Do not let either contact click a
                     // sidebar tool. A real mouse reports ToolType::Mouse and
                     // retains all buttons.
-                    if (touchpad_source || (mouse_source && tool_type == ToolType::Finger))
-                        && matches!(motion_event.action(),
+                    // PDFCRAFT_ANDROID4_TRACKPAD_NO_BUTTON_NO_CLICK:
+                    // MagicOS may label *both* trackpad contacts as Mouse,
+                    // not Finger. A pointer down with no pressed button is
+                    // a trackpad contact, never a sidebar/tool click.
+                    // Preserve real mouse clicks (button_state != 0).
+                    if matches!(motion_event.action(),
                             MotionAction::Down | MotionAction::PointerDown)
                     {
                         self.pdfcraft_trackpad_last = None;
@@ -303,6 +307,7 @@ def patch(source: str) -> str:
     assert "PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE" in source
     assert "PDFCRAFT_ANDROID_TRACKPAD_SCROLL_LOCK" in source
     assert "PDFCRAFT_ANDROID_TRACKPAD_PHASED_SCROLL" in source
+    assert "PDFCRAFT_ANDROID4_TRACKPAD_NO_BUTTON_NO_CLICK" in source
     assert "phase: event::TouchPhase::Started" in source
     assert "else { event::TouchPhase::Ended }" in source
     assert "PDFCRAFT_ANDROID_GESTURE_AXES_34" in source

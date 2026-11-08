@@ -73,7 +73,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'if (pdfNativeLoopFinished)' in java
     assert 'recreate();' in java
     assert 'public void pdfFinishNativeLoop()' in java
-    assert 'finishAndRemoveTask();' in java
+    # Android.7 targeted fix: never remove the task while an Activity relaunch races.
+    assert 'finishAndRemoveTask();' not in java
+    assert 'pdfLifecycleTrace("finish:before")' in java
+    assert 'finish();' in java
     assert 'pdfNativeLoopFinished = true;' in java
     assert 'PDFCRAFT_ANDROID4_LIFECYCLE_HANDOFF' in java
     assert 'runOnUiThread(finishNativeActivity);' in java

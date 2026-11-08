@@ -71,6 +71,20 @@ def patch(root: Path) -> None:
     assert "private void vcProbeWindowFrame()" in unused and "PixelCopy.request(source, bitmap" in unused
     s=s[:begin]+s[end:]
 
+    # MostafaXS1 2026-11-05 provides a JNI bridge into the native Android
+    # event-loop waker. Unlike dispatching KEYCODE_UNKNOWN through Java, this
+    # wakes an idle native poll immediately even for InputConnection commits.
+    # Keep the existing fallback for older/missing JNI and other device paths.
+    s = once(s, '''    public void vcWakeNativeLoop() {
+        runOnUiThread(() -> {''',
+    '''    public void vcWakeNativeLoop() {
+        try {
+            com.artcraft.ime.ArtCraftIme.wake();
+        } catch (Throwable error) {
+            Log.d(TAG, "Native IME loop wake unavailable; using Java fallback");
+        }
+        runOnUiThread(() -> {''')
+
     # When Java enqueues a hardware key and returns true, NativeActivity's
     # event loop never sees that key: requests sit pending until ESC wakes it.
     # Forward the ORIGINAL event to the native backend, not a KEYCODE_UNKNOWN

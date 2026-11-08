@@ -1,0 +1,193 @@
+name: EffectCraft v0.21.0 Android.10 Direct Native Logcat ARM64 TEST (NO RELEASE)
+
+on:
+  push:
+    branches:
+      - feature/effectcraft-v021-android10-direct-logcat-20261108
+    paths:
+      - .github/workflows/effectcraft-v021-android10-direct-logcat.yml
+      - tools/effectcraft/integrate_updater.py
+      - tools/effectcraft/menu_corner.py
+      - tools/effectcraft/test_corner_menu.py
+      - tools/effectcraft/patch_android_gestures.py
+      - tools/effectcraft/test_android_gestures.py
+      - tools/effectcraft/patch_android_menu_scroll.py
+      - tools/effectcraft/test_android_menu_scroll.py
+      - tools/effectcraft/patch_android_motion_diag.py
+      - tools/effectcraft/test_android_motion_diag.py
+      - tools/effectcraft/test_keyboard_launcher.py
+      - tools/effectcraft/test_dcs_dispatch.py
+      - tools/effectcraft/test_android_shortcut_runtime.py
+      - tools/effectcraft/v020_compat.py
+      - tools/effectcraft/test_v020_compat.py
+      - tools/effectcraft/patch_android_lifecycle.py
+      - tools/effectcraft/android_event_loop_lifetime.rs
+      - tools/effectcraft/test_android_lifecycle.py
+      - tools/effectcraft/v021_compat.py
+      - tools/effectcraft/test_v021_compat.py
+      - tools/effectcraft/v020_winit_compat.py
+      - tools/effectcraft/test_v020_winit_compat.py
+      - tools/effectcraft/FontsBridge.java.inc
+      - tools/effectcraft/android_updater.rs
+      - tools/effectcraft/test_font_runtime_wiring.py
+      - tools/effectcraft/test_recursive_fonts.py
+      - tools/effectcraft/test_recursive_walk.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-v021-android10-direct-logcat
+  cancel-in-progress: false
+
+jobs:
+  check-and-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      UPSTREAM_SHA: 7870b5916ae0749d497d880989683bf2946d6c8b
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate compatibility helper and existing EffectCraft regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+      - name: Fetch immutable official stable EffectCraft v0.21.0 (not upstream main)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          git clone --depth 1 --branch v0.21.0 https://github.com/storytold/effectcraft.git source/effectcraft
+          test "$(git -C source/effectcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
+      - name: Prepare isolated Android integration; stop on incompatible upstream hooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/effectcraft/prepare_candidate.py .
+          PYTHONPATH=tools/effectcraft python3 - <<'PY'
+          from pathlib import Path
+          from v021_compat import stage_trial_metadata, stage_trial_branding_metadata, menu_path_and_anchor
+          stage_trial_metadata(Path('.'))
+          stage_trial_branding_metadata(Path('.'))
+          path, anchor = menu_path_and_anchor(Path('source/effectcraft'))
+          print('Verified EffectCraft v0.20 menu location:', path)
+          PY
+          python3 tools/effectcraft/integrate_updater.py .
+          echo 'All legacy font/DCS/updater hooks accepted source changes (compile still required).'
+      - name: Configure Java 21, Rust 1.95, Android SDK 35 / NDK 27
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-linux-android
+      - name: Install Android compile prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 4 -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Rebase Android pointer input onto exact upstream winit fork; retain IME reset APIs
+        shell: bash
+        env:
+          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
+        run: |
+          set -euo pipefail
+          # Only the isolated runner's vendor directory is changed: the GitHub branch
+          # still retains the original shared Android winit for other app releases.
+          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
+          git init -q vendor/winit
+          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
+          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
+          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
+          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
+          python3 tools/effectcraft/v020_winit_compat.py \
+            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
+            "vendor/winit/src/platform_impl/android/mod.rs"
+          test "$(git -C vendor/winit diff --name-only)" = 'src/platform_impl/android/mod.rs'
+          python3 tools/effectcraft/patch_android_lifecycle.py vendor/winit
+          python3 tools/effectcraft/patch_android_motion_diag.py vendor/winit
+          rustc --test tools/effectcraft/android_event_loop_lifetime.rs -o "$RUNNER_TEMP/ec-lifetime-tests"
+          "$RUNNER_TEMP/ec-lifetime-tests" --nocapture
+          echo 'Android.10 sends sampled MotionEvent source/action/contact count/axes directly to Android liblog tag EffectCraftMotion (no tracing subscriber). No pointer coordinates or text.' >> "$GITHUB_STEP_SUMMARY"
+          grep -Fq 'ImeResetCompleted' vendor/winit/src/event.rs
+          grep -Fq 'reset_ime_with_request' vendor/winit/src/window.rs
+          grep -Fq 'MouseWheel' vendor/winit/src/platform_impl/android/mod.rs
+          grep -Fq 'MouseInput' vendor/winit/src/platform_impl/android/mod.rs
+          echo 'Exact official pinned winit + limited Android motion adaptation, no production-signing job' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build temporary-key EffectCraft 0.21.0 Android test package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user Pillow==11.3.0
+          python3 tools/effectcraft/install_packager.py
+          test -s tools/effectcraft/icon/ec-approved-512.png
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
+          python3 tools/approved-branding/approved_branding.py install . effectcraft
+          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v021test10 -appname=EffectCraft-v021-Test -appicon=source/effectcraft/ec-approved-512.png
+          test -s output/effectcraft-0.21.0.apk
+          mkdir -p candidate
+          cp output/effectcraft-0.21.0.apk candidate/EffectCraft-v0.21.0-android.10-TEST-arm64-v8a.apk
+      - name: Verify test-only package, version, ABI, and disposable signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=candidate/EffectCraft-v0.21.0-android.10-TEST-arm64-v8a.apk
+          SDK="$ANDROID_HOME/build-tools/35.0.0"
+          "$SDK/apksigner" verify --verbose --print-certs "$APK" > candidate/certificate.txt
+          if grep -iq '10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577' candidate/certificate.txt; then
+            echo 'STOP: test APK must NOT use the original EffectCraft production certificate' >&2
+            exit 1
+          fi
+          "$SDK/aapt" dump badging "$APK" > candidate/badging.txt
+          grep -F "name='com.artcraft.effectcraft.v021test10'" candidate/badging.txt
+          grep -F "versionName='0.21.0-android.10'" candidate/badging.txt
+          grep -F "versionCode='16820010'" candidate/badging.txt
+          "$SDK/zipalign" -c -P 16 -v 4 "$APK"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, zipfile
+          apk = Path('candidate/EffectCraft-v0.21.0-android.10-TEST-arm64-v8a.apk')
+          with zipfile.ZipFile(apk) as z:
+              names=z.namelist()
+              libs=[x for x in names if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs)
+              assert any(x.endswith('.dex') for x in names)
+          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
+          (apk.parent/'SHA256SUMS.txt').write_text(digest+'  '+apk.name+'\n')
+          (apk.parent/'verification.json').write_text(json.dumps({
+              'upstream_tag':'v0.21.0','upstream_sha':'7870b5916ae0749d497d880989683bf2946d6c8b',
+              'package':'com.artcraft.effectcraft.v021test10',
+              'versionName':'0.21.0-android.10','versionCode':16820010,
+              'apk_size_bytes':apk.stat().st_size,'builder_commit':__import__('os').environ['GITHUB_SHA'],
+              'apk_sha256':digest,'production_signing_verified':False,
+              'device_tested':False,'eligible_for_release':False
+          },indent=2))
+          PY
+          cat candidate/verification.json
+          cat candidate/certificate.txt
+          echo 'This APK uses a temporary key and separate package; it is NOT a production upgrade or an approved release.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload private Actions test artifact (never a GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-v0.21.0-Android10-TEMPORARY-TEST-ONLY
+          path: candidate/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Delete disposable build keystore
+        if: always()
+        run: rm -rf keys

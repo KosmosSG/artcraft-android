@@ -6,3 +6,5 @@ Integrate selectively into builder/pinned upstream without replacing user's code
 Enforce Python+generated source behavioral preflight before ARM64 compilation. Separate com.artcraft.vectorcraft.test, temp disposable signing only. No production signing keys, no merging, no tag/release/publish.
 
 Source-preflight retry 1 after aligning Android.17 replacement anchors with the builder's patch_startup() transformations; commit 77466bd885e1797fb0f63b47e6b9ae0c4f934091. Test only, stop before ARM64 if any mismatch.
+
+Source-only preflight retry 2: generated patch anchors pass; corrected regression expectation for pinned builder startup guard. Source aa3339c3acfcfd918122a12d5b00dbc76095cf2f. No production signing.

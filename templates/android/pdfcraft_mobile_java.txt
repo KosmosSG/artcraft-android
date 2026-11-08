@@ -548,7 +548,7 @@ private void pdfWriteLifecycleTrace(String event) {
                 file.renameTo(rotated);
             }
             try (java.io.FileWriter out = new java.io.FileWriter(file, true)) {
-                out.write(java.lang.System.currentTimeMillis() + " " + event + "\\n");
+                out.write(java.lang.System.currentTimeMillis() + " " + event + "\n");
             }
         } catch (Exception error) {
             android.util.Log.w("PDFCraftLifecycle", "Persistent lifecycle trace unavailable", error);

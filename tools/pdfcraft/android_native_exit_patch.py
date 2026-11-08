@@ -27,7 +27,7 @@ REPLACEMENT = '''                MainEvent::Destroy => {
                     // event loop must return so android_main can finish and
                     // a subsequent launcher/document intent starts fresh.
                     // Do NOT call std::process::exit or delete user data.
-                    log::info!("PDFCraftLifecycle: Android Destroy -> exit winit native loop");
+                    tracing::info!("PDFCraftLifecycle: Android Destroy -> exit winit native loop");
                     self.running = false;
                     self.window_target.p.exit();
                 },'''

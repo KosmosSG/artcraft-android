@@ -173,6 +173,31 @@ def patch(root: Path) -> None:
 
     rust = root/"adapters/vectorcraft/src/lib.rs"
     s = rust.read_text()
+    # A Type editor can leave stale egui TextEdit focus for a few frames.
+    # Scope the grace period to a real Type->canvas transition, never a
+    # normal property text field or active IME composition.
+    s = once(s, "    last_type_editing: bool,",
+        "    last_type_editing: bool,\n    vc_after_type_exit_frames: u8,")
+    s = once(s, "                last_type_editing: false,",
+        "                last_type_editing: false,\n                vc_after_type_exit_frames: 0,")
+    s = once(s, '''        if self.last_type_editing && !editing_now {
+            ui.ctx().memory_mut(|memory| {''',
+    '''        if self.last_type_editing && !editing_now {
+            self.vc_after_type_exit_frames = 6;
+            ui.ctx().memory_mut(|memory| {''')
+    s = once(s, '''        let hardware_mode = if modal_save {''',
+    '''        let just_exited_type = self.vc_after_type_exit_frames > 0
+            && !editing && !composing;
+        if just_exited_type && field_focused && !modal {
+            ctx.memory_mut(|memory| {
+                if let Some(id) = memory.focused() { memory.surrender_focus(id); }
+            });
+        }
+        self.vc_after_type_exit_frames =
+            self.vc_after_type_exit_frames.saturating_sub(1);
+        let hardware_mode = if modal_save {''')
+    s = once(s, '''!modal && !editing && !field_focused && !composing''',
+        '''!modal && !editing && (!field_focused || just_exited_type) && !composing''')
     # The Java queue and native winit both describe the SAME hardware press.
     # Filter matching native key/Text from the current input frame before
     # re-inserting the Java fallback; do not touch actual IME composition.

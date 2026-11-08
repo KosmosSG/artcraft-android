@@ -134,6 +134,43 @@ mod android_stability_tests {
     }
 
     #[test]
+    fn android_stability_direct_owner_key_bridge_handles_save_cancel_discard() {
+        // This is the same method called by the Android raw input hook,
+        // not a substitute headless helper or a test-only assert.
+        for key in [Key::S, Key::C, Key::D] {
+            let mut app = app();
+            dirty(&mut app);
+            app.run("app.quit", json!({})).unwrap();
+            assert_eq!(app.session.documents().len(), 1);
+            assert!(app.android_owner_unsaved_key(key));
+            match key {
+                Key::S | Key::D => {
+                    assert!(app.session.documents().is_empty());
+                    assert_eq!(app.ui.status, "quit");
+                }
+                Key::C => {
+                    assert_eq!(app.session.documents().len(), 1);
+                    assert!(app.session.active().is_some_and(|d| d.is_dirty()));
+                    assert_ne!(app.ui.status, "quit");
+                }
+                _ => unreachable!(),
+            }
+            assert!(app.ui.dialog.is_none());
+        }
+    }
+
+    #[test]
+    fn android_stability_native_owner_key_bridge_never_drops_failed_save() {
+        let mut app = app();
+        app.services.write = Some(Box::new(|_, _| Err("temporary SAF failure".into())));
+        dirty(&mut app);
+        app.run("app.quit", json!({})).unwrap();
+        assert!(app.android_owner_unsaved_key(Key::S));
+        assert_eq!(app.session.documents().len(), 1);
+        assert!(app.session.active().is_some_and(|d| d.is_dirty()));
+        assert_ne!(app.ui.status, "quit");
+    }
+    #[test]
     fn android_stability_no_modal_no_action() {
         let mut app=app();dirty(&mut app);
         for key in [Key::D,Key::C,Key::S] {press(&mut app,key);}

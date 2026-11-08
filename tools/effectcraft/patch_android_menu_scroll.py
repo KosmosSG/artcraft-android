@@ -13,7 +13,7 @@ HEADER = "crates/ui-egui/src/header.rs"
 VIEWER = "crates/ui-egui/src/panels/viewer.rs"
 
 APP_OLD = "            self.android_route_touch_navigation(ctx, raw_input);"
-APP_NEW = APP_OLD + "\n            crate::widgets::android_route_trackpad_menu_scroll(ctx, raw_input);"
+APP_NEW = APP_OLD + '\n            #[cfg(target_os = "android")]\n            crate::widgets::android_route_trackpad_menu_scroll(ctx, raw_input);'
 WIDGET_START = "    let pending = ui.scope_id().with(\"menu-edge-scroll-offset\");"
 WIDGET_TARGET = "    let mut area = egui::ScrollArea::vertical().max_height(max_h).min_scrolled_height(max_h);"
 WIDGET_SHOW = "    let out = area.show(ui, add);"

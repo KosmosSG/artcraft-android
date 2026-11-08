@@ -42,10 +42,11 @@ jobs:
       EXPECTED_PRODUCTION_VERSION_CODE: '16782086'
 
     steps:
-      - name: Checkout isolated candidate only
+      - name: Checkout verified source tree
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 10
 
       - name: Guard production release source and existing PDFCraft signing identity
         shell: bash
@@ -58,7 +59,10 @@ jobs:
         run: |
           set -euo pipefail
           # This new release branch must begin at the exact device-tested source.
-          test "$(git rev-parse HEAD^)" = "cffe5f935514c5b65e71e8a39482a62a059bf04d"
+          git cat-file -e 'cffe5f935514c5b65e71e8a39482a62a059bf04d^{commit}'
+          git diff --quiet cffe5f935514c5b65e71e8a39482a62a059bf04d HEAD -- . ':(exclude).github/workflows/pdfcraft-v019-android6-original-cert-publish.yml' || {
+            echo "::error::Production source differs from the device-tested PDFCraft source"; exit 1;
+          }
           test -n "$KEYSTORE_BASE64" || { echo "::error::Original PDFCraft signing keystore is missing"; exit 1; }
           test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" && test -n "$KEY_ALIAS" || { echo "::error::Original signing credentials missing"; exit 1; }
           [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::Original certificate reference missing"; exit 1; }

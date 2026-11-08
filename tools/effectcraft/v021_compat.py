@@ -28,7 +28,7 @@ def stage_trial_metadata(builder_root: Path) -> None:
     if source.count(expected_version) != 1:
         raise RuntimeError("STOP: EffectCraft packager version drift")
     source = replace_exact(source, expected_version, expected_version.replace("android.3", "android.15"))
-    source = replace_exact(source, "version_code = 16781315", f"version_code = {TEST_VERSION_CODE}")
+    source = replace_exact(source, "version_code = 16781315", f"version_code = {RELEASE_VERSION_CODE}")
     path.write_text(source, encoding="utf-8")
 
 def stage_trial_branding_metadata(builder_root: Path) -> None:
@@ -44,6 +44,6 @@ def stage_trial_branding_metadata(builder_root: Path) -> None:
     for key, value in expected.items():
         if type(data.get(key)) is not type(value) or data[key] != value:
             raise RuntimeError(f"STOP: approved EffectCraft branding {key} drift")
-    data["version_name"] = ANDROID_TEST_VERSION
-    data["version_code"] = TEST_VERSION_CODE
+    data["version_name"] = ANDROID_RELEASE_VERSION
+    data["version_code"] = RELEASE_VERSION_CODE
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

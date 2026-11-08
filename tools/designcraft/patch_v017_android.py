@@ -192,7 +192,11 @@ def install_icons(root: Path, src: Path, android: Path):
     from PIL import Image
     with Image.open(res_dir / "mipmap-xxxhdpi/ic_launcher.png") as image:
         pixels = image.convert("RGBA").resize((96, 96), Image.Resampling.LANCZOS)
-        (android / "src/dc-launcher-icon.rgba").write_bytes(pixels.tobytes())
+        # Use the very same verified artwork inside the upstream app-bar menu,
+        # so Dc appears beside Home rather than on a duplicate Android panel.
+        rgba = pixels.tobytes()
+        (android / "src/dc-launcher-icon.rgba").write_bytes(rgba)
+        (src / "crates/ui-egui/src/menus/dc-launcher-icon.rgba").write_bytes(rgba)
     dest_dir = android / "res"
     for old in dest_dir.rglob("*"):
         if old.is_file() and old.stem in {"ic_launcher", "ic_launcher_round", "ic_launcher_foreground"}:

@@ -7,3 +7,5 @@ Android.19: selectively port Mostafa's View.GONE and nonfocusable IME host outsi
 Preflight MUST reject any mismatch before costly ARM64 compilation. Separate com.artcraft.vectorcraft.test package; disposable key only. Never publish/tag/merge or touch production signing.
 
 Cheap source-preflight retry #1: all generated overlay anchors applied correctly. Adjusted static regression to check Android.19's modal queue wake instead of helper defined in Android.15. SHA fc1b89e7882d20b570d711958b459bb5ca20ea63. Test-only.
+
+Builder-compatibility retry 2: Mostafa main vendor already defines API-safe native MotionEvent classification() and winit consumes it; previous owner patch needed only on older builder. Idempotent guard verifies latest implementation and skips obsolete overlay. Commit 1fcb66ef01bd107717dc6734881b7bada17618dc; avoid touching production keys.

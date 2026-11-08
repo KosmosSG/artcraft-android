@@ -60,6 +60,86 @@ def apply(local: Path, pinned: Path) -> None:
     # when a pointer is classified as a mouse. The rest of pointer and
     # touch/stylus gesture handling remains unchanged.
     old_motion = old_motion.replace(scroll_anchor, "MotionAction::Scroll => {", 1)
+    # Android 14+ reports trackpad view gestures through axes 50/51/52.
+    # Match before the legacy pointer-move path: two contact gestures should
+    # never become layer selection / canvas mouse drags.
+    move_arm = r"""                    MotionAction::Move if pointer_class && (
+                        motion_event.pointer_count() >= 2
+                        || motion_event.pointers().next().is_some_and(|p| {
+                            p.axis_value(Axis::__Unknown(50)).abs() > 0.001
+                                || p.axis_value(Axis::__Unknown(51)).abs() > 0.001
+                                || {
+                                    let scale = p.axis_value(Axis::__Unknown(52));
+                                    scale > 0.0 && (scale-1.0).abs() > 0.002
+                                }
+                        })
+                    ) => {
+                        let first = motion_event.pointer_at_index(0);
+                        let (mut dx, mut dy, mut scale) = (
+                            first.axis_value(Axis::__Unknown(50)),
+                            -first.axis_value(Axis::__Unknown(51)),
+                            first.axis_value(Axis::__Unknown(52)),
+                        );
+                        // Fallback for trackpads supplying two physical contact
+                        // coordinates instead of the API34 gesture axes.
+                        std::thread_local! {
+                            static EC_PAD_LAST: std::cell::RefCell<Option<(i32, f32, f32, f32)>> =
+                                std::cell::RefCell::new(None);
+                        }
+                        if motion_event.pointer_count() >= 2 {
+                            let second = motion_event.pointer_at_index(1);
+                            let (x, y) = (
+                                (first.x() + second.x()) * 0.5,
+                                (first.y() + second.y()) * 0.5,
+                            );
+                            let dist = ((first.x()-second.x()).powi(2)
+                                + (first.y()-second.y()).powi(2)).sqrt();
+                            let id = motion_event.device_id();
+                            EC_PAD_LAST.with(|last| {
+                                let mut prev = last.borrow_mut();
+                                if let Some((previous_id, px, py, pd)) = *prev {
+                                    if id == previous_id {
+                                        if dx.abs() < 0.001 { dx = x-px; }
+                                        if dy.abs() < 0.001 { dy = y-py; }
+                                        if scale <= 0.0 && pd > 8.0 && dist > 8.0 {
+                                            scale = dist/pd;
+                                        }
+                                    }
+                                }
+                                *prev = Some((id, x, y, dist));
+                            });
+                        } else {
+                            EC_PAD_LAST.with(|last| *last.borrow_mut() = None);
+                        }
+                        if dx.is_finite() && dy.is_finite() && dx.abs()+dy.abs()>0.02 {
+                            callback(event::Event::WindowEvent {
+                                window_id, event: event::WindowEvent::MouseWheel {
+                                    device_id, delta: event::MouseScrollDelta::PixelDelta(
+                                        PhysicalPosition { x: dx as f64, y: dy as f64 }),
+                                    phase: event::TouchPhase::Moved,
+                                },
+                            }, self.window_target());
+                        }
+                        if scale.is_finite() && (scale-1.0).abs()>0.002
+                            && (0.25..4.0).contains(&scale) {
+                            callback(event::Event::WindowEvent {
+                                window_id, event: event::WindowEvent::PinchGesture {
+                                    device_id, delta: (scale-1.0) as f64,
+                                    phase: event::TouchPhase::Moved,
+                                },
+                            }, self.window_target());
+                        }
+                    },
+                    MotionAction::PointerDown | MotionAction::PointerUp
+                        if pointer_class && motion_event.pointer_count() >= 2 => {},
+"""
+    old_motion = old_motion.replace(
+        "MotionAction::Scroll => {",
+        move_arm.lstrip() + "                    MotionAction::Scroll => {", 1,
+    )
+    if old_motion.count("EC_PAD_LAST") < 2:
+        raise RuntimeError("STOP: touchpad pan/pinch branch failed")
+
     upstream_motion = upstream[new_start:new_end]
     if "pointer_class" not in old_motion or "MouseWheel" not in old_motion or "MouseInput" not in old_motion:
         raise RuntimeError("STOP: local mouse/scroll/right-click features missing")

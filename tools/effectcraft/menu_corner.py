@@ -12,11 +12,14 @@ REPLACEMENT = '''    #[cfg(target_os = "android")]
         let _ = egui::Popup::menu(&bresp)
             .style(crate::widgets::menu_style)
             .show(|ui| {
-                ui.set_min_width(250.0);
+                // Compact Ec popup: don't expand to the tablet's available width.
+                ui.set_width(268.0);
+                ui.set_min_width(252.0);
+                ui.set_max_width(278.0);
                 egui::ScrollArea::vertical()
                     .id_salt("effectcraft.android.ec_menu_scroll")
-                    .max_height(250.0)
-                    .auto_shrink([false, true])
+                    .max_height(236.0)
+                    .auto_shrink([true, true])
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new("Fonts").strong());
                         for (title, key) in [

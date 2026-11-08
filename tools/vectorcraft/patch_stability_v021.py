@@ -38,6 +38,9 @@ fi
     # Diagnostics-only candidate: no additional keyboard or lifecycle changes.
     from patch_android14_diagnostic_session import patch as diagnostic_session14
     diagnostic_session14(root)
+    # Isolated modal keyboard correction; no canvas/font/scroll changes.
+    from patch_android15_modal_keys import patch as modal_keys15
+    modal_keys15(root)
 
 
 def patch_adapter(root):

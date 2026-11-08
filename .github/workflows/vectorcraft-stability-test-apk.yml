@@ -122,15 +122,8 @@ jobs:
               run=target/"menus/run.rs"
               original='pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<Result<Value, String>> {\n'
               source=run.read_text()
-              source=insert_once(source, original, original+'''    #[cfg(target_os = "android")]
-    {
-        let bit = match id {
-            "android.vectorcraft.diagnostics" => 64,
-            _ => 0,
-        };
-        if bit != 0 { return Some(Ok(Value::Null)); }
-    }
-''', "Android run command dry-run")
+              synthetic = '    #[cfg(target_os = "android")]\n    {\n        let bit = match id {\n            "android.vectorcraft.diagnostics" => 64,\n            _ => 0,\n        };\n        if bit != 0 { return Some(Ok(Value::Null)); }\n    }\n'
+              source=insert_once(source, original, original+synthetic, "Android run command dry-run")
               run.write_text(source)
               keyboard_diag(root)
               keyboard12(root)

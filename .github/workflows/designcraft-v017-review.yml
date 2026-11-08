@@ -102,11 +102,11 @@ jobs:
       - name: Verify disposable signature, ARM64 library and distinct test package
         run: |
           set -euo pipefail
-          APK="$(find output -maxdepth 1 -type f -name 'designcraft-0.17.2-android.4-debug.apk' -print -quit)"
+          APK="$(find output -maxdepth 1 -type f -name 'designcraft-0.17.2-android.5-debug.apk' -print -quit)"
           test -n "$APK" && test -s "$APK" || { echo "Expected test APK missing"; exit 1; }
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
           echo "$BADGING" | grep -q "name='com.artcraft.designcraft.test'"
-          echo "$BADGING" | grep -q "versionName='0.17.2-android.4'"
+          echo "$BADGING" | grep -q "versionName='0.17.2-android.5'"
           python3 - "$APK" <<'PYAPK'
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as archive:
@@ -124,7 +124,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: UNVERIFIED-DesignCraft-v0.17.2-android.4-published-baseline-ARM64-DEBUG
+          name: UNVERIFIED-DesignCraft-v0.17.2-android.5-published-baseline-ARM64-DEBUG
           path: output/designcraft-*-debug.apk
           retention-days: 3
           if-no-files-found: error

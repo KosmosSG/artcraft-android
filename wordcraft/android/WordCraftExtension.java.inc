@@ -657,6 +657,72 @@
     private float wcScrollY;
     private float wcScrollPointerX;
     private float wcScrollPointerY;
+    // WC_ANDROID9_PINCH_TRACKPAD_GUARD_V1: prevent trackpad gesture drags.
+    private volatile long wcTrackpadNavUntilMs;
+    private boolean wcTrackpadPairConsuming, wcTrackpadPairActive;
+    private float wcTrackpadLastX, wcTrackpadLastY;
+    private void wcMarkTrackpadNavigation() {
+        wcTrackpadNavUntilMs = android.os.SystemClock.uptimeMillis() + 180L;
+    }
+    public boolean wcTrackpadNavigationActive() {
+        return android.os.SystemClock.uptimeMillis() < wcTrackpadNavUntilMs;
+    }
+    // MagicOS may send dual-contact touchpad input instead of ACTION_SCROLL.
+    // Cancel the original editor pointer and swallow all remaining pair events.
+    private boolean wcDispatchTrackpadFingers(android.view.MotionEvent event) {
+        if (event == null || wcHasStylus(event)
+                || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHPAD)) return false;
+        int action = event.getActionMasked();
+        boolean start = !wcTrackpadPairConsuming && event.getPointerCount() >= 2
+                && (action == android.view.MotionEvent.ACTION_POINTER_DOWN
+                    || action == android.view.MotionEvent.ACTION_MOVE);
+        if (start) {
+            wcTrackpadPairConsuming = true;
+            wcTrackpadPairActive = false;
+            wcMarkTrackpadNavigation();
+            android.view.MotionEvent cancel = android.view.MotionEvent.obtain(event);
+            try {
+                cancel.setAction(android.view.MotionEvent.ACTION_CANCEL);
+                super.dispatchTouchEvent(cancel);
+            } finally { cancel.recycle(); }
+        }
+        if (!wcTrackpadPairConsuming) return false;
+        wcMarkTrackpadNavigation();
+        if (event.getPointerCount() >= 2 && action == android.view.MotionEvent.ACTION_MOVE) {
+            int history = event.getHistorySize();
+            for (int i = Math.max(0, history - 64); i <= history; i++) {
+                boolean current = i == history;
+                float x = (current ? event.getX(0) + event.getX(1)
+                        : event.getHistoricalX(0, i) + event.getHistoricalX(1, i)) * .5f;
+                float y = (current ? event.getY(0) + event.getY(1)
+                        : event.getHistoricalY(0, i) + event.getHistoricalY(1, i)) * .5f;
+                if (wcTrackpadPairActive) {
+                    float dx = x - wcTrackpadLastX, dy = y - wcTrackpadLastY;
+                    if (Float.isFinite(dx) && Float.isFinite(dy)
+                            && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
+                        synchronized (wcScrollLock) {
+                            wcScrollX += dx;
+                            wcScrollY += dy;
+                        }
+                    }
+                }
+                wcTrackpadLastX = x; wcTrackpadLastY = y;
+                wcTrackpadPairActive = true;
+            }
+        } else if (action == android.view.MotionEvent.ACTION_POINTER_DOWN
+                && event.getPointerCount() >= 2) {
+            wcTrackpadLastX = (event.getX(0) + event.getX(1)) * .5f;
+            wcTrackpadLastY = (event.getY(0) + event.getY(1)) * .5f;
+            wcTrackpadPairActive = true;
+        }
+        if (action == android.view.MotionEvent.ACTION_POINTER_UP) wcTrackpadPairActive = false;
+        if (action == android.view.MotionEvent.ACTION_UP
+                || action == android.view.MotionEvent.ACTION_CANCEL) {
+            wcTrackpadPairConsuming = false;
+            wcTrackpadPairActive = false;
+        }
+        return true;
+    }
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) wcRecordStylus(event);
@@ -676,6 +742,7 @@
                     float dx = horizontal * config.getScaledHorizontalScrollFactor();
                     float dy = vertical * config.getScaledVerticalScrollFactor();
                     if (Float.isFinite(dx) && Float.isFinite(dy)) {
+                        wcMarkTrackpadNavigation();
                         synchronized (wcScrollLock) {
                             wcScrollX += dx;
                             wcScrollY += dy;
@@ -739,7 +806,9 @@
         }
     }
 
-    public boolean wcTouchNavigationCancellingInk() { return wcTouchNavSuppressInk; }
+    public boolean wcTouchNavigationCancellingInk() {
+        return wcTouchNavSuppressInk || wcTrackpadNavigationActive();
+    }
 
     private boolean wcTouchOnCanvas(float x, float y) {
         return Float.isFinite(x) && Float.isFinite(y)
@@ -752,12 +821,17 @@
         if (wcTouchPairActive) {
             float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
             float spanChange = span - wcTouchStartSpan;
-            if (wcTouchMode == 0) {
-                if (Math.abs(spanChange) > Math.max(8f, wcTouchStartSpan * .03f))
-                    wcTouchMode = 2;
-                else if (Math.hypot(x - wcTouchStartX, y - wcTouchStartY) > 4f
-                        && Math.abs(spanChange) < Math.max(8f, wcTouchStartSpan * .03f))
-                    wcTouchMode = 1;
+            // Recognize pinch early, even after a gesture was classified pan.
+            float distanceChange = Math.abs(spanChange);
+            float centerTravel = (float) Math.hypot(x - wcTouchStartX, y - wcTouchStartY);
+            float threshold = Math.max(3f, wcTouchStartSpan * .012f);
+            if (wcTouchMode != 2 && distanceChange > threshold
+                    && distanceChange > centerTravel * .55f) {
+                wcTouchMode = 2;
+                wcTouchPanX = wcTouchPanY = 0f;
+            } else if (wcTouchMode == 0 && centerTravel > 4f
+                    && distanceChange < Math.max(8f, wcTouchStartSpan * .03f)) {
+                wcTouchMode = 1;
             }
             if (wcTouchMode == 2 && wcTouchLastSpan > 0f) {
                 float ratio = span / wcTouchLastSpan;
@@ -800,6 +874,7 @@
                 }
             }
         }
+        if (wcDispatchTrackpadFingers(event)) return true;
         if (wcRejectPalm(event)) return true;
         if (event == null || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)
                 || wcHasStylus(event)) return super.dispatchTouchEvent(event);

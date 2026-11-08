@@ -177,6 +177,66 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # Reuse only an official, SHA-256 verified Gradle ZIP; avoid another
+      # 20-minute Rust compile ending in a Gradle download HTTP 504.
+      - name: Restore Gradle 8.11.1 distribution cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vectorcraft-gradle/gradle-8.11.1-bin.zip
+          key: vectorcraft-gradle-8.11.1-bin-f397b287-v1
+      - name: Prefetch and verify Gradle 8.11.1 before ARM64 compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_SHA="f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
+          CACHE="$HOME/.cache/vectorcraft-gradle"
+          ZIP="$CACHE/gradle-8.11.1-bin.zip"
+          mkdir -p "$CACHE"
+          if ! (test -s "$ZIP" && echo "$GRADLE_SHA  $ZIP" | sha256sum --check --status); then
+            rm -f "$ZIP" "$ZIP.part"
+            ok=0
+            for source in \
+              "https://downloads.gradle.org/distributions/gradle-8.11.1-bin.zip" \
+              "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"; do
+              for attempt in 1 2 3; do
+                echo "Gradle 8.11.1 fetch attempt $attempt: $source"
+                if curl --fail --location --silent --show-error \
+                    --retry 2 --retry-all-errors --retry-delay 3 \
+                    --connect-timeout 20 --max-time 300 \
+                    --output "$ZIP.part" "$source" \
+                    && echo "$GRADLE_SHA  $ZIP.part" | sha256sum --check --status; then
+                  mv "$ZIP.part" "$ZIP"
+                  ok=1
+                  break 2
+                fi
+                rm -f "$ZIP.part"
+              done
+            done
+            if [[ "$ok" -ne 1 ]]; then
+              echo "::error::Pinned Gradle ZIP unavailable/mismatched; aborting before expensive Rust compilation"
+              exit 1
+            fi
+          fi
+          echo "$GRADLE_SHA  $ZIP" | sha256sum --check
+          # Pinned builder copies templates/gradle to the generated launcher.
+          # Modify only this disposable checkout; no permanent release changes.
+          python3 - "$ZIP" "$GRADLE_SHA" <<'PY'
+          from pathlib import Path
+          import sys
+          zip_path=Path(sys.argv[1]).resolve()
+          expected=sys.argv[2]
+          props=Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          original=props.read_text()
+          remote=r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+          assert original.count(remote)==1, "Unreviewed Gradle wrapper template; refuse modification"
+          uri=zip_path.as_uri().replace(":",r"\:")
+          updated=original.replace(remote,"distributionUrl="+uri)
+          assert "distributionSha256Sum=" not in updated
+          updated+="distributionSha256Sum="+expected+"\n"
+          props.write_text(updated)
+          assert "distributionUrl=file\:///" in updated
+          print("PASS: official SHA-256 Gradle 8.11.1 ZIP; local wrapper URL; no late remote download")
+          PY
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android

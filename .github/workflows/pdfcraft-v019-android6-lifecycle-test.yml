@@ -5,7 +5,7 @@ on:
     branches:
       - feature/pdfcraft-v0190-android6-lifecycle-diagnostics-20261108
     paths:
-      - .github/workflows/pdfcraft-v019-android5-native-destroy-test.yml
+      - .github/workflows/pdfcraft-v019-android6-lifecycle-test.yml
       - lib/build-common.sh
       - assets/pdfcraft/**
       - templates/android/pdfcraft_modifiers.rs

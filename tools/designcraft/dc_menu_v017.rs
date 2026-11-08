@@ -1,5 +1,5 @@
 // DesignCraft-only Android Dc menu, injected into the pinned upstream app bar.
-// Keep it beside Home. The native wrapper consumes the action bits next frame.
+// Keep it before Home, matching the GridCraft Gc launcher order. The native wrapper consumes the action bits next frame.
 // Never copy this UI into the released DesignCraft or other applications.
 #[cfg(target_os = "android")]
 static DC_MENU_ACTIONS: std::sync::atomic::AtomicU16 =
@@ -11,7 +11,7 @@ pub fn take_dc_menu_actions() -> u16 {
 }
 
 #[cfg(target_os = "android")]
-fn dc_launcher_menu(app: &mut DesignApp, ui: &mut egui::Ui) {
+pub(crate) fn dc_launcher_menu(app: &mut DesignApp, ui: &mut egui::Ui) {
     let id = egui::Id::new("designcraft.dc.menu.texture");
     let texture = ui.ctx().data(|data| data.get_temp::<egui::TextureHandle>(id))
         .unwrap_or_else(|| {
@@ -23,25 +23,33 @@ fn dc_launcher_menu(app: &mut DesignApp, ui: &mut egui::Ui) {
             handle
         });
     let image = egui::Image::from_texture((texture.id(), egui::vec2(22.0, 22.0)));
-    let button = egui::Button::image_and_text(image, "▾").min_size(egui::vec2(36.0, 26.0));
+    let button = egui::Button::image(image).frame(false).min_size(egui::vec2(26.0, 26.0));
     egui::containers::menu::MenuButton::from_button(button).ui(ui, |ui| {
-        ui.set_min_width(200.0);
+        // Compact, left-aligned top-level actions as in GridCraft's Gc menu.
+        ui.set_min_width(270.0);
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-            ui.menu_button("Fonts", |ui| {
-                for (label, bit) in [
-                    ("Import Fonts (TTF/OTF/TTC)…", 1_u16),
-                    ("Select Shared Font Folder…", 2_u16),
-                    ("Refresh Shared Fonts", 4_u16),
-                    ("Reload Font Catalog", 8_u16),
-                ] {
-                    if ui.button(label).clicked() {
-                        DC_MENU_ACTIONS.fetch_or(bit, std::sync::atomic::Ordering::Relaxed);
-                        ui.ctx().request_repaint();
-                        ui.close();
-                    }
+            for (label, bit) in [
+                ("Import Fonts (TTF / OTF / TTC)…", 1_u16),
+                ("Choose Shared Font Folder…", 2_u16),
+                ("Refresh Shared Fonts", 4_u16),
+            ] {
+                if ui.button(label).clicked() {
+                    DC_MENU_ACTIONS.fetch_or(bit, std::sync::atomic::Ordering::Relaxed);
+                    ui.ctx().request_repaint();
+                    ui.close();
                 }
+            }
+            ui.menu_button("Font Catalog & Diagnostics", |ui| {
+                if ui.button("Reload Font Catalog").clicked() {
+                    DC_MENU_ACTIONS.fetch_or(8, std::sync::atomic::Ordering::Relaxed);
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
+                ui.label("Recursive shared font discovery");
+                ui.label("Up to 5,000 files / 4 GiB per scan");
             });
-            ui.menu_button("Updates", |ui| {
+            ui.separator();
+            ui.menu_button("App Updates", |ui| {
                 for (label, bit) in [
                     ("Check Updates", 16_u16),
                     ("Startup Update Check…", 32_u16),
@@ -53,6 +61,7 @@ fn dc_launcher_menu(app: &mut DesignApp, ui: &mut egui::Ui) {
                     }
                 }
             });
+            ui.separator();
             ui.menu_button("Appearance", |ui| {
                 for (label, code) in [
                     ("Dark", "dark"),
@@ -67,17 +76,23 @@ fn dc_launcher_menu(app: &mut DesignApp, ui: &mut egui::Ui) {
                     }
                 }
             });
-            ui.separator();
-            ui.menu_button("Android Tools", |ui| {
-                ui.label("Keyboard: V/T/H/Z/A/P/N/F/M/B");
-                ui.label("Ctrl+W → Don't Save (D) / Save (S) / Cancel (C)");
-                ui.label("Esc exits document typing");
+            ui.menu_button("DesignCraft Shortcuts", |ui| {
+                if ui.button("Keyboard Shortcuts…").clicked() {
+                    let _ = app.run("app.keyboardShortcuts", serde_json::json!({}));
+                    ui.close();
+                }
+                ui.separator();
+                ui.label("V / T / H / Z / A / P / N / F / M / B");
+                ui.label("Ctrl+W → D / S / C");
+                ui.label("Esc exits text editing");
             });
             ui.separator();
-            if ui.button("About DesignCraft").clicked() {
-                let _ = app.run("help.about", serde_json::json!({}));
-                ui.close();
-            }
+            ui.menu_button("About DesignCraft", |ui| {
+                if ui.button("About DesignCraft…").clicked() {
+                    let _ = app.run("help.about", serde_json::json!({}));
+                    ui.close();
+                }
+            });
         });
     });
 }

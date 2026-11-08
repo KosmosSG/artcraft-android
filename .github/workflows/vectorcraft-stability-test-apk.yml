@@ -108,6 +108,30 @@ jobs:
               assert menu_source.count(original_line) == 1
               dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
               smooth_scroll(root)
+              # Earlier full-build Android menu integration supplies these
+              # two anchors to the keyboard diagnostic overlay. Mirror that
+              # exact source transformation in this cheap dry-run.
+              from patch_android_menus_v020 import add_vc_menu, insert_once
+              tree=target/"menus/tree.rs"
+              tree_src=add_vc_menu(tree.read_text())
+              tree_src=insert_once(tree_src,
+                  '            "Help",\n            vec![\n                c("Join Our Discord", "help.discord"),',
+                  '            "Help",\n            vec![\n                #[cfg(target_os = "android")]\n                c("Graphics Diagnostics…", "android.vectorcraft.diagnostics"),\n                #[cfg(target_os = "android")]\n                Sep,\n                c("Join Our Discord", "help.discord"),',
+                  "Help diagnostics dry-run")
+              tree.write_text(tree_src)
+              run=target/"menus/run.rs"
+              original='pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<Result<Value, String>> {\n'
+              source=run.read_text()
+              source=insert_once(source, original, original+'''    #[cfg(target_os = "android")]
+    {
+        let bit = match id {
+            "android.vectorcraft.diagnostics" => 64,
+            _ => 0,
+        };
+        if bit != 0 { return Some(Ok(Value::Null)); }
+    }
+''', "Android run command dry-run")
+              run.write_text(source)
               keyboard_diag(root)
               keyboard12(root)
               startup12(root)

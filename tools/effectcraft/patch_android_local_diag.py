@@ -75,38 +75,28 @@ JAVA_ON_RESULT = "        super.onActivityResult(requestCode, resultCode, data);
 JAVA_CLASS = "public final class __CLASS__ extends NativeActivity {"
 
 JAVA_METHODS = r'''
-    // Android.11 temporary diagnostic-only export. The button does NOT change
+    // Android.11 temporary diagnostic-only export. The export command does NOT change
     // input forwarding or the application's existing save/open/IME callbacks.
     private static final int EC11_EXPORT_REQ = 0xEC11;
     private static final String EC11_DIAG_NAME = "effectcraft-motion-diag.txt";
 
-    private void ec11SetupExportButton() {
-        final android.widget.Button button = new android.widget.Button(this);
-        button.setText("Export gesture log");
-        button.setAllCaps(false);
-        button.setTextSize(11f);
-        button.setAlpha(0.88f);
-        button.setOnClickListener(view -> {
+    // Called from the Ec menu through the existing JNI Updater.
+    // No floating overlay: NativeActivity surfaces may cover addContentView.
+    public void ec11RequestExport() {
+        runOnUiThread(() -> {
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("text/plain");
-            intent.putExtra(Intent.EXTRA_TITLE, "EffectCraft-Android11-gestures.txt");
+            intent.putExtra(Intent.EXTRA_TITLE, "EffectCraft-Android12-gestures.txt");
             try {
                 startActivityForResult(intent, EC11_EXPORT_REQ);
             } catch (Exception error) {
                 android.widget.Toast.makeText(
-                    this, "Cannot open export picker: " + error, android.widget.Toast.LENGTH_LONG
+                    this, "Cannot open export picker: " + error,
+                    android.widget.Toast.LENGTH_LONG
                 ).show();
             }
         });
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            (int) (150f * getResources().getDisplayMetrics().density),
-            (int) (40f * getResources().getDisplayMetrics().density),
-            Gravity.BOTTOM | Gravity.RIGHT
-        );
-        params.bottomMargin = (int) (55f * getResources().getDisplayMetrics().density);
-        params.rightMargin = (int) (9f * getResources().getDisplayMetrics().density);
-        addContentView(button, params);
     }
 
     private void ec11ExportResult(int resultCode, Intent data) {
@@ -171,7 +161,6 @@ def apply_java(root: Path):
     once(s, JAVA_ON_CREATE, "activity init")
     once(s, JAVA_ON_RESULT, "SAF result dispatch")
     s = s.replace(JAVA_CLASS, JAVA_CLASS + "\n" + JAVA_METHODS, 1)
-    s = s.replace(JAVA_ON_CREATE, JAVA_ON_CREATE + "\n        ec11SetupExportButton();", 1)
     s = s.replace(JAVA_ON_RESULT, JAVA_ON_RESULT + """
         if (requestCode == EC11_EXPORT_REQ) {
             ec11ExportResult(resultCode, data);

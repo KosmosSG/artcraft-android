@@ -2,18 +2,20 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from patch_android_gestures import apply, APP_ANCHOR, VIEW_ANCHOR, MARKER
+from patch_android_gestures import apply, APP_ANCHOR, VIEW_ANCHOR, PANELS_ANCHOR, MARKER
 
 class TouchNavigationTests(unittest.TestCase):
     def fixture(self, root: Path):
         a = root / "crates/ui-egui/src/app.rs"
         b = root / "crates/ui-egui/src/app/input.rs"
         c = root / "crates/ui-egui/src/panels/viewer.rs"
-        for path in (a, b, c):
+        d = root / "crates/ui-egui/src/panels.rs"
+        for path in (a, b, c, d):
             path.parent.mkdir(parents=True, exist_ok=True)
         a.write_text("test\\n" + APP_ANCHOR + "\\n")
         b.write_text("pub fn feed_synthetic(&self) {}")
         c.write_text("viewer\\n" + VIEW_ANCHOR + "\\n")
+        d.write_text(PANELS_ANCHOR)
         return a, b, c
 
     def test_view_only_touch_and_no_selection(self):
@@ -30,6 +32,7 @@ class TouchNavigationTests(unittest.TestCase):
             self.assertIn("egui::Event::Zoom(scale)", content)
             self.assertIn("self.android_route_touch_navigation(ctx, raw_input)", a.read_text())
             self.assertIn("effectcraft.android.viewer.area", c.read_text())
+            self.assertIn("egui::MouseWheelUnit::Point", (root / "crates/ui-egui/src/panels.rs").read_text())
             with self.assertRaisesRegex(RuntimeError, "already applied"):
                 apply(root)
 

@@ -20,10 +20,15 @@ def patch(root: Path) -> None:
     # callbacks, and a hardware ESC was required to see other UI changes.
     # Keep the platform Android 12 splash, but let Android dismiss it with the
     # first window content frame, never gate on the broken PixelCopy probe.
-    s = once(s, '''        splash.setKeepOnScreenCondition(() -> !nativeEditorReady);''',
+    s = once(s, '''        // The Android system splash stays only until our branded cover exists.
+        // Waiting for PixelCopy here would deadlock native pre-draw.
+        final long coverDeadlineMs = android.os.SystemClock.uptimeMillis() + 3000L;
+        splash.setKeepOnScreenCondition(() -> startupCover == null
+            && android.os.SystemClock.uptimeMillis() < coverDeadlineMs);
+        startupStage("activity_created");''',
         '''        // Reference VectorCraft: platform splash follows the native first draw.
-        // Never park the entire UI behind an unverified custom overlay.
-        // No custom keep-on-screen condition: Android owns splash timing.''')
+        // Never park the UI behind an unverified custom overlay.
+        startupStage("activity_created");''')
     s = once(s, '''        showStartupCover();
         applyImmersiveFullscreen();''',
         '''        // The custom cover was never dismissed on HONOR MagicOS.
@@ -34,6 +39,7 @@ def patch(root: Path) -> None:
     s = once(s, '''        // JNI is a signal to START checking; it is not presentation proof.
         runOnUiThread(() -> {
             if (firstFrameProbeStartMs == 0) firstFrameProbeStartMs = System.currentTimeMillis();
+            startupStage("editor_traversal_ready");
             probeFirstPresentedFrame();
         });''',
         '''        // The native editor is not gated by a PixelCopy-only watchdog.

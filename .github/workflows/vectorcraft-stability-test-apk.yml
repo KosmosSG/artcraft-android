@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.18 MODAL GESTURES TEST ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.19 UPDATED BUILDER INPUT TEST ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -25,9 +25,9 @@ jobs:
     timeout-minutes: 180
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
-      BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.21.0-android.18
-      VERSION_CODE: '16783378'
+      BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
+      VERSION_NAME: 0.21.0-android.19
+      VERSION_CODE: '16783379'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: MostafaXS1/artcraft-android
-          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          ref: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
           path: builder
           persist-credentials: false
       - name: Check out official VectorCraft v0.21.0
@@ -68,7 +68,7 @@ jobs:
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
-          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py android-port/tools/vectorcraft/patch_android19_reference_ime.py
           # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
           # This keeps stale Java/Rust source anchors from burning build minutes.
           python3 - <<'PY'
@@ -87,6 +87,7 @@ jobs:
           from patch_android16_modal_frame import patch as modal16
           from patch_android17_reference_adoption import patch as reference17
           from patch_android18_modal_and_gestures import patch as android18
+          from patch_android19_reference_ime import patch as android19
           from patch_smooth_menu_scroll_v021 import patch as smooth_scroll
           owner=Path("android-port/adapters/vectorcraft")
           upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
@@ -140,6 +141,7 @@ jobs:
               modal16(root)
               reference17(root)
               android18(root)
+              android19(root)
               rust=(dst/"src/lib.rs").read_text()
               java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
               shortcuts=(target/"shortcuts.rs").read_text()
@@ -187,11 +189,19 @@ jobs:
               assert "touch_center.is_some()" in (target/"canvas/input.rs").read_text()
               assert '(31, 1) => Some(egui::Key::C)' in rust
               assert "KeyEvent.KEYCODE_A && key <= KeyEvent.KEYCODE_Z" in java
-              assert 'splash.setKeepOnScreenCondition(() -> !nativeEditorReady);' in java
+              assert 'splash.setKeepOnScreenCondition(() -> !nativeEditorReady' in java
               assert '        showStartupCover();' not in java
               assert "incoming_nonempty = incoming.ctrl" in (dst/"src/android_modifiers.rs").read_text()
               assert "vcDiagNativeWakes" in java
-          print("PASS: Android.18 modal focus, native splash, tool-letter and pinch-pan overlays before SDK/NDK")
+              assert "imeView.setVisibility(View.GONE);" in java
+              assert "view.setVisibility(View.VISIBLE);" in java
+              assert "view.setVisibility(View.GONE);" in java
+              assert "view.setFocusable(false);" in java
+              assert "vcProbeWindowFrame" in java
+              assert "PixelCopy.request(source, bitmap" in java
+              assert "native_window_painted" in java
+              assert "vcWakeNativeLoop();" in java
+          print("PASS: Android.19 latest reference builder and hidden IME lifecycle before SDK/NDK")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
@@ -445,7 +455,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.18-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.19-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

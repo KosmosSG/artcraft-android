@@ -23,9 +23,9 @@ class Android15ModalGuards(unittest.TestCase):
 
     def test_scoped_keys_do_not_break_typing_or_cancel(self):
         s=(TOOLS/"patch_android15_modal_keys.py").read_text()
-        self.assertIn("key == KeyEvent.KEYCODE_C",s)
+        self.assertIn("keyCode == KeyEvent.KEYCODE_C",s)
         self.assertIn("egui::Key::C",s)
-        self.assertIn('self.inner.ui.dialog.as_ref().is_some_and(|d| d.kind == "saveChanges")',s)
+        self.assertIn('self.inner.ui.dialog.as_ref().is_some_and(|d| d.kind == "saveChanges")', (TOOLS/"patch_android13_recovery.py").read_text())
         self.assertIn('vcLastModalKeyDownTime',s)
         self.assertNotIn("finishAndRemoveTask()",s)
         self.assertNotIn('findNativeSurface(',s)

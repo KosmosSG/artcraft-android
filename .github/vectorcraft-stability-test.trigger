@@ -1,3 +1,4 @@
-VectorCraft v0.21.0-android.14 DIAGNOSTICS ONLY — protected ARM64 disposable APK RETRY.
-Verified prior run 42466318448: Rust and behavioral gates PASS, Gradle wrapper ZIP download returned HTTP 504 AFTER Rust compile. Fix source commit ba6189b3afdc2832b1ac16fb8328b78ea54a1088.
-Prefetch and validate official Gradle 8.11.1 SHA256 before Rust, cache downloaded ZIP, rewrite generated-only builder template to local pinned distribution, retry direct official CDN. No secrets and no permanent signing, merging or publishing. Preserve stable VectorCraft and other apps. Build separate package com.artcraft.vectorcraft.test.
+VectorCraft v0.21.0-android.15 MODAL S/D ARM64 DISPOSABLE TEST ONLY.
+Branch investigation/vectorcraft-android10-20261105. Fix source 2c0e2096d068927cd62ac70e431853465584be87.
+Device: HONOR MagicPad 4; C Cancel PASS, D Don't Save keyboard FAIL, S Save keyboard FAIL, Don't Save touchscreen PASS in android.14; diagnosis indicates modal appears and bridge switches mode2 but physical shortcuts might be swallowed by IME/egui.
+Use modal-only Java Activity/EditText/InputConnection fallback + egui raw Text fallback to the SAME upstream dialog callbacks; status event with action/result, no typed text, no paths. Keep other features stable and unmodified. Test package com.artcraft.vectorcraft.test, ARM64, temporary/disposable signing only. Preflight Python+generated Java/Rust tests and Gradle SHA ZIP prefetch. NEVER permanent sign, merge, release or modify original application keys.

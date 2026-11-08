@@ -173,29 +173,9 @@ fn artcraft_android_menu(ui: &mut Ui) {
                 ui.close();
             }
         });
-        ui.menu_button("Stylus & Handwriting", |ui| {
-            ui.set_min_width(280.0);
-            let stylus = ui.ctx().data(|d|
-                d.get_temp::<String>(egui::Id::new("wc_menu_stylus_status"))
-            ).unwrap_or_else(|| "Stylus: Checking Android input…".to_owned());
-            ui.small(stylus);
-            ui.separator();
-            ui.small("Use the Draw tab for pen, pencil, eraser and ink.");
-            ui.small("Handwriting-to-editable-text: In development.");
-            let mut pressure_on = ui.ctx().data(|d|
-                d.get_temp::<bool>(egui::Id::new("wc_stylus.pressure_enabled"))
-            ).unwrap_or(false);
-            if ui.checkbox(&mut pressure_on, "Pressure-responsive stroke width").changed() {
-                ui.ctx().data_mut(|d| d.insert_temp(
-                    egui::Id::new("wc_menu_action"),
-                    if pressure_on { "pressure_on" } else { "pressure_off" }.to_owned()
-                ));
-                ui.ctx().request_repaint();
-            }
-            ui.small("Pen and pencil: softer touch = thinner; harder press = thicker.");
-            ui.small("Experimental: save, reopen and undo tests recommended.");
-        });
-        ui.separator();
+        // WC_ANDROID10_COMPACT_MENU_V1: pen pressure is on by default.
+        // Stylus/hover/ink support remains available via the Draw tab, but
+        // the large diagnostic Stylus & Handwriting submenu is removed.
         ui.menu_button("About WordCraft", |ui| {
             ui.set_min_width(300.0);
             let installed = ui.ctx().data(|d|

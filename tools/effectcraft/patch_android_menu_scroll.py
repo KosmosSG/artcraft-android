@@ -28,7 +28,26 @@ HEADER_END = '''                        if ui.button("About EffectCraft").clicke
                         }
                     });'''
 HOVER_OLD = "    let hover_pos = resp.hover_pos().or_else(|| if resp.contains_pointer() { ui.input(|i| i.pointer.hover_pos()) } else { None });"
-HOVER_NEW = "    let hover_pos = resp.hover_pos().or_else(|| if resp.contains_pointer() {\n        ui.input(|i| i.pointer.hover_pos())\n    } else { None })\n    // Some MagicOS two-finger gestures cancel the underlying mouse pointer.\n    // Use the real touchscreen centroid to apply viewer-only pan, not egui hover.\n    .or_else(|| {\n        #[cfg(target_os = \"android\")]\n        {\n            let navigating = ctx.data(|d| d.get_temp::<bool>(\n                egui::Id::new(\"effectcraft.android.touch.navigation.active\")\n            )).unwrap_or(false);\n            if navigating { ctx.data(|d| d.get_temp::<egui::Pos2>(\n                egui::Id::new(\"effectcraft.android.touch.navigation.center\")\n            )) } else { None }\n        }\n        #[cfg(not(target_os = \"android\"))]\n        { None }\n    });"
+HOVER_NEW = '''    // Android two-touch navigation must use the REAL finger centroid first,
+    // not a stale hover position left by MagicOS's synthetic mouse pointer.
+    #[cfg(target_os = "android")]
+    let ec_touch_center: Option<egui::Pos2> = {
+        let navigating: bool = ctx.data(|d| d.get_temp(
+            egui::Id::new("effectcraft.android.touch.navigation.active")
+        )).unwrap_or(false);
+        if navigating {
+            ctx.data(|d| d.get_temp(egui::Id::new(
+                "effectcraft.android.touch.navigation.center"
+            )))
+        } else { None }
+    };
+    #[cfg(not(target_os = "android"))]
+    let ec_touch_center: Option<egui::Pos2> = None;
+    let hover_pos = ec_touch_center
+        .or_else(|| resp.hover_pos())
+        .or_else(|| if resp.contains_pointer() {
+            ui.input(|i| i.pointer.hover_pos())
+        } else { None });'''
 VIEWER_OLD = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
     phase_press(app, ui, &ectx, &resp, &mut v);
     phase_dragstart(app, ui, &ectx, &resp, &mut v);

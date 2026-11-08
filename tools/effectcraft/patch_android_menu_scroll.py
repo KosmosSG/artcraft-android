@@ -61,9 +61,16 @@ VIEWER_NEW = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
     // RawInput pointer filtering alone is not sufficient on MagicOS:
     // egui can retain a press/drag from the first finger between passes.
     #[cfg(target_os = "android")]
-    let ec_navigating: bool = ctx.data(|d| d.get_temp(
+    let ec_navigating: bool = ctx.data(|d| d.get_temp::<bool>(
         egui::Id::new("effectcraft.android.touch.navigation.active")
-    )).unwrap_or(false);
+    )).unwrap_or(false) || {
+        // The canvas must not run press/drag/selection phases during active
+        // two-finger trackpad or touchscreen wheel navigation.
+        let scroll_until = ctx.data(|d| d.get_temp::<f64>(
+            egui::Id::new("effectcraft.android14.canvas.scroll_until")
+        )).unwrap_or(-1.0);
+        scroll_until >= ctx.input(|i| i.time)
+    };
     #[cfg(not(target_os = "android"))]
     let ec_navigating = false;
     if ec_navigating {
@@ -111,6 +118,22 @@ pub(crate) fn android_route_trackpad_menu_scroll(
     ctx: &egui::Context,
     raw: &mut egui::RawInput,
 ) {
+    // Android.14: a trackpad/two-finger scroll must never be interpreted
+    // as a selection-rectangle gesture on the composition viewer.
+    // Remember a brief scroll-active interval in the current input pass.
+    // This runs even when NO popup is open, before the early menu return.
+    let ec14_now = ctx.input(|i| i.time);
+    if raw.events.iter().any(|event| matches!(event,
+        egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            modifiers, ..
+        } if !modifiers.any()
+    )) {
+        ctx.data_mut(|d| d.insert_temp(
+            egui::Id::new("effectcraft.android14.canvas.scroll_until"),
+            ec14_now + 0.18_f64,
+        ));
+    }
     let target: Option<(u64, egui::Id, f32, f32, egui::Rect)> =
         ctx.data(|d| d.get_temp(egui::Id::new("effectcraft.android.menu.hovered.scroll")));
     let Some((seen, request, offset, max, rect)) = target else { return };

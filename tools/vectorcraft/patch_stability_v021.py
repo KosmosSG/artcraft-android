@@ -47,6 +47,9 @@ fi
     # Adopt only tested reference startup/input/wake paths, preserving owner UI.
     from patch_android17_reference_adoption import patch as reference17
     reference17(root)
+    # Android.18: restore startup splash until UI; transfer Save-modal focus; enable native touch navigation.
+    from patch_android18_modal_and_gestures import patch as android18
+    android18(root)
 
 
 def patch_adapter(root):

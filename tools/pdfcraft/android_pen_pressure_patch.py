@@ -99,7 +99,7 @@ draw_sample = """                if last.distance(p) >= 1.5 {
                     points.push(u);
                 }
 """
-draw_preview = """                if last.distance(p) >= if cfg!(target_os = "android") { 1.0 } else { 1.5 } {
+draw_preview = """                if last.distance(p) >= (if cfg!(target_os = "android") { 1.0 } else { 1.5 }) {
                     points.push(u);
                     // PDFCRAFT_ANDROID4_LOW_LATENCY_INK: present live ink promptly.
                     #[cfg(target_os = "android")]

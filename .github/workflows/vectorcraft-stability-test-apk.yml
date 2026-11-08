@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.13 ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.14 DIAGNOSTICS ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
       BUILDER_SHA: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
-      VERSION_NAME: 0.21.0-android.13
-      VERSION_CODE: '16783373'
+      VERSION_NAME: 0.21.0-android.14
+      VERSION_CODE: '16783374'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -68,7 +68,7 @@ jobs:
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
-          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py
           # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
           # This keeps stale Java/Rust source anchors from burning build minutes.
           python3 - <<'PY'
@@ -81,6 +81,8 @@ jobs:
           from patch_android12_menu_scroll import patch as scroll12
           from patch_android13_recovery import patch as recovery13
           from patch_android13_menu_scroll import patch as scroll13
+          from patch_keyboard_diagnostics_v021 import patch as keyboard_diag
+          from patch_android14_diagnostic_session import patch as diagnostic14
           from patch_smooth_menu_scroll_v021 import patch as smooth_scroll
           owner=Path("android-port/adapters/vectorcraft")
           upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
@@ -90,7 +92,7 @@ jobs:
               shutil.copytree(owner,dst)
               target=root/"source/vectorcraft/crates/ui-egui/src"
               target.mkdir(parents=True)
-              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs"):
+              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs","menus/tree.rs","menus/run.rs","app/commands.rs"):
                   (target/filename).parent.mkdir(parents=True,exist_ok=True)
                   shutil.copyfile(upstream/filename,target/filename)
               patch_adapter(root)
@@ -106,11 +108,13 @@ jobs:
               assert menu_source.count(original_line) == 1
               dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
               smooth_scroll(root)
+              keyboard_diag(root)
               keyboard12(root)
               startup12(root)
               scroll12(root)
               recovery13(root)
               scroll13(root)
+              diagnostic14(root)
               rust=(dst/"src/lib.rs").read_text()
               java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
               shortcuts=(target/"shortcuts.rs").read_text()
@@ -130,7 +134,14 @@ jobs:
               assert 'self.inner.select_tool(tool_id)' in rust
               assert '.wheel_scroll_multiplier(egui::vec2(1.0, 1.0))' in (target/"widgets/dropdowns.rs").read_text()
               assert 'let hovered_menu = egui::Popup::is_any_open(ctx);' in (dst/"src/android_modifiers.rs").read_text()
-          print("PASS: real Android.13 Rust/Java/dialog/menu overlay anchors before SDK/NDK")
+              assert "vcDiagnosticSnapshot" in java
+              assert "vcCopyDiagnosticReport" in java
+              assert "vc_diag_recording" in rust
+              assert "Copy Report" in rust
+              assert "No typed text, document content" in rust
+              assert "vcDiagStartupStage" in java
+              assert "vcDiagShortcutDowns" in java
+          print("PASS: real Android.14 diagnostic Rust/Java/dialog/menu overlay anchors before SDK/NDK")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
@@ -324,7 +335,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.13-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.14-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

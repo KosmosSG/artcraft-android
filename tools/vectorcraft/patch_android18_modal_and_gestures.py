@@ -86,6 +86,14 @@ def patch(root: Path) -> None:
                 }
             });
         }''')
+    # Upstream VectorCraft uses C for Scissors, V for Selection and many
+    # other single-letter tools. Java mode 1 previously intercepted only
+    # V/T/P; on MagicOS the other letters could vanish behind IME focus.
+    # Capture only plain alphabetic canvas keys, never while typing (mode 0)
+    # and never when the Save Changes dialog owns keys (mode 2).
+    s=once(s,'''(key == KeyEvent.KEYCODE_V || key == KeyEvent.KEYCODE_T
+                    || key == KeyEvent.KEYCODE_P);''',
+    '''(key >= KeyEvent.KEYCODE_A && key <= KeyEvent.KEYCODE_Z);''')
     # Routing in the native egui logic still has one source of truth. The
     # immediate native wake is safe because there is no text to compose.
     java.write_text(s)
@@ -97,6 +105,37 @@ def patch(root: Path) -> None:
             // Use VectorCraft upstream's Taps/two-finger gesture and canvas
             // pan/pinch router. Never substitute two-finger pointer selection.
             app.session.prefs.touch_gestures = true;''')
+    # Upstream tool keymap receives either physical winit or Java-queued
+    # single-letter egui key+Text. D/S/C inside modal still go to Save dialog.
+    s=once(s,'''                (50, 1) => Some(egui::Key::V),
+                (48, 1) => Some(egui::Key::T),
+                (44, 1) => Some(egui::Key::P),''',
+    '''                (29, 1) => Some(egui::Key::A),
+                (30, 1) => Some(egui::Key::B),
+                (31, 1) => Some(egui::Key::C),
+                (32, 1) => Some(egui::Key::D),
+                (33, 1) => Some(egui::Key::E),
+                (34, 1) => Some(egui::Key::F),
+                (35, 1) => Some(egui::Key::G),
+                (36, 1) => Some(egui::Key::H),
+                (37, 1) => Some(egui::Key::I),
+                (38, 1) => Some(egui::Key::J),
+                (39, 1) => Some(egui::Key::K),
+                (40, 1) => Some(egui::Key::L),
+                (41, 1) => Some(egui::Key::M),
+                (42, 1) => Some(egui::Key::N),
+                (43, 1) => Some(egui::Key::O),
+                (44, 1) => Some(egui::Key::P),
+                (45, 1) => Some(egui::Key::Q),
+                (46, 1) => Some(egui::Key::R),
+                (47, 1) => Some(egui::Key::S),
+                (48, 1) => Some(egui::Key::T),
+                (49, 1) => Some(egui::Key::U),
+                (50, 1) => Some(egui::Key::V),
+                (51, 1) => Some(egui::Key::W),
+                (52, 1) => Some(egui::Key::X),
+                (53, 1) => Some(egui::Key::Y),
+                (54, 1) => Some(egui::Key::Z),''')
     # Ensure the existing low-latency wheel classifier handles both axes.
     rust.write_text(s)
 

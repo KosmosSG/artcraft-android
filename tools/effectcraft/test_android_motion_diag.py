@@ -10,7 +10,7 @@ class GestureEventCaptureTests(unittest.TestCase):
             root = Path(td)
             target = root / "src/platform_impl/android/mod.rs"
             target.parent.mkdir(parents=True)
-            target.write_text("fn f() { MotionAction::Scroll => { } MotionAction::Move if pointer_class { } Axis::__Unknown(50);\n"
+            target.write_text("fn f() { MotionAction::Scroll => { } MotionAction::Move if pointer_class { } Axis::__Unknown(50); Axis::__Unknown(52);\n"
                               + FFI_ANCHOR + "\n" + ANCHOR + "\n}")
             apply(root)
             data = target.read_text()

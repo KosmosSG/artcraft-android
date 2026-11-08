@@ -20,9 +20,9 @@ class Android9GestureGates(unittest.TestCase):
     def test_pinch_is_detected_early_even_after_pan(self):
         j = self.java
         self.assertIn("WC_ANDROID9_PINCH_TRACKPAD_GUARD_V1", j)
-        self.assertIn("wcTouchMode != 2 && distanceChange > threshold", j)
+        self.assertIn("wcTouchMode != 2 && distanceChange > pinchStart", j)
         self.assertIn("wcTouchStartSpan * .012f", j)
-        self.assertIn("distanceChange > centerTravel * .55f", j)
+        self.assertIn("spanStep > centerStep * .9f", j)
         self.assertIn("wcTouchPanX = wcTouchPanY = 0f", j)
         self.assertIn("wcTouchZoom * Math.max(.75f, Math.min(1.33f, ratio))", j)
         self.assertIn("wcTouchMode = 1", j)

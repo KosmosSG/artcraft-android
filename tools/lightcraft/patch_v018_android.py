@@ -97,6 +97,50 @@ def source_changes(source: Path) -> dict[Path, str]:
         '            "app.checkForUpdates",\n            "app.about",',
         '            "app.checkForUpdates",\n            "app.artcraftStartupUpdateSettings",\n            "app.about",',
         "Help menu layout")
+    # Android-only compact Lc menu: reuse existing appearance/update commands.
+    # Keep the desktop menu unchanged and do not add font controls.
+    m = once(m,
+        'pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {\\n',
+        '''pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {
+    #[cfg(target_os = "android")]
+    {
+        let icon = ui.add(egui::Button::new(egui::RichText::new("Lc").strong()).frame(false));
+        crate::widgets::register(ui, "menu:Lc", icon.rect);
+        let mut choice: Option<(&str, Value)> = None;
+        egui::Popup::menu(&icon).show(|ui| {
+            ui.set_min_width(180.0);
+            ui.menu_button("Appearance", |ui| {
+                if ui.button("Light").clicked() {
+                    choice = Some(("view.appearance", json!({"mode":"light"})));
+                    ui.close();
+                }
+                if ui.button("Dark").clicked() {
+                    choice = Some(("view.appearance", json!({"mode":"dark"})));
+                    ui.close();
+                }
+            });
+            ui.separator();
+            if ui.button("Check for Updates").clicked() {
+                choice = Some(("app.checkForUpdates", Value::Null));
+                ui.close();
+            }
+            if ui.button("Startup Update Settings").clicked() {
+                choice = Some(("app.artcraftStartupUpdateSettings", Value::Null));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("About LightCraft").clicked() {
+                choice = Some(("app.about", Value::Null));
+                ui.close();
+            }
+        });
+        if let Some((id, params)) = choice {
+            let _ = run_item(app, id, params);
+        }
+        ui.add_space(8.0);
+    }
+''',
+        "Android compact Lc top-left menu")
     run = originals["run"]
     handler = '''        "app.checkForUpdates" => {
             ctx.data_mut(|d| d.insert_temp(

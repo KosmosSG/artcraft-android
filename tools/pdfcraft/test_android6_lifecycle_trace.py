@@ -18,6 +18,8 @@ class LifecycleTraceTests(unittest.TestCase):
         self.assertNotIn("finishAndRemoveTask();", s)
         self.assertIn('pdfLifecycleTrace("finish:before")', s)
         self.assertIn("finish();", s)
+        self.assertIn('if (isFinishing()) {\n        pdfLifecycleTrace("onDestroy:finishing-killProcess");', s)
+        self.assertIn("android.os.Process.killProcess(android.os.Process.myPid());", s)
         self.assertNotIn("System.exit(", s)
         self.assertNotIn("clearApplicationUserData(", s)
 

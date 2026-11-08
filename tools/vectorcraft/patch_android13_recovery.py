@@ -66,7 +66,7 @@ def patch(root: Path) -> None:
 // Android owner bridge: Save Changes has its own lifecycle; the hardware
 // keyboard path must not rely on a focused egui viewport after IME teardown.
 // Do not call app.run("ui.dialog.confirm") -- it is a control protocol command.
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 impl VectorcraftApp {
     pub fn android_owner_unsaved_key(&mut self, key: Key) -> bool {
         if !self.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND) {

@@ -11,6 +11,8 @@ class Android20Guards(unittest.TestCase):
             'com.artcraft.ime.ArtCraftIme.wake();',
             'raw.events.retain(|event| match event',
             'physical_key.unwrap_or(*native) != key',
+            'vc_after_type_exit_frames',
+            'just_exited_type',
             'View decor = getWindow().getDecorView();',
             'decor.requestFocus();',
             'nativeSurface.requestFocus();',

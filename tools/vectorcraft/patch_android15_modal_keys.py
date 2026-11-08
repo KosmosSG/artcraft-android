@@ -196,12 +196,12 @@ def patch(root: Path) -> None:
                 vc_diag_last_modal_action: "none".into(),''')
     s=once(s,"VectorCraft Android.14 Diagnostic Session",
         "VectorCraft Android.15 Diagnostic Session")
-    # Preserve the exact escaped Rust multiline format string; Python's triple
-    # quoted strings would interpret the Rust continuation backslash.
-    bslash=chr(92)
-    marker="last_keyboard_command={}" + bslash*2 + "n" + bslash + "\n"
-    s=once(s,marker,marker+"                     last_modal_action={}" +
-        bslash*2 + "n" + bslash + "\n")
+    # Android.14's Python triple-quoted replacement joins source lines via
+    # backslash-newline. Add a single escaped newline in the resulting Rust
+    # format string without assuming a physical line break in that string.
+    s=once(s, "last_keyboard_command={}",
+        "last_keyboard_command={}" + chr(92) + "n"
+        + "                     last_modal_action={}")
     s=once(s, "                    self.vc_diag_snapshot,\n",
         "                    self.vc_diag_last_modal_action,\n                    self.vc_diag_snapshot,\n")
     rust.write_text(s)

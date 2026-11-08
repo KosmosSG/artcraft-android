@@ -2,7 +2,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from patch_android_motion_diag import apply, ANCHOR
+from patch_android_motion_diag import apply, ANCHOR, FFI_ANCHOR
 
 class GestureEventCaptureTests(unittest.TestCase):
     def test_motion_hook_preserves_existing_routes(self):
@@ -10,12 +10,18 @@ class GestureEventCaptureTests(unittest.TestCase):
             root = Path(td)
             target = root / "src/platform_impl/android/mod.rs"
             target.parent.mkdir(parents=True)
-            target.write_text("fn f() { MotionAction::Scroll => { } MotionAction::Move if pointer_class { } Axis::__Unknown(50);\n"
-                              + ANCHOR + "\n}")
+            target.write_text("fn f() { MotionAction::Scroll => { } MotionAction::Move if pointer_class { } Axis::__Unknown(50); Axis::__Unknown(52);\n"
+                              + FFI_ANCHOR + "\n" + ANCHOR + "\n}")
             apply(root)
             data = target.read_text()
-            self.assertIn("EC9 motion action=", data)
+            self.assertIn("EC10 event action=", data)
             self.assertIn("motion_event.pointer_count()", data)
+            self.assertIn('unsafe extern "C"', data)
+            self.assertIn('__android_log_write(', data)
+            self.assertIn('EffectCraftMotion', data)
+            self.assertIn('EC10_MOVE_COUNT', data)
+            self.assertIn('MotionAction::Scroll => true', data)
+            self.assertNotIn('&& (pointer_class ||', data)
             self.assertIn("Axis::__Unknown(48)", data)
             self.assertIn("Axis::__Unknown(49)", data)
             self.assertIn("Axis::__Unknown(50)", data)

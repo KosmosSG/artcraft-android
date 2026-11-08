@@ -14,7 +14,12 @@ class TouchNavigationTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
         a.write_text("test\\n" + APP_ANCHOR + "\\n")
         b.write_text("pub fn feed_synthetic(&self) {}")
-        c.write_text("viewer\\n" + VIEW_ANCHOR + "\\n")
+        c.write_text(
+            "viewer\\n" + VIEW_ANCHOR + "\\n"
+            + "        let scroll = super::viewer_scroll(&ctx);\\n"
+            + "        } else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {\\n"
+            + "            app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];\\n"
+        )
         d.write_text(PANELS_ANCHOR)
         return a, b, c
 

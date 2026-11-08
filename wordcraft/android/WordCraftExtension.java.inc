@@ -877,8 +877,11 @@
     private final Object wcTouchPanLock = new Object();
     private boolean wcTouchPairActive, wcTouchNavConsuming;
     private volatile boolean wcTouchNavSuppressInk;
-    private int wcTouchMode; // 0 unknown, 1 pan, 2 pinch
+    private int wcTouchMode; // 1 pan (default), 2 deliberate pinch
+    private int wcTouchPinchEvidence;
     private float wcTouchStartSpan, wcTouchStartX, wcTouchStartY, wcTouchLastX, wcTouchLastY, wcTouchLastSpan;
+    private float wcTouchLastFinger0X, wcTouchLastFinger0Y, wcTouchLastFinger1X, wcTouchLastFinger1Y;
+    private float wcTouchPreviousPanX;
     private float wcTouchPanX, wcTouchPanY, wcTouchPanCenterX, wcTouchPanCenterY;
     private float wcTouchZoom = 1f;
     private volatile float wcCanvasLeft = Float.NaN, wcCanvasTop = Float.NaN;
@@ -913,29 +916,38 @@
                 && y >= wcCanvasTop && y <= wcCanvasBottom;
     }
 
-    private void wcAccumulateTwoFingerSample(float x, float y, float span) {
-        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(span)) return;
+    // WC_ANDROID11_PAN_FIRST_PINCH_HYSTERESIS_V1
+    // All historical samples are consumed; navigation begins on the first
+    // two-finger MOVE rather than waiting for an arbitrary hold/drag threshold.
+    // Pinch requires coherent distance growth/shrink and two consecutive
+    // samples with distance motion dominant over centroid motion.
+    private void wcAccumulateTwoFingerSample(float x0, float y0, float x1, float y1) {
+        if (!Float.isFinite(x0) || !Float.isFinite(y0)
+                || !Float.isFinite(x1) || !Float.isFinite(y1)) return;
+        float x = (x0 + x1) * .5f, y = (y0 + y1) * .5f;
+        float span = (float) Math.hypot(x1 - x0, y1 - y0);
+        if (!Float.isFinite(span)) return;
         if (wcTouchPairActive) {
             float dx = x - wcTouchLastX, dy = y - wcTouchLastY;
-            float spanChange = span - wcTouchStartSpan;
-            // Recognize pinch early, even after a gesture was classified pan.
-            float distanceChange = Math.abs(spanChange);
-            float centerTravel = (float) Math.hypot(x - wcTouchStartX, y - wcTouchStartY);
             float spanStep = Math.abs(span - wcTouchLastSpan);
             float centerStep = (float) Math.hypot(dx, dy);
-            // Keep a stable horizontal/vertical pan; minor span jitter must
-            // not switch it to pinch. A deliberate opposing-finger movement
-            // can still transition to zoom, with additional hysteresis.
-            float pinchStart = wcTouchMode == 1
-                    ? Math.max(11f, wcTouchStartSpan * .035f)
-                    : Math.max(3f, wcTouchStartSpan * .012f);
-            if (wcTouchMode != 2 && distanceChange > pinchStart
-                    && spanStep > centerStep * .9f) {
-                wcTouchMode = 2;
-                wcTouchPanX = wcTouchPanY = 0f;
-            } else if (wcTouchMode == 0 && centerTravel > 3.5f
-                    && distanceChange < Math.max(8f, wcTouchStartSpan * .03f)) {
-                wcTouchMode = 1;
+            float cumulativeSpan = Math.abs(span - wcTouchStartSpan);
+            float d0x = x0 - wcTouchLastFinger0X, d0y = y0 - wcTouchLastFinger0Y;
+            float d1x = x1 - wcTouchLastFinger1X, d1y = y1 - wcTouchLastFinger1Y;
+            boolean opposed = d0x * d1x + d0y * d1y < 0f;
+            boolean scaleDominant = spanStep > Math.max(2.0f, centerStep * 1.2f)
+                    && (opposed || centerStep < spanStep * .7f);
+            boolean intentionalPinch = scaleDominant
+                    && cumulativeSpan > Math.max(11f, wcTouchStartSpan * .03f);
+            if (wcTouchMode == 1) {
+                wcTouchPinchEvidence = intentionalPinch
+                        ? Math.min(3, wcTouchPinchEvidence + 1) : 0;
+                if (wcTouchPinchEvidence >= 2) {
+                    wcTouchMode = 2;
+                    // Never send accumulated pan and pinch in the same frame.
+                    wcTouchPanX = wcTouchPanY = 0f;
+                    wcTouchPreviousPanX = 0f;
+                }
             }
             if (wcTouchMode == 2 && wcTouchLastSpan > 0f) {
                 float ratio = span / wcTouchLastSpan;
@@ -943,14 +955,23 @@
                     wcTouchZoom = Math.max(.2f, Math.min(5f,
                             wcTouchZoom * Math.max(.75f, Math.min(1.33f, ratio))));
             } else if (wcTouchMode == 1 && Math.abs(dx) < 160f && Math.abs(dy) < 160f) {
-                wcTouchPanX += dx; wcTouchPanY += dy;
+                // Apply a light horizontal low-pass only; vertical pan already
+                // performs well. Historical deltas remain accumulated per frame.
+                wcTouchPanX += dx * .80f + wcTouchPreviousPanX * .20f;
+                wcTouchPreviousPanX = dx;
+                wcTouchPanY += dy;
             }
         } else {
             wcTouchStartSpan = Math.max(span, 1f);
             wcTouchStartX = x; wcTouchStartY = y;
+            wcTouchMode = 1; // Two-finger pan immediately, no hold required.
+            wcTouchPinchEvidence = 0;
+            wcTouchPreviousPanX = 0f;
         }
         wcTouchPairActive = true;
         wcTouchLastX = x; wcTouchLastY = y; wcTouchLastSpan = span;
+        wcTouchLastFinger0X = x0; wcTouchLastFinger0Y = y0;
+        wcTouchLastFinger1X = x1; wcTouchLastFinger1Y = y1;
         wcTouchPanCenterX = x; wcTouchPanCenterY = y;
     }
 
@@ -959,8 +980,7 @@
         float x1 = historyIndex < 0 ? event.getX(1) : event.getHistoricalX(1, historyIndex);
         float y0 = historyIndex < 0 ? event.getY(0) : event.getHistoricalY(0, historyIndex);
         float y1 = historyIndex < 0 ? event.getY(1) : event.getHistoricalY(1, historyIndex);
-        wcAccumulateTwoFingerSample((x0 + x1) * .5f, (y0 + y1) * .5f,
-                (float) Math.hypot(x1 - x0, y1 - y0));
+        wcAccumulateTwoFingerSample(x0, y0, x1, y1);
     }
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
@@ -998,7 +1018,9 @@
                                        (event.getY(0) + event.getY(1)) * .5f)) {
                 wcTouchNavConsuming = true;
                 wcTouchNavSuppressInk = true;
-                wcTouchPairActive = false; wcTouchMode = 0; wcTouchZoom = 1f;
+                wcTouchPairActive = false; wcTouchMode = 1; wcTouchZoom = 1f;
+                wcTouchPinchEvidence = 0;
+                wcTouchPreviousPanX = 0f;
                 wcTouchPanX = wcTouchPanY = 0f;
                 wcAccumulateTwoFingerEvent(event, -1);
                 mustCancel = true;

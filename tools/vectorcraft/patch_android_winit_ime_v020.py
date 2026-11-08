@@ -96,7 +96,24 @@ def patch_builder(builder: Path) -> None:
         winit / "src/platform_impl/android/mod.rs",
     ]
     sources = [p.read_text() for p in paths]
-    replacements = patch_sources(*sources)
+    # MostafaXS1 main 2026-11-05 already has the ordered IME event and
+    # Android reset handler, but lacks the PUBLIC Window forwarding methods
+    # required by Storytold egui 0.37. Add just the missing public methods,
+    # preserving the reference Android IME reset implementation.
+    if (("ImeResetCompleted { request_id: u64 }" in sources[0])
+            and ("pub fn reset_ime_with_request(&self, _request_id: u64)" in sources[2])
+            and ("pub fn reset_ime_with_request(&self, request_id: u64)" not in sources[1])):
+        event, window, android = sources
+        window = replace_unique(window, WINDOW_BEFORE, WINDOW_AFTER, "latest builder Window API")
+        if "pub fn reset_ime(&self)" not in android:
+            android = replace_unique(android,
+                "    pub fn reset_ime_with_request(&self, _request_id: u64) {",
+                "    pub fn reset_ime(&self) {}\\n\\n    pub fn reset_ime_with_request(&self, _request_id: u64) {",
+                "latest builder Android reset method")
+        replacements = (event, window, android)
+        print("PASS: Mostafa main IME event and reset preserved; add only missing public Window forwarding methods")
+    else:
+        replacements = patch_sources(*sources)
     for path, patched in zip(paths, replacements):
         path.write_text(patched)
     print("PASS: pinned Storytold IME API on Android builder winit; Android unsupported resets are no-ops, never false acknowledgements")

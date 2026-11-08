@@ -250,6 +250,9 @@ impl Updater {
                 }
             };
         }
+        // Android.12: the Ec menu export action uses the proven Activity JNI
+        // bridge. Unlike an Android View overlay this works above NativeActivity.
+        dispatch!("artcraft.effectcraft.export_gesture_log", "ec11RequestExport");
         dispatch!("artcraft.effectcraft.check_updates_requested", "ecCheckForUpdates");
         dispatch!("artcraft.effectcraft.update_settings_requested", "ecStartupUpdateSettings");
         dispatch!("artcraft.effectcraft.import_font", "ecImportFont");

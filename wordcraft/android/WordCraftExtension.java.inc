@@ -536,10 +536,12 @@
     // WC_ANDROID_STYLUS_HISTORY_V1: preserve Android's historical pen movement
     // while forwarding the original event to GameActivity unmodified.
     private static final String WC_PRESSURE_PREFS = "wordcraft_android_stylus";
-    // WC_PRESSURE_TOGGLE_V1: opt-in, persistent per Android app install.
+    // WC_ANDROID10_PRESSURE_DEFAULT_ON_V1: new candidate installs enable
+    // pressure-sensitive ink automatically, without changing stored choices
+    // made by existing installations.
     public boolean wcPressureInkEnabled() {
         return getSharedPreferences(WC_PRESSURE_PREFS, MODE_PRIVATE)
-                .getBoolean("pressure_ink", false);
+                .getBoolean("pressure_ink", true);
     }
     public void wcSetPressureInkEnabled(boolean on) {
         getSharedPreferences(WC_PRESSURE_PREFS, MODE_PRIVATE).edit()
@@ -657,6 +659,86 @@
     private float wcScrollY;
     private float wcScrollPointerX;
     private float wcScrollPointerY;
+    private float wcScrollZoom = 1.0f;
+    private boolean wcClassifiedTrackpadActive;
+
+    // WC_ANDROID10_CLASSIFIED_TRACKPAD_V1: Android 14+ touchpads send
+    // single-pointer SOURCE_MOUSE ACTION_MOVE with a gesture classification.
+    // Previous pointerCount>=2 tracking cannot see these gestures.
+    private boolean wcDispatchClassifiedTrackpad(android.view.MotionEvent event) {
+        if (event == null || android.os.Build.VERSION.SDK_INT < 34
+                || wcHasStylus(event)
+                || !(event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)
+                    || event.isFromSource(android.view.InputDevice.SOURCE_TOUCHPAD)))
+            return false;
+        int action = event.getActionMasked();
+        int cls = event.getClassification();
+        boolean swipe = cls == android.view.MotionEvent.CLASSIFICATION_TWO_FINGER_SWIPE;
+        boolean pinch = cls == android.view.MotionEvent.CLASSIFICATION_PINCH;
+        boolean sample = (action == android.view.MotionEvent.ACTION_MOVE
+                || action == android.view.MotionEvent.ACTION_SCROLL) && (swipe || pinch);
+        if (!sample && !wcClassifiedTrackpadActive) return false;
+        if (sample && !wcClassifiedTrackpadActive) {
+            wcClassifiedTrackpadActive = true;
+            // Cancel any one-finger editor drag before adopting navigation;
+            // the original ACTION_MOVE must never reach text/ink processing.
+            android.view.MotionEvent cancel = android.view.MotionEvent.obtain(event);
+            try {
+                cancel.setAction(android.view.MotionEvent.ACTION_CANCEL);
+                super.dispatchTouchEvent(cancel);
+            } finally { cancel.recycle(); }
+        }
+        wcMarkTrackpadNavigation();
+        if (sample) {
+            float dx = 0f, dy = 0f, zoom = 1f;
+            int history = event.getHistorySize();
+            // Gesture axes describe DELTAS, not positions. Consume history as
+            // well as the current sample or horizontal pan/pinch will stutter.
+            for (int h = 0; h <= history; h++) {
+                boolean now = h == history;
+                float sx = now
+                        ? event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE)
+                        : event.getHistoricalAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0, h);
+                float sy = now
+                        ? event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE)
+                        : event.getHistoricalAxisValue(android.view.MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0, h);
+                float p = now
+                        ? event.getAxisValue(android.view.MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR)
+                        : event.getHistoricalAxisValue(android.view.MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR, 0, h);
+                if (swipe && Float.isFinite(sx) && Float.isFinite(sy)) {
+                    dx += sx;
+                    dy += sy;
+                }
+                if (pinch && Float.isFinite(p) && p > 0f)
+                    zoom *= Math.max(.80f, Math.min(1.25f, p));
+            }
+            if (swipe && action == android.view.MotionEvent.ACTION_SCROLL
+                    && dx == 0f && dy == 0f) {
+                // Android vendors may supply conventional wheel axes instead.
+                android.view.ViewConfiguration config = android.view.ViewConfiguration.get(this);
+                dx = event.getAxisValue(android.view.MotionEvent.AXIS_HSCROLL)
+                        * config.getScaledHorizontalScrollFactor();
+                dy = event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL)
+                        * config.getScaledVerticalScrollFactor();
+            }
+            if (Float.isFinite(dx) && Float.isFinite(dy) && Float.isFinite(zoom)) {
+                synchronized (wcScrollLock) {
+                    wcScrollX += Math.max(-240f, Math.min(240f, dx));
+                    wcScrollY += Math.max(-240f, Math.min(240f, dy));
+                    wcScrollZoom = Math.max(.2f, Math.min(5f, wcScrollZoom * zoom));
+                    wcScrollPointerX = event.getX();
+                    wcScrollPointerY = event.getY();
+                }
+            }
+        }
+        if (action == android.view.MotionEvent.ACTION_UP
+                || action == android.view.MotionEvent.ACTION_CANCEL) {
+            wcClassifiedTrackpadActive = false;
+        }
+        // Gesture is consumed here, never delivered to editor as a mouse drag.
+        return true;
+    }
+
     // WC_ANDROID9_PINCH_TRACKPAD_GUARD_V1: prevent trackpad gesture drags.
     private volatile long wcTrackpadNavUntilMs;
     private boolean wcTrackpadPairConsuming, wcTrackpadPairActive;
@@ -729,6 +811,7 @@
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) wcRecordStylus(event);
+        if (wcDispatchClassifiedTrackpad(event)) return true;
         if (event != null
                 && event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_MOVE
                 && event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
@@ -774,13 +857,16 @@
 
     public String wcTakeTrackpadScroll() {
         synchronized (wcScrollLock) {
-            if (wcScrollX == 0.0f && wcScrollY == 0.0f) return null;
+            if (wcScrollX == 0.0f && wcScrollY == 0.0f && wcScrollZoom == 1f)
+                return null;
             String message = Float.toString(wcScrollX) + ","
                     + Float.toString(wcScrollY) + ","
                     + Float.toString(wcScrollPointerX) + ","
-                    + Float.toString(wcScrollPointerY);
+                    + Float.toString(wcScrollPointerY) + ","
+                    + Float.toString(wcScrollZoom);
             wcScrollX = 0.0f;
             wcScrollY = 0.0f;
+            wcScrollZoom = 1f;
             return message;
         }
     }
@@ -835,12 +921,19 @@
             // Recognize pinch early, even after a gesture was classified pan.
             float distanceChange = Math.abs(spanChange);
             float centerTravel = (float) Math.hypot(x - wcTouchStartX, y - wcTouchStartY);
-            float threshold = Math.max(3f, wcTouchStartSpan * .012f);
-            if (wcTouchMode != 2 && distanceChange > threshold
-                    && distanceChange > centerTravel * .55f) {
+            float spanStep = Math.abs(span - wcTouchLastSpan);
+            float centerStep = (float) Math.hypot(dx, dy);
+            // Keep a stable horizontal/vertical pan; minor span jitter must
+            // not switch it to pinch. A deliberate opposing-finger movement
+            // can still transition to zoom, with additional hysteresis.
+            float pinchStart = wcTouchMode == 1
+                    ? Math.max(11f, wcTouchStartSpan * .035f)
+                    : Math.max(3f, wcTouchStartSpan * .012f);
+            if (wcTouchMode != 2 && distanceChange > pinchStart
+                    && spanStep > centerStep * .9f) {
                 wcTouchMode = 2;
                 wcTouchPanX = wcTouchPanY = 0f;
-            } else if (wcTouchMode == 0 && centerTravel > 4f
+            } else if (wcTouchMode == 0 && centerTravel > 3.5f
                     && distanceChange < Math.max(8f, wcTouchStartSpan * .03f)) {
                 wcTouchMode = 1;
             }
@@ -886,6 +979,7 @@
                 }
             }
         }
+        if (wcDispatchClassifiedTrackpad(event)) return true;
         if (wcDispatchTrackpadFingers(event)) return true;
         if (wcRejectPalm(event)) return true;
         if (event == null || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)

@@ -2215,6 +2215,23 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
             if java_src.count(marker) != 1:
                 raise SystemExit("Cannot safely extend PDFCraft Activity: SAF poll anchor changed")
             java_src = java_src.replace(marker, marker + "\n" + extension, 1)
+            # PDFCRAFT_ANDROID7_LAUNCH_TRACE: instrument the actual generated
+            # PDFCraft Activity only. No shared template or lifecycle behavior change.
+            create_hook = "        super.onCreate(savedInstanceState);\n        applyImmersiveFullscreen();"
+            if java_src.count(create_hook) != 1:
+                raise SystemExit("PDFCraft onCreate lifecycle anchor changed")
+            java_src = java_src.replace(create_hook,
+                '        pdfLifecycleTrace("onCreate:beforeSuper");\n'
+                '        super.onCreate(savedInstanceState);\n'
+                '        pdfLifecycleTrace("onCreate:afterSuper");\n'
+                '        applyImmersiveFullscreen();', 1)
+            new_intent_hook = "        super.onNewIntent(intent);"
+            if java_src.count(new_intent_hook) != 1:
+                raise SystemExit("PDFCraft onNewIntent lifecycle anchor changed")
+            java_src = java_src.replace(new_intent_hook,
+                '        pdfLifecycleTrace("onNewIntent:beforeSuper");\n'
+                '        super.onNewIntent(intent);\n'
+                '        pdfLifecycleTrace("onNewIntent:afterSuper");', 1)
             # PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT: if MagicOS delivers a
             # singleTask MAIN/document intent to a Java Activity whose native
             # editor has already exited, reconstruct a fresh NativeActivity

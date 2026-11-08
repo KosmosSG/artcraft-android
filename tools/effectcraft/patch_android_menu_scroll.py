@@ -137,6 +137,9 @@ def exactly(source: str, anchor: str, name: str):
 def apply(root: Path):
     files = {key: root / key for key in (APP, WIDGETS, HEADER, VIEWER)}
     data = {key: path.read_text(encoding="utf-8") for key, path in files.items()}
+    if ("android_route_trackpad_menu_scroll" in data[WIDGETS] or
+        'effectcraft.android.touch.navigation.active' in data[VIEWER]):
+        raise RuntimeError("STOP: Android.8 menu patch already applied")
     for key, anchor, title in (
         (APP, APP_OLD, "raw input before egui"),
         (WIDGETS, WIDGET_START, "scroll source id"),
@@ -148,9 +151,6 @@ def apply(root: Path):
         (VIEWER, HOVER_OLD, "viewer lost-hover fallback"),
     ):
         exactly(data[key], anchor, title)
-    if ("android_route_trackpad_menu_scroll" in data[WIDGETS] or
-        'effectcraft.android.touch.navigation.active' in data[VIEWER]):
-        raise RuntimeError("STOP: Android.8 menu patch already applied")
 
     data[APP] = data[APP].replace(APP_OLD, APP_NEW, 1)
     data[WIDGETS] = data[WIDGETS].replace(

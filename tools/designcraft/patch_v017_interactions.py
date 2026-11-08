@@ -68,14 +68,14 @@ pub fn take_android_tools_toggle() -> bool {
     source=bar.read_text()
     source=put_once(source,
         'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {',
-        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {\\n'
-        '    #[cfg(target_os = "android")]\\n'
+        'pub fn menu_bar(app: &mut DesignApp, ui: &mut egui::Ui) {\n'
+        '    #[cfg(target_os = "android")]\n'
         '    dc_launcher_menu(app, ui);', "existing app-bar menu")
-    source += "\\n" + (Path(__file__).with_name("dc_menu_v017.rs")).read_text()
+    source += "\n" + (Path(__file__).with_name("dc_menu_v017.rs")).read_text()
     bar.write_text(source)
     edit(base/"menus.rs",
          "pub use bar::{menu_bar, menu_button};",
-         'pub use bar::{menu_bar, menu_button};\\n#[cfg(target_os = "android")]\\npub use bar::take_dc_menu_actions;',
+         'pub use bar::{menu_bar, menu_button};\n#[cfg(target_os = "android")]\npub use bar::take_dc_menu_actions;',
          "Dc app-bar action bridge")
     # Android commands remain registered for keyboard/updater compatibility.
     # Android-specific menu rows are consolidated under the approved Dc icon

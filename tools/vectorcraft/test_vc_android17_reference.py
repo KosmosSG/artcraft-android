@@ -7,7 +7,7 @@ TOOLS=ROOT/"tools/vectorcraft"
 class ReferenceStartupAndInputTests(unittest.TestCase):
     def test_no_native_pixelcopy_startup_gate_or_custom_cover(self):
         s=(TOOLS/"patch_android17_reference_adoption.py").read_text()
-        self.assertIn('splash.setKeepOnScreenCondition(() -> !nativeEditorReady);',s)
+        self.assertIn('splash.setKeepOnScreenCondition(() -> startupCover == null',s)
         self.assertIn('showStartupCover();',s)
         self.assertIn('reference_direct_native_surface',s)
         self.assertIn('reference_native_ui_ready',s)

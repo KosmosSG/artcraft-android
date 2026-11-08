@@ -96,6 +96,15 @@ jobs:
               patch_adapter(root)
               patch_dialog(root)
               patch_startup(root)
+              # The full builder runs patch_android_menus_v020.py before the
+              # smooth-scroll overlay. Mirror its reviewed ScrollSource::ALL
+              # insert here, without mutating the official pinned upstream.
+              from patch_smooth_menu_scroll_v021 import ORIGINAL
+              dropdowns=target/"widgets/dropdowns.rs"
+              menu_source=dropdowns.read_text()
+              original_line='        egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'
+              assert menu_source.count(original_line) == 1
+              dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
               smooth_scroll(root)
               keyboard12(root)
               startup12(root)

@@ -46,6 +46,9 @@ def patch(root: Path) -> None:
             // Never expose an unpainted black GPU surface. Throttle the probe
             // while preserving the manual, visible "Tap to show editor" escape.
             if (firstFrameProbePending) return;
+            // Restart the bounded observation window; a late editor frame
+            // must still be detected after the initial slow cold start.
+            firstFrameProbeStartMs = System.currentTimeMillis();
             splashHandler.postDelayed(this::probeFirstPresentedFrame, 700);
             return;
         }''')

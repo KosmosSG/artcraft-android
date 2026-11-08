@@ -134,8 +134,8 @@ def apply(local: Path, pinned: Path) -> None:
                         if pointer_class && motion_event.pointer_count() >= 2 => {},
 """
     old_motion = old_motion.replace(
-        "                    MotionAction::Scroll => {",
-        move_arm + "                    MotionAction::Scroll => {", 1,
+        "MotionAction::Scroll => {",
+        move_arm.lstrip() + "                    MotionAction::Scroll => {", 1,
     )
     if old_motion.count("EC_PAD_LAST") < 2:
         raise RuntimeError("STOP: touchpad pan/pinch branch failed")

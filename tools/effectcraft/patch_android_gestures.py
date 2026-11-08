@@ -146,8 +146,6 @@ def apply(root: Path) -> None:
             or data[2].count('} else if scroll.pan != egui::Vec2::ZERO && area.contains(hp) {') != 1
             or data[2].count('app.ui.viewer.pan = [app.ui.viewer.pan[0] + scroll.pan.x, app.ui.viewer.pan[1] + scroll.pan.y];') != 1):
         raise RuntimeError("STOP: viewer pan hooks changed")
-    if False:
-        raise RuntimeError("STOP: upstream EffectCraft viewer/raw_input_hook drift")
     if "pub fn feed_synthetic" not in data[1]:
         raise RuntimeError("STOP: upstream EffectCraft input extension changed")
     data[0] = data[0].replace(

@@ -67,8 +67,8 @@ class Android12RegressionGuards(unittest.TestCase):
 
     def test_guards_run_before_ndk_and_release_stays_forbidden(self):
         flow = (ROOT / ".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.16", flow)
-        self.assertIn("VERSION_CODE: '16783376'", flow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.17", flow)
+        self.assertIn("VERSION_CODE: '16783377'", flow)
         self.assertIn("patch_android12_keyboard.py", flow)
         self.assertIn("patch_android12_startup.py", flow)
         self.assertIn("patch_android12_menu_scroll.py", flow)

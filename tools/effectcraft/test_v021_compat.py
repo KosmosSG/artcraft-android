@@ -25,7 +25,7 @@ class TrialGuards(unittest.TestCase):
             stage_trial_metadata(root)
             data = path.read_text()
             self.assertIn('version_code = 16820009', data)
-            self.assertIn('{app_version}-android.8', data)
+            self.assertIn('{app_version}-android.9', data)
             with self.assertRaisesRegex(RuntimeError, "STOP"):
                 stage_trial_metadata(root)
 

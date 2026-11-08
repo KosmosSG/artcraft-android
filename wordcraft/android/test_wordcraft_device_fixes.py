@@ -20,7 +20,7 @@ def text(path: Path) -> str:
 
 
 class WordCraftDeviceFixes(unittest.TestCase):
-    def test_opt_in_pressure_responsive_ink_uses_native_samples_and_standard_shapes(self):
+    def test_default_on_pressure_responsive_ink_uses_native_samples_and_standard_shapes(self):
         from pathlib import Path
         base = Path(__file__).parent
         java, native, menu, build = text(JAVA), text(RUST), text(RIBBON), text(BUILD)
@@ -33,8 +33,9 @@ class WordCraftDeviceFixes(unittest.TestCase):
         for marker in ("Vec<[f32; 3]>", "wcPressureInkEnabled", "wcSetPressureInkEnabled",
                        '"pressure_on"', '"pressure_off"'):
             self.assertIn(marker, native)
-        for marker in ('"Pressure-responsive stroke width"', '"pressure_on"', '"pressure_off"'):
-            self.assertIn(marker, menu)
+        self.assertIn('getBoolean("pressure_ink", true)', java)
+        self.assertNotIn('ui.menu_button("Stylus & Handwriting"', menu)
+        self.assertNotIn('ui.checkbox(&mut pressure_on, "Pressure-responsive stroke width")', menu)
         for marker in ("apply_pressure_ink", "stylus_pressure.rs.inc"):
             self.assertIn(marker, build)
         for marker in ("WC_ANDROID_PRESSURE_STROKES_V1", "wc_pressure_width",

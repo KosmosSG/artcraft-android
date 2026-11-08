@@ -96,7 +96,7 @@ jobs:
               shutil.copytree(owner,dst)
               target=root/"source/vectorcraft/crates/ui-egui/src"
               target.mkdir(parents=True)
-              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs","menus/tree.rs","menus/run.rs","app/commands.rs"):
+              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs","menus/tree.rs","menus/run.rs","app/commands.rs","canvas/input.rs"):
                   (target/filename).parent.mkdir(parents=True,exist_ok=True)
                   shutil.copyfile(upstream/filename,target/filename)
               patch_adapter(root)

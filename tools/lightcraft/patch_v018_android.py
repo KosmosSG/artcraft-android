@@ -104,7 +104,9 @@ def source_changes(source: Path) -> dict[Path, str]:
         '''pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32) -> f32 {
     #[cfg(target_os = "android")]
     {
-        let icon = ui.add(egui::Button::new(egui::RichText::new("Lc").strong()).frame(false));
+        let artwork = egui::Image::from_bytes("bytes://lightcraft/lc-menu.png", include_bytes!("lc-menu.png"))
+            .fit_to_exact_size(egui::vec2(22.0, 22.0));
+        let icon = ui.add(egui::Button::image(artwork).frame(false));
         crate::widgets::register(ui, "menu:Lc", icon.rect);
         let mut choice: Option<(&str, Value)> = None;
         egui::Popup::menu(&icon).show(|ui| {
@@ -217,6 +219,8 @@ def validate(source: Path, builder: Path, suite: Path) -> None:
     sha = hashlib.sha256(pinned_icon.read_bytes()).hexdigest()
     if sha != "8035dcf8bf966875ce4d51fec668581342cc774d69f3dacb977c94225dc997d4":
         raise ValueError("STOP: published Lc artwork has changed")
+    if hashlib.sha256((suite / "assets/lightcraft/lc-user-20261109.png").read_bytes()).hexdigest() != "22a5a153cac7b620fdc061e80c86d3f4d01fd7992f6b4f2653a086ac560ba456":
+        raise ValueError("STOP: replacement owner-provided LC icon hash drift")
     if "0.18.0" not in (source / "Cargo.toml").read_text(encoding="utf-8"):
         raise ValueError("STOP: wrong upstream LightCraft version")
 
@@ -239,6 +243,8 @@ def main() -> None:
         target.mkdir(parents=True, exist_ok=True)
         for filename in ("lightcraft_updates.rs", "lightcraft_updates.java.inc"):
             shutil.copy2(args.suite / "tools/lightcraft" / filename, target / filename)
+        shutil.copy2(args.suite / "assets/lightcraft/lc-user-20261109.png",
+                     args.source / "crates/ui-egui/src/menus/lc-menu.png")
         print("Applied LightCraft v0.18 source and Android builder patches to local copies only.")
     else:
         print(f"PASS: v0.18 patch anchors and Lc SAF protections validated ({len(modifications)} files, read-only).")

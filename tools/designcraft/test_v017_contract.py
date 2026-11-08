@@ -41,13 +41,15 @@ class DesignCraftV017Contract(unittest.TestCase):
         """Regression: Android.2 failed before compilation on a removed menu anchor."""
         updater = (ROOT/"tools/designcraft/install_v017_updater.py").read_text()
         native = self.ui
+        menu = (ROOT/"tools/designcraft/dc_menu_v017.rs").read_text()
         self.assertNotIn("edit(table_file,", updater)
         self.assertIn("Unexpected old Android top-level menu", updater)
         self.assertIn("dc_menu.count(action) != 1", updater)
-        self.assertIn("dc-launcher-icon.rgba", updater)
+        self.assertIn("dc-launcher-icon.rgba", menu)
+        self.assertIn('ui_root / "menus/bar.rs"', updater)
         self.assertIn('bridge.dc_update_action(3)', updater)
         self.assertIn('bridge.dc_update_action(4)', updater)
-        self.assertIn('MenuButton::from_button(button).ui(', native)
+        self.assertIn('MenuButton::from_button(button).ui(', menu)
         self.assertIn('dc_update_action(3)', native)
         self.assertIn('dc_update_action(4)', native)
 
@@ -57,6 +59,8 @@ class DesignCraftV017Contract(unittest.TestCase):
         self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", self.fonts)
         self.assertIn("font.reload", self.ui)
         self.assertIn("SHOW_ANDROID_TOOLS", self.ui)
+        self.assertIn('take_dc_menu_actions()', self.ui)
+        self.assertNotIn('artcraft-designcraft-android-tools', self.ui)
         self.assertIn("select_tool", self.ui)
         self.assertIn("dcDialogHeld.clear();", self.java)
         self.assertIn("return super.dispatchKeyEvent(event);", self.java)

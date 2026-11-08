@@ -297,12 +297,37 @@ fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::Design
     }
     let tool = ui.input(|input| {
         if input.modifiers.any() { return None; }
-        input.events.iter().find_map(|event| match event {
-            egui::Event::Key { key: egui::Key::T, pressed: true, repeat: false, .. } => Some("type"),
-            egui::Event::Key { key: egui::Key::V, pressed: true, repeat: false, .. } => Some("selection"),
-            egui::Event::Text(text) if text.eq_ignore_ascii_case("t") => Some("type"),
-            egui::Event::Text(text) if text.eq_ignore_ascii_case("v") => Some("selection"),
-            _ => None,
+        input.events.iter().find_map(|event| {
+            // Some Android IMEs commit one printable hardware key as Text
+            // instead of Key; preserve ordinary typing and every UI editor.
+            let letter = match event {
+                egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. }
+                    if !modifiers.any() =>
+                    match key {
+                        egui::Key::T => Some('t'), egui::Key::V => Some('v'),
+                        egui::Key::H => Some('h'), egui::Key::Z => Some('z'),
+                        egui::Key::A => Some('a'), egui::Key::P => Some('p'),
+                        egui::Key::N => Some('n'), egui::Key::F => Some('f'),
+                        egui::Key::M => Some('m'), egui::Key::B => Some('b'),
+                        _ => None,
+                    },
+                egui::Event::Text(text) if text.chars().count() == 1 =>
+                    text.chars().next().map(|ch| ch.to_ascii_lowercase()),
+                _ => None,
+            };
+            match letter {
+                Some('t') => Some("type"),
+                Some('v') => Some("selection"),
+                Some('h') => Some("hand"),
+                Some('z') => Some("zoom"),
+                Some('a') => Some("directSelection"),
+                Some('p') => Some("pen"),
+                Some('n') => Some("pencil"),
+                Some('f') => Some("rectangleFrame"),
+                Some('m') => Some("rectangle"),
+                Some('b') => Some("contentCollector"),
+                _ => None,
+            }
         })
     });
     if let Some(tool) = tool {
@@ -408,89 +433,38 @@ pub fn ui(
         // SAF scanning happens asynchronously; continue polling and repainting.
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
     }
-    // Always show the approved Dc launcher icon at the far left, including when
-    // the accessory status toolbar is hidden. Android-specific actions are
-    // consolidated here; the standard upstream document menus remain intact.
-    egui::Panel::top("artcraft-designcraft-android-tools").show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let texture_id = egui::Id::unique("dc.launcher.texture");
-            let texture = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(texture_id))
-                .unwrap_or_else(|| {
-                    let rgba = include_bytes!("dc-launcher-icon.rgba");
-                    let image = egui::ColorImage::from_rgba_unmultiplied([96, 96], rgba);
-                    let texture = ui.ctx().load_texture("DesignCraft launcher", image, egui::TextureOptions::LINEAR);
-                    ui.ctx().data_mut(|d| d.insert_temp(texture_id, texture.clone()));
-                    texture
-                });
-            let image = egui::Image::from_texture((texture.id(), egui::vec2(30.0, 30.0)));
-            let button = egui::Button::image_and_text(image, "▾").min_size(egui::vec2(46.0, 34.0));
-            egui::containers::menu::MenuButton::from_button(button).ui(
-                ui, |ui| {
-                    if ui.button("Import Fonts (TTF/OTF/TTC)…").clicked() {
-                        if let Err(e) = request_import(bridge, state) {
-                            app.status_error("Import Font", e);
-                        }
-                        ui.close();
-                    }
-                    if ui.button("Select Shared Font Folder…").clicked() {
-                        if let Err(e) = request_shared(bridge, state, false) {
-                            app.status_error("Select Shared Font Folder", e);
-                        }
-                        ui.close();
-                    }
-                    if ui.button("Refresh Shared Fonts").clicked() {
-                        if let Err(e) = request_shared(bridge, state, true) {
-                            app.status_error("Refresh Shared Fonts", e);
-                        }
-                        ui.close();
-                    }
-                    if ui.button("Reload Font Catalog").clicked() {
-                        if let Err(e) = app.run("font.reload", serde_json::json!({})) {
-                            app.status_error("Reload Font Catalog", e);
-                        }
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui.button("Check Updates").clicked() {
-                        if let Err(e) = bridge.dc_update_action(3) {
-                            app.status_error("Check updates", e);
-                        }
-                        ui.close();
-                    }
-                    if ui.button("Startup Update Check…").clicked() {
-                        if let Err(e) = bridge.dc_update_action(4) {
-                            app.status_error("Startup update check", e);
-                        }
-                        ui.close();
-                    }
-                    ui.separator();
-                    ui.menu_button("Android Tools", |ui| {
-                        let visible = SHOW_ANDROID_TOOLS.load(Ordering::Relaxed);
-                        if ui.button(if visible { "Hide Tools / Status" } else { "Show Tools / Status" }).clicked() {
-                            SHOW_ANDROID_TOOLS.store(!visible, Ordering::Relaxed);
-                            ui.ctx().request_repaint();
-                            ui.close();
-                        }
-                        let gpu = GPU_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                        ui.label(if gpu.is_empty() {
-                            "GPU: WGPU initialization pending".to_owned()
-                        } else {
-                            format!("GPU: {gpu}")
-                        });
-                        ui.label("Ctrl+W → D/C/S • Esc exits typing");
-                        ui.label("V/T/H/Z/A/P/N/F/M/B tools");
-                    });
-                }
-            );
-            if SHOW_ANDROID_TOOLS.load(Ordering::Relaxed) {
-                ui.separator();
-                let status = USER_MESSAGE.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                if status.is_empty() {
-                    ui.label("Shared Fonts • Keyboard");
-                } else {
-                    ui.label(status);
-                }
-            }
-        });
-    });
+    // The approved Dc menu now lives INSIDE the upstream menu bar, beside Home.
+    // Consume actions selected in that UI, preserving the Android bridge and
+    // all existing SAF font, updater and diagnostic behavior without a top strip.
+    let dc_actions = designcraft_ui_egui::menus::take_dc_menu_actions();
+    if dc_actions & 1 != 0 {
+        if let Err(error) = request_import(bridge, state) {
+            app.status_error("Import Fonts", error);
+        }
+    }
+    if dc_actions & 2 != 0 {
+        if let Err(error) = request_shared(bridge, state, false) {
+            app.status_error("Select Shared Font Folder", error);
+        }
+    }
+    if dc_actions & 4 != 0 {
+        if let Err(error) = request_shared(bridge, state, true) {
+            app.status_error("Refresh Shared Fonts", error);
+        }
+    }
+    if dc_actions & 8 != 0 {
+        if let Err(error) = app.run("font.reload", serde_json::json!({})) {
+            app.status_error("Reload Font Catalog", error);
+        }
+    }
+    if dc_actions & 16 != 0 {
+        if let Err(error) = bridge.dc_update_action(3) {
+            app.status_error("Check Updates", error);
+        }
+    }
+    if dc_actions & 32 != 0 {
+        if let Err(error) = bridge.dc_update_action(4) {
+            app.status_error("Startup Update Check", error);
+        }
+    }
 }

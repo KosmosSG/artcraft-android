@@ -78,6 +78,8 @@ jobs:
           grep -Fq 'artcraft.lightcraft.include_preview' source/crates/ui-egui/src/dialogs.rs
           test -s source/crates/ui-egui/src/menus/lc-menu.png
           grep -Fq 'bytes://lightcraft/lc-menu.png' source/crates/ui-egui/src/menus/menubar.rs
+          grep -Fq 'egui_extras::install_image_loaders' source/crates/ui-egui/src/menus/menubar.rs
+          grep -Fq 'egui_extras = { workspace = true, features = ["image"] }' source/crates/ui-egui/Cargo.toml
       - name: Android release-style build toolchain (no permanent keystores)
         uses: actions/setup-java@v4
         with:

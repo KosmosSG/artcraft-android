@@ -135,7 +135,7 @@ impl VectorcraftApp {
     # replaced this with a no-op, which sends tool keys back to an unfocused
     # upstream shortcut dispatcher after typing.
     old='''                CanvasHardwareCommand::Selection | CanvasHardwareCommand::Type
-                 | CanvasHardwareCommand::Pen => {}'''
+                | CanvasHardwareCommand::Pen => {}'''
     new='''                CanvasHardwareCommand::Selection | CanvasHardwareCommand::Type
                  | CanvasHardwareCommand::Pen => {
                     let tool_id = match command {

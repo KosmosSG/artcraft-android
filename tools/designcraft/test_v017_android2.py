@@ -15,6 +15,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         d = ROOT / "tools/designcraft"
         cls.java = (d / "patch_v017_interactions.py").read_text()
         cls.native = (d / "v016_android.rs").read_text()
+        cls.dc_menu = (d / "dc_menu_v017.rs").read_text()
         cls.pointer = (d / "fork_v020_adaptive_pointer_icon.rs").read_text()
         cls.context = (d / "fork_v020_android_activity.rs").read_text()
         cls.overlay = (d / "overlay_v017_cursor.py").read_text()
@@ -35,6 +36,10 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn("ctx.text_edit_focused()", self.native)
         self.assertIn("app.session.wants_text()", self.native)
         self.assertIn("event.hasNoModifiers()", self.java)
+        self.assertIn("imeView.setFocusable(false)", self.java)
+        self.assertIn("text.chars().count() == 1", self.native)
+        for key in "'t'", "'v'", "'h'", "'z'", "'a'", "'p'", "'n'", "'f'", "'m'", "'b'":
+            self.assertIn("Some(" + key + ")", self.native)
 
     def test_escape_and_unsaved_modal_dispatch(self):
         for name in ("dcTakeEscapeAction", "dcTakeCloseAction",
@@ -48,14 +53,18 @@ class DesignCraftAndroid2Input(unittest.TestCase):
         self.assertIn('text.exitToFrame', self.native)
 
     def test_launcher_icon_replaces_android_top_level_menu(self):
-        self.assertIn('include_bytes!("dc-launcher-icon.rgba")', self.native)
-        self.assertIn('MenuButton::from_button(button).ui(', self.native)
+        self.assertIn('include_bytes!("dc-launcher-icon.rgba")', self.dc_menu)
+        self.assertIn('MenuButton::from_button(button).ui(', self.dc_menu)
+        self.assertIn('take_dc_menu_actions()', self.native)
+        self.assertNotIn('egui::Panel::top("artcraft-designcraft-android-tools")', self.native)
         self.assertIn('mipmap-xxxhdpi/ic_launcher.png', self.stager)
         for text in ("Import Fonts", "Select Shared Font Folder", "Refresh Shared Fonts",
                      "Reload Font Catalog", "Check Updates", "Startup Update Check",
                      "Android Tools"):
-            self.assertIn(text, self.native)
+            self.assertIn(text, self.dc_menu)
         self.assertNotIn('"Android",\n        &[', self.java)
+        self.assertIn('pub use bar::take_dc_menu_actions', self.java)
+        self.assertIn('dc_launcher_menu(app, ui)', self.java)
 
     def test_cursor_is_fork_port_not_entire_app_merge(self):
         self.assertIn('pub fn pointer_icon_type', self.pointer)

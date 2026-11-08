@@ -56,6 +56,7 @@ jobs:
           python3 suite/tools/lightcraft/verify_v018_contract.py source builder suite
           python3 suite/tools/lightcraft/patch_v018_android.py --source source --builder builder --suite suite
           test -s suite/assets/lightcraft/lc-user-approved.png
+          test -s suite/assets/lightcraft/lc-user-20261109.png
       - name: Preserve approved LightCraft source/UI, SAF and launcher icon in disposable checkout
         shell: bash
         run: |
@@ -75,6 +76,8 @@ jobs:
           grep -Fq 'LIGHTCRAFT_V017_WRITE_NEW_PRIVATE_ONLY' builder/lib/build-common.sh
           grep -Fq 'artcraft.lightcraft.check_updates_requested' source/crates/ui-egui/src/menus/run.rs
           grep -Fq 'artcraft.lightcraft.include_preview' source/crates/ui-egui/src/dialogs.rs
+          test -s source/crates/ui-egui/src/menus/lc-menu.png
+          grep -Fq 'bytes://lightcraft/lc-menu.png' source/crates/ui-egui/src/menus/menubar.rs
       - name: Android release-style build toolchain (no permanent keystores)
         uses: actions/setup-java@v4
         with:
@@ -187,7 +190,7 @@ jobs:
           bash builder/build.sh -lightcraft \
             -packagename=com.artcraft.lightcraft.test \
             -appname='LightCraft TEST' \
-            "-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-approved.png"
+            "-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-20261109.png"
       - name: Verify APK package, version, ARM64, signature and integrity
         shell: bash
         run: |

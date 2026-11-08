@@ -1,4 +1,4 @@
-"""Fail-closed EffectCraft 0.21 disposable test identity and feature-preservation checks."""
+"""Fail-closed EffectCraft 0.21 release identity and feature-preservation checks."""
 import json
 from pathlib import Path
 import tempfile
@@ -10,11 +10,11 @@ from v021_compat import (
 from v020_compat import MODERN_ANCHOR
 
 class TrialGuards(unittest.TestCase):
-    def test_exact_pinned_sources_and_separate_test_package(self):
+    def test_exact_pinned_source_and_production_package(self):
         self.assertEqual(len(UPSTREAM_SHA), 40)
-        self.assertEqual(ANDROID_TEST_VERSION, "0.21.0-android.15")
-        self.assertEqual(TEST_PACKAGE, "com.artcraft.effectcraft")
-        self.assertGreater(TEST_VERSION_CODE, 16781320)
+        self.assertEqual(ANDROID_RELEASE_VERSION, "0.21.0-android.15")
+        self.assertEqual(RELEASE_PACKAGE, "com.artcraft.effectcraft")
+        self.assertGreater(RELEASE_VERSION_CODE, 16781320)
 
     def test_rewrite_disposable_metadata_once(self):
         with tempfile.TemporaryDirectory() as d:
@@ -45,8 +45,8 @@ class TrialGuards(unittest.TestCase):
             path.write_text(json.dumps(original))
             stage_trial_branding_metadata(root)
             updated = json.loads(path.read_text())
-            self.assertEqual(updated["version_name"], ANDROID_TEST_VERSION)
-            self.assertEqual(updated["version_code"], TEST_VERSION_CODE)
+            self.assertEqual(updated["version_name"], ANDROID_RELEASE_VERSION)
+            self.assertEqual(updated["version_code"], RELEASE_VERSION_CODE)
             for k in original.keys() - {"version_name", "version_code"}:
                 self.assertEqual(updated[k], original[k])
             with self.assertRaisesRegex(RuntimeError, "STOP"):

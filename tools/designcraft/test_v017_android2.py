@@ -88,7 +88,7 @@ class DesignCraftAndroid2Input(unittest.TestCase):
     def test_trackpad_axes_and_compatible_package(self):
         self.assertIn("enable_motion_axis(Axis::Vscroll)", self.wheel)
         self.assertIn("enable_motion_axis(Axis::Hscroll)", self.wheel)
-        self.assertIn('0.17.2-android.3', self.stager)
+        self.assertIn('0.17.2-android.4', self.stager)
         self.assertIn("fix/designcraft-v017-android2-input-cursor-20261104", self.workflow)
         self.assertNotIn("action-gh-release", self.workflow)
         self.assertNotIn("secrets.", self.workflow)

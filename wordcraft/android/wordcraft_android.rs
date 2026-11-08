@@ -172,17 +172,21 @@ impl Tools {
         };
         let mut values = sample.split(',');
         let parse = |value: Option<&str>| value.and_then(|s| s.parse::<f32>().ok());
-        let (Some(dx), Some(dy), Some(x), Some(y)) = (
+        // WC_ANDROID10_TRACKPAD_PINCH_RUST_V1: fifth sample is a relative
+        // zoom factor; the older Java bridge only sent the four scroll fields.
+        let (Some(dx), Some(dy), Some(x), Some(y), Some(zoom)) = (
             parse(values.next()), parse(values.next()),
-            parse(values.next()), parse(values.next()),
+            parse(values.next()), parse(values.next()), parse(values.next()),
         ) else {
             return;
         };
-        if values.next().is_some() || ![dx, dy, x, y].iter().all(|n| n.is_finite()) {
+        if values.next().is_some() || ![dx, dy, x, y, zoom].iter().all(|n| n.is_finite()) {
             return;
         }
         let scale = ctx.pixels_per_point();
-        if !scale.is_finite() || scale <= 0.0 || (dx == 0.0 && dy == 0.0) {
+        if !scale.is_finite() || scale <= 0.0
+            || ((dx == 0.0 && dy == 0.0) && (zoom - 1.0).abs() < 0.0001)
+        {
             return;
         }
         // WC_ANDROID9_TRACKPAD_NO_DRAG_RUST_V1
@@ -203,13 +207,19 @@ impl Tools {
             modifiers,
         });
         raw.events.push(egui::Event::PointerMoved(pos));
-        raw.events.push(egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(dx / scale, dy / scale),
-            phase: egui::TouchPhase::Move,
-            source: egui::MouseWheelSource::Trackpad,
-            modifiers,
-        });
+        if zoom > 0.0 && (zoom - 1.0).abs() >= 0.0001 {
+            // Pinch events bypass WordCraft ink and pointer-selection paths.
+            raw.events.push(egui::Event::Zoom(zoom.clamp(0.5, 2.0)));
+        }
+        if dx != 0.0 || dy != 0.0 {
+            raw.events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(dx / scale, dy / scale),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Trackpad,
+                modifiers,
+            });
+        }
         ctx.request_repaint();
     }
 

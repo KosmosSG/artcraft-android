@@ -671,7 +671,10 @@
     // Cancel the original editor pointer and swallow all remaining pair events.
     private boolean wcDispatchTrackpadFingers(android.view.MotionEvent event) {
         if (event == null || wcHasStylus(event)
-                || !event.isFromSource(android.view.InputDevice.SOURCE_TOUCHPAD)) return false;
+                || (!event.isFromSource(android.view.InputDevice.SOURCE_TOUCHPAD)
+                    && !(event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)
+                         && (wcTrackpadPairConsuming || event.getPointerCount() >= 2))))
+            return false;
         int action = event.getActionMasked();
         boolean start = !wcTrackpadPairConsuming && event.getPointerCount() >= 2
                 && (action == android.view.MotionEvent.ACTION_POINTER_DOWN
@@ -726,6 +729,14 @@
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) wcRecordStylus(event);
+        if (event != null
+                && event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_MOVE
+                && event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
+            synchronized (wcScrollLock) {
+                wcScrollPointerX = event.getX();
+                wcScrollPointerY = event.getY();
+            }
+        }
         if (event != null && event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL) {
             int source = event.getSource();
             boolean trackpadOrMouse =
@@ -865,6 +876,7 @@
             wcCaptureStylusHistory(event);
             if (event != null
                     && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                wcTrackpadNavUntilMs = 0L;
                 // Stylus is an independent editing tool. Starting a new pen
                 // stroke must clear the previous finger navigation latch.
                 synchronized (wcTouchPanLock) {

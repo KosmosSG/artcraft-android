@@ -194,28 +194,16 @@ def patch(root: Path) -> None:
     s=once(s, '''                vc_diag_egui_shortcuts: 0,''',
     '''                vc_diag_egui_shortcuts: 0,
                 vc_diag_last_modal_action: "none".into(),''')
-    s=once(s, '''                    "VectorCraft Android.14 Diagnostic Session\\n\\
-                     elapsed_ms={elapsed}\\n\\
-                     egui_shortcut_receipts={}\\n\\
-                     tool={} editing={} composing={} dialog={}\\n\\
-                     last_keyboard_gate={}\\n\\
-                     last_keyboard_command={}\\n\\
-                     java_snapshot:\\n{}\\n\\
-                     transition_log:\\n{}\\n",''',
-    '''                    "VectorCraft Android.15 Diagnostic Session\\n\\
-                     elapsed_ms={elapsed}\\n\\
-                     egui_shortcut_receipts={}\\n\\
-                     tool={} editing={} composing={} dialog={}\\n\\
-                     last_keyboard_gate={}\\n\\
-                     last_keyboard_command={}\\n\\
-                     last_modal_action={}\\n\\
-                     java_snapshot:\\n{}\\n\\
-                     transition_log:\\n{}\\n",''')
-    s=once(s, '''                    self.vc_diag_snapshot,
-                    self.vc_diag_history.iter().cloned().collect::<Vec<_>>().join("\\n"));''',
-    '''                    self.vc_diag_last_modal_action,
-                    self.vc_diag_snapshot,
-                    self.vc_diag_history.iter().cloned().collect::<Vec<_>>().join("\\n"));''')
+    s=once(s,"VectorCraft Android.14 Diagnostic Session",
+        "VectorCraft Android.15 Diagnostic Session")
+    # Preserve the exact escaped Rust multiline format string; Python's triple
+    # quoted strings would interpret the Rust continuation backslash.
+    bslash=chr(92)
+    marker="last_keyboard_command={}" + bslash*2 + "n" + bslash + "\n"
+    s=once(s,marker,marker+"                     last_modal_action={}" +
+        bslash*2 + "n" + bslash + "\n")
+    s=once(s, "                    self.vc_diag_snapshot,\n",
+        "                    self.vc_diag_last_modal_action,\n                    self.vc_diag_snapshot,\n")
     rust.write_text(s)
     print("PASS: Android.15 scoped Save Changes S/D/C fallback: hardware/IME/Text and post-action result diagnostic")
 

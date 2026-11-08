@@ -1,4 +1,3 @@
-VectorCraft v0.21.0-android.14 ARM64 DIAGNOSTIC TEST ONLY — corrected YAML preflight.
-Head source f60170cceff67f5e356feac0c11e1a27cd8a2b64.
-ONE opt-in diagnostic session build to narrow keyboard routing, startup stage, save dialog and ANR. No text/document/path capture, no automatic uploads, Copy Report button only.
-Protected stable and production keys untouched; no merge/sign/publish. Run preflight Python+generated Java/Rust guards before ARM64 compilation.
+VectorCraft v0.21.0-android.14 DIAGNOSTICS ONLY — protected ARM64 disposable APK RETRY.
+Verified prior run 42466318448: Rust and behavioral gates PASS, Gradle wrapper ZIP download returned HTTP 504 AFTER Rust compile. Fix source commit ba6189b3afdc2832b1ac16fb8328b78ea54a1088.
+Prefetch and validate official Gradle 8.11.1 SHA256 before Rust, cache downloaded ZIP, rewrite generated-only builder template to local pinned distribution, retry direct official CDN. No secrets and no permanent signing, merging or publishing. Preserve stable VectorCraft and other apps. Build separate package com.artcraft.vectorcraft.test.

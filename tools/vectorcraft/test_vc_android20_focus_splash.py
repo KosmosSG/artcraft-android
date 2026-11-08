@@ -8,6 +8,7 @@ class Android20Guards(unittest.TestCase):
         p=(TOOLS/"patch_android20_native_keyboard_splash.py").read_text()
         for symbol in (
             'return super.dispatchKeyEvent(event);',
+            'com.artcraft.ime.ArtCraftIme.wake();',
             'raw.events.retain(|event| match event',
             'physical_key.unwrap_or(*native) != key',
             'View decor = getWindow().getDecorView();',

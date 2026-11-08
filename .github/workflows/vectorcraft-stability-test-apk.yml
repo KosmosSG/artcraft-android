@@ -389,7 +389,17 @@ jobs:
         timeout-minutes: 125
         run: |
           set -euo pipefail
-          bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/vectorcraft-test-icon.png"
+          # The latest Mostafa builder auto-updates to upstream v0.22.0 by default,
+          # which discards our reviewed v0.21.0 owner UI/keyboard overlays.
+          # --noupdate is a supported builder flag: pin the tested upstream commit.
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test -f builder/adapters/vectorcraft/src/ime_bridge.rs
+          test -f builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pub fn set_android_preferences(' builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pub fn take_android_menu_bits()' builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'fn android_owner_unsaved_key(' builder/source/vectorcraft/crates/ui-egui/src/shortcuts.rs
+          bash builder/build.sh -vectorcraft --noupdate "-appicon=$RUNNER_TEMP/vectorcraft-test-icon.png"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
           test "$(find builder/output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
       - name: Verify installable test APK package, ARM64, signature and version
         shell: bash

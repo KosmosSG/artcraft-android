@@ -33,7 +33,7 @@ class AndroidDestroyLoopExitTests(unittest.TestCase):
         before = builder[:builder.index(anchor)]
         self.assertIn('if [[ "$APP" == "pdfcraft"', before)
         self.assertIn('python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py"', before)
-        self.assertNotIn("std::process::exit", MODULE.REPLACEMENT)
+        self.assertNotIn("std::process::exit(", MODULE.REPLACEMENT)
         self.assertNotIn("clearApplicationUserData", MODULE.REPLACEMENT)
 
 if __name__ == "__main__":

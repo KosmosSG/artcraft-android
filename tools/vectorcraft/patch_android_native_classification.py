@@ -99,6 +99,16 @@ def patch_builder(builder: Path) -> None:
     common = builder / "vendor/android-activity/src/input.rs"
     game = builder / "vendor/android-activity/src/game_activity/input.rs"
     winit = builder / "vendor/winit/src/platform_impl/android/mod.rs"
+    # Latest MostafaXS1 builder (2026-11-05) already implements Android
+    # classification via API-safe dlsym; don't overwrite or duplicate it.
+    # Preserve the older builder path for rollback compatibility.
+    if "pub fn classification(&self) -> Classification" in native.read_text():
+        if "motion_event.classification()" not in winit.read_text():
+            raise ValueError("Native gesture classification exists but winit does not consume it")
+        if "AMotionEvent_getClassification" not in native.read_text():
+            raise ValueError("Native classification isn't API-safe on older Android")
+        print("PASS: latest Mostafa native gesture classification already implemented; no duplicate patch")
+        return
     if manifest.read_text().count('version = "0.6.1"') != 1:
         raise ValueError("This fix is pinned to builder android-activity 0.6.1 only")
     if "pub enum Classification" not in common.read_text():

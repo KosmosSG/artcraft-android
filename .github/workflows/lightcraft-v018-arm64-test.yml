@@ -146,6 +146,14 @@ jobs:
               if "python3 - \"$SRC/Cargo.toml\" <<'PY'" not in block:
                   raise SystemExit("STOP: missing expected vendor-patch block")
               s = s[:a] + 'echo "LightCraft v0.18: retaining pinned egui/winit IME-compatible forks"\n' + s[b:]
+          # The reference builder's Android launcher hard-codes egui-winit 0.36,
+          # introducing a second IME-incompatible copy even when the workspace
+          # correctly keeps the pinned upstream egui-winit 0.37 fork.
+          # Change ONLY the LightCraft disposable launcher's generated version.
+          old_dependency = 'egui-winit = "0.36"'
+          if s.count(old_dependency) != 1:
+              raise SystemExit("STOP: LightCraft launcher egui-winit dependency anchor drift")
+          s = s.replace(old_dependency, 'egui-winit = "0.37"', 1)
           p.write_text(s)
           PY
           # The removed vendor blocks also created this directory. Preserve it

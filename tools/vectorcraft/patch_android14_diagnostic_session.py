@@ -60,19 +60,26 @@ def patch(root: Path) -> None:
     '''        vcDiagStartupStage = stage + "@" +
             ((android.os.SystemClock.elapsedRealtimeNanos()-activityStartNs)/1000000L) + "ms";
         // Keep only stage names/timing for the next cold relaunch; no user data.
-        getSharedPreferences("vc_diagnostics", MODE_PRIVATE).edit()
-            .putString("last_stage", vcDiagStartupStage).apply();
+        // No preference write or disk read on hot startup/pixel-copy paths.
         Log.i(TAG, "VC_STARTUP " + vcDiagStartupStage);''')
     s = once(s, '''        super.onCreate(savedInstanceState);
         showStartupCover();''', '''        super.onCreate(savedInstanceState);
         vcDiagPreviousStage = getSharedPreferences("vc_diagnostics", MODE_PRIVATE)
             .getString("last_stage", "unknown");
+        getSharedPreferences("vc_diagnostics", MODE_PRIVATE).edit()
+            .putString("last_stage", "startup_pending_first_frame").apply();
         showStartupCover();''')
     s = once(s, '''            verifiedNativeFrames = painted ? verifiedNativeFrames + 1 : 0;''',
     '''            vcDiagPixelsChecked++;
             vcDiagPixel = "result=" + result + "; varied=" + varied
                 + "; contrast=" + (max-min) + "; painted=" + painted;
             verifiedNativeFrames = painted ? verifiedNativeFrames + 1 : 0;''')
+    s = once(s, '''                nativeEditorReady = true;
+                splashHandler.postDelayed(this::dismissStartupCover, 180);''',
+    '''                nativeEditorReady = true;
+                getSharedPreferences("vc_diagnostics", MODE_PRIVATE).edit()
+                    .putString("last_stage", "editor_first_frame_verified").apply();
+                splashHandler.postDelayed(this::dismissStartupCover, 180);''')
     # Native key source instrumentation, no text, no passwords.
     s = once(s, '''        final int key = event.getKeyCode();
         final boolean close = key == KeyEvent.KEYCODE_W || key == KeyEvent.KEYCODE_Q;''',

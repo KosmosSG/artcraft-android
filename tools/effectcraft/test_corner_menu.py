@@ -24,6 +24,9 @@ class MenuAndPickerTest(unittest.TestCase):
             self.assertIn('ui.set_width(268.0)', result)
             self.assertIn('ui.set_max_width(278.0)', result)
             self.assertNotIn('.auto_shrink([false, true])', result)
+            # Android.7 removes headings but retains the actions below them.
+            self.assertNotIn('ui.label(egui::RichText::new("Fonts").strong())', result)
+            self.assertNotIn('ui.label(egui::RichText::new("Updates").strong())', result)
             self.assertIn('ui.menu_button("Appearance"', result)
             for mode in ('("System", "auto")', '("Light", "light")', '("Dark", "dark")'):
                 self.assertIn(mode, result)

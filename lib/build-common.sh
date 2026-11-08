@@ -2883,50 +2883,35 @@ fn android_main(android_app: android_activity::AndroidApp) {{
     }}
 }}
 '''
-    # PDFCRAFT_ANDROID_ACTIVITY_FINISH: ensure singleTask Activity.finish
-    # is requested from AndroidShell::on_exit BEFORE the native loop is torn
-    # down. The post-run_native request below is a secondary fallback only.
-    # No force-stop, process exit, settings deletion or clear-data workaround.
+    # PDFCRAFT_ANDROID4_SYNC_EXIT_JNI: do not enqueue Java work from the native
+    # teardown path. Mark the loop stale *synchronously* in Java via JNI,
+    # then Java itself performs finishAndRemoveTask on its main thread.
+    # The old async callback could run after the NativeActivity was gone.
     if app == "pdfcraft":
         helper = r'''
 #[cfg(target_os = "android")]
 fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
-    // The Java scheduling call borrows 'app'; the callback captures a separate
-    // owned clone. Capturing the same local by move would fail Rust E0505.
-    let activity_app = app.clone();
-    app.run_on_java_main_thread(Box::new(move || {
-        let vm = unsafe { JavaVM::from_raw(activity_app.vm_as_ptr() as *mut _) };
-        let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = activity_app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("pdfFinishNativeLoop"), jni_sig!("()V"), &[])?;
-            Ok(())
-        });
-        if let Err(error) = result {
-            log::error!("PDFCraft Java native loop finish request failed: {error}");
-        }
-    }));
+    // The VM is live inside eframe App::on_exit. Call Java now, instead
+    // of posting a closure that could outlive the Activity's native loop.
+    let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+    let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+        let raw = app.activity_as_ptr() as jni::sys::jobject;
+        let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+        env.call_method(&*activity, jni_str!("pdfFinishNativeLoop"), jni_sig!("()V"), &[])?;
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::error!("PDFCraft synchronous native-loop exit request failed: {error}");
+    }
 }
 '''
         main_anchor = '#[cfg(target_os = "android")]\n#[unsafe(no_mangle)]\nfn android_main('
         if entry.count(main_anchor) != 1:
             raise SystemExit("PDFCraft activity lifecycle anchor changed")
         entry = entry.replace(main_anchor, helper + '\n' + main_anchor, 1)
-        options_anchor = '    let options = eframe::NativeOptions {'
-        if entry.count(options_anchor) != 1:
-            raise SystemExit("PDFCraft native options anchor changed")
-        entry = entry.replace(options_anchor,
-                              '    let exit_activity = android_app.clone();\n' + options_anchor, 1)
-        footer_anchor = '    if let Err(error) = result {\n        log::error!("'
-        # Best-effort fallback if eframe exits without calling AndroidShell::on_exit.
-        # Java pdfFinishNativeLoop is idempotent and preserves application data.
-        footer_index = entry.rfind(footer_anchor)
-        if footer_index < entry.index('let result = eframe::run_native('):
-            raise SystemExit("PDFCraft run_native completion anchor changed")
-        entry = entry[:footer_index] + (
-            '    finish_pdfcraft_android_activity(&exit_activity);\n'
-            + entry[footer_index:]
-        )
+        # No post-run_native JNI fallback: AndroidApp's Activity pointer can
+        # already be invalid once the native event loop has been torn down.
+        # on_exit above is the lifecycle owner and saves settings first.
     (staging_dir / "src").mkdir()
 
     # The shared Android system-font module, referenced by `mod system_fonts;` in the entry above.

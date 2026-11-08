@@ -185,10 +185,24 @@ impl Tools {
         if !scale.is_finite() || scale <= 0.0 || (dx == 0.0 && dy == 0.0) {
             return;
         }
-        // Android MotionEvent positions are in device pixels. Advancing the
-        // cursor before the wheel makes WordCraft scroll the hovered canvas,
-        // even if Android never emitted a winit CursorMoved for this trackpad.
-        raw.events.push(egui::Event::PointerMoved(egui::pos2(x / scale, y / scale)));
+        // WC_ANDROID9_TRACKPAD_NO_DRAG_RUST_V1
+        // A MagicOS trackpad scroll can be accompanied by an emulated primary
+        // pointer press. Never let that press move a text selection or ink
+        // stroke. Release any editor drag before the wheel, without generating
+        // new synthetic touchscreen or stylus contacts.
+        raw.events.retain(|event| !matches!(event,
+            egui::Event::PointerButton {
+                button: egui::PointerButton::Primary, pressed: true, ..
+            }
+        ));
+        let pos = egui::pos2(x / scale, y / scale);
+        raw.events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        });
+        raw.events.push(egui::Event::PointerMoved(pos));
         raw.events.push(egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
             delta: egui::vec2(dx / scale, dy / scale),

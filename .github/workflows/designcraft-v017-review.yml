@@ -3,7 +3,7 @@ name: DesignCraft v0.17 published-baseline integration (temporary test only)
 on:
   push:
     branches:
-      - integration/designcraft-v017-published-android9-20261104
+      - fix/designcraft-v017-android2-input-cursor-20261104
     paths:
       - lib/build-common.sh
       - configs/upstream/designcraft-v017.json
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n lib/build-common.sh
-          python3 -m py_compile tools/designcraft/patch_v017_android.py tools/designcraft/patch_v017_interactions.py tools/designcraft/overlay_winit_android_mouse.py tools/designcraft/install_v017_updater.py
+          python3 -m py_compile tools/designcraft/patch_v017_android.py tools/designcraft/patch_v017_interactions.py tools/designcraft/overlay_winit_android_mouse.py tools/designcraft/overlay_v017_cursor.py tools/designcraft/install_v017_updater.py
           BASELINE=652f1475ff02fc7c7dc6b1652f2d36404d931838
           git merge-base --is-ancestor "$BASELINE" HEAD || { echo "Wrong approved DesignCraft baseline ancestry"; exit 1; }
           git diff --exit-code "$BASELINE" HEAD -- tools/designcraft/support/ tools/approved-branding/ || { echo "Published font/updater/brand sources unexpectedly changed"; exit 1; }
@@ -96,22 +96,27 @@ jobs:
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
           echo "NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
-      - name: Compile pinned DesignCraft v0.17.0 Android debug candidate
+      - name: Compile pinned DesignCraft v0.17.2 Android debug candidate
         timeout-minutes: 40
         run: bash build-debug.sh -designcraft -designcraft-v017 -packagename=com.artcraft.designcraft.test -appname='DesignCraft Test'
       - name: Verify disposable signature, ARM64 library and distinct test package
         run: |
           set -euo pipefail
-          APK="$(find output -maxdepth 1 -type f -name 'designcraft-0.17.0-android.1-debug.apk' -print -quit)"
+          APK="$(find output -maxdepth 1 -type f -name 'designcraft-0.17.2-android.5-debug.apk' -print -quit)"
           test -n "$APK" && test -s "$APK" || { echo "Expected test APK missing"; exit 1; }
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
           echo "$BADGING" | grep -q "name='com.artcraft.designcraft.test'"
-          echo "$BADGING" | grep -q "versionName='0.17.0-android.1'"
-          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
-          if unzip -Z1 "$APK" | grep -Eq '^lib/(armeabi|x86)/'; then
-            echo "Unexpected non-ARM64 native library in test APK"
-            exit 1
-          fi
+          echo "$BADGING" | grep -q "versionName='0.17.2-android.5'"
+          python3 - "$APK" <<'PYAPK'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              libs = [name for name in archive.namelist() if name.startswith("lib/") and name.endswith(".so")]
+              assert {name.split("/")[1] for name in libs} == {"arm64-v8a"}, libs
+              assert "lib/arm64-v8a/libdesigncraft_android.so" in libs, libs
+              assert len(libs) == len(set(libs)), libs
+              assert archive.testzip() is None
+          PYAPK
+          stat -c 'APK bytes: %s' "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/test-apk-cert.txt"
           grep -q 'CN=ArtCraft Android Builder' "$RUNNER_TEMP/test-apk-cert.txt"
           sha256sum "$APK"
@@ -119,7 +124,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: UNVERIFIED-DesignCraft-v0.17.0-android.1-published-baseline-ARM64-DEBUG
+          name: UNVERIFIED-DesignCraft-v0.17.2-android.5-published-baseline-ARM64-DEBUG
           path: output/designcraft-*-debug.apk
           retention-days: 3
           if-no-files-found: error

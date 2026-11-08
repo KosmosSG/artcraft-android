@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restore Android-specific DesignCraft controls when building pinned v0.17.0.
+"""Restore Android-specific DesignCraft controls when building pinned v0.17.2.
 
 Run after the generic launcher is staged, before compiling/signing.
 Only operates in the isolated, debug-only -designcraft-v016 build path.
@@ -20,6 +20,25 @@ def modify(path: Path, before: str, after: str):
 
 def patch_source(src: Path):
     ui = src / "crates/ui-egui/src"
+    # Android uses system PointerIcons, including when the desktop tool has a bitmap.
+    modify(ui / "cursors.rs", 'mode_for(cfg!(target_arch = "wasm32"),',
+           'mode_for(cfg!(any(target_arch = "wasm32", target_os = "android")),')
+    anchor = "    let mut v = if t.dark { Visuals::dark() } else { Visuals::light() };"
+    modify(ui / "theme.rs", anchor, anchor + "\n    v.interact_cursor = Some(egui::CursorIcon::PointingHand);")
+    anchor = "    wheel_navigate(app, ui, resp, &xf);"
+    modify(ui / "canvas/input.rs", anchor, """    if let Some(touch) = ui.input(|i| i.multi_touch())
+        && !menu_open && resp.rect.contains(touch.start_pos)
+    {
+        let delta = xf.unrotate_delta(touch.translation_delta);
+        if let Some(v) = app.view_mut() {
+            v.origin = Point::new(v.origin.x - delta.x as f64 / v.zoom, v.origin.y - delta.y as f64 / v.zoom);
+        }
+        if touch.zoom_delta.is_finite() && touch.zoom_delta > 0.0 && touch.zoom_delta != 1.0 {
+            zoom_at(app, touch.center_pos, touch.zoom_delta as f64);
+        }
+        return;
+    }
+""" + anchor)
     commands = ui / "menus/ui_commands.rs"
     modify(commands, 'pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[',
         '''pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
@@ -53,14 +72,6 @@ use super::export::{''', str(run))
     }
 ''', str(run))
     run.write_text(source)
-    table = ui / "menus/tables.rs"
-    source = table.read_text()
-    source = once(source, '            "cmd:file.close",',
-        '            "cmd:file.close",\n            "ui:app.artcraftImportFont",', str(table))
-    source = once(source, '        "Type",\n        &[\n',
-        '        "Type",\n        &[\n            "ui:app.artcraftImportFont",\n            "-",\n', str(table))
-    table.write_text(source)
-
     dialogs = ui / "dialogs.rs"
     source = dialogs.read_text()
     source = once(source,
@@ -132,8 +143,34 @@ def patch_launcher(root: Path, android: Path):
                             }''', str(launcher))
     source = once(source, "        self.inner.ui(ui);",
         '''        v016_android::ui(ui, &mut self.inner, &self.saf_bridge, &self.saf_state);
-        self.inner.ui(ui);''', str(launcher))
+        self.inner.ui(ui);
+        v016_android::paint_pointer_feedback(ui.ctx());
+        if egui_winit::winit::platform::android::STYLUS_HOVER.load(std::sync::atomic::Ordering::Relaxed)
+            && let Some(pos) = ui.ctx().pointer_hover_pos()
+            && self.inner.canvas_rect.is_some_and(|r| r.contains(pos))
+        {
+            let painter = ui.ctx().layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip, egui::Id::unique("designcraft.pen.hover")));
+            painter.circle_stroke(pos, 5.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+            painter.circle_stroke(pos, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+        }''', str(launcher))
+    source = once(
+        source,
+        "    apply_immersive_fullscreen(&android_app);",
+        """    // DesignCraft-only adaptive cursor: publish the Activity before first frame.
+    egui_winit::android_activity::set_activity(
+        android_app.activity_as_ptr() as *mut std::ffi::c_void
+    );
+    apply_immersive_fullscreen(&android_app);""",
+        "publish Android activity for adaptive cursor",
+    )
     launcher.write_text(source)
+    manifest = android / "Cargo.toml"
+    m = manifest.read_text()
+    m = once(m, "[dependencies]\n", """[dependencies]
+egui-winit = "0.37"
+""", "DesignCraft's egui-winit adapter dependency")
+    manifest.write_text(m)
     shutil.copyfile(root / "tools/designcraft/v016_android.rs", android / "src/v016_android.rs")
 
     # Preserve the old release's writable font import layout.
@@ -150,6 +187,16 @@ def install_icons(root: Path, src: Path, android: Path):
     if cfg["app"] != "designcraft":
         raise ValueError("Wrong app in approved icon manifest")
     res_dir = root / "tools/approved-branding/assets/res"
+    # Use the exact same user-approved Dc artwork for the top-left app menu
+    # as the actual launcher icon, not a placeholder text glyph.
+    from PIL import Image
+    with Image.open(res_dir / "mipmap-xxxhdpi/ic_launcher.png") as image:
+        pixels = image.convert("RGBA").resize((96, 96), Image.Resampling.LANCZOS)
+        # Use the very same verified artwork inside the upstream app-bar menu,
+        # so Dc appears beside Home rather than on a duplicate Android panel.
+        rgba = pixels.tobytes()
+        (android / "src/dc-launcher-icon.rgba").write_bytes(rgba)
+        (src / "crates/ui-egui/src/menus/dc-launcher-icon.rgba").write_bytes(rgba)
     dest_dir = android / "res"
     for old in dest_dir.rglob("*"):
         if old.is_file() and old.stem in {"ic_launcher", "ic_launcher_round", "ic_launcher_foreground"}:
@@ -178,7 +225,7 @@ def install_icons(root: Path, src: Path, android: Path):
         raise ValueError("Missing generated launcher icon field")
     # Keep the upstream v0.17 core pinned while identifying the Android build
     # separately. Do not change the signing identity or published release.
-    candidate_version = "0.17.0-android.1"
+    candidate_version = "0.17.2-android.5"
     if updated.count("version.workspace = true") != 1:
         raise ValueError("Generated Android manifest version changed")
     updated = updated.replace("version.workspace = true",

@@ -29,6 +29,15 @@ class Android19MostafaCompatibilityTests(unittest.TestCase):
         self.assertIn('patch_android19_reference_ime.py',w)
         self.assertIn('com.artcraft.vectorcraft.test',w)
         self.assertIn('Delete disposable builder signing materials',w)
+        self.assertIn('bash builder/build.sh -vectorcraft --noupdate',w)
+        self.assertIn('test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"',w)
+        legacy=ROOT/"adapters/vectorcraft/src/ime_bridge.rs"
+        self.assertTrue(legacy.is_file(),"Mostafa builder no longer auto-copies owner IME bridge")
+        legacy_source=legacy.read_text()
+        self.assertIn("pub struct ImeBridge",legacy_source)
+        self.assertIn('ARTCRAFT_ANDROID_IME_BRIDGE_V1',legacy_source)
+        self.assertIn('fn translate(event: &str)',legacy_source)
+        self.assertIn("pub fn poll(&mut self, raw: &mut egui::RawInput)",legacy_source)
         self.assertNotIn('gh release create',w)
 
 if __name__=="__main__": unittest.main()

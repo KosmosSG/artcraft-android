@@ -1,7 +1,12 @@
-name: LightCraft v0.18.0 Official Certificate Signing (MANUAL ONLY)
+name: LightCraft v0.18.0 Original Certificate Signing (NO PUBLISH)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/lightcraft-v0180-android-test-20261104
+    paths:
+      - '.github/workflows/lightcraft-v018-official-sign.yml'
 
 permissions:
   contents: read

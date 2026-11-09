@@ -89,7 +89,16 @@ def apply(builder: Path) -> None:
     s = about.read_text()
     s = insert_once(s, ORIGINAL_TABS,
         '[tl!("About"), tl!("Contributors"), tl!("Models"), tl!("Updates")]', "about tabs")
-    s = insert_once(s, ORIGINAL_MATCH, PATCHED_MATCH, "About contents")
+    # Upstream v0.23 increased the credits pane width from 660 to 820.
+    # Match only the reviewed alternatives; preserve the active upstream width.
+    matches = [(ORIGINAL_MATCH, PATCHED_MATCH),
+               (ORIGINAL_MATCH.replace("ui.set_width(660.0)", "ui.set_width(820.0)"),
+                PATCHED_MATCH.replace("ui.set_width(660.0)", "ui.set_width(820.0)"))]
+    valid = [(before, after) for before, after in matches if s.count(before) == 1]
+    if len(valid) != 1:
+        raise ValueError("Unreviewed VectorCraft About contents; expected one v0.21/v0.23 anchor")
+    before, after = valid[0]
+    s = insert_once(s, before, after, "About contents")
     s = s.replace("Tabs: About · Contributors · Models (the credits are compiled in, see `credits`).",
                   "Tabs: About · Contributors · Models · Android Updates (the credits are compiled in).")
     about.write_text(s)

@@ -33,6 +33,8 @@ def patch_winit(root: Path, math_source: Path):
         '    vc_pad_detector: vectorcraft_pad_math::Detector,\n'
         '    vc_pad_active: bool,\n'
         '    vc_pad_device: Option<i32>,\n'
+        '    vc_pad_scale_previous: f64,\n'
+        '    vc_pad_scale_confirmed: bool,\n'
         '    modifiers_state: ModifiersState,')
     source = once(source,
         '            pad_spread: None,\n            modifiers_state: ModifiersState::empty(),',
@@ -40,6 +42,8 @@ def patch_winit(root: Path, math_source: Path):
         '            vc_pad_detector: vectorcraft_pad_math::Detector::default(),\n'
         '            vc_pad_active: false,\n'
         '            vc_pad_device: None,\n'
+        '            vc_pad_scale_previous: 0.0,\n'
+        '            vc_pad_scale_confirmed: false,\n'
         '            modifiers_state: ModifiersState::empty(),')
     source = source[:source.index(ORIGINAL)] + NEW_ROUTER + source[source.index(END, source.index(ORIGINAL)):]
     assert ORIGINAL not in source
@@ -90,6 +94,8 @@ NEW_ROUTER = r'''
                     self.vc_pad_active = false;
                     self.vc_pad_device = None;
                     self.vc_pad_detector.reset();
+                    self.vc_pad_scale_previous = 0.0;
+                    self.vc_pad_scale_confirmed = false;
                     self.pad_position = None;
                     self.pad_spread = None;
                 }
@@ -103,6 +109,8 @@ NEW_ROUTER = r'''
                         self.vc_pad_active = false;
                         self.vc_pad_device = None;
                         self.vc_pad_detector.reset();
+                        self.vc_pad_scale_previous = 0.0;
+                        self.vc_pad_scale_confirmed = false;
                         self.pad_position = None;
                         self.pad_spread = None;
                         return input_status;
@@ -111,6 +119,8 @@ NEW_ROUTER = r'''
                         self.vc_pad_active = true;
                         self.vc_pad_device = Some(source_device);
                         self.vc_pad_detector.reset();
+                        self.vc_pad_scale_previous = 0.0;
+                        self.vc_pad_scale_confirmed = false;
                         self.pad_position = None;
                         self.pad_spread = None;
                         // An initial one-finger pointer press may have reached
@@ -153,57 +163,70 @@ NEW_ROUTER = r'''
                             ));
                         let mut pan: Option<(f64, f64, usize)> = None;
                         let mut zoom: Option<(f64, usize)> = None;
-                        match reported {
-                            PadGesture::Scroll => {
-                                if axis_x.is_finite() && axis_y.is_finite()
-                                    && (axis_x != 0.0 || axis_y != 0.0) {
-                                    pan = Some((axis_x, axis_y, 0)); // native axes
-                                } else if let Some(p) = position {
-                                    if let Some(last) = self.pad_position {
-                                        pan = Some((p.x-last.x, p.y-last.y, 2));
-                                    }
-                                }
-                            }
-                            PadGesture::Pinch => {
-                                if axis_scale.is_finite()
-                                    && (0.4..=2.5).contains(&axis_scale)
-                                    && (axis_scale - 1.0).abs() > 0.0001 {
-                                    zoom = Some((axis_scale, 1)); // API 34
-                                } else if let Some(spread) = pointer_spread(&motion_event) {
-                                    if let Some(last) = self.pad_spread {
-                                        if last > 0.0 {
-                                            zoom = Some((spread / last, 3));
+                        // Inspect true two-pointer geometry in ALL classified
+                        // modes: some MagicOS pinch gestures are continually
+                        // reported as TwoFingerSwipe, never Classification::Pinch.
+                        // The detector is hysteretic so a normal two-finger pan
+                        // cannot flip to zoom from ordinary fingertip drift.
+                        let inference = if is_two_pad {
+                            let mut pair = motion_event.pointers();
+                            if let (Some(a), Some(b)) = (pair.next(), pair.next()) {
+                                self.vc_pad_detector.step(vectorcraft_pad_math::Sample {
+                                    x: (a.x() as f64 + b.x() as f64) * 0.5,
+                                    y: (a.y() as f64 + b.y() as f64) * 0.5,
+                                    spread: pointer_spread(&motion_event).unwrap_or(0.0),
+                                })
+                            } else { vectorcraft_pad_math::Step::None }
+                        } else { vectorcraft_pad_math::Step::None };
+                        // API 34 scale is the factor SINCE the preceding packet,
+                        // not a cumulative absolute zoom. Do not let a single
+                        // +/-0.2% noise sample turn scrolling into zooming.
+                        // A convincing 1.2% sample or two consecutive smaller
+                        // same-direction changes are deliberate zoom intent.
+                        let valid_scale = axis_scale.is_finite()
+                            && (0.4..=2.5).contains(&axis_scale);
+                        let scale_change = if valid_scale { axis_scale - 1.0 } else { 0.0 };
+                        let successive_scale = scale_change.abs() >= 0.0025
+                            && self.vc_pad_scale_previous.abs() >= 0.0025
+                            && scale_change.signum() == self.vc_pad_scale_previous.signum();
+                        let native_pinch = valid_scale && scale_change.abs() > 0.0003
+                            && (reported == PadGesture::Pinch
+                                || self.vc_pad_scale_confirmed
+                                || scale_change.abs() >= 0.012
+                                || successive_scale);
+                        self.vc_pad_scale_previous = scale_change;
+                        if native_pinch { self.vc_pad_scale_confirmed = true; }
+                        let geometry_pinch = matches!(inference, vectorcraft_pad_math::Step::Pinch(_));
+                        let locked_geometry_pinch = is_two_pad
+                            && self.vc_pad_detector.mode() == vectorcraft_pad_math::Mode::Pinch;
+                        // Prioritize real pinch packets even when the platform
+                        // classified the entire stream as a swipe. Once pinch
+                        // wins, ignore parallel scroll axes for this packet.
+                        if native_pinch {
+                            zoom = Some((axis_scale, 1));
+                        } else if let vectorcraft_pad_math::Step::Pinch(factor) = inference {
+                            zoom = Some((factor, 3));
+                        } else if !self.vc_pad_scale_confirmed && !locked_geometry_pinch {
+                            match reported {
+                                PadGesture::Pinch => {
+                                    if let Some(spread) = pointer_spread(&motion_event) {
+                                        if let Some(last) = self.pad_spread {
+                                            if last > 0.0 { zoom = Some((spread / last, 3)); }
                                         }
                                     }
                                 }
-                            }
-                            PadGesture::None => {
-                                // Prefer the Android API 34 gesture axes even
-                                // if MagicOS did not set a classification.
-                                if axis_scale.is_finite()
-                                    && (0.4..=2.5).contains(&axis_scale)
-                                    && (axis_scale - 1.0).abs() > 0.0001 {
-                                    zoom = Some((axis_scale, 1));
-                                } else if axis_x.is_finite() && axis_y.is_finite()
-                                    && (axis_x != 0.0 || axis_y != 0.0) {
-                                    pan = Some((axis_x, axis_y, 0));
-                                }
-                                // On some MagicOS packets classification is
-                                // absent. Infer only when a real pad supplies
-                                // TWO pointers; never touch the touchscreen.
-                                if is_two_pad && pan.is_none() && zoom.is_none() {
-                                    let mut iter = motion_event.pointers();
-                                    if let (Some(p), Some(q)) = (iter.next(), iter.next()) {
-                                        let sample = vectorcraft_pad_math::Sample {
-                                            x: (p.x() as f64 + q.x() as f64) * 0.5,
-                                            y: (p.y() as f64 + q.y() as f64) * 0.5,
-                                            spread: pointer_spread(&motion_event).unwrap_or(0.0),
-                                        };
-                                        match self.vc_pad_detector.step(sample) {
-                                            vectorcraft_pad_math::Step::Pan(x,y) => pan=Some((x,y,2)),
-                                            vectorcraft_pad_math::Step::Pinch(f) => zoom=Some((f,3)),
-                                            vectorcraft_pad_math::Step::None => {},
+                                PadGesture::Scroll | PadGesture::None => {
+                                    if axis_x.is_finite() && axis_y.is_finite()
+                                        && (axis_x != 0.0 || axis_y != 0.0) {
+                                        pan = Some((axis_x, axis_y, 0));
+                                    } else if reported == PadGesture::Scroll {
+                                        if let Some(p) = position {
+                                            if let Some(last) = self.pad_position {
+                                                pan = Some((p.x-last.x, p.y-last.y, 2));
+                                            }
                                         }
+                                    } else if let vectorcraft_pad_math::Step::Pan(x,y) = inference {
+                                        pan = Some((x,y,2));
                                     }
                                 }
                             }

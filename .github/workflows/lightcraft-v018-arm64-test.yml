@@ -185,6 +185,26 @@ jobs:
               2)
           p.write_text(s)
           PY
+          # LightCraft-only GPU baseline instrumentation: keep Vulkan-first
+          # with GL fallback, and report the ACTUAL adapter and hardware limits.
+          # This does not force FPS, increase memory use or affect other apps.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/build-common.sh")
+          s = p.read_text()
+          anchor = '            let supported = adapter.limits();'
+          if s.count(anchor) != 2:
+              raise SystemExit("STOP: expected two LightCraft Android GPU launcher templates")
+          report = (
+              '            let info = adapter.get_info();\\n'
+              '            log::info!("LIGHTCRAFT_GPU backend={:?} name={} device={} driver={} max_texture_2d={} max_buffer_size={}", '
+              'info.backend, info.name, info.device, info.driver, '
+              'adapter.limits().max_texture_dimension_2d, adapter.limits().max_buffer_size);\\n'
+              + anchor
+          )
+          s = s.replace(anchor, report, 2)
+          p.write_text(s)
+          PY
           # The removed vendor blocks also created this directory. Preserve it
           # for the builder's separate egui-wgpu surface and Android rfd adapters.
           mkdir -p builder/source/lightcraft/vendor

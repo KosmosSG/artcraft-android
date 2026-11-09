@@ -18,7 +18,7 @@ def patch(root: Path) -> None:
     s=once(s,'''        startupStage("photocraft_direct_native_launch");
         applyImmersiveFullscreen();''',
     '''        startupStage("photocraft_direct_native_launch");
-        showStartupCover();
+        if (!nativeEditorReady) showStartupCover();
         applyImmersiveFullscreen();''')
     s=once(s,'''            nativeEditorReady = true;
             startupStage("native_editor_ui_ready");

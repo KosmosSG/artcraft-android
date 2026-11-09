@@ -109,7 +109,7 @@ jobs:
           p.write_text(t, encoding="utf-8")
           print("PASS: v0.21.0 source pins, overlay versions and trackpad source retargeted only in runner")
           PY
-          python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py
+          python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py tools/photocraft_v021_pc_menu.py
 
       - name: Check out exact latest official v0.21.0 source without changing project history
         shell: bash
@@ -223,7 +223,12 @@ jobs:
           cargo test --locked --manifest-path tools/photocraft_keyboard_repair/Cargo.toml
           grep -Fq 'pc_keyboard_diag.show' adapters/photocraft/src/lib.rs
           grep -Fq 'pcKeyDiagSetEnabled' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
-          grep -Fq 'Keyboard Diagnostics (test)' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          # The diagnostic backend remains intact, but its old Pc-menu entry
+          # must be absent from the user-facing GridCraft-style launcher.
+          ! grep -Fq 'Keyboard Diagnostics (test)' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          ! grep -Fq 'Keyboard & Diagnostics' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'ui.menu_button("Shortcut Pad"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'Show Shortcut Pad' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
           grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs

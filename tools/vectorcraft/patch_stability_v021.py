@@ -56,6 +56,9 @@ fi
     # Android.20: forward real hardware key to wake native winit and use responsive startup.
     from patch_android20_native_keyboard_splash import patch as android20
     android20(root)
+    # Android.21: PhotoCraft direct launch and native egui menu scrolling; keyboard unchanged.
+    from patch_android21_photocraft_parity import patch as photocraft21
+    photocraft21(root)
 
 
 def patch_adapter(root):

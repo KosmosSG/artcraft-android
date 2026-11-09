@@ -54,13 +54,11 @@ def patch(root: Path) -> None:
     activity.write_text(java)
     adapter=root/"adapters/vectorcraft/src/lib.rs"
     rust=adapter.read_text()
-    rust=once(rust,'''        self.menu_scroll.apply(ctx, raw);
-        self.inner.raw_input_hook(raw);''',
+    rust=once(rust,'''        self.menu_scroll.apply(ctx, raw);''',
     '''        // PhotoCraft parity: let egui's one native popup scroll integrator
         // handle the full Android trackpad wheel stream without re-batching,
         // momentum replay or clamped step intervals. Preserve all wheel
-        // sources/phases and the separate canvas pinch/zoom router.
-        self.inner.raw_input_hook(raw);''')
+        // sources/phases and the separate canvas pinch/zoom router.''')
     adapter.write_text(rust)
     print("PASS: PhotoCraft-style first native frame/no custom splash; direct menu wheel, no extra smoothing; keyboard left unchanged")
 

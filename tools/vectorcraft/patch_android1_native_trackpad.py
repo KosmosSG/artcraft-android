@@ -321,6 +321,9 @@ def patch_staged(root: Path):
                 match self.bridge.copy_diagnostic_report(&report) {'''
     content = once(content, old, new)
     content = once(content,
+        'VectorCraft Android.15 Diagnostic Session',
+        'VectorCraft v0.23.0-android.3 Diagnostic Session')
+    content = once(content,
         '            if vc_diag_start {',
         '            if vc_diag_start {\n'
         '                winit::platform::android::vc_pad_reset_diagnostics();')

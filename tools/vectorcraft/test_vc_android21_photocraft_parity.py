@@ -36,8 +36,8 @@ class VectorCraftAndroid21Parity(unittest.TestCase):
 
     def test_release_and_feature_protection(self):
         w=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn('VERSION_NAME: 0.21.0-android.22',w)
-        self.assertIn("VERSION_CODE: '16783382'",w)
+        self.assertIn('VERSION_NAME: 0.21.0-android.23',w)
+        self.assertIn("VERSION_CODE: '16783383'",w)
         self.assertIn('patch_android20_native_keyboard_splash.py',w)
         self.assertIn('patch_android21_photocraft_parity.py',w)
         self.assertIn('com.artcraft.vectorcraft.test',w)

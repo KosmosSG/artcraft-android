@@ -2,7 +2,7 @@
 
 **Status: REVIEW ONLY. No releases, release assets, tags, branches, secrets, or workflow runs have been deleted.**
 
-Repository: `KosmosSG/artcraft-android`. Snapshot: 84 published/non-draft release objects. Proposed retention: 23 protected, 61 **candidates** for deletion. Of candidates, 21 are marked prerelease. Their combined asset size is about 5099 MiB, not GitHub Actions minutes.
+Repository: `KosmosSG/artcraft-android`. Snapshot: 84 published/non-draft release objects. Proposed retention: 24 protected, 60 **candidates** for deletion. Of candidates, 21 are marked prerelease. Their combined asset size is about 4931 MiB, not GitHub Actions minutes.
 
 ## Non-negotiable conditions before any deletion
 
@@ -13,11 +13,12 @@ Repository: `KosmosSG/artcraft-android`. Snapshot: 84 published/non-draft releas
 5. Re-read the live release inventory immediately before cleanup: this file is a static snapshot and new published releases change the KEEP/DELETE boundaries.
 6. Do not change/delete *any* release tagged below as KEEP. If a keep release is unexpectedly missing, STOP.
 
-### Why the three extra protected releases matter
+### Why the four extra protected releases matter
 
 - `photocraft-v0.14.0-android.1` is an older original-key signed PhotoCraft APK. Modern PhotoCraft uses a distinct V2 certificate, so preserving an original-key download matters for migrations.
 - `lightcraft-v0.11.0-android.8` is a production-signed preview specifically referenced in recent release signing verification.
 - `pdfcraft-v0.12.0-android.1` is hard-coded as the prior APK in `.github/workflows/pdfcraft-iconfix-release.yml` (a legacy one-off workflow). Do not delete it until the workflow is retired or rewritten after review.
+- `designcraft-v0.12.0-android.3` is referenced directly by release ID `423114230` in `.github/workflows/promote-owner-tested-icon-apks.yml`. Retain it until that older manual promotion workflow is retired or rewritten.
 
 ## KEEP — protected release tags
 
@@ -33,6 +34,7 @@ Repository: `KosmosSG/artcraft-android`. Snapshot: 84 published/non-draft releas
 ### designcraft
 - `designcraft-v0.17.2-android.5`
 - `designcraft-v0.12.0-android.9`
+- `designcraft-v0.12.0-android.3`
 
 ### effectcraft
 - `effectcraft-v0.21.0-android.15`
@@ -73,7 +75,6 @@ Repository: `KosmosSG/artcraft-android`. Snapshot: 84 published/non-draft releas
 - `deckcraft-v0.9.0-android.4`
 - `deckcraft-v0.9.0-android.4-dcs-fix`
 - `designcraft-v0.12.0-android.2`
-- `designcraft-v0.12.0-android.3`
 - `designcraft-v0.12.0-android.4`
 - `designcraft-v0.12.0-android.5`
 - `designcraft-v0.12.0-android.8`

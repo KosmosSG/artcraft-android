@@ -185,7 +185,7 @@ jobs:
               assert "vcDiagFrameProbeStage" in java
               assert "vcWakeNativeLoop" in java
               assert "wake_native_loop()" in rust
-              assert "platform_splash_until_native_ui" in java
+              assert "platform_splash_until_native_ui" not in java
               assert "native_ui_traversal_ready" in java
               assert "mode == 2 && previousMode != 2" in java
               assert "nativeSurface.requestFocus();" in java

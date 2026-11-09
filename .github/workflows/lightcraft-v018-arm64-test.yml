@@ -197,7 +197,7 @@ jobs:
               raise SystemExit("STOP: expected two LightCraft Android GPU launcher templates")
           report = (
               '            let info = adapter.get_info();\n'
-              '            log::info!("LIGHTCRAFT_GPU backend={:?} name={} device={} driver={} max_texture_2d={} max_buffer_size={}", '
+              '            log::info!("LIGHTCRAFT_GPU backend={{:?}} name={{}} device={{}} driver={{}} max_texture_2d={{}} max_buffer_size={{}}", '
               'info.backend, info.name, info.device, info.driver, '
               'adapter.limits().max_texture_dimension_2d, adapter.limits().max_buffer_size);\n'
               + anchor

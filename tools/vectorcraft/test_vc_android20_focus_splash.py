@@ -28,8 +28,8 @@ class Android20Guards(unittest.TestCase):
         self.assertIn('unused=s[begin:end]',p)
     def test_protected_separate_arm64_package(self):
         w=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn('VERSION_NAME: 0.21.0-android.21',w)
-        self.assertIn("VERSION_CODE: '16783381'",w)
+        self.assertIn('VERSION_NAME: 0.21.0-android.22',w)
+        self.assertIn("VERSION_CODE: '16783382'",w)
         self.assertIn('patch_android20_native_keyboard_splash.py',w)
         self.assertIn('com.artcraft.vectorcraft.test',w)
         self.assertIn('builder/build.sh -vectorcraft --noupdate',w)

@@ -7,3 +7,5 @@ Reference verified: MostafaXS1/artcraft-android published release v0.5.0 (2026-1
 All source alterations occur on disposable test branch only, no upstream auto-update. Build only after Python source guards + Rust gesture and IME regression checks. Pinned builder/upstream unchanged. Separate install com.artcraft.vectorcraft.test, VERSION_NAME 0.21.0-android.25, VERSION_CODE 16783385, ARM64, disposable test signing only. Never use original key, never publish, merge or tag. Only one Actions run after trigger. User will test cold start, trackpad menu vs touchscreen, 2-finger pan/pinch, shortcuts and save modal.
 
 Preflight retry 2: Android.25 bootstrap instrumentation now anchors only NativeActivity super.onCreate, preserving the actual Android.23/24 startup-stage wrapper. Previous run 42605092130 failed before SDK install; do not reuse artifact or production keys.
+
+Preflight retry 3: fixed duplicate Android.25 native hook guard; prior run 42605283754 passed native reference restoration and failed only on idempotence unit-test assertion, before Android SDK/NDK cost.

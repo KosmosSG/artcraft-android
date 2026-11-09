@@ -14,6 +14,7 @@ pub struct Detector {
 }
 impl Detector {
     pub fn reset(&mut self) { *self = Self::default(); }
+    pub fn mode(&self) -> Mode { self.mode }
     pub fn step(&mut self, current: Sample) -> Step {
         if !current.x.is_finite() || !current.y.is_finite() ||
             !current.spread.is_finite() || current.spread <= 0.0 {
@@ -29,7 +30,7 @@ impl Detector {
             let travelled = (current.x - origin.x).hypot(current.y - origin.y);
             let stretched = (current.spread - origin.spread).abs();
             // Small, decisive deadzones: don't turn a two-finger glide into a pinch.
-            if stretched >= 7.0 && stretched > 1.35 * travelled {
+            if stretched >= 4.5 && stretched > 1.15 * travelled {
                 self.mode = Mode::Pinch;
             } else if travelled >= 5.0 && travelled > 0.8 * stretched {
                 self.mode = Mode::Pan;
@@ -38,6 +39,17 @@ impl Detector {
             }
             // Discard the recognition packet to avoid a first-frame jump.
             return Step::None;
+        }
+        // A MagicOS touchpad may label an entire pinch as Swipe. Permit a
+        // deliberate spread-dominant handoff from Pan to Pinch, but NEVER
+        // switch for an ordinary two-finger scroll with slight finger drift.
+        if self.mode == Mode::Pan {
+            let travelled=(current.x-origin.x).hypot(current.y-origin.y);
+            let stretched=(current.spread-origin.spread).abs();
+            if stretched >= 14.0 && stretched > 1.8 * travelled {
+                self.mode=Mode::Pinch;
+                return Step::None; // Reset origin on handoff; no giant zoom.
+            }
         }
         match self.mode {
             Mode::Pan => {
@@ -85,6 +97,22 @@ mod tests {
         assert_eq!(d.step(s(501.,0.,100.)),Step::Pan(1.,0.));
         d.reset();
         assert_eq!(d.step(s(100.,0.,100.)),Step::None);
+    }
+    #[test] fn clear_pinch_can_take_over_an_early_swipe_classification() {
+        let mut d=Detector::default();
+        assert_eq!(d.step(s(0.,0.,100.)),Step::None);
+        assert_eq!(d.step(s(10.,0.,100.)),Step::None);
+        assert_eq!(d.step(s(12.,0.,101.)),Step::Pan(2.,0.));
+        assert_eq!(d.step(s(13.,0.,135.)),Step::None);
+        assert_eq!(d.mode(),Mode::Pinch);
+        assert_eq!(d.step(s(13.,0.,150.)),Step::Pinch(150./135.));
+    }
+    #[test] fn scrolling_with_small_spread_drift_does_not_zoom() {
+        let mut d=Detector::default();
+        d.step(s(0.,0.,100.)); d.step(s(9.,0.,102.));
+        assert_eq!(d.step(s(20.,0.,110.)),Step::Pan(11.,0.));
+        assert_eq!(d.step(s(25.,0.,112.)),Step::Pan(5.,0.));
+        assert_eq!(d.mode(),Mode::Pan);
     }
     #[test] fn thresholds_do_not_confuse_slight_uneven_pan_and_zoom() {
         let mut pan=Detector::default(); pan.step(s(0.,0.,80.));

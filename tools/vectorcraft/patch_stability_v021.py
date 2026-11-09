@@ -192,12 +192,24 @@ def patch_adapter(root):
 def patch_dialog(root):
     src=root/'source/vectorcraft/crates/ui-egui/src';p=src/'shortcuts.rs';s=p.read_text()
     # Handle Save Changes keys even if Android left egui's viewport unfocused.
-    s=once(s,'''    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {''','''    #[cfg(any(target_os = "android", test))]
+    # v0.23 routes focus through a named variable for held-tool key releases.
+    # Insert the Android-only Save Changes handler before the first unfocused
+    # return, but leave the v0.23 held-tool release check in place.
+    old_focus = '    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {'
+    new_focus = '    if !focused {'
+    if s.count(old_focus) == 1:
+        focus_anchor = old_focus
+    elif s.count(new_focus) == 1 and s.count('    held_tool::follow(app, ctx, focused);') == 1:
+        focus_anchor = new_focus
+    else:
+        raise ValueError('Unreviewed upstream keyboard focus routing; refusing to patch')
+    modal_shortcut = '''    #[cfg(any(target_os = "android", test))]
     if app.ui.dialog.as_ref().is_some_and(|d| d.kind == crate::unsaved::KIND)
         && ctx.input(|input| input.events.iter().any(|event| matches!(event,
             egui::Event::Key { pressed: true, .. })))
         && android_save_changes_key(app, ctx) { return; }
-    if !(ctx.input(|input| input.focused) || app.forwarded_frame && ctx.viewport_id() == egui::ViewportId::ROOT) {''')
+'''
+    s=once(s,focus_anchor,modal_shortcut+focus_anchor)
     s=once(s,'''    if app.ui.dialog.is_some() || app.ui.palette_open {
         crate::ime::controls_without_editor(app, ctx);''','''    if app.ui.dialog.is_some() || app.ui.palette_open {
         crate::ime::controls_without_editor(app, ctx);

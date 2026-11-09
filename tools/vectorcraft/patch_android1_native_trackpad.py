@@ -70,13 +70,22 @@ NEW_ROUTER = r'''
                 };
                 let pointer_count = motion_event.pointer_count();
                 let source_device = motion_event.device_id();
-                let is_two_pad = pointer_class && pointer_count == 2 && touchpad;
+                // Some MagicOS pads report the generic Mouse tool for both
+                // fingers, so two pointer-class pointers also qualify.
+                let is_two_pad = pointer_class && pointer_count == 2;
+                let has_pad_axes = pointer_class && touchpad && motion_event.pointers().next()
+                    .is_some_and(|p| {
+                        let x=p.axis_value(Axis::from(50u32));
+                        let y=p.axis_value(Axis::from(51u32));
+                        let z=p.axis_value(Axis::from(52u32));
+                        x != 0.0 || y != 0.0 || z > 0.0 && (z-1.0).abs()>0.0001
+                    });
                 let active_here = self.vc_pad_active
                     && self.vc_pad_device == Some(source_device);
                 // A stale classified packet must not steal later one-finger
                 // cursor motion. Unclassified 1-finger move terminates session.
                 if active_here && pointer_count < 2
-                    && reported == PadGesture::None
+                    && reported == PadGesture::None && !has_pad_axes
                     && motion_event.action() == MotionAction::Move {
                     self.vc_pad_active = false;
                     self.vc_pad_device = None;
@@ -87,7 +96,7 @@ NEW_ROUTER = r'''
                 let active_here = self.vc_pad_active
                     && self.vc_pad_device == Some(source_device);
                 let candidate = pointer_class &&
-                    (reported != PadGesture::None || is_two_pad || active_here);
+                    (reported != PadGesture::None || is_two_pad || has_pad_axes || active_here);
                 if candidate {
                     let action = motion_event.action();
                     if matches!(action, MotionAction::Up | MotionAction::PointerUp | MotionAction::Cancel) {
@@ -169,10 +178,20 @@ NEW_ROUTER = r'''
                                 }
                             }
                             PadGesture::None => {
+                                // Prefer the Android API 34 gesture axes even
+                                // if MagicOS did not set a classification.
+                                if axis_scale.is_finite()
+                                    && (0.4..=2.5).contains(&axis_scale)
+                                    && (axis_scale - 1.0).abs() > 0.0001 {
+                                    zoom = Some((axis_scale, 1));
+                                } else if axis_x.is_finite() && axis_y.is_finite()
+                                    && (axis_x != 0.0 || axis_y != 0.0) {
+                                    pan = Some((axis_x, axis_y, 0));
+                                }
                                 // On some MagicOS packets classification is
                                 // absent. Infer only when a real pad supplies
                                 // TWO pointers; never touch the touchscreen.
-                                if is_two_pad {
+                                if is_two_pad && pan.is_none() && zoom.is_none() {
                                     let mut iter = motion_event.pointers();
                                     if let (Some(p), Some(q)) = (iter.next(), iter.next()) {
                                         let sample = vectorcraft_pad_math::Sample {

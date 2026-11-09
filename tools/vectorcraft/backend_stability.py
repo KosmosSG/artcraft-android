@@ -114,6 +114,22 @@ pub struct EventLoopProxy<T: 'static> {''')
                     return input_status;
                 }
                 if pad_gesture != PadGesture::None {''')
+    # MagicOS can batch several native pointer moves into one classified
+    # touchpad event. Do not let one delayed motion jump a full artboard.
+    # Keep the original per-event pan and pinch paths, but reject outlier
+    # per-event deltas; no smoothing timer or extra render loop is created.
+    s=once(s,'''                                            x: current.x - previous.x,
+                                            y: current.y - previous.y,''',
+    '''                                            x: (current.x - previous.x).clamp(-48.0, 48.0),
+                                            y: (current.y - previous.y).clamp(-48.0, 48.0),''')
+    s=once(s,'''                                    self.pad_spread = Some(current);
+                                    if factor != 1.0 {''',
+    '''                                    // A delayed multi-pointer update can create an
+                                    // enormous one-frame zoom spike. Limit a single
+                                    // input packet, not the overall gesture distance.
+                                    let factor = factor.clamp(0.94, 1.06);
+                                    self.pad_spread = Some(current);
+                                    if (factor - 1.0).abs() > 0.0005 {''')
     p.write_text(s)
     p=root/'src/event_loop.rs';p.write_text(once(p.read_text(),
         '#[cfg(web_platform)]\n    pub(crate) fn allow_event_loop_recreation()',

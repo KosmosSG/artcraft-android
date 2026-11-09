@@ -280,7 +280,7 @@ jobs:
               assert "vc_pad_diagnostics" in (temporary/"src/platform/android.rs").read_text()
               assert ".clamp(-160.0, 160.0)" not in backend_output
               assert "factor.clamp(0.75, 1.33)" not in backend_output
-              print("PASS: Android.26 exact published native trackpad gesture path restored before ARM64")
+              print("PASS: Android.1 official reference restored, then own API34 pad axes installed before ARM64")
           # Verify the cold-start font cache still resolves the full SAF
           # library, but never counts 5000 external files on the UI thread.
           template=root/"templates/android"
@@ -294,7 +294,7 @@ jobs:
           assert "entries.flatten().count()" not in font_source
           assert "fn refresh_font_links_off_ui_thread()" in font_source
           assert "vectorcraft-font-links-cache-v1" in font_source
-          print("PASS: Android.26 reference touchpad input, popup wheel and startup timing, keyboard protected")
+          print("PASS: Android.1 isolated native pad gesture router, original popup path, keyboard protected")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/native_pad_math.rs -o "$RUNNER_TEMP/vc-native-pad-tests"
@@ -574,7 +574,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.23.0-android.26-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.23.0-android.1-OWN-NATIVE-TRACKPAD-ARM64-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

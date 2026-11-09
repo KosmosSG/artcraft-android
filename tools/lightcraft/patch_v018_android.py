@@ -151,6 +151,26 @@ def source_changes(source: Path) -> dict[Path, str]:
     }
 ''',
         "Android compact Lc top-left menu")
+    # Make native Android menu hover selection visible, matching compact GC style.
+    # Preserve menu click dispatch, access keys and all non-Android styling.
+    m = once(m,
+        '                let r = ui.add_enabled(*enabled, b);',
+        '''                #[cfg(target_os = "android")]
+                let b = {
+                    let hover_color = ui.visuals().widgets.hovered.bg_fill;
+                    let hover_color = if hover_color == egui::Color32::TRANSPARENT {
+                        egui::Color32::from_gray(70)
+                    } else {
+                        hover_color
+                    };
+                    b.fill(if ui.ctx().pointer_hover_pos().is_some_and(|p| {
+                        let top = ui.next_widget_position().y;
+                        p.y >= top && p.y < top + ui.spacing().interact_size.y
+                            && p.x >= ui.min_rect().left() && p.x <= ui.max_rect().right()
+                    }) { hover_color } else { egui::Color32::TRANSPARENT })
+                };
+                let r = ui.add_enabled(*enabled, b);''',
+        "Android menu row hover highlight")
     run = originals["run"]
     handler = '''        "app.checkForUpdates" => {
             ctx.data_mut(|d| d.insert_temp(

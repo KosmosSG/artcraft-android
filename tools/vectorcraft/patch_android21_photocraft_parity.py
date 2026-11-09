@@ -20,13 +20,11 @@ def patch(root: Path) -> None:
     # Follow PhotoCraft, which lets Android own the native startup splash
     # and draws the editor as soon as its first native buffer is available.
     # The VectorCraft-specific overlay was delaying visibility to ~10s.
-    java=once(java,'''        SplashScreen splash = SplashScreen.installSplashScreen(this);
-        // Keep branded system splash until a painted *window* is verified.''',
+    java=once(java,'''        SplashScreen splash = SplashScreen.installSplashScreen(this);''',
     '''        // PhotoCraft-compatible cold start: Android owns the platform
         // splash and dismisses it on NativeActivity's first native draw.
         // Do not add a custom static/animated cover over the editor.
-        // Keep the approved Vc launcher icon; no launcher/theme change.
-        // Keep branded system splash until a painted *window* is verified.''')
+        // Keep the approved Vc launcher icon; no launcher/theme change.''')
     java=once(java,'''        final long vcSplashDeadline = android.os.SystemClock.uptimeMillis() + 1200L;
         splash.setKeepOnScreenCondition(() -> !nativeEditorReady
             && android.os.SystemClock.uptimeMillis() < vcSplashDeadline);''',

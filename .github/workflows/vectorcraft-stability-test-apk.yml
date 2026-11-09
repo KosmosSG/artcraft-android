@@ -1,4 +1,4 @@
-name: VectorCraft v0.21 Android.21 PHOTOCRAFT STARTUP+SCROLL TEST ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.21 Android.22 165HZ GPU+GESTURE STABILITY TEST ARM64 disposable-key APK (TEST ONLY)
 
 # Protected stable Android baseline: v0.14.0-android.13; selectively port official v0.21.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 11862f61198c8f62c0b22b6c9a331cc5950ac98d
       BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
-      VERSION_NAME: 0.21.0-android.21
-      VERSION_CODE: '16783381'
+      VERSION_NAME: 0.21.0-android.22
+      VERSION_CODE: '16783382'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -68,7 +68,7 @@ jobs:
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.21.0"' builder/source/vectorcraft/Cargo.toml
-          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py android-port/tools/vectorcraft/patch_android19_reference_ime.py android-port/tools/vectorcraft/patch_android20_native_keyboard_splash.py android-port/tools/vectorcraft/patch_android21_photocraft_parity.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py android-port/tools/vectorcraft/patch_android19_reference_ime.py android-port/tools/vectorcraft/patch_android20_native_keyboard_splash.py android-port/tools/vectorcraft/patch_android21_photocraft_parity.py android-port/tools/vectorcraft/patch_android22_high_refresh.py
           # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
           # This keeps stale Java/Rust source anchors from burning build minutes.
           python3 - <<'PY'
@@ -90,6 +90,7 @@ jobs:
           from patch_android19_reference_ime import patch as android19
           from patch_android20_native_keyboard_splash import patch as android20
           from patch_android21_photocraft_parity import patch as photocraft21
+          from patch_android22_high_refresh import patch as refresh22
           from patch_smooth_menu_scroll_v021 import patch as smooth_scroll
           owner=Path("android-port/adapters/vectorcraft")
           upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
@@ -146,6 +147,7 @@ jobs:
               android19(root)
               android20(root)
               photocraft21(root)
+              refresh22(root)
               rust=(dst/"src/lib.rs").read_text()
               java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
               shortcuts=(target/"shortcuts.rs").read_text()
@@ -208,6 +210,19 @@ jobs:
               assert "        showStartupCover();" not in java
               assert "        self.inner.raw_input_hook(raw);" in rust
               assert "PhotoCraft parity: let egui" in rust
+              assert "vcRefreshRateHint" in java
+              assert "preferredRefreshRate=chosen;" in java
+              assert "VC_PERF_UI_PROXY" in rust
+              assert "VC_UI_STALL" in rust
+              assert "vc_prune_last" in rust
+              assert "vc_perf_active_until" in rust
+              assert "from_micros(6060)" in rust
+              assert "from_micros(6060)" in (target/"widgets/dropdowns.rs").read_text()
+              backend=Path("android-port/tools/vectorcraft/backend_stability.py").read_text()
+              assert "unclassified_pad" in backend
+              assert "pad_fallback_gesture" in backend
+              assert "reported_pad_gesture != PadGesture::None" in backend
+              assert "return input_status;" in backend
               assert "PixelCopy.request(source, bitmap" not in java
               assert "native_editor_ui_ready" in java
               assert "progress.setIndeterminate(true);" in java
@@ -219,7 +234,7 @@ jobs:
               assert "vc_after_type_exit_frames" in rust
               assert "just_exited_type" in rust
               assert "vcWakeNativeLoop();" in java
-          print("PASS: Android.21 PhotoCraft direct launch + unmodified native wheel routing; Android.20 keyboard protected")
+          print("PASS: Android.22 adaptive high-refresh, UI stability metrics, guarded pad gesture fallback, keyboard protected")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
           rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
@@ -483,7 +498,7 @@ jobs:
       - name: Upload PRIVATE test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.21.0-android.21-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
+          name: VectorCraft-v0.21.0-android.22-ARM64-DISPOSABLE-SIGNATURE-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

@@ -31,6 +31,8 @@ def patch(root: Path):
     prior='''        if self.inner.ui.status == "quit" && !self.android_quit_finished {
             // Upstream confirms quit only after the Save Changes dialog's
             // real Save or Don't Save callback; Cancel never reaches here.
+            self.persist_now();
+            if let Err(error) = self.bridge.end_type_editing() { log::warn!("Quit IME cleanup: {error}"); }
             match self.bridge.finish_android_after_quit() {
                 Ok(()) => self.android_quit_finished = true,
                 Err(error) => log::warn!("Confirmed quit could not finish Android Activity: {error}"),

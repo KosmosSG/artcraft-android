@@ -72,8 +72,8 @@ def main() -> None:
                 ui.label("Official upstream: v0.21.0");
                 ui.label("ARM64 test build · disposable signing");
             });'''
-    old_ids = sorted({int(n) for n in __import__("re").findall(r"action\(ui,.*?, (\d+)\)", old)})
-    new_ids = sorted({int(n) for n in __import__("re").findall(r"action\(ui,.*?, (\d+)\)", replacement)})
+    old_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", old)})
+    new_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", replacement)})
     if old_ids != new_ids or old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18]:
         raise RuntimeError(f"Pc menu action parity changed: {old_ids} vs {new_ids}")
     brand.write_text(data[:start] + replacement + data[end:], encoding="utf-8")

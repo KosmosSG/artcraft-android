@@ -65,7 +65,11 @@ def version_code_axml(raw: bytes, previous: int, target: int) -> bytes:
                 for p in range(pos + header_size, pos + size, 4)
             ]
         elif typ == 0x0102:
-            if header_size < 36:
+            # Android AXML ResXMLTree_node has a 16-byte chunk header
+            # (8-byte ResChunk_header + lineNumber + comment). The 20-byte
+            # ResXMLTree_attrExt follows that header; it is *not* part of
+            # headerSize. The old >=36 test incorrectly rejected valid APKs.
+            if header_size != 16 or size < 36:
                 raise RuntimeError("Unsupported start-element chunk")
             attribute_start, attribute_size, attribute_count = struct.unpack_from("<HHH", data, pos + 24)
             if attribute_size != 20:
@@ -87,15 +91,46 @@ def version_code_axml(raw: bytes, previous: int, target: int) -> bytes:
         raise RuntimeError(f"Expected one android:versionCode attribute, found {matches}")
     return bytes(data)
 
+def self_test_axml() -> None:
+    """Exercise the actual Android 16-byte start-element header layout."""
+    resource_map = struct.pack("<HHII", 0x0180, 8, 12, ANDROID_VERSION_CODE_RES_ID)
+    # ResXMLTree_node header(16) + ResXMLTree_attrExt(20) + one attribute(20).
+    attribute = struct.pack("<IIIHBBI", 0, 0, 0xffffffff, 8, 0, 0x10, TEST_CODE)
+    # The android:versionCode attr name is string-table index 0.
+    attribute = attribute[:4] + struct.pack("<I", 0) + attribute[8:]
+    node = (struct.pack("<HHIII", 0x0102, 16, 56, 1, 0xffffffff)
+            + struct.pack("<IIHHHHHH", 0xffffffff, 0, 20, 20, 1, 0, 0, 0)
+            + attribute)
+    raw = struct.pack("<HHI", 3, 8, 8 + len(resource_map) + len(node)) + resource_map + node
+    updated = version_code_axml(raw, TEST_CODE, RELEASE_CODE)
+    assert len(updated) == len(raw)
+    expected = raw[:-4] + struct.pack("<I", RELEASE_CODE)
+    assert updated == expected, "Only versionCode data bytes may change"
+    for old in (TEST_CODE - 1, RELEASE_CODE):
+        try:
+            version_code_axml(raw, old, RELEASE_CODE)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Accepted manifest with mismatched original versionCode")
+    print("PASS: Android AXML start-element 16-byte header and versionCode patch")
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--candidate", type=Path, required=True)
-    p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--aapt", type=Path, required=True)
-    p.add_argument("--apksigner", type=Path, required=True)
-    p.add_argument("--zipalign", type=Path, required=True)
-    p.add_argument("--report", type=Path, required=True)
+    p.add_argument("--self-test", action="store_true")
+    p.add_argument("--candidate", type=Path)
+    p.add_argument("--output", type=Path)
+    p.add_argument("--aapt", type=Path)
+    p.add_argument("--apksigner", type=Path)
+    p.add_argument("--zipalign", type=Path)
+    p.add_argument("--report", type=Path)
     args = p.parse_args()
+    if args.self_test:
+        self_test_axml()
+        return
+    if not all((args.candidate, args.output, args.aapt, args.apksigner, args.zipalign, args.report)):
+        p.error("--candidate, --output, --aapt, --apksigner, --zipalign, --report are required")
     if not all(path.is_file() for path in (args.candidate, args.aapt, args.apksigner, args.zipalign)):
         raise RuntimeError("Required input APK/SDK tools are missing")
     expected = (PACKAGE, TEST_CODE, VERSION)

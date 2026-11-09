@@ -22,12 +22,10 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.LIGHTCRAFT_KEYSTORE_BASE64 }}
           STOREPASS: ${{ secrets.LIGHTCRAFT_KEYSTORE_PASSWORD }}
-          KEYPASS: ${{ secrets.LIGHTCRAFT_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$KEYSTORE_B64"
           test -n "$STOREPASS"
-          test -n "$KEYPASS"
       - name: Download independently verified production-package build
         uses: actions/download-artifact@v4
         with:
@@ -55,16 +53,15 @@ jobs:
           unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
           printf %s "$KEYSTORE_B64" | base64 -d > /tmp/lightcraft-release.p12
           printf %s "$STOREPASS" > /tmp/lightcraft-storepass
-          printf %s "$KEYPASS" > /tmp/lightcraft-keypass
           mkdir -p verified
           cp "$APK" verified/LightCraft-v0.18.0-android.1-arm64-v8a.apk
-          "$SIGNER" sign --ks /tmp/lightcraft-release.p12 --ks-type PKCS12 --ks-key-alias artcraftbuilder --ks-pass file:/tmp/lightcraft-storepass --key-pass file:/tmp/lightcraft-keypass --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true verified/LightCraft-v0.18.0-android.1-arm64-v8a.apk
+          "$SIGNER" sign --ks /tmp/lightcraft-release.p12 --ks-type PKCS12 --ks-key-alias artcraftbuilder --ks-pass file:/tmp/lightcraft-storepass --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true verified/LightCraft-v0.18.0-android.1-arm64-v8a.apk
           "$SIGNER" verify --verbose --print-certs verified/LightCraft-v0.18.0-android.1-arm64-v8a.apk > /tmp/lightcraft-certificate
           EXPECTED='b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4'
           grep -Fqi "certificate SHA-256 digest: $EXPECTED" /tmp/lightcraft-certificate || { echo 'STOP: production certificate fingerprint mismatch'; exit 1; }
           "$AAPT" dump badging verified/LightCraft-v0.18.0-android.1-arm64-v8a.apk | grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.18.0-android.1'"
           sha256sum verified/*.apk > verified/SHA256SUMS.txt
-          rm -f /tmp/lightcraft-release.p12 /tmp/lightcraft-storepass /tmp/lightcraft-keypass
+          rm -f /tmp/lightcraft-release.p12 /tmp/lightcraft-storepass
       - name: Upload verified permanent-signed APK for manual publication only
         uses: actions/upload-artifact@v4
         with:

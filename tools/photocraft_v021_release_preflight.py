@@ -47,11 +47,12 @@ def main():
     if (package, version_name) != (STABLE_PACKAGE, STABLE_VERSION):
         sys.exit("STOP: stable APK package/version does not match expected public release")
     certs = run(str(args.apksigner), "verify", "--print-certs", str(args.apk))
-    matches = re.findall(r"Signer #(\d+) certificate SHA-256 digest:\s*([0-9a-fA-F]{64})", certs)
-    if len(matches) != 1 or matches[0][0] != "1":
-        sys.exit("STOP: unsupported/ambiguous stable APK signing identity")
-    stable_cert = matches[0][1].lower()
-    previous_code = int(version_code)
+    # The repository's reviewed parser accepts one certificate reported by
+    # several APK signature schemes, but rejects a second signer or mismatch.
+    from photocraft_ai_reference_signing import parse_identity
+    verified = parse_identity(badge, certs, STABLE_TAG)
+    stable_cert = str(verified["signer_certificate_sha256"])
+    previous_code = int(verified["version_code"])
     required_code = max(previous_code, TEST_CANDIDATE_CODE) + 1
     if not (0 < required_code <= 2100000000):
         sys.exit("STOP: Android versionCode unavailable")

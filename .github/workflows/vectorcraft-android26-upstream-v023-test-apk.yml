@@ -1,4 +1,4 @@
-name: VectorCraft v0.23 Android.26 PUBLISHED-REFERENCE TRACKPAD TEST ARM64 disposable-key APK (TEST ONLY)
+name: VectorCraft v0.23 Android.1 PUBLISHED-REFERENCE TRACKPAD TEST ARM64 disposable-key APK (TEST ONLY)
 
 # Protected working Android baseline: v0.21.0-android.25; selectively integrate pinned official v0.23.0.
 # One-time trigger-file gated push only; normal changes do not rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: 5d0e892e2419f63bc0ea3c743ddff2e81e15fd3a
       BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
-      VERSION_NAME: 0.23.0-android.26
-      VERSION_CODE: '16783900'
+      VERSION_NAME: 0.23.0-android.1
+      VERSION_CODE: '16783901'
       LAST_PUBLISHED_CODE: '16780813'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'

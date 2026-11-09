@@ -39,8 +39,8 @@ class DiagnosticSessionGuards(unittest.TestCase):
 
     def test_guards_and_arm64_test_package_only(self):
         flow=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.20", flow)
-        self.assertIn("VERSION_CODE: '16783380'", flow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.21", flow)
+        self.assertIn("VERSION_CODE: '16783381'", flow)
         self.assertIn("patch_android14_diagnostic_session.py", flow)
         self.assertIn("com.artcraft.vectorcraft.test", flow)
         self.assertIn("Delete disposable builder signing materials", flow)

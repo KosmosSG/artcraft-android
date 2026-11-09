@@ -189,6 +189,24 @@ jobs:
           # for the builder's separate egui-wgpu surface and Android rfd adapters.
           mkdir -p builder/source/lightcraft/vendor
           bash -n builder/lib/build-common.sh
+          # Preserve upstream's custom IME-enabled winit fork, adding only the
+          # missing Android hover event dispatch (not the reference's full backend).
+          git clone --filter=blob:none --no-checkout https://github.com/storytold/winit.git builder/source/lightcraft/vendor/winit
+          git -C builder/source/lightcraft/vendor/winit checkout --detach a517b3846ee8457d84ee4975110bfda6797c44dc
+          test "$(git -C builder/source/lightcraft/vendor/winit rev-parse HEAD)" = a517b3846ee8457d84ee4975110bfda6797c44dc
+          python3 suite/tools/lightcraft/patch_android_pointer_hover.py builder/source/lightcraft/vendor/winit/src/platform_impl/android/mod.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          p = Path("builder/source/lightcraft/Cargo.toml")
+          s = p.read_text()
+          old = 'winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }'
+          if s.count(old) != 1:
+              raise SystemExit("STOP: LightCraft pinned custom winit Cargo patch drift")
+          s = s.replace(old, 'winit = { path = "vendor/winit" }', 1)
+          tomllib.loads(s)
+          p.write_text(s)
+          PY
           # No permanent-signing secrets, no production certificate, no release publishing.
           bash builder/build.sh -lightcraft \
             -packagename=com.artcraft.lightcraft.test \

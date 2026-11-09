@@ -89,11 +89,10 @@ def patch_staged(root: Path) -> None:
     # behavior again. Stage logs are strictly timing metadata, no user data.
     java=root/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java"
     j=java.read_text()
-    j=once(j,'        super.onCreate(savedInstanceState);\n        showStartupCover();',
+    j=once(j,'        super.onCreate(savedInstanceState);',
         '        startupStage("android25_before_native_onCreate");\n'
         '        super.onCreate(savedInstanceState);\n'
-        '        startupStage("android25_after_native_onCreate");\n'
-        '        showStartupCover();')
+        '        startupStage("android25_after_native_onCreate");')
     java.write_text(j)
     rust=root/"adapters/vectorcraft/src/lib.rs"
     r=rust.read_text()

@@ -59,6 +59,9 @@ fi
     # Android.21: PhotoCraft direct launch and native egui menu scrolling; keyboard unchanged.
     from patch_android21_photocraft_parity import patch as photocraft21
     photocraft21(root)
+    # Android.22: adaptive 165Hz display preference, UI metrics and navigation frame pacing only.
+    from patch_android22_high_refresh import patch as refresh22
+    refresh22(root)
 
 
 def patch_adapter(root):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Restyle the PhotoCraft Pc popup like the owner-tested GridCraft Gc menu.
+"""Restyle the PhotoCraft Pc popup like GridCraft, with Appearance > Theme.
 
 Runs ONLY after the existing Android UI and keyboard-diagnostics overlays in
-an isolated, disposable-signed test checkout. Only removes diagnostics (action 18) from the visible Pc popup; retains Shortcut Pad Settings (action 19). Does not change
+an isolated, disposable-signed test checkout. Removes visible diagnostics (action 18), retains Shortcut Pad Settings (action 19),\nand nests existing theme actions 13–16 under Appearance > Theme. Does not change
 keyboard shortcut routing, production APK metadata, signing, or app data. Fail closed.
 """
 from pathlib import Path
@@ -51,10 +51,12 @@ def main() -> None:
             });
             ui.separator();
             ui.menu_button("Appearance", |ui| {
-                action(ui, "Dark", 14);
-                action(ui, "Light", 15);
-                action(ui, "Follow System", 16);
-                action(ui, "Cycle Appearance", 13);
+                ui.menu_button("Theme", |ui| {
+                    action(ui, "Light", 15);
+                    action(ui, "Dark", 14);
+                    action(ui, "Follow System", 16);
+                    action(ui, "Cycle Appearance", 13);
+                });
             });
             ui.menu_button("Shortcut Pad", |ui| {
                 action(ui, if crate::menus::artcraft_pad_visible() {
@@ -73,8 +75,14 @@ def main() -> None:
     new_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", replacement)})
     if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]:
         raise RuntimeError(f"Pc menu action parity changed: {old_ids} vs {new_ids}")
+    # The Appearance submenu contains Theme only; its existing action IDs are
+    # deliberately retained, so the Android bridge and preference persistence
+    # continue using the owner-tested implementation.
+    assert replacement.count('ui.menu_button("Appearance", |ui| {') == 1
+    assert replacement.count('ui.menu_button("Theme", |ui| {') == 1
+    assert replacement.index('ui.menu_button("Appearance"') < replacement.index('ui.menu_button("Theme"')
     brand.write_text(data[:start] + replacement + data[end:], encoding="utf-8")
-    print("PASS: compact Gc-style Pc menu, normal action IDs preserved; diagnostics UI hidden, no native behavior changes")
+    print("PASS: Pc > Appearance > Theme nested; action IDs 13–16 unchanged; validated Home/links and other Android features preserved")
 
 if __name__ == "__main__":
     main()

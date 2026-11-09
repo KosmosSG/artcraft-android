@@ -125,6 +125,8 @@ def install_backend_hook(root: Path) -> None:
     shutil.copyfile(Path(__file__), tools / "vectorcraft_android24.py")
     script = root / "lib/build-common.sh"
     s = script.read_text()
+    if "vectorcraft_android24.py" in s:
+        raise ValueError("Android.24 backend hook already installed")
     old = 'python3 "$ROOT/tools/vectorcraft_backend_stability.py" "$SRC/vendor/winit"'
     s = once(s, old, old + '\n    python3 "$ROOT/tools/vectorcraft_android24.py" "$SRC/vendor/winit" --winit')
     script.write_text(s)

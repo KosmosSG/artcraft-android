@@ -135,8 +135,8 @@ jobs:
             echo 'Publish only from main. Merge tested enhancements/GPU fix first.' >&2
             exit 1
           fi
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo 'release_tag must look like v0.10.2' >&2
+          [[ "$RELEASE_TAG" =~ ^(photocraft-)?v[0-9]+\.[0-9]+\.[0-9]+(-android\.[0-9]+)?$ ]] || {
+            echo 'release_tag must look like photocraft-v0.21.0-android.6 (or legacy v0.10.2)' >&2
             exit 1
           }
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -147,11 +147,24 @@ jobs:
           APKSIGNER="$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -1)"
           AAPT="$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -1)"
           mkdir -p previous-release
-          # A prior release APK is required to prove the new build can update it.
-          gh release download --pattern '*.apk' --dir previous-release
+          # Do not use the repository-wide "latest" release: ArtCraft hosts many apps.
+          # Scan all release pages so old release cleanup cannot hide the correct baseline.
+          BASELINE_TAG="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            | jq -s -r '
+                [.[][] | select(.draft == false and .prerelease == false)
+                  | select(.tag_name | startswith("photocraft-v"))]
+                | sort_by(.published_at // .created_at // "")
+                | last | .tag_name // empty
+              ')"
+          if [ -z "$BASELINE_TAG" ]; then
+            echo 'STOP: no published stable PhotoCraft release for upgrade validation.' >&2
+            exit 1
+          fi
+          echo "Validating against PhotoCraft baseline: $BASELINE_TAG"
+          gh release download "$BASELINE_TAG" -R "$GITHUB_REPOSITORY" --pattern '*.apk' --dir previous-release
           mapfile -d '' old_apks < <(find previous-release -type f -name '*.apk' -print0)
           if [ "${#old_apks[@]}" -ne 1 ]; then
-            echo 'Exactly one APK asset is required in the latest GitHub Release.' >&2
+            echo "Exactly one APK asset is required in PhotoCraft baseline $BASELINE_TAG." >&2
             exit 1
           fi
           python3 - "$BUILT_APK" "${old_apks[0]}" "$AAPT" "$APKSIGNER" "$RELEASE_TAG" <<'PY'
@@ -177,7 +190,7 @@ jobs:
               raise SystemExit('STOP: signing certificate differs; Android cannot upgrade this APK.')
           if new[1] <= old[1]:
               raise SystemExit('STOP: versionCode must be higher than the old release.')
-          if new[2] != tag.removeprefix('v'):
+          if new[2] != tag.removeprefix('photocraft-').removeprefix('v'):
               raise SystemExit('STOP: APK versionName must match the new release tag. Update version metadata in the source/build script first.')
           print('Release checks passed. Note: versionCode must also exceed the version on the actual tablet.')
           PY

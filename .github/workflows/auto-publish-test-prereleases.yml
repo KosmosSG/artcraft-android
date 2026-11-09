@@ -206,7 +206,8 @@ jobs:
           set -euo pipefail
           export APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           export AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > known-releases.json
+          # Pagination ensures latest per-app stable baselines remain discoverable past 100 releases.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -s 'add' > known-releases.json
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re, shutil, subprocess, sys, zipfile
           def command(*args):

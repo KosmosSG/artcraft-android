@@ -33,8 +33,8 @@ class Android15ModalGuards(unittest.TestCase):
 
     def test_test_only_apk_is_separate_and_not_published(self):
         flow=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.21",flow)
-        self.assertIn("VERSION_CODE: '16783381'",flow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.22",flow)
+        self.assertIn("VERSION_CODE: '16783382'",flow)
         self.assertIn("patch_android15_modal_keys.py",flow)
         self.assertIn('com.artcraft.vectorcraft.test',flow)
         self.assertIn("Delete disposable builder signing materials",flow)

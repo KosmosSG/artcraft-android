@@ -234,6 +234,20 @@ jobs:
               assert "vc_after_type_exit_frames" in rust
               assert "just_exited_type" in rust
               assert "vcWakeNativeLoop();" in java
+          # Simulate the FINAL vendored winit patch on immutable builder files
+          # before SDK/NDK setup, so a stale backend anchor cannot burn minutes.
+          from backend_stability import patch as final_vendor_patch
+          with tempfile.TemporaryDirectory(prefix="vc-winit-preflight-") as temp_dir:
+              temporary=Path(temp_dir)
+              shutil.copytree(Path("builder/vendor/winit/src"), temporary/"src")
+              final_vendor_patch(temporary)
+              backend_output=(temporary/"src/platform_impl/android/mod.rs").read_text()
+              assert "unclassified_pad" in backend_output
+              assert "pad_fallback_gesture: PadGesture" in backend_output
+              assert "if unclassified_pad && pad_gesture==PadGesture::None" in backend_output
+              assert "Classification::TwoFingerSwipe => PadGesture::Scroll" in backend_output
+              assert "Classification::Pinch => PadGesture::Pinch" in backend_output
+              print("PASS: final native winit gesture fallback applied to pinned builder before expensive ARM64")
           print("PASS: Android.22 adaptive high-refresh, UI stability metrics, guarded pad gesture fallback, keyboard protected")
           PY
           python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v

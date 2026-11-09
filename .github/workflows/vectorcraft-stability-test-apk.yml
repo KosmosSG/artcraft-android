@@ -210,7 +210,7 @@ jobs:
               assert "photocraft_direct_native_launch" in java
               assert "native_editor_ui_ready" in java
               assert "SplashScreen.installSplashScreen(this);" not in java
-              assert "        showStartupCover();" in java
+              assert "if (!nativeEditorReady) showStartupCover();" in java
               assert "        self.inner.raw_input_hook(raw);" in rust
               assert "PhotoCraft parity: let egui" in rust
               assert "vcRefreshRateHint" in java

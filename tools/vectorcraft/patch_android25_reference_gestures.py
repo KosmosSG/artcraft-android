@@ -111,6 +111,8 @@ def install_build_hook(builder_root: Path) -> None:
     shutil.copyfile(Path(__file__),tools/"vectorcraft_android25.py")
     sh=builder_root/"lib/build-common.sh"
     s=sh.read_text()
+    if 'vectorcraft_android25.py' in s:
+        raise ValueError("Android.25 build hook is already installed")
     anchor='python3 "$ROOT/tools/vectorcraft_android24.py" "$SRC/vendor/winit" --winit'
     s=once(s,anchor,anchor+'\n    python3 "$ROOT/tools/vectorcraft_android25.py" "$SRC/vendor/winit" --restore-reference')
     sh.write_text(s)

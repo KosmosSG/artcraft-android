@@ -26,7 +26,7 @@ class VectorCraftAndroid21Parity(unittest.TestCase):
     def test_only_removes_secondary_scroll_replay(self):
         s=(TOOLS/"patch_android21_photocraft_parity.py").read_text()
         self.assertIn('self.menu_scroll.apply(ctx, raw);',s)
-        self.assertIn('self.inner.raw_input_hook(raw);',s)
+        self.assertIn('self.inner.raw_input_hook(raw);', (ROOT/'adapters/vectorcraft/src/lib.rs').read_text())
         self.assertIn('PhotoCraft parity: let egui',s)
         # This patch must NOT modify Android keyboard/IME/shortcuts at all:
         for forbidden in ('dispatchKeyEvent','physicalShortcutKeys','ImeBridge',

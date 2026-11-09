@@ -2,8 +2,8 @@
 """Restyle the PhotoCraft Pc popup like the owner-tested GridCraft Gc menu.
 
 Runs ONLY after the existing Android UI and keyboard-diagnostics overlays in
-an isolated, disposable-signed test checkout. Does not change command IDs,
-shortcut routing, production APK metadata, signing, or app data. Fail closed.
+an isolated, disposable-signed test checkout. Only removes diagnostics (action 18) from the visible Pc popup. Does not change
+keyboard shortcut routing, production APK metadata, signing, or app data. Fail closed.
 """
 from pathlib import Path
 import argparse
@@ -55,16 +55,12 @@ def main() -> None:
                 action(ui, "Light", 15);
                 action(ui, "Follow System", 16);
                 action(ui, "Cycle Appearance", 13);
-                ui.separator();
-                ui.menu_button("Shortcut Pad", |ui| {
-                    action(ui, if crate::menus::artcraft_pad_visible() {
-                        "Hide Shortcut Pad" } else { "Show Shortcut Pad" }, 10);
-                    action(ui, "Dock Left", 11);
-                    action(ui, "Dock Right", 12);
-                });
             });
-            ui.menu_button("Keyboard & Diagnostics", |ui| {
-                action(ui, "Keyboard Diagnostics (test)…", 18);
+            ui.menu_button("Shortcut Pad", |ui| {
+                action(ui, if crate::menus::artcraft_pad_visible() {
+                    "Hide Shortcut Pad" } else { "Show Shortcut Pad" }, 10);
+                action(ui, "Dock Left", 11);
+                action(ui, "Dock Right", 12);
             });
             ui.separator();
             ui.menu_button("About PhotoCraft", |ui| {
@@ -74,10 +70,10 @@ def main() -> None:
             });'''
     old_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", old)})
     new_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", replacement)})
-    if old_ids != new_ids or old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18]:
+    if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]:
         raise RuntimeError(f"Pc menu action parity changed: {old_ids} vs {new_ids}")
     brand.write_text(data[:start] + replacement + data[end:], encoding="utf-8")
-    print("PASS: compact Gc-style Pc menu, action IDs preserved, no native behavior changes")
+    print("PASS: compact Gc-style Pc menu, normal action IDs preserved; diagnostics UI hidden, no native behavior changes")
 
 if __name__ == "__main__":
     main()

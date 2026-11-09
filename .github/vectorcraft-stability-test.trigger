@@ -1,10 +1,8 @@
-VectorCraft v0.21.0-android.23 — COLD START + MENU / TRACKPAD STABILITY — ARM64 TEMP SIGN ONLY
-HONOR MagicPad 4 test v0.21.0-android.22 FAIL: cold start black screen ~5–6 seconds (SVID_20261109_115843_1.mp4), menu scroll remains more stuttery than PhotoCraft, trackpad 2-finger pan/zoom stutters. Android.20 hardware tool shortcuts Ctrl+W D/S/C PASS; preserve at all costs.
-Selective isolated corrections:
-1) Keep NativeActivity system splash independent of PixelCopy; show a responsive lightweight branded Java progress cover only while editor not ready, dismiss 120ms after second Rust UI callback, no 15-second static waits.
-2) Remove VectorCraft's wheel-source misclassification to match PhotoCraft's original native wheel event flow. Remove synthetic request_repaint_after(6.06ms) on every trackpad/touch event plus overdriven popup wake. Egui/Vulkan vsync compositor remain in control; adaptive supported-mode refresh requests (60/90/120/144/165) retained, never forced.
-3) Keep native classified and fallback MagicOS two-finger gesture recognition; clamp giant pan packets to 48 physical pixels and pinch steps to 0.94–1.06 per input packet to avoid jumpy stutter without reducing touch/stylus resolution. No new per-frame timer.
-4) Fast shared font environment startup: old cache patch retained; avoid FUSE enumerating 5000 entries just to validate cached symlinks, move periodic link refresh to worker; preserve full explicit SAF 4GiB/5000 font import/refresh and font fallbacks. Probe glyph fallbacks at most every 350ms instead of every 165Hz frame.
-5) Preserve original owner Vc menu, fonts, adaptive cursor, themes, updater, saved documents, keyboard / IME and stylus. No feature regressions.
-6) Keep Android.22 VC_PERF_UI_PROXY logs and VC_UI_STALL events, add optional on-device SurfaceFlinger FPS benchmark for paired ADB; do not misrepresent UI proxy as actual GPU presented FPS.
-Immutable upstream VectorCraft v0.21.0 SHA 11862f61198c8f62c0b22b6c9a331cc5950ac98d and pinned Mostafa builder SHA 52308fbcb26d8d8625f35fc1f048813f8e1e12a8; --noupdate mandatory. GitHub runner cheap source + final vendored winit + font template preflight first, then optimized ARM64 separately installable com.artcraft.vectorcraft.test. TEMP disposable signing only, original release and production keys untouched. No merge, tag, permanent sign or publish until HONOR tablet test approval.
+VectorCraft v0.21.0-android.24 — isolated FIRST FRAME + MENU TRACKPAD + PINCH trial on HONOR MagicPad 4.
+
+Confirmed Android.23 device FAIL: startup black/unresponsive, menu stutter, trackpad two-finger pan/pinch stutter and accidental selection. Keyboard V/T/H/ESC and Ctrl+W D/S/C PASS, protected unchanged.
+
+Branch-only patch source: tools/vectorcraft/patch_android24_startup_menu.py; tests: tools/vectorcraft/test_vc_android24_overlay.py; workflow: .github/workflows/vectorcraft-android24-test-apk.yml.
+Changes: first-buffer-aware cover removal after Rust first UI signal (bounded nonblocking PixelCopy, max 2.8 seconds); per-popup wheel factor 0.90 without touching touchscreen navigation; final vendored winit trackpad pan packet limit 160 physical pixels, pinch factor 0.75..1.33 so MagicOS batched packets are not silently discarded. Existing two-finger selection suppression is retained.
+
+Run cheap Python+Rust source/backend preflights before expensive NDK and ARM64 builder. Pinned upstream SHA 11862f61198c8f62c0b22b6c9a331cc5950ac98d and builder SHA 52308fbcb26d8d8625f35fc1f048813f8e1e12a8. Build ARM64 only, package com.artcraft.vectorcraft.test, v0.21.0-android.24 / code 16783384, disposable signing; never use production key or publish/merge/tag; produce private artifact for tablet test. GitHub Actions workflow must fail closed on source drift.

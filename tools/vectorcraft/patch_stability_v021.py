@@ -62,6 +62,9 @@ fi
     # Android.22: adaptive 165Hz display preference, UI metrics and navigation frame pacing only.
     from patch_android22_high_refresh import patch as refresh22
     refresh22(root)
+    # Android.23: responsive cold boot, native wheel physics and bounded redraw load.
+    from patch_android23_input_boot import patch as input23
+    input23(root)
 
 
 def patch_adapter(root):

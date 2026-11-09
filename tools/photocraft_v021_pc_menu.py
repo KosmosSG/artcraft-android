@@ -2,7 +2,7 @@
 """Restyle the PhotoCraft Pc popup like the owner-tested GridCraft Gc menu.
 
 Runs ONLY after the existing Android UI and keyboard-diagnostics overlays in
-an isolated, disposable-signed test checkout. Only removes diagnostics (action 18) from the visible Pc popup. Does not change
+an isolated, disposable-signed test checkout. Only removes diagnostics (action 18) from the visible Pc popup; retains Shortcut Pad Settings (action 19). Does not change
 keyboard shortcut routing, production APK metadata, signing, or app data. Fail closed.
 """
 from pathlib import Path
@@ -61,6 +61,7 @@ def main() -> None:
                     "Hide Shortcut Pad" } else { "Show Shortcut Pad" }, 10);
                 action(ui, "Dock Left", 11);
                 action(ui, "Dock Right", 12);
+                action(ui, "Shortcut Pad Settings…", 19);
             });
             ui.separator();
             ui.menu_button("About PhotoCraft", |ui| {
@@ -70,7 +71,7 @@ def main() -> None:
             });'''
     old_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", old)})
     new_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", replacement)})
-    if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]:
+    if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]:
         raise RuntimeError(f"Pc menu action parity changed: {old_ids} vs {new_ids}")
     brand.write_text(data[:start] + replacement + data[end:], encoding="utf-8")
     print("PASS: compact Gc-style Pc menu, normal action IDs preserved; diagnostics UI hidden, no native behavior changes")

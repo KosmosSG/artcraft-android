@@ -15,8 +15,8 @@ NEW_INPUT = "        self.inner.raw_input_hook(ctx, raw);"
 
 
 def patch_staged_source(manifest: str, source: str) -> str:
-    if sum(manifest.count('version = "' + v + '"') for v in ('0.20.0', '0.21.0')) != 1:
-        raise ValueError("Only official VectorCraft v0.20.0 or v0.21.0 is reviewed for this patch")
+    if sum(manifest.count('version = "' + v + '"') for v in ('0.20.0', '0.21.0', '0.23.0')) != 1:
+        raise ValueError("Only official VectorCraft v0.20.0, v0.21.0 or v0.23.0 is reviewed for this patch")
     if source.count(OLD_MIME) != 1:
         raise ValueError("VectorCraft MIME source anchor missing or duplicated")
     if source.count(OLD_INPUT) != 1:

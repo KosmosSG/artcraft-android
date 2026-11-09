@@ -47,8 +47,8 @@ class Vectorcraft13Safeguards(unittest.TestCase):
 
     def test_disposable_version_and_no_release(self):
         workflow=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.22",workflow)
-        self.assertIn("VERSION_CODE: '16783382'",workflow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.23",workflow)
+        self.assertIn("VERSION_CODE: '16783383'",workflow)
         self.assertIn("patch_android13_recovery.py",workflow)
         self.assertIn("patch_android13_menu_scroll.py",workflow)
         self.assertIn("com.artcraft.vectorcraft.test",workflow)

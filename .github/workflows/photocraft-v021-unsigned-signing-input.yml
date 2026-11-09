@@ -165,6 +165,13 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Unit-test Android binary manifest versionCode patch before expensive compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_v021_unsigned_release_input.py
+          python3 tools/photocraft_v021_unsigned_release_input.py --self-test
+
       - name: Confirm Android winit IME API shim before expensive compilation
         shell: bash
         run: |

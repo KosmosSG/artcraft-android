@@ -1,0 +1,74 @@
+name: PhotoCraft v0.21.0 Android.5 production signing identity and versionCode preflight (READ ONLY)
+
+on:
+  push:
+    branches:
+      - release/photocraft-v021-android5-production-prep-20261109
+    paths:
+      - .github/workflows/photocraft-v021-release-preflight.yml
+      - tools/photocraft_v021_release_preflight.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v021-android5-production-preflight
+  cancel-in-progress: true
+
+jobs:
+  verify-public-reference:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout Android.5 owner-validated review branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check branch isolation and immutable Android.5 candidate baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/release/photocraft-v021-android5-production-prep-20261109
+          git fetch --no-tags --depth=1 origin 13e804c6f7c40e5b2be1f48951eae175568ad688
+          test "$(git rev-parse FETCH_HEAD)" = 13e804c6f7c40e5b2be1f48951eae175568ad688
+          test "$(git diff --name-only 13e804c6f7c40e5b2be1f48951eae175568ad688 HEAD | wc -l)" -eq 2
+          git diff --name-only 13e804c6f7c40e5b2be1f48951eae175568ad688 HEAD | grep -Fx .github/workflows/photocraft-v021-release-preflight.yml
+          git diff --name-only 13e804c6f7c40e5b2be1f48951eae175568ad688 HEAD | grep -Fx tools/photocraft_v021_release_preflight.py
+          python3 -m py_compile tools/photocraft_v021_release_preflight.py
+          echo 'PASS: immutable Android.5 source unchanged; preflight reads published APK only'
+      - name: Get APK of latest published stable PhotoCraft (never keys)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p stable-reference
+          gh release download photocraft-v0.20.2-android.2 \
+            --repo KosmosSG/artcraft-android \
+            --pattern PhotoCraft-v0.20.2-android.2-arm64-v8a.apk \
+            --dir stable-reference
+          test -s stable-reference/PhotoCraft-v0.20.2-android.2-arm64-v8a.apk
+      - name: Verify stable package/version/signing certificate; report minimum new versionCode
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(printenv ANDROID_HOME || echo /usr/local/lib/android/sdk)"
+          AAPT="$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -n "$AAPT" && test -n "$APKSIGNER"
+          python3 tools/photocraft_v021_release_preflight.py \
+            --apk stable-reference/PhotoCraft-v0.20.2-android.2-arm64-v8a.apk \
+            --aapt "$AAPT" --apksigner "$APKSIGNER" \
+            --output preflight/PhotoCraft-v0.21.0-android.5-production-readiness.json
+          echo '## PhotoCraft v0.21.0-android.5 production-readiness preflight' >> "$GITHUB_STEP_SUMMARY"
+          cat preflight/PhotoCraft-v0.21.0-android.5-production-readiness.json >> "$GITHUB_STEP_SUMMARY"
+          echo 'No production keys or signing operations used; release remains blocked.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload read-only report ONLY (no APK, no private material)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.21.0-android.5-PRODUCTION-IDENTITY-REPORT-ONLY
+          path: preflight/*.json
+          if-no-files-found: error
+          retention-days: 14

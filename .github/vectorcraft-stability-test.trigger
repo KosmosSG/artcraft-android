@@ -6,3 +6,5 @@ Preserve all other approved owner customizations: 5000 files/4GiB SAF fonts, UI 
 Source pin official Storytold VectorCraft v0.21.0 SHA 11862f61198c8f62c0b22b6c9a331cc5950ac98d and pinned compatibility builder MostafaXS1 SHA 52308fbcb26d8d8625f35fc1f048813f8e1e12a8. --noupdate mandatory; no broad merge. Preflight source and regression before expensive build. com.artcraft.vectorcraft.test separate temp disposable ARM64 APK. NO permanent signing, tags, merges or publication until device test approval.
 
 Preflight retry 1: exact generated Java anchor fix for splash install statement. Prior run 42544622959 stopped before SDK/Rust compile because a nearby comment differed; no owner features changed. Patch commit da28b7418eeb2068080ae0df2f15f6d832a3e692.
+
+Source-preflight retry #2: previous generated adapter included other owner hooks between menu_scroll.apply() and inner.raw_input_hook(), so replace ONLY the single custom smoothing call. This preserves all other Rust input hooks. Source fix 89ef33cfde6c137bd399f6e2590d6b038cf8ad72 and test update 148aa51be02f0155a43297e6250c529528d3a663. No ARM64 compilation occurred in previous attempts; no production signing.

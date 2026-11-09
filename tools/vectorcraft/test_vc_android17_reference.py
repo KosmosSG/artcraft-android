@@ -38,8 +38,8 @@ class ReferenceStartupAndInputTests(unittest.TestCase):
 
     def test_version_and_no_release(self):
         flow=(ROOT/".github/workflows/vectorcraft-stability-test-apk.yml").read_text()
-        self.assertIn("VERSION_NAME: 0.21.0-android.21",flow)
-        self.assertIn("VERSION_CODE: '16783381'",flow)
+        self.assertIn("VERSION_NAME: 0.21.0-android.22",flow)
+        self.assertIn("VERSION_CODE: '16783382'",flow)
         self.assertIn("patch_android17_reference_adoption.py",flow)
         self.assertIn("com.artcraft.vectorcraft.test",flow)
         self.assertIn("Delete disposable builder signing materials",flow)

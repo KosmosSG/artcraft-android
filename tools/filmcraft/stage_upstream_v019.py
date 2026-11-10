@@ -17,7 +17,7 @@ PINNED_UPSTREAM_SHA = "d1af238bba9fc814487c81e47b53543dff435c09"
 
 def stage(suite: Path) -> None:
     manifest = suite / "tools/approved-branding/assets/manifest.json"
-    verifier = suite / "tools/filmcraft/verify_android_features_apk.py"
+    verifier = suite / "tools/filmcraft/verify_android_features_apk_v019.py"
     version_patch = suite / "tools/filmcraft/stage_upstream_v019_variant.py"
     if not all(p.is_file() for p in (manifest, verifier, version_patch)):
         raise ValueError("Missing FilmCraft review artifacts; refusing to stage")

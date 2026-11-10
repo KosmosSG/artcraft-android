@@ -14,7 +14,7 @@
         });
     }
 
-    // Read-only release discovery. Downloads and installation always stay with the user.
+    // Read-only release discovery; verified downloads require an explicit user tap.
     private void dcCheckUpdates(boolean manual) {
         // The disposable-key candidate is a different Android package and cannot update
         // over the permanent production certificate. Never present it as compatible.
@@ -40,7 +40,7 @@
                 String installed = installedInfo.versionName == null ? "unknown" : installedInfo.versionName;
                 long installedCode = installedInfo.getLongVersionCode();
                 long bestCode = installedCode;
-                String bestTag = null, bestUrl = null;
+                String bestTag = null, bestUrl = null, bestApk = null, bestDigest = null;
                 int metadataRequests = 0;
                 boolean exhausted = false;
                 long deadline = android.os.SystemClock.elapsedRealtime() + 120000;
@@ -82,21 +82,29 @@
                         if (hasApk && DesignCraftUpdatePolicy.newer(bestCode, code)) {
                             bestCode = code; bestTag = tag;
                             bestUrl = DesignCraftUpdatePolicy.REPOSITORY + "/releases/tag/" + tag;
+                            bestApk = manifest.getString("apk_url");
+                            bestDigest = manifest.getString("apk_sha256");
                         }
                     }
                     if (releases.length() < 100) { exhausted = true; break; }
                 }
                 if (!exhausted) throw new java.io.IOException("Release inventory exceeds the supported bound");
-                final String tag = bestTag, url = bestUrl;
+                final String tag = bestTag, url = bestUrl, apk = bestApk, digest = bestDigest;
+                final long candidateCode = bestCode;
                 if (manual || tag != null) runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this).setTitle("DesignCraft updates")
-                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer published DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nOpen the release to download. Android verifies the APK signature during installation.")
+                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer published DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nDownload securely inside DesignCraft, verify the original certificate and checksum, then confirm installation in Android.")
                         .setNegativeButton("Close", null);
-                    if (url != null) dialog.setPositiveButton("View release", (d, w) -> {
-                        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
-                        catch (Exception error) { Log.w(TAG, "Cannot open release page", error); }
-                    });
+                    if (url != null && apk != null && digest != null) {
+                        dialog.setPositiveButton("Download in app", (d, w) ->
+                            DesignCraftUpdateDownload.start(this, apk, digest, candidateCode,
+                                tag.substring("designcraft-v".length())));
+                        dialog.setNeutralButton("View release", (d, w) -> {
+                            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
+                            catch (Exception error) { Log.w(TAG, "Cannot open release page", error); }
+                        });
+                    }
                     dialog.show();
                 });
             } catch (Exception error) {

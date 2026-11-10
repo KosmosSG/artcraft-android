@@ -69,3 +69,9 @@ gesture recognition, and flag if single/double share the same dominant pattern.
 Export includes durable trial and per-gesture aggregate summaries independent
 of the last 8000 raw event rows. Existing published ArtCraft editors stay untouched.
 No permissions, macro execution or automated input injection.
+
+## v0.1.6 — One-shot signal calibration
+
+Preserves the v0.1.5 five-attempt controls and the v0.1.3 pressure/tilt/hover, drawing, pen scroll protection and finger scroll behavior. A trial now begins on user selection and records only the **first** observed pen-associated keyboard signal or standard stylus button edge. It auto-closes after a 450ms grace period (or after 8–10 seconds without a signal). An UP-only key is intentionally retained as an orphan-release observation, not reconstructed into a press; a DOWN-first signal can capture its matching UP. Extra key events in the grace interval are explicitly counted as ignored and preserved in raw logs, but not included in the calibrated signature. Per-trial results include close reason, first code, elapsed time, first source, excluded extras, and matched/unmatched edges. No software macros, automatic keybinding, OS-wide permissions, production APK edits or signing.
+
+Test instruction: perform the requested physical gesture **once in each trial** and wait for the automatic completion. Tap Record next trial until 5/5 for each category, then export text. Confirm drawing, tilt, hover and scrolling remain intact.

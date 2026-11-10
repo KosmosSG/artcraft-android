@@ -38,6 +38,9 @@ public final class MainActivity extends Activity {
     private static final int EXPORT_REQUEST = 201;
     private static final int MAX_ROWS = 8000;
     private static final int CALIBRATION_REPEATS = 5;
+    // Short grace after the first pen-associated signal to capture its matching
+    // release, while excluding repeated physical activations in the same trial.
+    private static final long FIRST_SIGNAL_GRACE_MS = 450;
     private static final int[] BUTTONS = {
         MotionEvent.BUTTON_STYLUS_PRIMARY,
         MotionEvent.BUTTON_STYLUS_SECONDARY,
@@ -76,8 +79,12 @@ public final class MainActivity extends Activity {
         String signature, summary;
         int penKeyDown, penKeyUp, keyRepeats, orphanUp, matchedPairs;
         int heldAtLeast1400ms, otherKeyEvents, stylusContactEvents, standardButtonEdges;
+        int ignoredExtraEvents, firstKeyCode = Integer.MIN_VALUE;
+        boolean logicalSignalCompleted, firstSignalObserved;
+        long firstSignalUptime;
+        String signalSource = "NONE", endReason = "MAX_WINDOW_EXPIRED";
         final Map<Integer, Long> pressedAt = new HashMap<>();
-        Runnable timeout;
+        Runnable timeout, earlyStop;
     }
 
     private int dp(float n) {
@@ -128,9 +135,9 @@ public final class MainActivity extends Activity {
         clear.setOnClickListener(v -> clearLog());
         controls.addView(clear, new LinearLayout.LayoutParams(0, dp(56), 1));
         column.addView(controls);
-        text(column, "BUTTON CALIBRATION — choose a gesture, then perform it ONCE "
-            + "in each of FIVE individually timed trials. After each trial, tap "
-            + "Record next trial. Repeat for the other gesture types.",
+        text(column, "ONE-SHOT BUTTON CALIBRATION — choose a gesture and perform it "
+            + "ONCE per trial. The first pen-button signal ends the recording after "
+            + "a brief 450ms pairing window. No signal: 8-10s timeout. Repeat 5 times.",
             13, Color.rgb(27, 48, 82));
         testStatus = text(column, "Choose a gesture below to record trial 1 of 5.",
             13, Color.rgb(33, 81, 139));
@@ -153,9 +160,9 @@ public final class MainActivity extends Activity {
         nextTrialButton.setEnabled(false);
         nextTrialButton.setOnClickListener(v -> beginNextTrial());
         column.addView(nextTrialButton, new LinearLayout.LayoutParams(-1, dp(55)));
-        text(column, "Each trial includes its own exact key sequence (even orphan releases). "
-            + "A consistent key sequence is NOT proof that the physical gesture is uniquely "
-            + "recognized. No shortcuts execute.",
+        text(column, "Do NOT press repeatedly during a trial. The detected first keycode "
+            + "appears immediately; extra presses are ignored in that trial. A consistent "
+            + "keycode still needs real-device verification. No shortcuts execute.",
             12, Color.DKGRAY);
         text(column, "RECENT EVENTS. Raw KeyEvents are not automatically attributed to the stylus.",
             12, Color.DKGRAY);
@@ -211,8 +218,8 @@ public final class MainActivity extends Activity {
             + " attempt=" + t.attempt + "/" + CALIBRATION_REPEATS
             + " window_ms=" + t.durationMs + " instruction=" + selectedInstruction);
         testStatus.setText("RECORDING " + t.kind + " (trial " + t.attempt + "/"
-            + CALIBRATION_REPEATS + ") for " + (t.durationMs / 1000)
-            + " seconds. " + selectedInstruction);
+            + CALIBRATION_REPEATS + "). Stops 450ms after first signal, or "
+            + (t.durationMs / 1000) + "s if none. " + selectedInstruction);
         latestLine = "Trial " + t.attempt + "/5: " + selectedInstruction;
         updateUi(true);
         Toast.makeText(this, "Trial " + t.attempt + "/5: "
@@ -220,6 +227,29 @@ public final class MainActivity extends Activity {
         final int id = t.id;
         t.timeout = () -> endTest(id, false);
         handler.postDelayed(t.timeout, t.durationMs);
+    }
+
+
+    // All interactions happen on the main thread. The first pen-associated event
+    // starts a bounded capture window; subsequent physical presses are not counted.
+    private void startOneShotCapture(TestWindow t, String source, int key, long now) {
+        if (t.firstSignalObserved) return;
+        t.firstSignalObserved = true;
+        t.firstSignalUptime = now;
+        t.firstKeyCode = key;
+        t.signalSource = source;
+        t.endReason = "FIRST_SIGNAL_AUTOCLOSE";
+        if (t.timeout != null) handler.removeCallbacks(t.timeout);
+        final int id = t.id;
+        t.earlyStop = () -> endTest(id, false);
+        handler.postDelayed(t.earlyStop, FIRST_SIGNAL_GRACE_MS);
+        add("CALIBRATION_FIRST_SIGNAL", "id=" + t.id
+            + " attempt=" + t.attempt
+            + " source=" + source
+            + " key=" + (key == Integer.MIN_VALUE ? "BUTTON_MOTION"
+                : KeyEvent.keyCodeToString(key))
+            + " elapsed_ms=" + (now - t.startUptime)
+            + " grace_ms=" + FIRST_SIGNAL_GRACE_MS);
     }
 
     private void observeTestKey(KeyEvent e, InputDevice device) {
@@ -235,6 +265,21 @@ public final class MainActivity extends Activity {
         long delta = now - t.startUptime;
         String key = KeyEvent.keyCodeToString(code);
         String edge = e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP";
+        if (!t.firstSignalObserved)
+            startOneShotCapture(t, "PEN_ASSOCIATED_KEY", code, now);
+
+        if (t.firstKeyCode != code || t.logicalSignalCompleted
+                || !"PEN_ASSOCIATED_KEY".equals(t.signalSource)) {
+            t.ignoredExtraEvents++;
+            add("CALIBRATION_EXTRA_SIGNAL_IGNORED",
+                "id=" + t.id + " kind=" + t.kind
+                + " elapsed_ms=" + delta + " key=" + key
+                + " action=" + edge + " reason=first_signal_already_captured");
+            return;
+        }
+
+        // An UP-only signal is valid observed data, not a fabricated press.
+        // For a DOWN-first event, capture the first matching UP if delivered.
         t.penKeySequence.add(key + "(" + code + "):" + edge
             + (e.getRepeatCount() == 0 ? "" : ":repeat" + e.getRepeatCount()));
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
@@ -253,6 +298,7 @@ public final class MainActivity extends Activity {
                 t.matchedPairs++;
                 if (now - started >= 1400) t.heldAtLeast1400ms++;
             }
+            t.logicalSignalCompleted = true;
         }
         add("CALIBRATION_PEN_KEY", "id=" + t.id + " kind=" + t.kind
             + " attempt=" + t.attempt
@@ -262,17 +308,16 @@ public final class MainActivity extends Activity {
             + " device=" + e.getDeviceId()
             + " matched_pairs=" + t.matchedPairs
             + " orphan_up=" + t.orphanUp);
-        testStatus.setText("Recording " + t.kind + " trial " + t.attempt + "/5"
-            + ": pen-key DOWN=" + t.penKeyDown
-            + ", UP=" + t.penKeyUp + ", matched=" + t.matchedPairs
-            + ", unmatched release=" + t.orphanUp
-            + ". Continue the requested gesture until test ends.");
+        testStatus.setText("FIRST SIGNAL: " + key + " (" + edge
+            + "). Trial " + t.attempt + "/5 will close automatically. "
+            + "Do not press again. DOWN/UP=" + t.penKeyDown + "/" + t.penKeyUp);
     }
 
     private void endTest(int id, boolean cancelled) {
         TestWindow t = activeTest;
         if (t == null || t.id != id) return;
         if (t.timeout != null) handler.removeCallbacks(t.timeout);
+        if (t.earlyStop != null) handler.removeCallbacks(t.earlyStop);
         activeTest = null;
         for (Button b : testButtons) b.setEnabled(true);
         int unmatchedDown = t.pressedAt.size();
@@ -288,6 +333,13 @@ public final class MainActivity extends Activity {
         t.summary = "id=" + t.id + " kind=" + t.kind
             + " attempt=" + t.attempt + "/" + CALIBRATION_REPEATS
             + " result=" + observation
+            + " close_reason=" + t.endReason
+            + " first_signal_source=" + t.signalSource
+            + " first_key=" + (t.firstKeyCode == Integer.MIN_VALUE ? "NONE"
+                : KeyEvent.keyCodeToString(t.firstKeyCode))
+            + " first_signal_latency_ms=" + (t.firstSignalObserved
+                ? t.firstSignalUptime - t.startUptime : -1)
+            + " ignored_extra_events=" + t.ignoredExtraEvents
             + " signature=" + t.signature
             + " pen_down=" + t.penKeyDown + " pen_up=" + t.penKeyUp
             + " matched_pairs=" + t.matchedPairs + " orphan_up=" + t.orphanUp
@@ -352,7 +404,7 @@ public final class MainActivity extends Activity {
             + CALIBRATION_REPEATS + " repeatability=" + repeatability
             + " dominant_count=" + max + " dominant_pattern=" + dominant
             + " observed_patterns=" + counts
-            + " note=patterns_are_not_proof_of_distinct_physical_gestures";
+            + " note=patterns_are_first_signal_only_not_proof_of_distinct_physical_gestures";
     }
 
     private String compareHoverSignatures() {
@@ -555,7 +607,17 @@ public final class MainActivity extends Activity {
             if ((changed & bit) == 0) continue;
             boolean down = (mask & bit) != 0;
             edges++;
-            if (activeTest != null) activeTest.standardButtonEdges++;
+            if (activeTest != null) {
+                TestWindow t = activeTest;
+                if (!t.firstSignalObserved)
+                    startOneShotCapture(t, "STANDARD_STYLUS_BUTTON", Integer.MIN_VALUE, now);
+                if (!t.logicalSignalCompleted && "STANDARD_STYLUS_BUTTON".equals(t.signalSource)) {
+                    t.standardButtonEdges++;
+                    if (!down) t.logicalSignalCompleted = true;
+                } else {
+                    t.ignoredExtraEvents++;
+                }
+            }
             add("BUTTON_EDGE", "button=0x" + Integer.toHexString(bit)
                 + " state=" + (down ? "PRESSED" : "RELEASED")
                 + " device=" + e.getDeviceId());
@@ -667,7 +729,9 @@ public final class MainActivity extends Activity {
             .append("\nUnattributed KeyEvents: ").append(keys)
             .append("\nNote: KeyEvents cannot be attributed to the pen without verification.")
             .append("\nCompleted labeled calibration trials: ").append(completedTests)
-            .append("\nEach gesture requires five separate timed trials. The reported signature is an app-visible event sequence, not proven gesture recognition.")
+            .append("\nEach gesture requires five separate one-shot trials. A trial ends 450ms after the first pen-associated signal, or at timeout if none.")
+            .append("\nExtra signals are excluded from trial patterns; raw events remain logged.")
+            .append("\nFirst-keycode signatures are observations, not confirmed gesture recognition.")
             .append("\nA 2ms Android key-pair interval cannot measure a physical long press.")
             .append("\nOrphan releases and missing key signals remain explicit.")
             .append("\nCALIBRATION_SUMMARY_BEGIN\n");
@@ -694,8 +758,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        if (activeTest != null && activeTest.timeout != null)
-            handler.removeCallbacks(activeTest.timeout);
+        if (activeTest != null) {
+            if (activeTest.timeout != null) handler.removeCallbacks(activeTest.timeout);
+            if (activeTest.earlyStop != null) handler.removeCallbacks(activeTest.earlyStop);
+        }
         for (Press p : press.values())
             if (p.pending != null) handler.removeCallbacks(p.pending);
         super.onDestroy();

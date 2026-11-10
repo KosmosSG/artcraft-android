@@ -31,3 +31,12 @@
 - NO production signing; NO merge; NO publication; NO deletion or modification of protected historical releases.
 
 **Status:** Source integration not complete; CI not triggered; APK not built. This audit is not a claim of integration completion.
+
+## Follow-up v0.18.0 source anchor inspection (read-only GitHub fetch)
+- Confirmed all ten relevant upstream files exist: `ribbon/title_bar.rs`, `ribbon/home.rs`, `fonts.rs`, `lib.rs`, `app.rs`, `app/fonts.rs`, `services.rs`, `app/quit.rs`, `dialogs/show.rs`, `app/commands.rs`.
+- One occurrence each was found for the old Gc title-bar padding and menu button anchors, static font-list anchor, font search directory anchor, sheet font-generation state anchors, service struct, save-answer branch, and alert visibility anchor.
+- This is only **partial anchor compatibility**: no full port transform has been applied, no Rust compilation was run, and no live Android lifecycle, 2-finger gesture, SAF or D/C/S regression has been verified. Do not flip the completion gates based on these matches.
+- The Android addon `tools/gridcraft/android_addons/overlay.py` also hard-codes the allowed upstream set through 0.16.1. Any upgrade must adapt BOTH the top-level installer AND addon, as well as all three v0.15-era port modules.
+- The old v0.16.1 side-by-side workflow has a branch-restricted trigger and older version/source assertions; do not dispatch it for 0.18.0.
+
+**Decision:** Maintain fail-closed build policy until a v0.18.0-specific compatibility port and validation exist.

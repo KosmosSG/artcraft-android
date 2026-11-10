@@ -11,7 +11,7 @@ import argparse
 import json
 import tomllib
 
-VERSION = "0.16.1"
+SUPPORTED_VERSIONS = ("0.16.1", "0.18.0")
 MARKER = "GRIDCRAFT_ANDROID_V0150_SAVE_PORT_V1"
 ROOT = Path(__file__).resolve().parent
 SOURCES = {
@@ -91,8 +91,8 @@ def port(checkout: Path, *, verify_only: bool = False) -> dict:
     if not manifest.is_file():
         raise RuntimeError("Missing separate official GridCraft source checkout")
     version = tomllib.loads(manifest.read_text())["workspace"]["package"]["version"]
-    if version != VERSION:
-        raise RuntimeError(f"Refusing to port unknown GridCraft {version}; expected {VERSION}")
+    if version not in SUPPORTED_VERSIONS:
+        raise RuntimeError(f"Refusing to port unknown GridCraft {version}; expected one of {SUPPORTED_VERSIONS}")
     src = {}
     for key, relative in SOURCES.items():
         path = checkout / relative

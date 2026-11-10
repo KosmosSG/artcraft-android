@@ -129,9 +129,9 @@ jobs:
         # Do not overwrite either upstream Git pin with older Android builder vendors.
         python3 suite/tools/filmcraft/stage_v019_builder_deps.py filmcraft-builder/lib/build-common.sh
         mkdir -p filmcraft-builder/tools/filmcraft
-        cp suite/tools/filmcraft/filmcraft_features_v019_photo_progress.rs suite/tools/filmcraft/FilmCraftActivity.features.v019.photocraft-progress.java.inc suite/tools/filmcraft/port_android_mouse_winit.py filmcraft-builder/tools/filmcraft/
-        cp suite/tools/filmcraft/runtime_patch_v019_photo_progress.py filmcraft-builder/tools/filmcraft/runtime_patch.py
-        python3 suite/tools/filmcraft/runtime_patch_v019_photo_progress.py --self-test
+        cp suite/tools/filmcraft/filmcraft_features_v019_bottom_feedback.rs suite/tools/filmcraft/FilmCraftActivity.features.v019.bottom-feedback.java.inc suite/tools/filmcraft/port_android_mouse_winit.py filmcraft-builder/tools/filmcraft/
+        cp suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py filmcraft-builder/tools/filmcraft/runtime_patch.py
+        python3 suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py --self-test
         python3 suite/tools/filmcraft/native_menu_patch.py --self-test
         python3 suite/tools/filmcraft/header_patch_v019.py --self-test
         python3 suite/tools/filmcraft/port_android_mouse_winit.py --self-test
@@ -143,7 +143,7 @@ jobs:
         grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
-        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_photo_progress.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
         bash -n filmcraft-builder/lib/build-common.sh
     - name: Stage v0.19.0-only build and compiled APK verification metadata
       shell: bash

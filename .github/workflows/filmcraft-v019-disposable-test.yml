@@ -137,13 +137,19 @@ jobs:
         python3 suite/tools/filmcraft/port_android_mouse_winit.py --self-test
         python3 suite/tools/filmcraft/native_menu_patch.py filmcraft-builder/source/filmcraft/crates/ui-egui/src/menus.rs
         python3 suite/tools/filmcraft/header_patch_v019.py filmcraft-builder/source/filmcraft
+        # Android Program preview: multi-touch pinch zoom and two-axis trackpad/touch panning.
+        # Fail closed on official monitor source drift; no shared editor or desktop changes.
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py --self-test
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py filmcraft-builder/source/filmcraft
+        grep -Fq 'fn android_program_monitor_gesture(' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor_view.rs
+        grep -Fq '!android_program_multitouch' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor.rs
         # D/C/S methods called by the Android launcher must exist in pinned UI source.
         # Patch only the temporary checked-out FilmCraft v0.19.0 source.
         python3 suite/tools/filmcraft/patch_unsaved_dcs_v019.py filmcraft-builder/source/filmcraft
         grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
-        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/patch_v019_android_program_gestures.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
         bash -n filmcraft-builder/lib/build-common.sh
     - name: Stage v0.19.0-only build and compiled APK verification metadata
       shell: bash

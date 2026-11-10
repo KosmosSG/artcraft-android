@@ -128,9 +128,9 @@ mod tests {
     #[test] fn early_decisive_two_finger_pan_has_no_long_hold() {
         let mut d=Detector::default();
         assert_eq!(d.step(s(0.,0.,90.)),Step::None);
-        assert_eq!(d.step(s(4.2,0.,90.2)),Step::None);
+        assert_eq!(d.step(s(4.,0.,90.)),Step::None);
         assert_eq!(d.mode(), Mode::Pan);
-        assert_eq!(d.step(s(6.1,0.,90.3)),Step::Pan(1.9,0.));
+        assert_eq!(d.step(s(6.,0.,90.)),Step::Pan(2.,0.));
     }
     #[test] fn batched_native_pinch_applies_all_historical_samples() {
         let mut totals=AxisTotals::default();

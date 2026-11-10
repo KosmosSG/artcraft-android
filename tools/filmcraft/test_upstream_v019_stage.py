@@ -66,7 +66,7 @@ class StageV019Tests(unittest.TestCase):
                   "    return code\n")
         changed = variant.patch_text(source)
         self.assertIn('if app == "filmcraft":', changed)
-        self.assertIn('version != "0.17.0"', changed)
+        self.assertIn('version != "0.19.0"', changed)
         self.assertEqual(changed.count("code = version_code(version)"), 1)
         with self.assertRaises(ValueError):
             variant.patch_text(changed)

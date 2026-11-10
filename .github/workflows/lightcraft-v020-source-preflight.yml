@@ -1,0 +1,31 @@
+name: LightCraft v0.20 — source provenance only (NO APK)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lightcraft-v020-preflight
+  cancel-in-progress: true
+jobs:
+  source-preflight:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'integration/lightcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: suite
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: 192ff72923c39e6623f2c7ff67ab3a119deb8071
+          path: source
+          persist-credentials: false
+      - name: Verify published baseline and official upstream API
+        run: python3 suite/tools/lightcraft/verify_v020_source.py --suite suite --source source
+      - name: Document source-only scope
+        run: |
+          echo '### LightCraft v0.20 — source preflight only' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No source port, Rust compile, ARM64 APK, signing or publishing in this workflow.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,4 @@
-name: DeckCraft v0.17.0 Android.2 PHOTOKCRAFT-STYLE UPDATES ARM64 TEST ONLY (NO RELEASE)
+name: DeckCraft v0.17.0 Android.3 CHECKED UPDATES ARM64 TEST ONLY (NO RELEASE)
 on:
   push:
     branches: [integration/deckcraft-upstream-20261110]
@@ -6,6 +6,7 @@ on:
       - '.github/workflows/deckcraft-v0170-upstream-test.yml'
       - 'deckcraft/android/patch_v016_menu.py'
       - 'deckcraft/android/patch_v017_photocraft_updates.py'
+      - 'deckcraft/android/patch_v017_checked_updates.py'
       - 'deckcraft/android/patch_v016_ctrlw.py'
       - 'deckcraft/android/patch_v016_pptx_save.py'
       - 'deckcraft/android/patch_v016_magicos_mime.py'
@@ -32,11 +33,13 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --depth=1 origin 227ea22107cb8b6cdb96c926be2d68510beada32
-          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0170-upstream-test.yml deckcraft/android/patch_v017_photocraft_updates.py)"
+          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0170-upstream-test.yml deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v017_photocraft_updates.py docs/ARTCRAFT_ANDROID_UPDATE_MENU_STANDARD.md)"
           ACTUAL="$(git diff --name-only 227ea22107cb8b6cdb96c926be2d68510beada32 HEAD)"
           test "$ACTUAL" = "$EXPECTED" || { echo 'STOP: published baseline modifications detected'; exit 1; }
           test -s deckcraft/android/patch_v016_menu.py
           test -s deckcraft/android/patch_v017_photocraft_updates.py
+          test -s deckcraft/android/patch_v017_checked_updates.py
+          test -s docs/ARTCRAFT_ANDROID_UPDATE_MENU_STANDARD.md
           test -s deckcraft/android/patch_v016_ctrlw.py
           test -s deckcraft/android/patch_v016_pptx_save.py
           test -s deckcraft/android/patch_v016_magicos_mime.py
@@ -44,7 +47,7 @@ jobs:
           grep -Fx 'AUTHORIZED_PHASE2_PACKAGING_REPAIR_REBUILD_ONCE' deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
           test -s deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
           grep -Fx 'OWNER_APPROVES_V0150_ANDROID1_ONE_TEST_20261104' deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
-          python3 -m py_compile deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
+          python3 -m py_compile deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
           test -s deckcraft/android/dcs_bridge.rs
           test -s deckcraft/android/dcs_java.inc
           test -s deckcraft/android/dcs_tests.rs
@@ -127,12 +130,12 @@ jobs:
           s=source.read_text()
           old='version = "0.17.0"'
           assert s.count(old)==1, 'Official v0.17.0 source changed; stop'
-          source.write_text(s.replace(old,'version = "0.17.0-android.2"',1))
+          source.write_text(s.replace(old,'version = "0.17.0-android.3"',1))
           project=Path('builder/lib/android_project.py')
           s=project.read_text()
           formula='return (1 << 24) | (major << 16) | (minor << 8) | patch'
           assert s.count(formula)==1, 'Pinned version generator changed; stop'
-          project.write_text(s.replace(formula,'return 100000027',1))
+          project.write_text(s.replace(formula,'return 100000028',1))
           PY
           python3 deckcraft/android/patch_v013_host.py builder
           python3 deckcraft/android/patch_shared_fonts.py builder
@@ -146,6 +149,7 @@ jobs:
           python3 deckcraft/android/patch_v016_pptx_save.py builder
           python3 deckcraft/android/patch_v016_magicos_mime.py builder
           python3 deckcraft/android/patch_v017_photocraft_updates.py builder
+          python3 deckcraft/android/patch_v017_checked_updates.py builder
           python3 - <<'PY'
           from pathlib import Path
           ui=Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
@@ -172,6 +176,13 @@ jobs:
               assert marker in java, marker
           for marker in ('Toggle Update Check at Startup', 'Toggle Preview Releases'):
               assert marker in ui, marker
+          assert java.count('deckWriteMenuFlags();') == 3
+          assert 'deckcraft-updates-flags.txt' in java
+          assert '✓  Toggle Update Check at Startup' in ui
+          assert '✓  Toggle Preview Releases' in ui
+          assert 'flags.lines().any(|line| line == "startup=1")' in ui
+          assert 'flags.lines().any(|line| line == "preview=1")' in ui
+          print('PASS: saved startup/preview checkmarks mirrored from Android preferences, including relaunch')
           print('PASS: PhotoCraft-style direct startup/preview toggles with bottom ON/OFF toasts; no modal')
           print('PASS: grouped Dk menu, verified updater, PPTX ACTION_VIEW+EDIT, nonblocking PPTX Save As, IME Ctrl+W')
           # Verify MagicOS experiment is isolated to an additional DeckCraft VIEW-only filter.
@@ -211,14 +222,14 @@ jobs:
           staged=Path('builder/tools/approved-branding/assets/manifest.json')
           cfg=json.loads(staged.read_text())
           assert cfg==original, 'Branding copied manifest drifted; refuse build'
-          cfg['version_name']='0.17.0-android.2'
-          cfg['version_code']=100000027
-          cfg['package']='com.artcraft.deckcraft.candidate.v0170a2'
+          cfg['version_name']='0.17.0-android.3'
+          cfg['version_code']=100000028
+          cfg['package']='com.artcraft.deckcraft.candidate.v0170a3'
           staged.write_text(json.dumps(cfg,indent=2)+'\n')
           project=Path('builder/lib/android_project.py')
           src=project.read_text()
           old="    version = '0.14.1-android.17'\n    code = 100000021\n"
-          new="    version = '0.17.0-android.2'\n    code = 100000027\n"
+          new="    version = '0.17.0-android.3'\n    code = 100000028\n"
           assert src.count(old)==1, 'Approved-branding version override changed; stop'
           project.write_text(src.replace(old,new,1))
           assert json.loads(baseline.read_text())==original, 'Protected branding manifest was modified'
@@ -407,35 +418,35 @@ jobs:
         timeout-minutes: 120
         run: |
           set -euo pipefail
-          bash builder/build.sh -deckcraft -packagename=com.artcraft.deckcraft.candidate.v0170a2 -appname=DeckCraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DeckCraft.png"
-          test -s builder/output/deckcraft-0.17.0-android.2.apk
+          bash builder/build.sh -deckcraft -packagename=com.artcraft.deckcraft.candidate.v0170a3 -appname=DeckCraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DeckCraft.png"
+          test -s builder/output/deckcraft-0.17.0-android.3.apk
           # Ensure candidate is separate, and that Android can offer PPTX 'Open with'.
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.2.apk | grep -F "name='com.artcraft.deckcraft.candidate.v0170a2'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree builder/output/deckcraft-0.17.0-android.2.apk AndroidManifest.xml > /tmp/deckcraft-v017-manifest.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.3.apk | grep -F "name='com.artcraft.deckcraft.candidate.v0170a3'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree builder/output/deckcraft-0.17.0-android.3.apk AndroidManifest.xml > /tmp/deckcraft-v017-manifest.txt
           grep -F 'android.intent.action.VIEW' /tmp/deckcraft-v017-manifest.txt
           grep -F 'android.intent.action.EDIT' /tmp/deckcraft-v017-manifest.txt
           grep -F 'application/vnd.openxmlformats-officedocument.presentationml.presentation' /tmp/deckcraft-v017-manifest.txt
           grep -F 'application/vnd.ms-powerpoint' /tmp/deckcraft-v017-manifest.txt
           # Confirm the final APK offers both view/edit; MagicOS Settings visibility is OEM-controlled.
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.2.apk | grep -F "application-label:'DeckCraft'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.3.apk | grep -F "application-label:'DeckCraft'"
           # Abort if any later packaging step reverted to Android.17.
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.2.apk | grep -F "versionName='0.17.0-android.2'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.2.apk | grep -F "versionCode='100000027'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.3.apk | grep -F "versionName='0.17.0-android.3'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.17.0-android.3.apk | grep -F "versionCode='100000028'"
       - name: Strip disposable signature, validate unsigned APK and record SHA256
         shell: bash
         run: |
           set -euo pipefail
-          APK=builder/output/deckcraft-0.17.0-android.2.apk
+          APK=builder/output/deckcraft-0.17.0-android.3.apk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/deckcraft-android4-badging.txt
-          grep -F "name='com.artcraft.deckcraft.candidate.v0170a2'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionName='0.17.0-android.2'" /tmp/deckcraft-android4-badging.txt
-          grep -F "versionCode='100000027'" /tmp/deckcraft-android4-badging.txt
+          grep -F "name='com.artcraft.deckcraft.candidate.v0170a3'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionName='0.17.0-android.3'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionCode='100000028'" /tmp/deckcraft-android4-badging.txt
           mkdir -p unsigned
           # The builder generates a new disposable key on this ephemeral checkout.
           test -s builder/keys/artcraft-builder.jks
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > unsigned/TEMP-SIGNATURE-VERIFICATION.txt
-          cp "$APK" unsigned/DeckCraft-v0.17.0-android.2-arm64-v8a-TEMP-SIGNED.apk
+          cp "$APK" unsigned/DeckCraft-v0.17.0-android.3-arm64-v8a-TEMP-SIGNED.apk
           python3 - "$APK" <<'PY'
           from zipfile import ZipFile
           from pathlib import Path
@@ -464,18 +475,18 @@ jobs:
                   unsigned.writestr(entry,contents)
           assert saw_native,'Refusing APK without DeckCraft ARM64 native library'
           PY
-          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.17.0-android.2-arm64-v8a-UNSIGNED.apk
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.17.0-android.3-arm64-v8a-UNSIGNED.apk
           rm unsigned/unsigned-before-align.apk
-          FINAL=unsigned/DeckCraft-v0.17.0-android.2-arm64-v8a-UNSIGNED.apk
+          FINAL=unsigned/DeckCraft-v0.17.0-android.3-arm64-v8a-UNSIGNED.apk
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$FINAL"
           if "$BUILD_TOOLS/apksigner" verify "$FINAL" >/dev/null 2>&1; then
               echo "::error::Temporary signing certificate still valid; refusing unsigned artifact"
               exit 1
           fi
           "$BUILD_TOOLS/aapt" dump badging "$FINAL" > /tmp/deckcraft-unsigned-badging.txt
-          grep -F "name='com.artcraft.deckcraft.candidate.v0170a2'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionName='0.17.0-android.2'" /tmp/deckcraft-unsigned-badging.txt
-          grep -F "versionCode='100000027'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "name='com.artcraft.deckcraft.candidate.v0170a3'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionName='0.17.0-android.3'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionCode='100000028'" /tmp/deckcraft-unsigned-badging.txt
           python3 - "$FINAL" <<'PY'
           import sys,zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
@@ -486,11 +497,11 @@ jobs:
               assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
               assert 'classes.dex' in names
               assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
-          print('PASS: 0.17.0-android.2, production package, ARM64, DEX, valid unsigned payload')
+          print('PASS: 0.17.0-android.3, production package, ARM64, DEX, valid unsigned payload')
           PY
           (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
           cat > unsigned/README.txt <<'TXT'
-          DeckCraft 0.17.0-android.2 ARM64 testing candidate.
+          DeckCraft 0.17.0-android.3 ARM64 testing candidate.
           The TEMP-SIGNED APK uses a fresh disposable builder key, NOT the original
           production certificate. Back up documents before uninstalling existing DeckCraft.
           The UNSIGNED APK is also provided for independent disposable-key signing.
@@ -500,21 +511,21 @@ jobs:
           Based on PR #91; ports Android enhancements to official DeckCraft 0.17.0.
           Shared font scanning: 4 GiB byte/cache budget; 20 MiB per font.
           Source tests and compilation are not physical-device verification.
-          Android.2 retains the tested experimental filter that advertises the legacy PowerPoint MIME as VIEW-only
+          Android.3 retains the tested experimental filter that advertises the legacy PowerPoint MIME as VIEW-only
           solely to test HONOR MagicOS default-app eligibility. This does NOT add
           or certify legacy binary .ppt import. Do not set this candidate as
           the persistent default for .ppt files; test with supported .pptx only.
           Physical tablet testing and public release still require owner approval.
           TXT
-          echo "### DeckCraft 0.17.0-android.2 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Android.2 upstream 0.17.0 and retained MagicOS VIEW-only MIME test; previous working features and modern PPTX handlers preserved.' >> "$GITHUB_STEP_SUMMARY"
+          echo "### DeckCraft 0.17.0-android.3 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Android.3 upstream 0.17.0 and retained MagicOS VIEW-only MIME test; previous working features and modern PPTX handlers preserved.' >> "$GITHUB_STEP_SUMMARY"
           echo 'EXPERIMENTAL: legacy .ppt import is NOT supported or advertised by extension; device-verify MagicOS defaults before any release.' >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload temporary-signed and unsigned ARM64 testing APKs
         uses: actions/upload-artifact@v4
         with:
-          name: DeckCraft-v0.17.0-android.2-ARM64-TEMP-SIGNED-and-UNSIGNED
+          name: DeckCraft-v0.17.0-android.3-ARM64-TEMP-SIGNED-and-UNSIGNED
           path: unsigned/
           retention-days: 7
           if-no-files-found: error

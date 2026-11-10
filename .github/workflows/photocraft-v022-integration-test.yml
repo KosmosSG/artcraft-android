@@ -48,7 +48,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
           CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
-          EXPECTED="$(printf '%s\\n' .github/workflows/photocraft-v022-integration-test.yml tools/photocraft_v022_brush_scroll.py)"
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml tools/photocraft_v022_brush_scroll.py)"
           test "$CHANGED" = "$EXPECTED" || {
             echo "Refusing branch: unexpected changes outside guarded workflow and Brush Library overlay."
             printf '%s\n' "$CHANGED"

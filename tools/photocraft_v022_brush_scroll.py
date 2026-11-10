@@ -151,7 +151,7 @@ pub fn artcraft_brush_scroll_area(ctx: &egui::Context, point: egui::Pos2) -> boo
 
     assert "native_brush.push((pos, scroll))" in wheel.read_text()
     assert "brush_scroll.inner_rect" in brushes.read_text()
-    assert wheel.read_text().count("artcraft_brush_scroll_area") == 3
+    assert wheel.read_text().count("artcraft_brush_scroll_area") == 4
     assert "pub(crate) fn trackpad_view" in (a.adapter / "src/canvas_gesture.rs").read_text()
     print("PASS: brush preset ScrollArea uses scoped two-finger trackpad wheel routing.")
     print("PASS: outside-brush canvas pan/pinch and native/Java deduplication preserved.")

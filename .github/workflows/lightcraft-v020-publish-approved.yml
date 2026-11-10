@@ -2,6 +2,11 @@ name: Publish verified LightCraft v0.20.0 Android.1 (ONE SHOT)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/lightcraft-upstream-20261110
+    paths:
+      - '.github/workflows/lightcraft-v020-publish-approved.yml'
 
 permissions:
   contents: write
@@ -9,7 +14,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.repository == 'KosmosSG/artcraft-android'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'integration/lightcraft-upstream-20261110'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

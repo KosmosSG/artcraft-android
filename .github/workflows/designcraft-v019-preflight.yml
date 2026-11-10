@@ -5,6 +5,7 @@ on:
       - integration/designcraft-upstream-20261110
     paths:
       - tools/designcraft/audit_v019_compatibility.py
+      - tools/designcraft/dry_run_v019_source_port.py
       - .github/workflows/designcraft-v019-preflight.yml
       - configs/upstream/integration-20261110-designcraft.json
   workflow_dispatch:
@@ -30,5 +31,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/designcraft/audit_v019_compatibility.py "$RUNNER_TEMP/designcraft-v019"
+      - name: Attempt actual protected upstream Android source patches in isolated checkout
+        run: |
+          set -euo pipefail
+          python3 tools/designcraft/dry_run_v019_source_port.py "$RUNNER_TEMP/designcraft-v019"
       - name: Explicit stop before build
         run: echo 'Audit only; no APK compile, signing, merge or release. Reviewed port required first.'

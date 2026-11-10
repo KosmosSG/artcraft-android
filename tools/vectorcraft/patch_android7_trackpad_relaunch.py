@@ -56,12 +56,15 @@ def patch(root: Path) -> None:
     "canvas trackpad wheel direction")
     for must in (
         "delta.x *= -1.15;", "delta.y *= -1.15;",
-        "trackpad_pinch_needs_anchor", "vc_quit_after_native",
+        "vc_quit_after_native",
         "if egui::Popup::is_any_open(ctx)",
     ):
         if must not in s:
             raise ValueError(f"Android.7 guard missing adapter token: {must}")
     adapter.write_text(s)
+    canvas=(root/"source/vectorcraft/crates/ui-egui/src/canvas/input.rs").read_text()
+    if "trackpad_pinch_needs_anchor" not in canvas:
+        raise ValueError("Android.7 required Android.5 canvas pinch guard missing")
 
     java=root/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java"
     j=java.read_text()

@@ -1,6 +1,13 @@
 name: LightCraft v0.20 — source provenance only (NO APK)
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/lightcraft-upstream-20261110
+    paths:
+      - '.github/workflows/lightcraft-v020-source-preflight.yml'
+      - 'tools/lightcraft/patch_v020_android.py'
+      - 'tools/lightcraft/verify_v020_source.py'
 permissions:
   contents: read
 concurrency:

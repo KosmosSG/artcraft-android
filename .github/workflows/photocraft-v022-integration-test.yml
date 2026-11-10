@@ -94,8 +94,8 @@ jobs:
                   assert t.count('UPSTREAM_TAG = "v0.20.1"') == 1
                   t = t.replace('UPSTREAM_TAG = "v0.20.1"', 'UPSTREAM_TAG = "v0.22.0"')
               if name == "photocraft_v0201_tablet.py":
-                  assert t.count('version = "0.22.0-android.20"') == 1
-                  t = t.replace('version = "0.22.0-android.20"', 'version = "0.22.0-android.2"')
+                  assert t.count('version = "0.22.0-android.10"') == 1
+                  t = t.replace('version = "0.22.0-android.10"', 'version = "0.22.0-android.2"')
               p.write_text(t, encoding="utf-8")
           assert pins == 6, f"Unexpected upstream pin count: {pins}"
           assert versions == 17, f"Unexpected Android version count: {versions}"

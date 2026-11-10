@@ -41,7 +41,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     if workspace.is_file():
         import tomllib
         upstream_version = tomllib.loads(workspace.read_text())["workspace"]["package"]["version"]
-        if upstream_version in ("0.15.0", "0.16.1"):
+        if upstream_version in ("0.15.0", "0.16.1", "0.18.0"):
             cargo = replace_exact(cargo, 'egui-winit = "0.36"',
                                   'egui-winit = "0.37"')
             # GridCraft v0.15's official egui-winit 0.37 fork removed the
@@ -113,7 +113,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
         cargo += '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.REQUEST_INSTALL_PACKAGES"\n'
 
     # Validate every source transformation before writing any files.
-    if workspace.is_file() and upstream_version in ("0.15.0", "0.16.1"):
+    if workspace.is_file() and upstream_version in ("0.15.0", "0.16.1", "0.18.0"):
         assert 'egui_winit::android_activity::set_activity(' not in rust
         assert rust.count("self.inner.raw_input_hook(ctx, raw);") == 1
     assert rust.count("mod gridcraft_tools;") == 1

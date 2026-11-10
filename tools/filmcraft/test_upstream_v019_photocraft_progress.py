@@ -41,6 +41,21 @@ class PhotoCraftProgressDialogTests(unittest.TestCase):
         self.assertIn('else if kind == "download" {', rust)
         self.assertIn('ctx.data_mut(|data| data.insert_temp(', rust)
 
+    def test_photo_style_toast_without_floating_startup_window(self):
+        rust = (HERE / "filmcraft_features_v019_photo_progress.rs").read_text()
+        java = (HERE / "FilmCraftActivity.features.v019.photocraft-progress.java.inc").read_text()
+        self.assertIn("startup_check_in_flight: bool", rust)
+        self.assertIn("this.startup_check_in_flight = true;", rust)
+        self.assertIn('if !startup || state == "available" {', rust)
+        self.assertIn('jni_str!("fcShowStatusToast")', rust)
+        self.assertIn("android.widget.Toast.makeText(", java)
+        self.assertIn("getApplicationContext(), text, android.widget.Toast.LENGTH_SHORT", java)
+        self.assertNotIn("filmcraft.android.feedback.overlay", rust)
+        self.assertNotIn("Align2::RIGHT_TOP", rust)
+        self.assertIn('if ("com.artcraft.filmcraft.test".equals(getPackageName()))', java)
+        self.assertIn("fcVerifyDownloadDialog", java)
+        self.assertIn("fcInstallVerifiedDownload", java)
+
     def test_builder_stages_new_files_and_compiled_dex_requires_dialog(self):
         stage = (HERE / "runtime_patch_v019_photo_progress.py").read_text()
         self.assertIn("FilmCraftActivity.features.v019.photocraft-progress.java.inc", stage)
@@ -49,7 +64,7 @@ class PhotoCraftProgressDialogTests(unittest.TestCase):
         for method in (
             b"fcShowDownloadDialog", b"fcUpdateDownloadDialog",
             b"fcVerifyDownloadDialog", b"fcFinishDownloadDialog",
-            b"fcRejectCancelledDownload"):
+            b"fcRejectCancelledDownload", b"fcShowStatusToast"):
             self.assertIn(method, audit.JAVA_METHODS)
 
 if __name__ == "__main__":

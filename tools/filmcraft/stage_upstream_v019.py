@@ -10,9 +10,9 @@ import json
 import sys
 
 OLD_VERSION = "0.10.0-android.5"
-NEW_VERSION = "0.19.0-android.1-test"
+NEW_VERSION = "0.19.0-android.2-test"
 OLD_CODE = 1000005
-NEW_CODE = 1900001
+NEW_CODE = 1900002
 PINNED_UPSTREAM_SHA = "d1af238bba9fc814487c81e47b53543dff435c09"
 
 def stage(suite: Path) -> None:
@@ -29,7 +29,7 @@ def stage(suite: Path) -> None:
         raise ValueError("FilmCraft android.5 approved baseline changed; review before port")
     src = verifier.read_text()
     old = '("com.artcraft.filmcraft", "1000005", "0.10.0-android.5")'
-    new = '("com.artcraft.filmcraft.test", "1900001", "0.19.0-android.1-test")'
+    new = '("com.artcraft.filmcraft.test", "1900002", "0.19.0-android.2-test")'
     if src.count(old) != 1 or new in src:
         raise ValueError("Compiled feature verifier drifted; review before port")
     compiled = src.replace(old, new, 1)

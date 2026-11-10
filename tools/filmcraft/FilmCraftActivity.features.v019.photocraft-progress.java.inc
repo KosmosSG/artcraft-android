@@ -25,6 +25,17 @@
                 .putBoolean("check_updates_startup", enabled).apply();
     }
 
+    // PhotoCraft-style Android toast: unobtrusive system feedback at the
+    // bottom, never an editor overlay that steals gesture/keyboard focus.
+    public void fcShowStatusToast(String text) {
+        if (text == null || text.isEmpty()) return;
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            android.widget.Toast.makeText(
+                    getApplicationContext(), text, android.widget.Toast.LENGTH_SHORT).show();
+        });
+    }
+
     private void fcAnswer(String kind, String state, String detail, org.json.JSONArray paths) {
         try {
             org.json.JSONObject json = new org.json.JSONObject();

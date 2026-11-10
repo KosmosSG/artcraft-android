@@ -41,6 +41,7 @@ JAVA_METHODS = (
     b"fcVerifyDownloadDialog",
     b"fcFinishDownloadDialog",
     b"fcRejectCancelledDownload",
+    b"fcShowStatusToast",
     b"fcFeaturePoll",
 )
 

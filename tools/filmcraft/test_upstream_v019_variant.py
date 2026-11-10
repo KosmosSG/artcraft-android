@@ -11,7 +11,7 @@ class V019TestFlavor(unittest.TestCase):
         updated = variant.patch_text(original)
         self.assertIn('version != "0.19.0"', updated)
         self.assertIn('com.artcraft.filmcraft.test', updated)
-        self.assertIn('code = 1900001', updated)
+        self.assertIn('code = 1900002', updated)
         with self.assertRaises(ValueError):
             variant.patch_text(updated)
 

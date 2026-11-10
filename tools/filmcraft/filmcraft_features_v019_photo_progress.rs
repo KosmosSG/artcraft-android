@@ -15,6 +15,8 @@ pub struct FilmcraftFeatures {
     registered: HashSet<PathBuf>,
     pending_font: bool,
     pending_updates: bool,
+    // Distinguishes automatic startup checks from user-triggered checks.
+    startup_check_in_flight: bool,
     pending_download: bool,
     startup_updates: bool,
     font_status: String,
@@ -120,6 +122,15 @@ impl FilmcraftFeatures {
                     activity, jni_str!("fcSetStartupUpdatesEnabled"), jni_sig!("(Z)V"),
                     &[JValue::Bool(toggle)],
                 )?; },
+                "toast" => {
+                    let Some(message) = arg else { return Ok(()); };
+                    let jmessage = JObject::from(env.new_string(message)?);
+                    env.call_method(
+                        activity, jni_str!("fcShowStatusToast"),
+                        jni_sig!("(Ljava/lang/String;)V"),
+                        &[JValue::Object(&jmessage)],
+                    )?;
+                },
                 "open_release" => {
                     let Some(url) = arg else { return Ok(()); };
                     let jurl = JObject::from(env.new_string(url)?);
@@ -145,6 +156,7 @@ impl FilmcraftFeatures {
             registered: HashSet::new(),
             pending_font: false,
             pending_updates: false,
+            startup_check_in_flight: false,
             pending_download: false,
             startup_updates,
             font_status: String::new(),
@@ -169,6 +181,7 @@ impl FilmcraftFeatures {
             match this.java_command("updates", None, false) {
                 Ok(()) => {
                     this.pending_updates = true;
+                    this.startup_check_in_flight = true;
                     this.update_status = "Checking FilmCraft releases…".to_owned();
                 }
                 Err(e) => this.update_status = format!("Update check unavailable: {e}"),
@@ -235,7 +248,7 @@ impl FilmcraftFeatures {
             self.pending_font = false;
             self.font_status = format!("{}. Registered {} faces; registration skipped {}",
                 self.registration_message, self.registration_good, self.registration_bad);
-            Self::native_menu_status(ctx, &self.font_status);
+            self.native_menu_status(ctx, &self.font_status);
         } else {
             self.font_status = format!("Registering fonts: {} faces; {} files remaining",
                 self.registration_good, self.pending_registration.len());
@@ -338,45 +351,14 @@ impl FilmcraftFeatures {
         if action <= 3 || action == 9 { self.font_status.clone() } else { self.update_status.clone() }
     }
 
-    fn native_menu_status(ctx: &egui::Context, status: &str) {
-        let until = ctx.input(|i| i.time) + if status.contains("unavailable") || status.contains("failed") || status.contains("error") { 6.0 } else { 4.0 };
-        ctx.data_mut(|data| {
-            data.insert_temp(egui::Id::new("filmcraft.android.menu.status"), status.to_owned());
-            // LightCraft-inspired non-modal feedback: a bounded, theme-aware toast,
-            // never a persistent status row or an Android floating overlay.
-            data.insert_temp(egui::Id::new("filmcraft.android.feedback"), (status.to_owned(), until));
-        });
-        ctx.request_repaint();
-    }
-
-    fn show_feedback(&self, ctx: &egui::Context) {
-        let key = egui::Id::new("filmcraft.android.feedback");
-        let Some((text, until)) = ctx.data(|d| d.get_temp::<(String, f64)>(key)) else { return };
-        let now = ctx.input(|i| i.time);
-        if now >= until {
-            ctx.data_mut(|d| d.remove::<(String, f64)>(key));
-            return;
+    // PhotoCraft-like native Android notification. No custom floating window.
+    fn native_menu_status(&self, ctx: &egui::Context, status: &str) {
+        ctx.data_mut(|data| data.insert_temp(
+            egui::Id::new("filmcraft.android.menu.status"), status.to_owned()));
+        if let Err(error) = self.java_command("toast", Some(status), false) {
+            log::warn!("FilmCraft status toast unavailable: {error}");
         }
-        // A compact toast, following LightCraft's in-app feedback convention.
-        // The editor, timeline and keyboard focus stay fully interactive.
-        egui::Area::new(egui::Id::new("filmcraft.android.feedback.overlay"))
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 54.0))
-            .interactable(false)
-            .show(ctx, |ui| {
-                egui::Frame::popup(ui.style())
-                    .corner_radius(8.0)
-                    .inner_margin(egui::Margin::symmetric(14, 10))
-                    .show(ui, |ui| {
-                        ui.set_max_width(360.0);
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(egui::RichText::new("FilmCraft").strong());
-                            ui.separator();
-                            ui.label(&text);
-                        });
-                    });
-            });
-        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        ctx.request_repaint();
     }
 
     pub fn poll(&mut self, ctx: &egui::Context) {
@@ -398,7 +380,7 @@ impl FilmcraftFeatures {
                     ctx.data_mut(|d| d.insert_temp(
                         egui::Id::new("filmcraft.android.menu.status"), status));
                 } else {
-                    Self::native_menu_status(ctx, &status);
+                    self.native_menu_status(ctx, &status);
                 }
             }
         }
@@ -471,15 +453,24 @@ impl FilmcraftFeatures {
                 },
                 _ => log::warn!("Unexpected FilmCraft feature event"),
             }
-            if kind == "updates" || (kind == "download" && state != "progress") {
-                Self::native_menu_status(ctx, &self.update_status);
+            if kind == "updates" {
+                let startup = self.startup_check_in_flight;
+                self.startup_check_in_flight = false;
+                if !startup || state == "available" {
+                    // Auto-checks do not nag test builds, show an "up to date"
+                    // bubble, or steal focus. New stable releases use a brief
+                    // bottom Android toast; downloads remain explicit actions.
+                    self.native_menu_status(ctx, &self.update_status);
+                }
+            } else if kind == "download" && state != "progress" {
+                self.native_menu_status(ctx, &self.update_status);
             } else if kind == "download" {
                 // Keep the bottom status text current while Android's progress
                 // bar handles every percentage change without a toast overlay.
                 ctx.data_mut(|data| data.insert_temp(
                     egui::Id::new("filmcraft.android.menu.status"), self.update_status.clone()));
             } else if kind == "font_import" || kind == "font_folder" {
-                Self::native_menu_status(ctx, &self.font_status);
+                self.native_menu_status(ctx, &self.font_status);
             }
             ctx.request_repaint();
         }
@@ -539,6 +530,5 @@ impl FilmcraftFeatures {
                     }
                 });
             });
-        self.show_feedback(ui.ctx());
     }
 }

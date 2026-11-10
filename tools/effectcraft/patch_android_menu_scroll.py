@@ -87,6 +87,30 @@ VIEWER_NEW = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
     }
     phase_tail(app, ui, &ectx, &mut v);'''
 
+
+# v0.23.1 added middle-button panning around drag phases. Preserve this
+# upstream behavior while suppressing touchpad/two-finger editor selection.
+VIEWER_OLD_023 = '''    phase_hover(app, ui, &ectx, &resp, &mut v);
+    phase_press(app, ui, &ectx, &resp, &mut v);
+    if !middle_pan(app, ui, &resp, &v) {
+        phase_dragstart(app, ui, &ectx, &resp, &mut v);
+        phase_drag(app, ui, &ectx, &resp, &mut v);
+        phase_stopped(app, ui, &ectx, &resp, &mut v);
+        phase_clicked(app, &ectx, &resp, &mut v);
+        phase_dblclick(app, &ectx, &resp, &mut v);
+    }
+    phase_tail(app, ui, &ectx, &mut v);'''
+VIEWER_NEW_023 = VIEWER_NEW.replace(
+    '''    if !ec_navigating {
+        phase_press(app, ui, &ectx, &resp, &mut v);
+        phase_dragstart(app, ui, &ectx, &resp, &mut v);''',
+    '''    if !ec_navigating {
+        phase_press(app, ui, &ectx, &resp, &mut v);
+    }
+    if !ec_navigating && !middle_pan(app, ui, &resp, &v) {
+        phase_dragstart(app, ui, &ectx, &resp, &mut v);'''
+)
+
 WIDGET_HELPERS = r'''
 // EffectCraft Android.8: remember the actual hovered ScrollArea (including submenus)
 // from the completed egui pass. Input arrives BEFORE the next layout, like in PhotoCraft.
@@ -182,6 +206,8 @@ def apply(root: Path):
     if ("android_route_trackpad_menu_scroll" in data[WIDGETS] or
         'effectcraft.android.touch.navigation.active' in data[VIEWER]):
         raise RuntimeError("STOP: Android.8 menu patch already applied")
+    viewer_old = VIEWER_OLD_023 if data[VIEWER].count(VIEWER_OLD_023) == 1 else VIEWER_OLD
+    viewer_new = VIEWER_NEW_023 if viewer_old == VIEWER_OLD_023 else VIEWER_NEW
     for key, anchor, title in (
         (APP, APP_OLD, "raw input before egui"),
         (WIDGETS, WIDGET_START, "scroll source id"),
@@ -189,7 +215,7 @@ def apply(root: Path):
         (WIDGETS, WIDGET_SHOW, "scroll area show"),
         (HEADER, HEADER_START, "Ec popup scroll area"),
         (HEADER, HEADER_END, "Ec popup closing"),
-        (VIEWER, VIEWER_OLD, "viewer editing phases"),
+        (VIEWER, viewer_old, "viewer editing phases"),
         (VIEWER, HOVER_OLD, "viewer lost-hover fallback"),
     ):
         exactly(data[key], anchor, title)
@@ -230,7 +256,7 @@ def apply(root: Path):
     data[HEADER] = data[HEADER].replace(
         HEADER_END, HEADER_END + '''
                 crate::widgets::android_record_menu_scroll(ui, &ec_out, ec_scroll_key);''', 1)
-    data[VIEWER] = data[VIEWER].replace(VIEWER_OLD, VIEWER_NEW, 1)
+    data[VIEWER] = data[VIEWER].replace(viewer_old, viewer_new, 1)
     data[VIEWER] = data[VIEWER].replace(HOVER_OLD, HOVER_NEW, 1)
     for key, path in files.items():
         path.write_text(data[key], encoding="utf-8")

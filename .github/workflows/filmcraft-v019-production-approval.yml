@@ -1,0 +1,397 @@
+name: FilmCraft v0.19.0 approved ARM64 production release (original certificate)
+'on':
+  push:
+    branches:
+    - release/filmcraft-v019-android1-approved-42843721880
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: filmcraft-v019-production-from-approved-42843721880
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Validate original FilmCraft key before running expensive compilation
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEYSTORE_BASE64: ${{ secrets.FILMCRAFT_KEYSTORE_BASE64 }}
+        STORE_PASSWORD: ${{ secrets.FILMCRAFT_KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.FILMCRAFT_KEY_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.FILMCRAFT_KEY_ALIAS }}
+      run: |
+        set -euo pipefail
+        test "$GITHUB_REF_NAME" = "release/filmcraft-v019-android1-approved-42843721880"
+        test "$GITHUB_REPOSITORY" = "KosmosSG/artcraft-android"
+        for var in KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD KEY_ALIAS; do
+          test -n "${!var}" || { echo "::error::Missing permanent FilmCraft signing secret $var; original signer required"; exit 1; }
+        done
+        if gh release view filmcraft-v0.19.0-android.1 -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "::error::Refusing to overwrite an existing FilmCraft v0.19.0 release"; exit 1
+        fi
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/42843721880" | jq -e '.conclusion == "success" and .head_sha == "58ce3daf790ba9c8e1a58d217a0da84eba600bf2" and .head_branch == "integration/filmcraft-upstream-20261110"'
+        gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/13778287530" | jq -e '.expired == false and .workflow_run.id == 42843721880 and .digest == "sha256:4855bafe9e0a143105ec589e6de0b48b3b5fb9045a03a3a9b37359eb5cd1b4e6"'
+        mkdir -p "$RUNNER_TEMP/filmcraft-original"
+        gh release download filmcraft-v0.17.0-android.1 -R "$GITHUB_REPOSITORY" --pattern signing-certificate-sha256.txt --dir "$RUNNER_TEMP/filmcraft-original"
+        expected="$(tr -d '\r\n' < "$RUNNER_TEMP/filmcraft-original/signing-certificate-sha256.txt")"
+        [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::Original published FilmCraft certificate fingerprint absent"; exit 1; }
+        command -v keytool >/dev/null || { echo "::error::JDK keytool unavailable"; exit 1; }
+        umask 077
+        key="$RUNNER_TEMP/filmcraft-preflight-key"
+        trap 'rm -f "$key"' EXIT
+        printf %s "$KEYSTORE_BASE64" | base64 --decode > "$key"
+        keytool -list -v -keystore "$key" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > "$RUNNER_TEMP/filmcraft-key-info.txt"
+        python3 - "$RUNNER_TEMP/filmcraft-original/signing-certificate-sha256.txt" "$RUNNER_TEMP/filmcraft-key-info.txt" <<'PY'
+        from pathlib import Path
+        import re,sys
+        old=Path(sys.argv[1]).read_text().strip().lower()
+        key=Path(sys.argv[2]).read_text()
+        m=re.search(r"SHA256:\s*([0-9A-Fa-f:]{64,95})",key)
+        if not m or m.group(1).replace(":","").lower()!=old:
+            raise SystemExit("STOP: permanent FilmCraft key does not match published v0.17 certificate")
+        print("PASS: original FilmCraft signing certificate verified without exposing key")
+        PY
+    - name: Checkout FilmCraft-only candidate
+      uses: actions/checkout@v5
+      with:
+        path: suite
+        ref: 58ce3daf790ba9c8e1a58d217a0da84eba600bf2
+        persist-credentials: false
+    - name: Verify isolated v0.19.0 version staging and baseline preservation
+      run: python3 -m unittest discover -s suite/tools/filmcraft -p 'test_upstream_v019_*.py' -v
+    - name: Validate 4 GiB Java scan boundaries
+      run: cd suite && python3 tools/font_scan_budget_regression.py
+    - name: Validate app-specific keyboard focus handoff
+      run: python3 suite/tools/keyboard/escape_focus_check.py filmcraft
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s suite/tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout reviewed Android builder at immutable reference
+      uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: filmcraft-builder
+        persist-credentials: false
+    - name: Verify independent builder and official FilmCraft source identity
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C filmcraft-builder rev-parse HEAD)" = ''ac54d62d9d2d6f663295a4afd8972a7a3e79f9af''
+
+        mkdir -p filmcraft-builder/source
+
+        git clone --depth 1 --branch v0.19.0 https://github.com/storytold/filmcraft.git filmcraft-builder/source/filmcraft
+
+        test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = ''d1af238bba9fc814487c81e47b53543dff435c09''
+
+        grep -Fq ''version = "0.19.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        grep -Fq ''license = "MIT OR Apache-2.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        test ! -e filmcraft-builder/keys/artcraft-builder.jks
+
+        test ! -e filmcraft-builder/keys/.keystore-password
+
+        test -f suite/assets/filmcraft/fc-user-approved.png
+
+        echo ''242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png'' | sha256sum --check
+
+        echo ''Official FilmCraft v0.19.0 (d1af238b) is pinned; protected Android release stays untouched.'' >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Set up Java 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up Rust 1.95 and ARM64 target
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Select Android SDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+        '
+    - name: Install pinned Android build prerequisites
+      shell: bash
+      run: 'set -euo pipefail
+
+        sdkmanager --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Install launcher icon renderer in isolated Python environment
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m venv "$GITHUB_WORKSPACE/.filmcraft-build-python"
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -m pip install --disable-pip-version-check ''Pillow==11.3.0''
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -c ''from PIL import Image; print("Pillow PNG renderer available")''
+
+        echo "$GITHUB_WORKSPACE/.filmcraft-build-python/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Stage existing FilmCraft fonts shared folders SAF IME and updater integration
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/filmcraft/stage_runtime_hook.py filmcraft-builder/lib/build-common.sh
+        # FilmCraft v0.19's egui 0.37 IME API requires its matching storyTold winit fork.
+        # Do not overwrite either upstream Git pin with older Android builder vendors.
+        python3 suite/tools/filmcraft/stage_v019_builder_deps.py filmcraft-builder/lib/build-common.sh
+        mkdir -p filmcraft-builder/tools/filmcraft
+        cp suite/tools/filmcraft/filmcraft_features_v019_bottom_feedback.rs suite/tools/filmcraft/FilmCraftActivity.features.v019.bottom-feedback.java.inc suite/tools/filmcraft/port_android_mouse_winit.py filmcraft-builder/tools/filmcraft/
+        cp suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py filmcraft-builder/tools/filmcraft/runtime_patch.py
+        python3 suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py --self-test
+        python3 suite/tools/filmcraft/header_patch_v019.py --self-test
+        python3 suite/tools/filmcraft/port_android_mouse_winit.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py filmcraft-builder/source/filmcraft/crates/ui-egui/src/menus.rs
+        python3 suite/tools/filmcraft/header_patch_v019.py filmcraft-builder/source/filmcraft
+        # Android Program preview: multi-touch pinch zoom and two-axis trackpad/touch panning.
+        # Fail closed on official monitor source drift; no shared editor or desktop changes.
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py --self-test
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py filmcraft-builder/source/filmcraft
+        grep -Fq 'fn android_program_monitor_gesture(' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor_view.rs
+        grep -Fq '!android_program_multitouch' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor.rs
+        # D/C/S methods called by the Android launcher must exist in pinned UI source.
+        # Patch only the temporary checked-out FilmCraft v0.19.0 source.
+        python3 suite/tools/filmcraft/patch_unsaved_dcs_v019.py filmcraft-builder/source/filmcraft
+        grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/patch_v019_android_program_gestures.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
+        bash -n filmcraft-builder/lib/build-common.sh
+    - name: Stage approved production identity without changing protected sources
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git -C suite rev-parse HEAD)" = "58ce3daf790ba9c8e1a58d217a0da84eba600bf2"
+        if grep -Fq patch_trackpad_api34 suite/tools/filmcraft/port_android_mouse_winit.py; then
+          echo "::error::Rejected Android.2 trackpad source present in release candidate"; exit 1
+        fi
+        python3 suite/tools/filmcraft/stage_upstream_v019.py suite
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        root=Path('suite')
+        m=root/'tools/approved-branding/assets/manifest.json'
+        cfg=json.loads(m.read_text())
+        assert (cfg['app'],cfg['package'],cfg['version_name'],cfg['version_code'],cfg['previous_version_code'])==('filmcraft','com.artcraft.filmcraft.test','0.19.0-android.1-test',1900001,1700001)
+        cfg['package']='com.artcraft.filmcraft'
+        cfg['version_name']='0.19.0-android.1'
+        m.write_text(json.dumps(cfg,indent=2)+'\n')
+        verifier=root/'tools/filmcraft/verify_android_features_apk_v019.py'
+        old='("com.artcraft.filmcraft.test", "1900001", "0.19.0-android.1-test")'
+        new='("com.artcraft.filmcraft", "1900001", "0.19.0-android.1")'
+        source=verifier.read_text()
+        assert source.count(old)==1
+        source=source.replace(old,new,1)
+        compile(source,str(verifier),'exec')
+        verifier.write_text(source)
+        variant=root/'tools/filmcraft/stage_upstream_v019_variant.py'
+        source=variant.read_text()
+        for old,new in [('0.19.0-android.1-test','0.19.0-android.1'),('com.artcraft.filmcraft.test','com.artcraft.filmcraft'),('FILMCRAFT_TEST_PACKAGE','FILMCRAFT_RELEASE_PACKAGE')]:
+            assert old in source,old
+            source=source.replace(old,new)
+        compile(source,str(variant),'exec')
+        variant.write_text(source)
+        print('PASS: production FilmCraft package/versionCode 1900001 staged in runner only')
+        PY
+        python3 -m py_compile suite/tools/filmcraft/stage_upstream_v019_variant.py
+        python3 suite/tools/approved-branding/approved_branding.py check
+    - name: Rebuild production-package ARM64 payload with temporary intermediate key
+      shell: bash
+      env:
+        FILMCRAFT_ANDROID_VERSION_NAME: 0.19.0-android.1
+        FILMCRAFT_RELEASE_PACKAGE: com.artcraft.filmcraft
+        FILMCRAFT_EPHEMERAL_VERSION_CODE: '1900001'
+        ARTCRAFT_TARGET_SDK: '35'
+      run: 'set -euo pipefail
+
+        python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
+
+        python3 suite/tools/filmcraft/stage_upstream_v019_variant.py filmcraft-builder/lib/android_project.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 suite/tools/approved-branding/approved_branding.py install filmcraft-builder filmcraft
+
+        cd filmcraft-builder
+
+        bash build.sh -filmcraft -packagename=com.artcraft.filmcraft -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-user-approved.png"
+
+        test -f output/filmcraft-0.19.0.apk
+
+        mv output/filmcraft-0.19.0.apk output/filmcraft-0.19.0-android.1.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
+        python3 suite/tools/filmcraft/verify_android_features_apk_v019.py filmcraft-builder/output/filmcraft-0.19.0-android.1.apk integrated-candidate
+        # The approved-branding verifier already retains a uniquely named
+        # ephemeral APK with SHA256SUMS.txt and compiled package metadata.
+        test -s integrated-candidate/SHA256SUMS.txt
+        (cd integrated-candidate && sha256sum --check SHA256SUMS.txt)
+        printf '%s\n' 'EPHEMERAL TEST SIGNER ONLY - NOT A PRODUCTION UPDATE' > integrated-candidate/NOT-FOR-UPDATE.txt
+    - name: Record exact keyboard candidate source
+      run: |
+        mkdir -p integrated-candidate
+        printf "%s\n" "58ce3daf790ba9c8e1a58d217a0da84eba600bf2" > integrated-candidate/keyboard-source-sha.txt
+        printf "%s\n" "Upstream FilmCraft v0.19.0 @ d1af238bba9fc814487c81e47b53543dff435c09" > integrated-candidate/upstream-pin.txt
+        test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = "d1af238bba9fc814487c81e47b53543dff435c09"
+    - name: Permanently sign only after baseline package ABI and cert checks
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEYSTORE_BASE64: ${{ secrets.FILMCRAFT_KEYSTORE_BASE64 }}
+        STORE_PASSWORD: ${{ secrets.FILMCRAFT_KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.FILMCRAFT_KEY_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.FILMCRAFT_KEY_ALIAS }}
+      run: |
+        set -euo pipefail
+        umask 077
+        KEY="$RUNNER_TEMP/filmcraft-production-key.p12"
+        ALIGNED="$RUNNER_TEMP/filmcraft-aligned.apk"
+        trap 'rm -f "$KEY" "$ALIGNED"' EXIT
+        printf %s "$KEYSTORE_BASE64" | base64 --decode > "$KEY"
+        SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+        TOOLS="$SDK_ROOT/build-tools/35.0.0"
+        test -x "$TOOLS/apksigner" && test -x "$TOOLS/zipalign" && test -x "$TOOLS/aapt2"
+        gh release download filmcraft-v0.17.0-android.1 -R "$GITHUB_REPOSITORY" --pattern "FilmCraft-v0.17.0-android.1-arm64-v8a.apk" --dir "$RUNNER_TEMP/filmcraft-original"
+        OLD="$RUNNER_TEMP/filmcraft-original/FilmCraft-v0.17.0-android.1-arm64-v8a.apk"
+        echo "518d815d5c630081c2aefce9d37d4a6dcdff6f342724c689fde285bb998d562b  $OLD" | sha256sum --check
+        "$TOOLS/apksigner" verify --verbose --print-certs "$OLD" > "$RUNNER_TEMP/filmcraft-old-cert.txt"
+        SOURCE="integrated-candidate/FilmCraft-v0.19.0-android.1-arm64-v8a-EPHEMERAL-NOT-UPDATE.apk"
+        test -s "$SOURCE"
+        (cd integrated-candidate && sha256sum --check SHA256SUMS.txt)
+        "$TOOLS/apksigner" verify --verbose "$SOURCE"
+        "$TOOLS/aapt2" dump badging "$OLD" > "$RUNNER_TEMP/filmcraft-old-badging.txt"
+        "$TOOLS/aapt2" dump badging "$SOURCE" > "$RUNNER_TEMP/filmcraft-candidate-badging.txt"
+        python3 - "$RUNNER_TEMP/filmcraft-old-badging.txt" "$RUNNER_TEMP/filmcraft-candidate-badging.txt" "$SOURCE" <<'PY'
+        from pathlib import Path
+        import re,sys,zipfile
+        def pkg(p):
+            m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",Path(p).read_text(),re.M)
+            if not m: raise SystemExit('STOP: compiled package identity not found')
+            return m.groups()
+        assert pkg(sys.argv[1])==('com.artcraft.filmcraft','1700001','0.17.0-android.1'),'STOP: production baseline differs'
+        assert pkg(sys.argv[2])==('com.artcraft.filmcraft','1900001','0.19.0-android.1'),'STOP: production candidate identity differs'
+        with zipfile.ZipFile(sys.argv[3]) as z:
+            libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+            assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),'STOP: not ARM64-only'
+        print('PASS: original applicationId, monotonic versionCode and ARM64 native libraries')
+        PY
+        "$TOOLS/zipalign" -P 16 -f 4 "$SOURCE" "$ALIGNED"
+        mkdir -p release
+        TARGET="release/FilmCraft-v0.19.0-android.1-arm64-v8a.apk"
+        "$TOOLS/apksigner" sign --ks "$KEY" --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$TARGET" "$ALIGNED"
+        "$TOOLS/apksigner" verify --verbose --print-certs "$TARGET" > "$RUNNER_TEMP/filmcraft-new-cert.txt"
+        "$TOOLS/zipalign" -c -P 16 4 "$TARGET"
+        "$TOOLS/aapt2" dump badging "$TARGET" > "$RUNNER_TEMP/filmcraft-release-badging.txt"
+        cmp "$RUNNER_TEMP/filmcraft-candidate-badging.txt" "$RUNNER_TEMP/filmcraft-release-badging.txt"
+        python3 - "$RUNNER_TEMP/filmcraft-old-cert.txt" "$RUNNER_TEMP/filmcraft-new-cert.txt" "$RUNNER_TEMP/filmcraft-original/signing-certificate-sha256.txt" "$SOURCE" "$TARGET" <<'PY'
+        from pathlib import Path
+        import re,sys,zipfile
+        def cert(path):
+            m=re.search(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})',Path(path).read_text(),re.I)
+            if not m: raise SystemExit('STOP: signer certificate SHA-256 missing')
+            return m.group(1).lower()
+        old,new=cert(sys.argv[1]),cert(sys.argv[2])
+        expected=Path(sys.argv[3]).read_text().strip().lower()
+        if old!=new or old!=expected: raise SystemExit('STOP: original FilmCraft production certificate changed')
+        def contents(path):
+            with zipfile.ZipFile(path) as z:
+                return {n:z.read(n) for n in z.namelist() if not n.startswith('META-INF/')}
+        if contents(sys.argv[4])!=contents(sys.argv[5]): raise SystemExit('STOP: signing modified APK payload')
+        Path('release/signing-certificate-sha256.txt').write_text(new+'\n')
+        print('PASS: original FilmCraft certificate and unchanged app payload')
+        PY
+        (cd release && sha256sum FilmCraft-v0.19.0-android.1-arm64-v8a.apk > SHA256SUMS.txt)
+        echo "Production APK sha256: $(sha256sum "$TARGET" | cut -d " " -f 1)" >> "$GITHUB_STEP_SUMMARY"
+    - name: Record reviewed release notes and local checksum
+      shell: bash
+      run: |
+        set -euo pipefail
+        cat > release/RELEASE_NOTES.md <<'EOF'
+        FilmCraft v0.19.0-android.1 — Stable ARM64 Android
+
+        - Official Storytold FilmCraft v0.19.0 with the user's approved Android features.
+        - Device-approved candidate: GitHub Actions #42843721880; pinned source commit 58ce3daf790ba9c8e1a58d217a0da84eba600bf2.
+        - Package com.artcraft.filmcraft; versionCode 1900001; ARM64-v8a.
+        - Signed with FilmCraft's original production certificate and checked against published FilmCraft v0.17.0-android.1.
+        - Preserves Fc menu, PhotoCraft-style bottom feedback, native updater progress and integrity, fonts, trackpad hover, video playback and SAF import/export, ESC and D/C/S.
+        - Known limitation: MagicPad 4 trackpad pinch-to-zoom and preview pan do not work in this approved build.
+        - The later Android.2 experimental trackpad patch that caused the app to quit is not included. Trackpad pinch may be reconsidered after a newer upstream version and device testing.
+        - No temporary-signature APK or test package is published.
+        EOF
+        test -s release/FilmCraft-v0.19.0-android.1-arm64-v8a.apk
+        (cd release && sha256sum --check SHA256SUMS.txt)
+    - name: Upload permanently signed verified release artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: FilmCraft-v0.19.0-android.1-PERMANENT-SIGNED
+        path: release/
+        retention-days: 90
+        if-no-files-found: error
+    - name: Publish verified signed release only (never overwrite)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        TAG=filmcraft-v0.19.0-android.1
+        if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "::error::Release tag exists; cannot overwrite"; exit 1
+        fi
+        (cd release && sha256sum --check SHA256SUMS.txt)
+        gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target 58ce3daf790ba9c8e1a58d217a0da84eba600bf2 --title "FilmCraft v0.19.0-android.1 — Stable ARM64" --notes-file release/RELEASE_NOTES.md release/FilmCraft-v0.19.0-android.1-arm64-v8a.apk release/SHA256SUMS.txt release/signing-certificate-sha256.txt
+        gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,assets
+    - name: Explain compatibility build failures and retain diagnostics
+      if: failure()
+      run: |
+        echo '::warning::v0.19.0 compatibility test stopped. This is NOT a release, and upstream UI/SAF/keyboard anchors may need a reviewed port.' >> "$GITHUB_STEP_SUMMARY"
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: FilmCraft-v019-compatibility-diagnostics
+        path: filmcraft-builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf filmcraft-builder/keys

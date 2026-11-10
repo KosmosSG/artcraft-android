@@ -52,14 +52,14 @@ jobs:
           curl --fail --location --retry 3 --silent --show-error \
             'https://github.com/KosmosSG/artcraft-android/releases/download/lightcraft-v0.18.0-android.1/LightCraft-v0.18.0-android.1-arm64-v8a.apk' \
             -o /tmp/lightcraft-v018.apk
-          printf '%s  %s\\n' '035eb16d7ebfe35bc3cd109de71223e678aa63a982fe471ca327079d132d39f0' '/tmp/lightcraft-v018.apk' | sha256sum -c -
+          printf '%s  %s\n' '035eb16d7ebfe35bc3cd109de71223e678aa63a982fe471ca327079d132d39f0' '/tmp/lightcraft-v018.apk' | sha256sum -c -
           "$AAPT" dump badging /tmp/lightcraft-v018.apk > /tmp/lightcraft-previous-badging
           python3 - <<'PY'
           import re
           from pathlib import Path
           def code(path):
               data = Path(path).read_text()
-              found = re.search(r"(?m)^package: name='com\\.artcraft\\.lightcraft' versionCode='(\\d+)'", data)
+              found = re.search(r"(?m)^package: name='com\.artcraft\.lightcraft' versionCode='(\d+)'", data)
               if not found:
                   raise SystemExit("STOP: published/current package versionCode not parseable")
               return int(found.group(1))

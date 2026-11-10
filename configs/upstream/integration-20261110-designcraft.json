@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "app": "designcraft",
+  "repository": "KosmosSG/artcraft-android",
+  "protected_android_baseline": "designcraft-v0.17.2-android.5",
+  "official_upstream_repository": "storytold/designcraft",
+  "target_upstream_tag": "v0.19.0",
+  "target_upstream_commit": "147b3f475056967353606b90fa0dc8bb39de7f27",
+  "source_integration_complete": false,
+  "regression_tests_passed": false,
+  "arm64_apk_artifact_verified": false,
+  "device_verified": false,
+  "production_signing_authorized": false,
+  "publishing_authorized": false,
+  "source_policy": "Cherry-pick or adapt upstream functionality only; no wholesale source replacement, no reset of published release, fail on patch drift.",
+  "required_preservation": [
+    "approved app-specific Android UI and launcher icon",
+    "keyboard and dialog shortcuts",
+    "fonts SAF import, shared folder, recursive refresh",
+    "touch, trackpad and stylus controls where supported",
+    "Android updater and appearance",
+    "app identity, data/recovery and file associations",
+    "existing GPU optimizations and adaptive frame pacing",
+    "original permanent signing identity"
+  ],
+  "test_policy": "Disposable-key-signed ARM64 separate test package, build only after a reviewed compatible source integration; never publish automatically."
+}

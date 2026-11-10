@@ -52,7 +52,10 @@ fn android_program_monitor_gesture(
     // Only consume wheel/pinch when the cursor is over Program. Never modify
     // Source, timeline, playback, selection or clip scale.
     let wheel = crate::panels::timeline::wheel_input(&ctx);
-    let factor = touch.map_or(wheel.pinch, |g| g.zoom_delta);
+    // egui's zoom_delta includes trackpad Ctrl+wheel synthesis as well as
+    // native Event::Zoom. Direct two-finger touch gets the true gesture ratio.
+    let trackpad_factor = ctx.input(|i| i.zoom_delta());
+    let factor = touch.map_or(trackpad_factor, |g| g.zoom_delta);
     let zooming = factor.is_finite() && (factor - 1.0).abs() > 1e-4;
     let translation = if let Some(g) = touch {
         g.translation_delta

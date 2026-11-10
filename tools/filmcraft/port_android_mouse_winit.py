@@ -66,8 +66,6 @@ def splice_mouse_winit(upstream: str, reviewed: str) -> str:
     return staged
 
 
-TRACKPAD_AXES = '''        # Android 14+ trackpad gesture axes are opt-in for android-activity.
-'''
 TRACKPAD_PROBE = r'''                // Android 14+ trackpads report native pinch and scroll axes.
                 // Unlike Vscroll/Hscroll, these axes can accompany Move as well
                 // as Scroll. Forward the gesture via egui-winit's native route;
@@ -117,6 +115,7 @@ TRACKPAD_PROBE = r'''                // Android 14+ trackpads report native pinc
                         }
                     }
                 }
+'''
 
 def patch_trackpad_api34(source: str) -> str:
     """Restore V/H scroll and bridge API34 native pinch/pan in FilmCraft's local winit."""

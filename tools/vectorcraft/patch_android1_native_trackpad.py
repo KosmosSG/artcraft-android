@@ -366,7 +366,7 @@ def patch_staged(root: Path):
     content = once(content, old, new)
     content = once(content,
         'VectorCraft Android.15 Diagnostic Session',
-        'VectorCraft v0.23.0-android.3 Diagnostic Session')
+        'VectorCraft v0.23.0-android.4 Diagnostic Session')
     content = once(content,
         '            if vc_diag_start {',
         '            if vc_diag_start {\n'

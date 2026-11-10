@@ -51,8 +51,11 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'finish_pdfcraft_android_activity(&exit_activity);' not in native
     assert 'jni_str!("pdfFinishNativeLoop")' in native
     assert native.count('finish_pdfcraft_android_activity(') == 2
-    assert 'fn on_exit(&mut self)' in native
-    assert native.index('fn on_exit(&mut self)') < native.index('let result = eframe::run_native(')
+    on_exit_signature = ('fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)'
+                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] == '0.20.0'
+                         else 'fn on_exit(&mut self)')
+    assert on_exit_signature in native
+    assert native.index(on_exit_signature) < native.index('let result = eframe::run_native(')
     assert 'self.persist_now();\n        finish_pdfcraft_android_activity(&self.app);' in native
     assert 'vm.attach_current_thread(' in native
     exit_helper = native.split('fn finish_pdfcraft_android_activity(', 1)[1].split('#[unsafe(no_mangle)]', 1)[0]

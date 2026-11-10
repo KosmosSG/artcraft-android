@@ -2767,6 +2767,16 @@ impl eframe::App for AndroidShell {{
         self.persist_now();
         finish_pdfcraft_android_activity(&self.app);
     }""", 1)
+        # Official PDFCraft v0.20.0's eframe App::on_exit now expects an
+        # optional Glow context even when the Android renderer is WGPU.
+        # Keep the v0.19 lifecycle signature untouched for the published baseline.
+        if tomllib.loads((src / "Cargo.toml").read_text())["workspace"]["package"]["version"] == "0.20.0":
+            old_signature = "    fn on_exit(&mut self) {\\n"
+            if shell.count(old_signature) != 1:
+                raise SystemExit("PDFCraft v0.20 on_exit signature anchor changed")
+            shell = shell.replace(old_signature,
+                "    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {\\n", 1)
+
 
 
     if app == "pdfcraft":

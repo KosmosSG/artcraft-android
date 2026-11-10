@@ -23,8 +23,16 @@ jobs:
           ref: 192ff72923c39e6623f2c7ff67ab3a119deb8071
           path: source
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
       - name: Verify published baseline and official upstream API
         run: python3 suite/tools/lightcraft/verify_v020_source.py --suite suite --source source
+      - name: Check v0.20-only Android source and builder patch anchors (read-only)
+        run: python3 suite/tools/lightcraft/patch_v020_android.py --source source --builder builder --suite suite
       - name: Document source-only scope
         run: |
           echo '### LightCraft v0.20 — source preflight only' >> "$GITHUB_STEP_SUMMARY"

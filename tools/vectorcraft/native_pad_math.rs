@@ -6,6 +6,34 @@ pub enum Mode { #[default] Undecided, Pan, Pinch }
 pub struct Sample { pub x: f64, pub y: f64, pub spread: f64 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Step { None, Pan(f64, f64), Pinch(f64) }
+// Android API 34 gesture axes are RELATIVE to the immediately preceding
+// native sample. A single MotionEvent can carry several historical samples.
+// Accumulate all historical values then the current sample exactly once.
+// This is pure Rust so batching logic can be unit-tested without Android.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AxisTotals {
+    pub pan_x: f64,
+    pub pan_y: f64,
+    pub zoom_log: f64,
+    pub zoom_count: u32,
+}
+impl AxisTotals {
+    pub fn add(&mut self, x: f64, y: f64, scale: f64) {
+        if x.is_finite() { self.pan_x += x; }
+        if y.is_finite() { self.pan_y += y; }
+        if scale.is_finite() && (0.4..=2.5).contains(&scale)
+            && (scale - 1.0).abs() >= 0.0001 {
+            self.zoom_log += scale.ln();
+            self.zoom_count = self.zoom_count.saturating_add(1);
+        }
+    }
+    pub fn scale(&self) -> f64 {
+        if self.zoom_count == 0 { 0.0 } else { self.zoom_log.exp() }
+    }
+    pub fn has_data(&self) -> bool {
+        self.pan_x != 0.0 || self.pan_y != 0.0 || self.zoom_count > 0
+    }
+}
 #[derive(Default, Debug)]
 pub struct Detector {
     first: Option<Sample>,
@@ -95,6 +123,30 @@ impl Detector {
 mod tests {
     use super::*;
     fn s(x:f64,y:f64,spread:f64)->Sample { Sample{x,y,spread} }
+    #[test] fn batched_native_pinch_applies_all_historical_samples() {
+        let mut totals=AxisTotals::default();
+        totals.add(0.0,0.0,1.005);
+        totals.add(0.0,0.0,1.007);
+        totals.add(0.0,0.0,1.0);
+        assert_eq!(totals.zoom_count, 2);
+        assert!((totals.scale()-1.005*1.007).abs()<1.0e-12);
+        assert!(totals.has_data());
+    }
+    #[test] fn batched_native_scroll_applies_all_history_in_order() {
+        let mut totals=AxisTotals::default();
+        totals.add(3.0,-4.0,0.0);
+        totals.add(2.0,-1.0,0.0);
+        assert_eq!(totals.pan_x,5.0);
+        assert_eq!(totals.pan_y,-5.0);
+        assert_eq!(totals.scale(),0.0);
+    }
+    #[test] fn reject_invalid_native_axis_values() {
+        let mut totals=AxisTotals::default();
+        totals.add(f64::INFINITY,f64::NAN,-1.0);
+        totals.add(0.0,0.0,1.0);
+        assert_eq!(totals.zoom_count,0);
+        assert!(!totals.has_data());
+    }
     #[test] fn two_finger_pan_stays_pan_even_if_fingers_drift() {
         let mut d=Detector::default();
         assert_eq!(d.step(s(10.,10.,80.)), Step::None);

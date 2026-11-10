@@ -41,3 +41,7 @@ The first MagicPad 4 report showed one HOVER_ENTER (tilt 0.446), no contact/butt
 Fix: no longer retain a MotionEvent object across dispatches; Android can recycle and reuse these objects. Log motion centrally at Activity dispatch to avoid duplicate callbacks, record InputDevice name/vendor/product/source/keyboard/external metadata, count non-stylus touch starts/ends, and add a Mark step button to correlate press sequences with key events. Hardware compatibility still requires the next on-device test.
 
 Press **Mark step**, then only press the Magic-Pencil side button while hovering. Repeat with pen touching the canvas, then test without a connected keyboard or trackpad. Inspect the INPUT_DEVICE rows for names corresponding to source IDs; no automatic macro mapping is performed.
+
+## v0.1.2 visual drawing fix
+
+User video showed isolated blue dots rather than connected lines even while 330 pressure/contact samples arrived. Fix the app: capture the raw stylus drag stream in Activity dispatch before the parent ScrollView intercepts it, map raw screen coordinates into canvas-local coordinates, keep ScrollView from stealing an active pen stroke, and render connected pressure-width line segments (including MotionEvent history). Log CANVAS_STROKE_START/END for confirmation. Keep all hover, tilt, export, keyboard and device metadata unchanged. Device 109 is explicitly identified by Android as `HONOR Magic-Pencil 4s Mouse` and emits DPAD_UP/DOWN; this is evidence of a pen-associated input device, not a proven press-to-action mapping.

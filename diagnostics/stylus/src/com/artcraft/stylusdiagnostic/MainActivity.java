@@ -149,11 +149,13 @@ public final class MainActivity extends Activity {
 
     @Override public boolean dispatchTouchEvent(MotionEvent e) {
         monitor(e);
+        if (pad != null) pad.capture(e);
         return super.dispatchTouchEvent(e);
     }
 
     @Override public boolean dispatchGenericMotionEvent(MotionEvent e) {
         monitor(e);
+        if (pad != null) pad.capture(e);
         return super.dispatchGenericMotionEvent(e);
     }
 
@@ -161,10 +163,12 @@ public final class MainActivity extends Activity {
         if (e.getAction() == KeyEvent.ACTION_DOWN || e.getAction() == KeyEvent.ACTION_UP) {
             keys++;
             recordDevice(e.getDeviceId());
+            InputDevice origin = InputDevice.getDevice(e.getDeviceId());
+            String deviceName = origin == null ? "UNKNOWN" : origin.getName().replace('\n', ' ');
             String s = KeyEvent.keyCodeToString(e.getKeyCode())
                 + " action=" + (e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP")
                 + " repeat=" + e.getRepeatCount() + " scan=" + e.getScanCode()
-                + " device=" + e.getDeviceId()
+                + " device=" + e.getDeviceId() + " deviceName=" + deviceName
                 + " source=0x" + Integer.toHexString(e.getSource());
             add("UNATTRIBUTED_KEY_EVENT", s);
             latestLine = s + "\n(Key could be from keyboard, system or pen.)";
@@ -361,54 +365,140 @@ public final class MainActivity extends Activity {
 
     private final class DrawingPad extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final ArrayList<float[]> marks = new ArrayList<>();
-        private float x = -1, y = -1, p = 0;
-        private boolean hoverMode;
+        // [x0, y0, x1, y1, pressure] for continuous connected strokes.
+        private final ArrayList<float[]> segments = new ArrayList<>();
+        private final int[] screenLocation = new int[2];
+        private float x = -1, y = -1, p;
+        private float prevX, prevY;
+        private boolean active, hovering;
+        private int strokeId;
 
         DrawingPad() {
             super(MainActivity.this);
             setBackgroundColor(Color.rgb(21, 31, 49));
+            setClickable(true);
         }
-        void clear() { marks.clear(); x = -1; invalidate(); }
-        private void preview(MotionEvent e) {
-            if (!isStylus(e) || e.getPointerCount() < 1) return;
-            x = e.getX(0);
-            y = e.getY(0);
-            p = e.getPressure(0);
+
+        void clear() {
+            segments.clear();
+            active = false;
+            strokeId = 0;
+            x = -1;
+            postInvalidateOnAnimation();
+        }
+
+        private boolean inside(float xx, float yy) {
+            return xx >= 0 && yy >= 0 && xx <= getWidth() && yy <= getHeight();
+        }
+
+        private void segment(float nextX, float nextY, float pressure) {
+            float level = Math.max(0f, Math.min(1f, pressure));
+            segments.add(new float[]{prevX, prevY, nextX, nextY, level});
+            if (segments.size() > 10000) segments.remove(0);
+            prevX = nextX;
+            prevY = nextY;
+        }
+
+        // Feed from Activity.dispatchTouchEvent before ScrollView can consume drag moves.
+        void capture(MotionEvent e) {
+            if (!isStylus(e) || e.getPointerCount() == 0 || getWidth() <= 0) return;
+            getLocationOnScreen(screenLocation);
+            float localX = e.getRawX() - screenLocation[0];
+            float localY = e.getRawY() - screenLocation[1];
             int a = e.getActionMasked();
-            hoverMode = a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER;
-            if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_MOVE) {
-                marks.add(new float[]{x, y, p});
-                if (marks.size() > 700) marks.remove(0);
+
+            if (a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER) {
+                hovering = true;
+                x = inside(localX, localY) ? localX : -1;
+                y = localY;
+                p = 0;
+                postInvalidateOnAnimation();
+                return;
             }
-            if (a == MotionEvent.ACTION_HOVER_EXIT) x = -1;
-            invalidate();
+            if (a == MotionEvent.ACTION_HOVER_EXIT) {
+                hovering = false;
+                x = -1;
+                postInvalidateOnAnimation();
+                return;
+            }
+            if (a == MotionEvent.ACTION_DOWN) {
+                if (!inside(localX, localY)) return;
+                active = true;
+                hovering = false;
+                strokeId++;
+                prevX = localX;
+                prevY = localY;
+                p = e.getPressure(0);
+                x = localX;
+                y = localY;
+                segment(localX, localY, p);
+                // A stylus stroke must not turn into scrolling of the parent view.
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                add("CANVAS_STROKE_START", "stroke=" + strokeId
+                    + " x=" + localX + " y=" + localY);
+                postInvalidateOnAnimation();
+                return;
+            }
+            if (a == MotionEvent.ACTION_MOVE && active) {
+                // Include points buffered by Android to keep curves continuous.
+                float offsetX = e.getRawX() - e.getX(0);
+                float offsetY = e.getRawY() - e.getY(0);
+                for (int h = 0; h < e.getHistorySize(); h++) {
+                    float hx = e.getHistoricalX(0, h) + offsetX - screenLocation[0];
+                    float hy = e.getHistoricalY(0, h) + offsetY - screenLocation[1];
+                    segment(hx, hy, e.getHistoricalPressure(0, h));
+                }
+                segment(localX, localY, e.getPressure(0));
+                x = localX;
+                y = localY;
+                p = e.getPressure(0);
+                postInvalidateOnAnimation();
+                return;
+            }
+            if ((a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) && active) {
+                if (a == MotionEvent.ACTION_UP) segment(localX, localY, e.getPressure(0));
+                active = false;
+                x = a == MotionEvent.ACTION_CANCEL ? -1 : localX;
+                y = localY;
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+                add("CANVAS_STROKE_END", "stroke=" + strokeId
+                    + " action=" + action(a) + " segment_count=" + segments.size());
+                postInvalidateOnAnimation();
+            }
         }
+
         @Override public boolean onHoverEvent(MotionEvent e) {
-            preview(e);
+            // Hover rendering already handled by Activity dispatch; no duplicate samples.
             return isStylus(e) || super.onHoverEvent(e);
         }
+
         @Override public boolean onTouchEvent(MotionEvent e) {
-            preview(e);
+            if (!isStylus(e)) return super.onTouchEvent(e);
+            // Activity captures all stylus samples even if the parent steals input.
             return true;
         }
+
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(1));
             paint.setColor(Color.rgb(49, 65, 85));
-            for (int px = 0; px < getWidth(); px += dp(32))
-                canvas.drawLine(px, 0, px, getHeight(), paint);
-            for (int py = 0; py < getHeight(); py += dp(32))
-                canvas.drawLine(0, py, getWidth(), py, paint);
-            paint.setStyle(Paint.Style.FILL);
+            paint.setStrokeWidth(dp(1));
+            for (int xx = 0; xx < getWidth(); xx += dp(32))
+                canvas.drawLine(xx, 0, xx, getHeight(), paint);
+            for (int yy = 0; yy < getHeight(); yy += dp(32))
+                canvas.drawLine(0, yy, getWidth(), yy, paint);
+
             paint.setColor(Color.rgb(82, 184, 248));
-            for (float[] mark : marks)
-                canvas.drawCircle(mark[0], mark[1], dp(2 + 8 * mark[2]), paint);
-            if (x >= 0) {
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            for (float[] seg : segments) {
+                paint.setStrokeWidth(dp(2.4f + 9f * seg[4]));
+                canvas.drawLine(seg[0], seg[1], seg[2], seg[3], paint);
+            }
+            if (x >= 0 && inside(x, y)) {
                 paint.setStyle(Paint.Style.STROKE);
+                paint.setColor(hovering ? Color.rgb(255, 210, 90) : Color.WHITE);
                 paint.setStrokeWidth(dp(2));
-                paint.setColor(hoverMode ? Color.rgb(255, 210, 90) : Color.WHITE);
                 canvas.drawCircle(x, y, dp(10 + 12 * p), paint);
                 canvas.drawLine(x - dp(18), y, x + dp(18), y, paint);
                 canvas.drawLine(x, y - dp(18), x, y + dp(18), paint);

@@ -10,3 +10,5 @@ APK com.artcraft.vectorcraft.test ARM64 disposable key, no production secret
 One-shot CI, no permanent signing, merge, tag, release or publication
 
 Retry once after early guard failure: Android.13/14 generated Activity already uses finish(), not finishAndRemoveTask(); corrected fail-closed patch anchor. No ARM64 compilation occurred in first run.
+
+Preflight retry after correcting Python-only // comment syntax. Prior two runs stopped before SDK/NDK/ARM64 compile; exact privacy-safe Java/Rust quit-stage patch retained.

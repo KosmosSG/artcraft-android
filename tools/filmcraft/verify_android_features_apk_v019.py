@@ -36,6 +36,11 @@ JAVA_METHODS = (
     b"fcOpenUpdatePage",
     b"fcDownloadVerifiedUpdate",
     b"fcInstallVerifiedDownload",
+    b"fcShowDownloadDialog",
+    b"fcUpdateDownloadDialog",
+    b"fcVerifyDownloadDialog",
+    b"fcFinishDownloadDialog",
+    b"fcRejectCancelledDownload",
     b"fcFeaturePoll",
 )
 

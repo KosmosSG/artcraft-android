@@ -1,0 +1,91 @@
+name: DesignCraft v0.19.0 original-package TEMP payload (NO RELEASE)
+on:
+  push:
+    branches:
+      - integration/designcraft-upstream-20261110
+    paths:
+      - .github/workflows/designcraft-v019-production-payload.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-v019-production-payload-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  original-package-payload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify pinned upstream against protected source patches
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch v0.19.0 https://github.com/storytold/designcraft.git "$RUNNER_TEMP/designcraft-v019"
+          python3 tools/designcraft/dry_run_v019_source_port.py "$RUNNER_TEMP/designcraft-v019"
+      - name: Build from disposable copy, leaving published branch and signing identity untouched
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/designcraft-builder"
+          cp -a "$GITHUB_WORKSPACE/." "$RUNNER_TEMP/designcraft-builder/"
+          python3 "$GITHUB_WORKSPACE/tools/designcraft/prepare_v019_test_builder.py" "$RUNNER_TEMP/designcraft-builder"
+          bash -n "$RUNNER_TEMP/designcraft-builder/lib/build-common.sh"
+          python3 -m py_compile "$RUNNER_TEMP/designcraft-builder/tools/designcraft/patch_v017_android.py"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018'
+      - name: Ensure pinned Android toolchain and Python imaging dependency
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user pillow
+          NDK_PATH="$ANDROID_HOME/ndk/27.2.12479018"
+          if test ! -d "$NDK_PATH"; then sdkmanager --install 'ndk;27.2.12479018'; fi
+          test -d "$NDK_PATH"
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+      - name: Compile same v0.19.0 Android source for original package (TEMP KEY ONLY)
+        timeout-minutes: 43
+        run: |
+          cd "$RUNNER_TEMP/designcraft-builder"
+          bash build-debug.sh -designcraft -designcraft-v017 -packagename=com.artcraft.designcraft -appname='DesignCraft'
+      - name: Verify temporary signing, original package, monotonic versionCode and ARM64 ABI
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/designcraft-builder/output/designcraft-0.19.0-android.1-debug.apk"
+          test -s "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
+          grep -q "name='com.artcraft.designcraft'" <<<"$BADGING"
+          CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          test -n "$CODE" && test "$CODE" -gt 16800011
+          grep -q "versionName='0.19.0-android.1'" <<<"$BADGING"
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              libs = [n for n in z.namelist() if n.startswith("lib/") and n.endswith(".so")]
+              assert libs, "No native library"
+              assert {n.split("/")[1] for n in libs} == {"arm64-v8a"}, libs
+              assert z.testzip() is None
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/cert-check.txt"
+          grep -q 'CN=ArtCraft Android Builder' "$RUNNER_TEMP/cert-check.txt"
+          sha256sum "$APK"
+          echo 'ORIGINAL PACKAGE TEMP-SIGNED PAYLOAD ONLY: DO NOT INSTALL OR PUBLISH. Private original-key signing and release checks are separately required.'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: TEMP-SIGNED-DesignCraft-v0.19.0-android.1-ORIGINAL-PACKAGE-DO-NOT-INSTALL
+          path: ${{ runner.temp }}/designcraft-builder/output/designcraft-0.19.0-android.1-debug.apk
+          retention-days: 5
+          if-no-files-found: error

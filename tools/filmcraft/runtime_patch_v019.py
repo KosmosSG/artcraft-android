@@ -50,6 +50,17 @@ def patch_text(rust: str, java: str, manifest: str, java_overlay: str) -> tuple[
     # builder's android_activity registry. Avoid a stale E0433 at link stage.
     rust = remove_legacy_activity_registration(rust)
 
+    # Android's per-app "install unknown apps" consent is required for the
+    # official production APK installer. The .test package never launches it.
+    if 'name = "android.permission.REQUEST_INSTALL_PACKAGES"' not in manifest:
+        first_permission = '[[package.metadata.android.uses_permission]]'
+        if first_permission not in manifest:
+            raise RuntimeError("FilmCraft Android permission table changed")
+        manifest = manifest.replace(
+            first_permission,
+            first_permission + '\nname = "android.permission.REQUEST_INSTALL_PACKAGES"\n\n'
+            + first_permission, 1,
+        )
     rust = require_once(rust, '        self.inner.ui(ui, frame);', '        self.inner.ui(ui, frame);\n        if android_escape && self.inner.dialog.is_none() && !egui::Popup::is_any_open(ui.ctx())\n            && ui.ctx().text_edit_focused() {\n            ui.memory_mut(|m| {\n                if let Some(focus) = m.focused() { m.surrender_focus(focus); }\n            });\n        }\n', "Release Android field focus")
     rust = require_once(rust, '        self.handle_clipboard_shortcuts(raw);', '        self.handle_clipboard_shortcuts(raw);\n        // Capture Escape before egui focus traversal or widget consumption.\n        // Some Android tablet keyboards report their Esc key as BrowserBack.\n        // Normalize the keyboard event before egui and app text-edit guards.\n        for event in &mut raw.events {\n            if let egui::Event::Key { key, physical_key, modifiers, .. } = event {\n                if *key == egui::Key::BrowserBack && !modifiers.any() {\n                    *key = egui::Key::Escape;\n                    *physical_key = Some(egui::Key::Escape);\n                }\n            }\n        }\n        if raw.events.iter().any(|event| matches!(event,\n            egui::Event::Key { key: egui::Key::Escape, pressed: true, repeat: false, modifiers, .. }\n                if !modifiers.any())) {\n            ctx.data_mut(|d| d.insert_temp(egui::Id::new("artcraft.exit_typing"), true));\n        }\n', 'Capture Android Escape')
     rust = require_once(rust, '        system_fonts::install_system_fonts(ui.ctx());', '        let android_escape = ui.ctx().data_mut(|d|\n            d.remove_temp::<bool>(egui::Id::new("artcraft.exit_typing"))).unwrap_or(false);\n        if android_escape && self.inner.dialog.is_none()\n            && !egui::Popup::is_any_open(ui.ctx()) && self.inner.ui.gfx_edit.is_some()\n            && ui.memory(|m| m.focused().is_none_or(|id| id == egui::Id::new("gfx-text-edit"))) {\n            // Same editing-state cleanup as the monitor\'s end_edit; keep layer selection.\n            self.inner.ui.gfx_edit = None;\n            ui.memory_mut(|m| m.surrender_focus(egui::Id::new("gfx-text-edit")));\n            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));\n        }\n        system_fonts::install_system_fonts(ui.ctx());', 'End Android text edit')
@@ -201,7 +212,7 @@ def main() -> None:
     parser.add_argument("android_dir", type=Path, nargs="?")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
-    overlay = Path(__file__).with_name("FilmCraftActivity.features.java.inc").read_text()
+    overlay = Path(__file__).with_name("FilmCraftActivity.features.v019.java.inc").read_text()
     if args.self_test:
         assert remove_legacy_activity_registration(LEGACY_EGUI_ANDROID_ACTIVITY) == DIRECT_ANDROID_ACTIVITY
         try:
@@ -218,12 +229,13 @@ def main() -> None:
             raise AssertionError("Duplicate old activity registration must be rejected")
         # A real staging fixture is not available in this branch-only audit.
         # These assertions check that the injected Java bridge matches the Rust caller.
-        rust = Path(__file__).with_name("filmcraft_features.rs").read_text()
+        rust = Path(__file__).with_name("filmcraft_features_v019.rs").read_text()
         assert 'filmcraft_text::fonts::add_font_data(bytes)' in rust
         for name in ("fcRequestFontImport", "fcRequestSharedFontFolder",
                      "fcRefreshSharedFonts", "fcFeaturePoll", "fcCheckForUpdates",
                      "fcStartupUpdatesEnabled", "fcSetStartupUpdatesEnabled",
-                     "fcOpenUpdatePage", "fcFeatureFilesDir"):
+                     "fcOpenUpdatePage", "fcFeatureFilesDir",
+                     "fcDownloadVerifiedUpdate", "fcInstallVerifiedDownload"):
             assert name in overlay, name
             assert name in rust, name
         assert 'filmcraft-v[0-9]+' in overlay
@@ -267,7 +279,7 @@ def main() -> None:
         if file.read_text() != text:
             file.write_text(text)
     (project / "src" / "filmcraft_features.rs").write_text(
-        Path(__file__).with_name("filmcraft_features.rs").read_text())
+        Path(__file__).with_name("filmcraft_features_v019.rs").read_text())
     print("FilmCraft native font/update integration overlaid on generated crate")
 
 

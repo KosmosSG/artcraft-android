@@ -37,12 +37,12 @@ class StageV019Tests(unittest.TestCase):
     def test_staging_changes_only_version_metadata(self):
         stage.stage(self.root)
         result = json.loads(self.manifest.read_text())
-        self.assertEqual(result["version_name"], "0.19.0-android.1-test")
+        self.assertEqual(result["version_name"], "0.19.0-android.2-test")
         self.assertEqual(result["package"], "com.artcraft.filmcraft.test")
-        self.assertEqual(result["version_code"], 1900001)
+        self.assertEqual(result["version_code"], 1900002)
         self.assertEqual(result["previous_version_code"], 1700001)
         self.assertEqual(result["resources"], self.cfg["resources"])
-        self.assertIn("1900001", self.verifier.read_text())
+        self.assertIn("1900002", self.verifier.read_text())
         self.assertNotIn(self.old, self.verifier.read_text())
 
     def test_unreviewed_baseline_is_blocked_before_write(self):

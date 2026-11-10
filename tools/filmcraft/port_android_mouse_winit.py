@@ -65,6 +65,81 @@ def splice_mouse_winit(upstream: str, reviewed: str) -> str:
     assert staged.count("WindowEvent::Touch") >= 1
     return staged
 
+
+TRACKPAD_AXES = '''        # Android 14+ trackpad gesture axes are opt-in for android-activity.
+'''
+TRACKPAD_PROBE = r'''                // Android 14+ trackpads report native pinch and scroll axes.
+                // Unlike Vscroll/Hscroll, these axes can accompany Move as well
+                // as Scroll. Forward the gesture via egui-winit's native route;
+                // the Program viewport itself decides whether to consume it.
+                let mut native_trackpad_pan = false;
+                if pointer_class
+                    && matches!(motion_event.action(), MotionAction::Move | MotionAction::Scroll)
+                {
+                    if let Some(pointer) = motion_event.pointers().next() {
+                        let scale = pointer.axis_value(Axis::from(52_u32));
+                        if scale.is_finite() && scale > 0.0 && (scale - 1.0).abs() > 1e-4 {
+                            callback(
+                                event::Event::WindowEvent {
+                                    window_id,
+                                    event: event::WindowEvent::PinchGesture {
+                                        device_id,
+                                        // Winit and egui-winit interpret delta as ln(scale).
+                                        delta: f64::from(scale.clamp(0.5, 2.0).ln()),
+                                        phase: event::TouchPhase::Moved,
+                                    },
+                                },
+                                self.window_target(),
+                            );
+                        }
+                        let dx = pointer.axis_value(Axis::from(50_u32));
+                        let dy = pointer.axis_value(Axis::from(51_u32));
+                        if dx.is_finite() && dy.is_finite()
+                            && (dx.abs() > 0.01 || dy.abs() > 0.01)
+                        {
+                            native_trackpad_pan = true;
+                            callback(
+                                event::Event::WindowEvent {
+                                    window_id,
+                                    event: event::WindowEvent::PanGesture {
+                                        device_id,
+                                        // Android gesture scroll distance is content-scroll
+                                        // positive; canvas travel follows the two fingers.
+                                        delta: PhysicalPosition::<f32>::new(
+                                            -dx.clamp(-180.0, 180.0),
+                                            -dy.clamp(-180.0, 180.0),
+                                        ),
+                                        phase: event::TouchPhase::Moved,
+                                    },
+                                },
+                                self.window_target(),
+                            );
+                        }
+                    }
+                }
+
+def patch_trackpad_api34(source: str) -> str:
+    """Restore V/H scroll and bridge API34 native pinch/pan in FilmCraft's local winit."""
+    source = once(
+        source, "        let redraw_flag = SharedFlag::new();",
+        "        // Axes other than X/Y are disabled in android-activity by default.\n"
+        "        android_app.enable_motion_axis(Axis::Vscroll);\n"
+        "        android_app.enable_motion_axis(Axis::Hscroll);\n"
+        "        android_app.enable_motion_axis(Axis::from(50_u32)); // gesture X scroll\n"
+        "        android_app.enable_motion_axis(Axis::from(51_u32)); // gesture Y scroll\n"
+        "        android_app.enable_motion_axis(Axis::from(52_u32)); // pinch scale\n"
+        "        let redraw_flag = SharedFlag::new();",
+        "Android trackpad motion axis opt-in",
+    )
+    source = once(source, "                match motion_event.action() {\n",
+                  TRACKPAD_PROBE + "                match motion_event.action() {\n",
+                  "Android trackpad pinch/pan mapping")
+    source = once(source,
+                  "                        if vertical != 0.0 || horizontal != 0.0 {",
+                  "                        if !native_trackpad_pan && (vertical != 0.0 || horizontal != 0.0) {",
+                  "no duplicate Android gesture and legacy scroll")
+    return source
+
 def path_override(manifest: str) -> str:
     patches = tomllib.loads(manifest)["patch"]["crates-io"]
     assert patches["winit"] == {"git": GIT_URL, "rev": PIN}, "STOP: wrong official winit pin"
@@ -100,11 +175,11 @@ def stage(source: Path, reviewed: Path) -> None:
     target = local / "src/platform_impl/android/mod.rs"
     if not target.is_file(): raise ValueError("STOP: winit Android backend missing")
     original = target.read_text()
-    revised = splice_mouse_winit(original, reviewed.read_text())
+    revised = patch_trackpad_api34(splice_mouse_winit(original, reviewed.read_text()))
     revised_manifest = path_override(manifest.read_text())
     target.write_text(revised)
     manifest.write_text(revised_manifest)
-    print("PASS: FilmCraft official pinned winit + reviewed Android trackpad hover/scroll/buttons")
+    print("PASS: FilmCraft official pinned winit + Android 14+ trackpad pinch/pan axes, hover/scroll/buttons")
     print("PASS: mouse input maps to pointer events; fingers keep Touch; egui pin is unchanged")
 
 def self_test() -> None:
@@ -124,6 +199,25 @@ def self_test() -> None:
     changed = splice_mouse_winit(up, builder)
     assert "TODO mouse events" not in changed
     assert "MAX_LINE_SCROLL" in changed
+    fake = (
+        "        let redraw_flag = SharedFlag::new();\n"
+        "                match motion_event.action() {\n"
+        "                        if vertical != 0.0 || horizontal != 0.0 {\n"
+    )
+    patched = patch_trackpad_api34(fake)
+    assert "enable_motion_axis(Axis::Vscroll)" in patched
+    assert "enable_motion_axis(Axis::Hscroll)" in patched
+    assert "Axis::from(50_u32)" in patched and "Axis::from(51_u32)" in patched
+    assert "Axis::from(52_u32)" in patched
+    assert "WindowEvent::PinchGesture" in patched
+    assert "WindowEvent::PanGesture" in patched
+    assert "!native_trackpad_pan" in patched
+    try:
+        patch_trackpad_api34(patched)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("trackpad patch must refuse double application")
     for bad in (up.replace("TODO mouse events", "mouse handled"),
                 up.replace(MOTION_START, MOTION_START * 2)):
         try: splice_mouse_winit(bad, builder)

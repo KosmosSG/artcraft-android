@@ -39,11 +39,17 @@ fn android_program_monitor_gesture(
     ppp: f32,
 ) -> bool {
     let ctx = ui.ctx().clone();
-    let touch = ctx.multi_touch().filter(|touch| {
+    let any_touch = ctx.multi_touch();
+    let touch = any_touch.filter(|touch| {
         touch.num_touches >= 2
             && area.contains(touch.start_pos)
             && area.contains(touch.center_pos)
     });
+    // A multitouch gesture that began in the timeline or another panel must
+    // never zoom Program, even if the trackpad hover cursor was left here.
+    if any_touch.is_some() && touch.is_none() {
+        return false;
+    }
     let pointer = ctx.pointer_hover_pos().filter(|p| area.contains(*p));
     let Some(anchor) = touch.map(|g| g.center_pos).or(pointer) else {
         return false;

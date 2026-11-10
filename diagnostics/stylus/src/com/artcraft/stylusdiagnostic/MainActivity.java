@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -41,6 +42,9 @@ public final class MainActivity extends Activity {
     // Short grace after the first pen-associated signal to capture its matching
     // release, while excluding repeated physical activations in the same trial.
     private static final long FIRST_SIGNAL_GRACE_MS = 450;
+    private static final long SHORTCUT_DEBOUNCE_MS = 650;
+    private static final long DOUBLE_PRIORITY_GUARD_MS = 400;
+    private static final int TOOL_BRUSH = 0, TOOL_ERASER = 1;
     private static final int[] BUTTONS = {
         MotionEvent.BUTTON_STYLUS_PRIMARY,
         MotionEvent.BUTTON_STYLUS_SECONDARY,
@@ -49,7 +53,14 @@ public final class MainActivity extends Activity {
     private final ArrayDeque<String> log = new ArrayDeque<>();
     private final Map<Integer, Press> press = new HashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView counts, latest, recent, testStatus;
+    private TextView counts, latest, recent, testStatus, shortcutFeedback, previewToolStatus;
+    private CheckBox singleShortcutToggle, doubleShortcutToggle;
+    private boolean singleShortcutEnabled, doubleShortcutEnabled;
+    private int previewTool = TOOL_BRUSH;
+    private int shortcutBrushActions, shortcutEraserActions, shortcutIgnoredDuplicates;
+    private long lastShortcutEventAt, lastDoubleEventAt;
+    private int lastShortcutEventCode = KeyEvent.KEYCODE_UNKNOWN;
+    private Runnable pendingBrushAction;
     private final ArrayList<Button> testButtons = new ArrayList<>();
     private final ArrayList<String> testSummaries = new ArrayList<>();
     private final Map<String, ArrayList<TestWindow>> calibration = new LinkedHashMap<>();
@@ -112,6 +123,16 @@ public final class MainActivity extends Activity {
         column.setOrientation(LinearLayout.VERTICAL);
         column.setPadding(dp(16), dp(14), dp(16), dp(24));
         scroll.addView(column);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        shortcutFeedback = new TextView(this);
+        shortcutFeedback.setTextSize(13);
+        shortcutFeedback.setTextColor(Color.WHITE);
+        shortcutFeedback.setBackgroundColor(Color.rgb(34, 48, 69));
+        shortcutFeedback.setPadding(dp(16), dp(12), dp(16), dp(12));
+        shortcutFeedback.setText("Shortcut preview OFF • Brush active");
+        root.addView(shortcutFeedback, new LinearLayout.LayoutParams(-1, -2));
         TextView heading = text(column, "ArtCraft Stylus Diagnostic", 22, Color.rgb(25, 38, 62));
         heading.setTypeface(null, 1);
         text(column, "Magic-Pencil 4s / MagicPad 4 - TEST ONLY\n"
@@ -124,6 +145,33 @@ public final class MainActivity extends Activity {
             13, Color.DKGRAY);
         pad = new DrawingPad();
         column.addView(pad, new LinearLayout.LayoutParams(-1, dp(320)));
+        text(column, "EXPERIMENTAL SHORTCUT PREVIEW — OFF by default. Turn on the "
+            + "mapping(s) below, hover the pen, then physically single-press or double-press. "
+            + "A mapped action switches the drawing tool ONLY inside this diagnostic app.",
+            13, Color.rgb(27, 48, 82));
+        previewToolStatus = text(column, "Preview tool: BRUSH (B). Pen mapping OFF.",
+            14, Color.rgb(33, 81, 139));
+        singleShortcutToggle = new CheckBox(this);
+        singleShortcutToggle.setText("Enable single press → Brush (B)");
+        singleShortcutToggle.setChecked(false);
+        singleShortcutToggle.setOnCheckedChangeListener((buttonView, checked) -> {
+            singleShortcutEnabled = checked;
+            mappingToggleChanged("SINGLE", checked);
+        });
+        column.addView(singleShortcutToggle);
+        doubleShortcutToggle = new CheckBox(this);
+        doubleShortcutToggle.setText("Enable double press → Eraser (E)");
+        doubleShortcutToggle.setChecked(false);
+        doubleShortcutToggle.setOnCheckedChangeListener((buttonView, checked) -> {
+            doubleShortcutEnabled = checked;
+            mappingToggleChanged("DOUBLE", checked);
+        });
+        column.addView(doubleShortcutToggle);
+        text(column, "Single uses Magic-Pencil KEYCODE_DPAD_DOWN UP; double uses "
+            + "KEYCODE_DPAD_UP UP. A 400ms delay protects a possible double gesture. "
+            + "Unmatched releases are accepted only for this isolated demonstration. "
+            + "Long press and drawing-button macros remain disabled.",
+            12, Color.DKGRAY);
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         Button export = new Button(this);
@@ -167,13 +215,122 @@ public final class MainActivity extends Activity {
         text(column, "RECENT EVENTS. Raw KeyEvents are not automatically attributed to the stylus.",
             12, Color.DKGRAY);
         recent = text(column, "No events yet.", 11, Color.rgb(72, 79, 92));
-        setContentView(scroll);
+        setContentView(root);
         add("SESSION_START", "model=" + Build.MANUFACTURER + " " + Build.MODEL
             + " api=" + Build.VERSION.SDK_INT + " package=com.artcraft.stylusdiagnostic");
         for (int id : InputDevice.getDeviceIds()) recordDevice(id);
         updateUi(true);
     }
 
+
+
+    private boolean fromMagicPencil(InputDevice device) {
+        return device != null && device.getName() != null
+            && device.getName().contains("Magic-Pencil 4s");
+    }
+
+    private void mappingToggleChanged(String mapping, boolean enabled) {
+        cancelPendingBrush();
+        lastShortcutEventAt = 0;
+        lastShortcutEventCode = KeyEvent.KEYCODE_UNKNOWN;
+        add("SHORTCUT_PREVIEW_MAPPING", "mapping=" + mapping
+            + " enabled=" + enabled + " scope=diagnostic_only");
+        String label = (singleShortcutEnabled || doubleShortcutEnabled)
+            ? "Shortcut preview ON — single=" + singleShortcutEnabled
+                + " double=" + doubleShortcutEnabled
+            : "Shortcut preview OFF";
+        shortcutFeedback.setText(label + " • Current: "
+            + (previewTool == TOOL_BRUSH ? "Brush" : "Eraser"));
+        refreshPreviewLabel();
+        updateUi(true);
+    }
+
+    private void cancelPendingBrush() {
+        if (pendingBrushAction != null) {
+            handler.removeCallbacks(pendingBrushAction);
+            pendingBrushAction = null;
+            add("SHORTCUT_PREVIEW_PENDING_CANCELLED", "reason=interrupted_or_mapping_changed");
+        }
+    }
+
+    private void refreshPreviewLabel() {
+        if (previewToolStatus != null)
+            previewToolStatus.setText("Preview tool: "
+                + (previewTool == TOOL_BRUSH ? "BRUSH (B)" : "ERASER (E)")
+                + " • Single mapping " + (singleShortcutEnabled ? "ON" : "OFF")
+                + " • Double mapping " + (doubleShortcutEnabled ? "ON" : "OFF"));
+    }
+
+    private void setPreviewTool(int tool, String trigger, int deviceId) {
+        previewTool = tool;
+        String label = tool == TOOL_BRUSH ? "BRUSH (B)" : "ERASER (E)";
+        if (tool == TOOL_BRUSH) shortcutBrushActions++;
+        else shortcutEraserActions++;
+        add("SHORTCUT_PREVIEW_ACTION", "tool=" + label.replace(' ', '_')
+            + " trigger=" + trigger + " device=" + deviceId
+            + " diagnostic_only=true");
+        latestLine = "Shortcut preview: " + label + " selected from Magic-Pencil";
+        refreshPreviewLabel();
+        shortcutFeedback.setText("✓ " + label + " selected • pen " + trigger
+            + " • test only");
+        if (pad != null) pad.postInvalidateOnAnimation();
+        updateUi(true);
+    }
+
+    private void observeShortcutPreview(KeyEvent e, InputDevice device) {
+        // Never execute a preview shortcut while a labeled calibration trial runs.
+        if (activeTest != null || !fromMagicPencil(device)) return;
+        if (e.getAction() != KeyEvent.ACTION_UP || e.getRepeatCount() != 0) return;
+        int code = e.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return;
+        if (!singleShortcutEnabled && !doubleShortcutEnabled) return;
+        long now = SystemClock.uptimeMillis();
+        if (code == lastShortcutEventCode
+                && now - lastShortcutEventAt < SHORTCUT_DEBOUNCE_MS) {
+            shortcutIgnoredDuplicates++;
+            add("SHORTCUT_PREVIEW_DUPLICATE_IGNORED",
+                "key=" + KeyEvent.keyCodeToString(code) + " device=" + e.getDeviceId());
+            return;
+        }
+        lastShortcutEventAt = now;
+        lastShortcutEventCode = code;
+
+        if (code == KeyEvent.KEYCODE_DPAD_UP) {
+            cancelPendingBrush();
+            lastDoubleEventAt = now;
+            if (doubleShortcutEnabled) {
+                setPreviewTool(TOOL_ERASER, "DOUBLE_DPAD_UP_RELEASE", e.getDeviceId());
+            } else {
+                add("SHORTCUT_PREVIEW_DISABLED", "mapping=DOUBLE key=DPAD_UP");
+            }
+            return;
+        }
+
+        if (!singleShortcutEnabled) {
+            add("SHORTCUT_PREVIEW_DISABLED", "mapping=SINGLE key=DPAD_DOWN");
+            return;
+        }
+        // If a double event just occurred, suppress a late individual tap.
+        if (doubleShortcutEnabled && now - lastDoubleEventAt < SHORTCUT_DEBOUNCE_MS) {
+            shortcutIgnoredDuplicates++;
+            add("SHORTCUT_PREVIEW_DUPLICATE_IGNORED",
+                "key=DPAD_DOWN reason=double_priority_guard");
+            return;
+        }
+        if (doubleShortcutEnabled) {
+            cancelPendingBrush();
+            final int deviceId = e.getDeviceId();
+            pendingBrushAction = () -> {
+                pendingBrushAction = null;
+                if (singleShortcutEnabled && activeTest == null)
+                    setPreviewTool(TOOL_BRUSH, "SINGLE_DPAD_DOWN_RELEASE", deviceId);
+            };
+            handler.postDelayed(pendingBrushAction, DOUBLE_PRIORITY_GUARD_MS);
+            shortcutFeedback.setText("Single signal detected • confirming Brush…");
+        } else {
+            setPreviewTool(TOOL_BRUSH, "SINGLE_DPAD_DOWN_RELEASE", e.getDeviceId());
+        }
+    }
 
     private void addTestButton(LinearLayout row, String label, String kind,
             long durationMs, String instruction) {
@@ -481,6 +638,7 @@ public final class MainActivity extends Activity {
             add("UNATTRIBUTED_KEY_EVENT", s);
             observeTestKey(e, origin);
             latestLine = s + "\n(Key could be from keyboard, system or pen.)";
+            observeShortcutPreview(e, origin);
             updateUi(true);
         }
         // MagicOS exposes some pen-button signals as keyboard-style DPAD_UP/DOWN
@@ -678,12 +836,21 @@ public final class MainActivity extends Activity {
 
     private void clearLog() {
         if (activeTest != null) endTest(activeTest.id, true);
+        cancelPendingBrush();
+        if (singleShortcutToggle != null) singleShortcutToggle.setChecked(false);
+        if (doubleShortcutToggle != null) doubleShortcutToggle.setChecked(false);
+        previewTool = TOOL_BRUSH;
+        refreshPreviewLabel();
+        shortcutFeedback.setText("Shortcut preview OFF • Brush active");
         calibration.clear();
         selectedKind = selectedInstruction = null;
         selectedDurationMs = 0;
         if (nextTrialButton != null) nextTrialButton.setEnabled(false);
         testSummaries.clear();
         completedTests = nextTestId = 0;
+        shortcutBrushActions = shortcutEraserActions = shortcutIgnoredDuplicates = 0;
+        lastShortcutEventAt = lastDoubleEventAt = 0;
+        lastShortcutEventCode = KeyEvent.KEYCODE_UNKNOWN;
         if (testStatus != null) testStatus.setText("Ready. Choose a 5x calibration test.");
         for (Press p : press.values()) if (p.pending != null) handler.removeCallbacks(p.pending);
         press.clear();
@@ -734,6 +901,12 @@ public final class MainActivity extends Activity {
             .append("\nFirst-keycode signatures are observations, not confirmed gesture recognition.")
             .append("\nA 2ms Android key-pair interval cannot measure a physical long press.")
             .append("\nOrphan releases and missing key signals remain explicit.")
+            .append("\nShortcut preview mappings enabled at export: single=").append(singleShortcutEnabled)
+            .append(" double=").append(doubleShortcutEnabled)
+            .append("\nShortcut preview actions: brush=").append(shortcutBrushActions)
+            .append(" eraser=").append(shortcutEraserActions)
+            .append(" ignored_duplicates=").append(shortcutIgnoredDuplicates)
+            .append("\nShortcut preview is in-app only; no OS key injection or production changes.")
             .append("\nCALIBRATION_SUMMARY_BEGIN\n");
         for (String kind : new String[]{"SINGLE_HOVER", "DOUBLE_HOVER",
                 "LONG_HOVER", "PRESS_WHILE_DRAWING"})
@@ -758,6 +931,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        cancelPendingBrush();
         if (activeTest != null) {
             if (activeTest.timeout != null) handler.removeCallbacks(activeTest.timeout);
             if (activeTest.earlyStop != null) handler.removeCallbacks(activeTest.earlyStop);
@@ -769,7 +943,7 @@ public final class MainActivity extends Activity {
 
     private final class DrawingPad extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        // [x0, y0, x1, y1, pressure] for continuous connected strokes.
+        // [x0, y0, x1, y1, pressure, previewTool] per segment.
         private final ArrayList<float[]> segments = new ArrayList<>();
         private final int[] screenLocation = new int[2];
         private float x = -1, y = -1, p;
@@ -797,7 +971,7 @@ public final class MainActivity extends Activity {
 
         private void segment(float nextX, float nextY, float pressure) {
             float level = Math.max(0f, Math.min(1f, pressure));
-            segments.add(new float[]{prevX, prevY, nextX, nextY, level});
+            segments.add(new float[]{prevX, prevY, nextX, nextY, level, previewTool});
             if (segments.size() > 10000) segments.remove(0);
             prevX = nextX;
             prevY = nextY;
@@ -839,7 +1013,8 @@ public final class MainActivity extends Activity {
                 // A stylus stroke must not turn into scrolling of the parent view.
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
                 add("CANVAS_STROKE_START", "stroke=" + strokeId
-                    + " x=" + localX + " y=" + localY);
+                    + " x=" + localX + " y=" + localY
+                    + " tool=" + (previewTool == TOOL_BRUSH ? "BRUSH" : "ERASER"));
                 postInvalidateOnAnimation();
                 return;
             }
@@ -892,11 +1067,13 @@ public final class MainActivity extends Activity {
             for (int yy = 0; yy < getHeight(); yy += dp(32))
                 canvas.drawLine(0, yy, getWidth(), yy, paint);
 
-            paint.setColor(Color.rgb(82, 184, 248));
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
             for (float[] seg : segments) {
-                paint.setStrokeWidth(dp(2.4f + 9f * seg[4]));
+                boolean eraser = seg[5] == TOOL_ERASER;
+                // Diagnostic Eraser paints the canvas background; not an editor undo engine.
+                paint.setColor(eraser ? Color.rgb(21, 31, 49) : Color.rgb(82, 184, 248));
+                paint.setStrokeWidth(eraser ? dp(24) : dp(2.4f + 9f * seg[4]));
                 canvas.drawLine(seg[0], seg[1], seg[2], seg[3], paint);
             }
             if (x >= 0 && inside(x, y)) {

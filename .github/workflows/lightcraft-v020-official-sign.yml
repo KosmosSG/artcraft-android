@@ -2,6 +2,11 @@ name: LightCraft v0.20.0 Original Certificate Signing (NO PUBLISH)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/lightcraft-upstream-20261110
+    paths:
+      - '.github/workflows/lightcraft-v020-official-sign.yml'
 
 
 permissions:

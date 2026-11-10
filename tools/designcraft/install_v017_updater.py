@@ -150,7 +150,30 @@ static ANDROID_SHARED_ACTIONS: std::sync::atomic::AtomicU8 =''')
     if policy_file.exists():
         raise ValueError("Existing updater policy file must not be overwritten")
     policy_file.write_text(original_policy)
-    print("DesignCraft v0.17: preserved published read-only updater and startup controls")
+
+    # Keep user-confirmed APK downloads in a standalone Java helper. Never
+    # update the original published APK or the permanent signing certificate.
+    downloader = java_dir / "DesignCraftUpdateDownload.java"
+    downloader_source = (support / "DesignCraftUpdateDownload.java").read_text()
+    downloader_source = once(downloader_source, "package com.artcraft.designcraft;",
+                             f"package {package};", str(downloader))
+    if downloader.exists():
+        raise ValueError("Existing DesignCraft updater download helper must not be overwritten")
+    downloader.write_text(downloader_source)
+
+    # Only the production package is permitted to request APK installation.
+    # The disposable-key test package must never update the production app.
+    if package == "com.artcraft.designcraft":
+        android_manifest = android / "Cargo.toml"
+        cargo_text = android_manifest.read_text()
+        install_permission = ('\n[[package.metadata.android.uses_permission]]\n'
+                              'name = "android.permission.REQUEST_INSTALL_PACKAGES"\n')
+        if "android.permission.REQUEST_INSTALL_PACKAGES" in cargo_text:
+            raise ValueError("Duplicate APK install permission in staged manifest")
+        cargo_text += install_permission
+        tomllib.loads(cargo_text)
+        android_manifest.write_text(cargo_text)
+    print("DesignCraft v0.19: preserved approved menus; staged user-confirmed verified updater")
 
 
 if __name__ == "__main__":

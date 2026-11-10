@@ -55,7 +55,7 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView counts, latest, recent, testStatus, shortcutFeedback, previewToolStatus;
     private CheckBox singleShortcutToggle, doubleShortcutToggle;
-    private boolean singleShortcutEnabled, doubleShortcutEnabled;
+    private boolean singleShortcutEnabled, doubleShortcutEnabled, stylusContactActive;
     private int previewTool = TOOL_BRUSH;
     private int shortcutBrushActions, shortcutEraserActions, shortcutIgnoredDuplicates;
     private long lastShortcutEventAt, lastDoubleEventAt;
@@ -284,6 +284,14 @@ public final class MainActivity extends Activity {
         int code = e.getKeyCode();
         if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return;
         if (!singleShortcutEnabled && !doubleShortcutEnabled) return;
+        // Physical button gestures made while the pen touches the drawing
+        // surface are not reliable on this MagicOS device: exclude them.
+        if (stylusContactActive) {
+            add("SHORTCUT_PREVIEW_CONTACT_IGNORED",
+                "key=" + KeyEvent.keyCodeToString(code)
+                + " device=" + e.getDeviceId());
+            return;
+        }
         long now = SystemClock.uptimeMillis();
         if (code == lastShortcutEventCode
                 && now - lastShortcutEventAt < SHORTCUT_DEBOUNCE_MS) {
@@ -322,7 +330,7 @@ public final class MainActivity extends Activity {
             final int deviceId = e.getDeviceId();
             pendingBrushAction = () -> {
                 pendingBrushAction = null;
-                if (singleShortcutEnabled && activeTest == null)
+                if (singleShortcutEnabled && activeTest == null && !stylusContactActive)
                     setPreviewTool(TOOL_BRUSH, "SINGLE_DPAD_DOWN_RELEASE", deviceId);
             };
             handler.postDelayed(pendingBrushAction, DOUBLE_PRIORITY_GUARD_MS);
@@ -727,6 +735,9 @@ public final class MainActivity extends Activity {
             }
             return;
         }
+        if (a == MotionEvent.ACTION_DOWN) stylusContactActive = true;
+        else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL)
+            stylusContactActive = false;
         long now = SystemClock.uptimeMillis();
         TestWindow t = activeTest;
         if (t != null && (a == MotionEvent.ACTION_DOWN
@@ -840,6 +851,7 @@ public final class MainActivity extends Activity {
         if (singleShortcutToggle != null) singleShortcutToggle.setChecked(false);
         if (doubleShortcutToggle != null) doubleShortcutToggle.setChecked(false);
         previewTool = TOOL_BRUSH;
+        stylusContactActive = false;
         refreshPreviewLabel();
         shortcutFeedback.setText("Shortcut preview OFF • Brush active");
         calibration.clear();

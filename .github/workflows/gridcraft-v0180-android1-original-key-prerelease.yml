@@ -225,7 +225,7 @@ jobs:
           import os,re,zipfile
           from pathlib import Path
           cert=Path("publish/certificate.txt").read_text()
-          matches={re.sub("[^0-9A-F]","",x.upper()) for x in re.findall(r"certificate SHA-256 digest:\\s*([0-9a-fA-F:]{64,95})",cert,re.I)}
+          matches={re.sub("[^0-9A-F]","",x.upper()) for x in re.findall(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})",cert,re.I)}
           assert matches=={os.environ["EXPECTED_CERT"]}, "Finished APK certificate mismatch"
           with zipfile.ZipFile(Path("publish")/os.environ["APK"]) as z:
               assert z.testzip() is None

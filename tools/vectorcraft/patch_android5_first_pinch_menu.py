@@ -76,31 +76,37 @@ def patch(root: Path) -> None:
     # MouseWheel::delta is content motion. Reverse vertical *popup* wheel
     # steps to make fingers UP reveal later items; fingers DOWN earlier ones.
     # Keep horizontal deltas, desktop mouse wheel, pinch and canvas unchanged.
-    # The app's established egui precision-tagging runs before this code.
+    # Android.23 PhotoCraft parity intentionally keeps the original egui-winit
+    # source as Unknown: do not reinstall the removed global classifier.
     adapter = root / "adapters/vectorcraft/src/lib.rs"
     rust = adapter.read_text()
     rust = once(
         rust,
-        """        classify_android_precision_scroll(raw);
-        // The long Window/Effect popup lists""",
-        """        classify_android_precision_scroll(raw);
+        """        // PhotoCraft parity: do NOT rewrite Android native wheel sources
+        // into Trackpad. Let egui-winit deliver original wheel phase/delta;
+        // this avoids competing inertial scroll paths on MagicOS.
+        // Trigger high-refresh redraws only during actual gestures""",
+        """        // PhotoCraft parity: do NOT rewrite Android native wheel sources
+        // into Trackpad. Let egui-winit deliver original wheel phase/delta;
+        // this avoids competing inertial scroll paths on MagicOS.
         // Android.5 natural vertical menu navigation for MagicOS trackpad.
-        // Do not reverse real touchscreen contact frames, canvas wheel input,
-        // keyboard events or trackpad zoom. Repaint remains egui-owned.
+        // AXIS_GESTURE_SCROLL_Y_DISTANCE is viewport motion; egui expects
+        // content motion, so reverse only vertical PixelDelta while popup open.
+        // No mouse-wheel lines/pages, canvas, pinch or touchscreen touch event.
         if egui::Popup::is_any_open(ctx)
             && !raw.events.iter().any(|event| matches!(event, egui::Event::Touch { .. }))
         {
             for event in &mut raw.events {
                 if let egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
-                    source: egui::MouseWheelSource::Trackpad,
+                    source: egui::MouseWheelSource::Trackpad | egui::MouseWheelSource::Unknown,
                     delta, ..
                 } = event {
                     delta.y = -delta.y;
                 }
             }
         }
-        // The long Window/Effect popup lists""",
+        // Trigger high-refresh redraws only during actual gestures""",
         "menu-only natural vertical trackpad scroll",
     )
     adapter.write_text(rust)

@@ -173,9 +173,9 @@ jobs:
 
         bash build.sh -filmcraft -packagename=com.artcraft.filmcraft.test -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-user-approved.png"
 
-        test -f output/filmcraft-0.17.0.apk
+        test -f output/filmcraft-0.19.0.apk
 
-        mv output/filmcraft-0.17.0.apk output/filmcraft-0.19.0-android.1-test.apk
+        mv output/filmcraft-0.19.0.apk output/filmcraft-0.19.0-android.1-test.apk
 
         '
     - name: Verify compiled APK artwork and retain candidate evidence

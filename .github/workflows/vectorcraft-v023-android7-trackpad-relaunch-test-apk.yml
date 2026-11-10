@@ -256,7 +256,7 @@ jobs:
               assert "android24_first_buffer_visible" in java
               assert "android25_after_native_onCreate" in java
               assert "VC_BOOT25 after_font_environment" in rust
-              assert "splashHandler.postDelayed(this::dismissStartupCover, 120);" not in java
+              assert "splashHandler.postDelayed(this::dismissStartupCover, 120);" in java
               assert "        self.inner.raw_input_hook(raw);" in rust
               assert "PhotoCraft parity: let egui" in rust
               assert "vcRefreshRateHint" in java

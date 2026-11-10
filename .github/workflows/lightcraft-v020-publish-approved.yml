@@ -31,11 +31,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          id="$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow lightcraft-v020-official-sign.yml \
-            --branch integration/lightcraft-upstream-20261110 --limit 10 \
-            --json databaseId,conclusion \
-            | jq -r '[.[] | select(.conclusion == "success")][0].databaseId // empty')"
+          id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs?branch=integration%2Flightcraft-upstream-20261110&per_page=100" \
+            | jq -r '[.workflow_runs[] | select(.name == "LightCraft v0.20.0 Original Certificate Signing (NO PUBLISH)" and .conclusion == "success")][0].id // empty')"
           test -n "$id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
       - name: Download previously signed and certificate-verified APK

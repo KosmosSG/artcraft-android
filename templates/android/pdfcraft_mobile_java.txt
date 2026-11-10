@@ -92,11 +92,13 @@ public String pdfTrackpadStatus() {
 public String pdfFontPoll() { return pdfFontResults.poll(); }
 public String pdfUpdatePoll() { String queued = pdfUpdateResults.poll(); return queued != null ? queued : pdfDownloadStatus(); }
 public boolean pdfStartupUpdateEnabled() {
-    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, false);
+    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, true);
 }
 public void pdfSetStartupUpdateEnabled(boolean enabled) {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putBoolean(PDF_STARTUP_UPDATE_PREF, enabled).apply();
+    // PhotoCraft/DeckCraft-style bottom toast, never a floating dialog.
+    pdfUpdateToast("PDFCraft update checks at startup: " + (enabled ? "ON" : "OFF"));
 }
 public boolean pdfToolbarVisible() {
     // Preserve the owner's choice to hide the Android-only toolbar, including

@@ -109,16 +109,29 @@ replace('        let ctx = ui.ctx().clone();',
                     }
                 });
                 ui.separator();
-                for (name, action) in [
-                    ("Check updates", 4u8),
-                    ("Automatic update check…", 5),
-                ] {
-                    if ui.button(name).clicked() {
+                // PDFCRAFT_ANDROID_DECKCRAFT_APP_UPDATES:
+                // Group updater commands like DeckCraft Dk > App Updates.
+                // The checked indicator reflects the actual saved Java
+                // preference, mirrored each frame by the Android wrapper.
+                ui.menu_button("App Updates", |ui| {
+                    if ui.button("Check for Updates…").clicked() {
                         PDFCRAFT_ANDROID_HELP_REQUEST.store(
-                            action, std::sync::atomic::Ordering::Release);
+                            4u8, std::sync::atomic::Ordering::Release);
                         ui.close();
                     }
-                }
+                    let enabled = ui.ctx().data(|data| data.get_temp::<bool>(
+                        egui::Id::new("pdfcraft.android.startup.enabled")).unwrap_or(true));
+                    let label = if enabled {
+                        "✓  Toggle Update Check at Startup"
+                    } else {
+                        "    Toggle Update Check at Startup"
+                    };
+                    if ui.button(label).clicked() {
+                        PDFCRAFT_ANDROID_HELP_REQUEST.store(
+                            5u8, std::sync::atomic::Ordering::Release);
+                        ui.close();
+                    }
+                });
                 ui.separator();
                 if ui.button("About PDFCraft").clicked() {
                     PDFCRAFT_ANDROID_HELP_REQUEST.store(

@@ -41,6 +41,22 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         self.assertIn("Check for updates at startup", rust)
         self.assertIn("self.download_ready", rust)
 
+    def test_deckcraft_style_app_updates_submenu_and_startup_toggle(self):
+        menu = (ROOT / "tools/pdfcraft/android_tools_menu_patch.py").read_text()
+        rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
+        java = (ROOT / "templates/android/pdfcraft_mobile_java.txt").read_text()
+        self.assertIn('ui.menu_button("App Updates", |ui|', menu)
+        self.assertIn('"✓  Toggle Update Check at Startup"', menu)
+        self.assertIn('"Check for Updates…"', menu)
+        self.assertNotIn('("Automatic update check…", 5)', menu)
+        self.assertIn('let enabled = !self.startup_check;', rust)
+        self.assertIn('mobile.read_startup_setting().unwrap_or(true)', rust)
+        self.assertIn('getBoolean(PDF_STARTUP_UPDATE_PREF, true)', java)
+        self.assertIn('pdfUpdateToast("PDFCraft update checks at startup: "', java)
+        self.assertIn('if self.startup_check { self.check_updates(false); }', rust)
+        self.assertIn('if self.update_asset_url.is_some() {', rust)
+        self.assertIn('pdfInstallDownloadedUpdate', rust)
+
     def test_updater_does_not_automatic_install(self):
         rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
         self.assertIn('egui::Button::new("Download APK")', rust)

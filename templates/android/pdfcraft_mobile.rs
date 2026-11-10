@@ -60,9 +60,9 @@ impl Mobile {
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, update_asset_url: None, update_digest: String::new(),
-            downloading: false, download_ready: false, checking: false, startup_check: false, first_frame: true,
+            downloading: false, download_ready: false, checking: false, startup_check: true, first_frame: true,
         };
-        mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
+        mobile.startup_check = mobile.read_startup_setting().unwrap_or(true);
         mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(false);
         if let Ok((version, package)) = mobile.read_installed_build_info() {
             mobile.installed_version = version;
@@ -243,6 +243,10 @@ impl Mobile {
         }
     }
     pub fn poll(&mut self, ctx: &egui::Context) {
+        // PDFCRAFT_ANDROID_DECKCRAFT_APP_UPDATES: reflect persisted ON/OFF
+        // in the Pc > App Updates submenu without an extra floating window.
+        ctx.data_mut(|data| data.insert_temp(
+            egui::Id::new("pdfcraft.android.startup.enabled"), self.startup_check));
         if self.trackpad_details_open {
             let due = self.trackpad_last_poll.is_none_or(|last| {
                 last.elapsed() >= std::time::Duration::from_millis(500)
@@ -480,7 +484,16 @@ impl Mobile {
             }
             5 => {
                 self.fonts_open = false;
-                self.updates_open = true;
+                // DeckCraft-style immediate toggle: no modal settings dialog.
+                // Keep the previously persisted OFF state across upgrades.
+                let enabled = !self.startup_check;
+                match self.save_startup_setting(enabled) {
+                    Ok(()) => self.startup_check = enabled,
+                    Err(error) => {
+                        self.update_status = format!("Could not save startup preference: {error}");
+                        self.updates_open = true;
+                    }
+                }
                 return;
             }
             6 => {

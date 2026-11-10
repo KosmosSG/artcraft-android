@@ -148,8 +148,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_HELP_REQUEST' in menu
     assert 'PDFCRAFT_ANDROID_ICON_MENU' in menu
     assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
-    assert '"Import Fonts…"' in menu and '"Check updates"' in menu
-    assert '"Automatic update check…"' in menu
+    assert '"Import Fonts…"' in menu and '"Check for Updates…"' in menu
+    assert '"Automatic update check…"' not in menu
+    assert 'PDFCRAFT_ANDROID_DECKCRAFT_APP_UPDATES' in menu
+    assert 'ui.menu_button("App Updates", |ui|' in menu
+    assert '"✓  Toggle Update Check at Startup"' in menu
+    assert '"    Toggle Update Check at Startup"' in menu
+    assert 'egui::Id::new("pdfcraft.android.startup.enabled")' in menu
     assert '"About PDFCraft"' in menu
     assert '"Trackpad diagnostics…"' not in menu
     assert '"GPU diagnostics…"' not in menu
@@ -259,4 +264,14 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'public void pdfCheckForUpdates(boolean manual)' in java
     assert 'android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()' in java
     assert 'ui.button("Download APK")' in mobile and 'self.install_download()' in mobile
+    # On fresh installations startup checks default ON; an existing OFF
+    # preference remains OFF. Toggling gives a native bottom Toast.
+    assert 'mobile.read_startup_setting().unwrap_or(true)' in mobile
+    assert 'startup_check: true, first_frame: true' in mobile
+    assert 'egui::Id::new("pdfcraft.android.startup.enabled"), self.startup_check' in mobile
+    assert 'let enabled = !self.startup_check;' in mobile
+    assert 'match self.save_startup_setting(enabled)' in mobile
+    assert 'getBoolean(PDF_STARTUP_UPDATE_PREF, true)' in bridge
+    assert 'pdfUpdateToast("PDFCraft update checks at startup: " + (enabled ? "ON" : "OFF"))' in bridge
+    assert 'if self.startup_check { self.check_updates(false); }' in mobile
 print('PASS: embedded Python syntax, guarded patches, idempotence, Android generator, identity/version and Help bridge')

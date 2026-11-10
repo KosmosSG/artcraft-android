@@ -149,11 +149,134 @@ pub fn artcraft_brush_scroll_area(ctx: &egui::Context, point: egui::Pos2) -> boo
                 && !modifiers.any()"""
     )
 
+
+    # Android.3: owner-observed regression in Android.2. A brush ScrollArea
+    # rect alone is not sufficient: a MagicOS two-finger gesture can report
+    # touchpad contact coordinates instead of the hovering mouse cursor. Use
+    # the current egui layer, but ONLY when either brush library is open.
+    # Both the native canvas gesture queue AND upstream wheel navigation need
+    # to respect the guard, otherwise the image pans behind the picker.
+    host = a.adapter / "src/lib.rs"
+    replace_once(
+        host,
+        "trackpad_wheel::route(&self.bridge, ctx, raw, &mut self.canvas_gesture);",
+        """trackpad_wheel::route(
+            &self.bridge, ctx, raw, &mut self.canvas_gesture,
+            self.inner.ui.brush_picker.is_some()
+                || (self.inner.ui.panels.brush_settings && self.inner.ui.brush_tab == 1),
+        );"""
+    )
+
+    replace_once(
+        wheel,
+        "    gestures: &mut CanvasTouchGestures,\n) {",
+        "    gestures: &mut CanvasTouchGestures,\n    brush_open: bool,\n) {"
+    )
+    replace_once(
+        wheel,
+        "    let native_pinch = native.iter().any(|g| (g[2] - 1.0).abs() > 0.0001);",
+        """    let native_pinch = native.iter().any(|g| (g[2] - 1.0).abs() > 0.0001);
+    // Last displayed brush ScrollArea gives the exact list viewport, while
+    // the floating Window/Popup layer handles Android trackpad coordinates
+    // that refer to contact position rather than the actual mouse cursor.
+    // No active Brush Library => ordinary canvas gestures always pass through.
+    let brush_target = |point: Pos2| brush_open && (
+        photocraft_ui_egui::brushes_tab::artcraft_brush_scroll_area(ctx, point)
+        || ctx.layer_id_at(point).is_some_and(|layer| layer.order >= egui::Order::Middle)
+    );"""
+    )
+    w = wheel.read_text(encoding="utf-8")
+    name = "photocraft_ui_egui::brushes_tab::artcraft_brush_scroll_area(ctx, "
+    # One call belongs to brush_target itself; preserve it, changing only
+    # the four call sites installed by the Android.2 adapter patch.
+    assert w.count(name) == 5, f"Unreviewed brush hit-testing callsites: {w.count(name)}"
+    first, rest = w.split(name, 1)
+    rest = rest.replace(name, "brush_target(")
+    wheel.write_text(first + name + rest, encoding="utf-8")
+    replace_once(
+        wheel,
+        """            let hover = raw.events.iter().rev().find_map(|event| match event {
+                Event::PointerMoved(p) => Some(*p), _ => None,
+            }).or_else(|| ctx.pointer_hover_pos());
+            let pos = match hover {
+                Some(p) if brush_target(p) => p,
+                _ if rect.contains(at) => at,
+                Some(p) => p,
+                None => rect.center(),
+            };""",
+        """            let current = raw.events.iter().rev().find_map(|event| match event {
+                Event::PointerMoved(p) => Some(*p), _ => None,
+            });
+            let parked = ctx.pointer_hover_pos();
+            // Prefer a cursor known to be over the visible brush Window/
+            // picker, before potentially misleading native touchpad XY.
+            let pos = [current, parked, Some(at)].into_iter().flatten()
+                .find(|p| brush_target(*p))
+                .or(current).or(parked)
+                .unwrap_or(if rect.contains(at) { at } else { rect.center() });"""
+    )
+    replace_once(
+        wheel,
+        """        if !brush_target(pos) {
+            let _ = gestures.trackpad_view(rect, pos, Vec2::ZERO, scale);
+        }""",
+        """        if !brush_target(pos)
+            && !ctx.pointer_hover_pos().is_some_and(brush_target)
+        {
+            let _ = gestures.trackpad_view(rect, pos, Vec2::ZERO, scale);
+        }"""
+    )
+    replace_once(
+        wheel,
+        """    let pointer = raw.events.iter().rev().find_map(|event| match event {
+        Event::PointerMoved(pos) => Some(*pos), _ => None,
+    }).or_else(|| ctx.pointer_hover_pos()).unwrap_or(rect.center());""",
+        """    let current = raw.events.iter().rev().find_map(|event| match event {
+        Event::PointerMoved(pos) => Some(*pos), _ => None,
+    });
+    let parked = ctx.pointer_hover_pos();
+    let pointer = [current, parked].into_iter().flatten()
+        .find(|p| brush_target(*p))
+        .or(current).or(parked).unwrap_or(rect.center());"""
+    )
+    # The upstream canvas navigator also listens to wheel input. Stop its
+    # pan/zoom when a brush library popup/window owns the pointer, even if
+    # another renderer path emits a wheel independently of the native queue.
+    canvas_src = a.upstream / "crates/ui-egui/src/canvas.rs"
+    replace_once(
+        canvas_src,
+        "    let nav_hovered = input.response.hovered() || input.free_hover || over_bars;",
+        """    let nav_hovered = input.response.hovered() || input.free_hover || over_bars;
+    #[cfg(target_os = "android")]
+    let nav_hovered = nav_hovered && !{
+        let brush_open = app.ui.brush_picker.is_some()
+            || (app.ui.panels.brush_settings && app.ui.brush_tab == 1);
+        brush_open && input.ctx.input(|i| i.pointer.hover_pos()).is_some_and(|point| {
+            crate::brushes_tab::artcraft_brush_scroll_area(input.ctx, point)
+                || input.ctx.layer_id_at(point)
+                    .is_some_and(|layer| layer.order >= egui::Order::Middle)
+        })
+    };"""
+    )
+
+    # Staged v0.22 Android.2 is deliberately upgraded only inside the
+    # isolated runner. The published release never receives this manifest.
+    replace_once(
+        a.adapter / "Cargo.toml",
+        'version = "0.22.0-android.2"',
+        'version = "0.22.0-android.3"'
+    )
+    assert "brush_open: bool" in wheel.read_text()
+    assert "let brush_target = " in wheel.read_text()
+    assert "layer_id_at(point)" in canvas_src.read_text()
+    assert "version = \"0.22.0-android.3\"" in (a.adapter / "Cargo.toml").read_text()
+    print("PASS: Android.3 Brush Library layer-aware guard blocks native and upstream canvas navigation.")
+
     assert "native_brush.push((pos, scroll))" in wheel.read_text()
     assert "brush_scroll.inner_rect" in brushes.read_text()
-    assert wheel.read_text().count("artcraft_brush_scroll_area") == 4
+    assert wheel.read_text().count("artcraft_brush_scroll_area") == 1
     assert "pub(crate) fn trackpad_view" in (a.adapter / "src/canvas_gesture.rs").read_text()
-    print("PASS: brush preset ScrollArea uses scoped two-finger trackpad wheel routing.")
+    print("PASS: brush preset ScrollArea and its floating window layer prevent accidental canvas pan.")
     print("PASS: outside-brush canvas pan/pinch and native/Java deduplication preserved.")
     print("NOTE: brush scrolling behavior remains unverified on HONOR MagicPad 4 until device testing.")
 

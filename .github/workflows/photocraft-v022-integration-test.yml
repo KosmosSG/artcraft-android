@@ -1,4 +1,4 @@
-name: PhotoCraft v0.22.0 Android.2 Brush Library trackpad ARM64 TEST ONLY
+name: PhotoCraft v0.22.0 Android.3 Brush Library stationary-canvas ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: photocraft-v022-android2-integration
+  group: photocraft-v022-android3-integration
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
       # Keep upstream opt-level defaults to protect graphics and AI performance.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       CARGO_PROFILE_RELEASE_STRIP: "symbols"
-      PHOTOCRAFT_OVERRIDE_VERSION: "0.22.0-android.2"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.22.0-android.3"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.22.0"
@@ -228,8 +228,9 @@ jobs:
           print("PASS: Pc > Appearance > Theme: 7 dark, 7 light, live checked indicator; Sync/Next directly under Appearance")
           print("PASS: Window duplicate theme UI hidden on Android while commands remain live")
           PY
-          # The working Android trackpad overlay already produces the .2 version.
-          grep -Fq 'version = "0.22.0-android.2"' adapters/photocraft/Cargo.toml
+          # The working Android trackpad overlay produces .2; the scoped
+          # brush library guard upgrades the disposable test manifest to .3.
+          grep -Fq 'version = "0.22.0-android.3"' adapters/photocraft/Cargo.toml
           python3 - <<'PY'
           from pathlib import Path
           brush = Path("source/photocraft/crates/ui-egui/src/panels/brushes_tab.rs").read_text()
@@ -237,7 +238,10 @@ jobs:
           assert "brush_scroll.inner_rect" in brush
           assert "artcraft_brush_scroll_area" in brush
           assert "native_brush.push((pos, scroll))" in wheel
-          assert wheel.count("artcraft_brush_scroll_area") == 4
+          assert wheel.count("artcraft_brush_scroll_area") == 1
+          assert "brush_open: bool" in wheel
+          assert "let brush_target = " in wheel
+          assert "layer_id_at(point)" in Path("source/photocraft/crates/ui-egui/src/canvas.rs").read_text()
           assert "gestures.trackpad_view" in wheel
           assert "MouseWheelSource::Trackpad" in wheel
           print("PASS: trackpad two-finger brush-list scrolling routed separately from canvas pan/pinch")
@@ -246,7 +250,7 @@ jobs:
           grep -Fq 'pcTrackpadPinchPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'pub fn pc_pad_gesture_take()' vendor/android-activity/src/lib.rs
           grep -Fq 'pub(crate) fn trackpad_view(' adapters/photocraft/src/canvas_gesture.rs
-          grep -Fq '0.22.0-android.2' adapters/photocraft/Cargo.toml
+          grep -Fq '0.22.0-android.3' adapters/photocraft/Cargo.toml
           grep -Fq 'pc_keyboard_diag.show' adapters/photocraft/src/lib.rs
           grep -Fq 'pcKeyDiagSetEnabled' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           # The diagnostic backend remains intact, but its old Pc-menu entry
@@ -285,7 +289,7 @@ jobs:
           grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
-          grep -Fq 'version = "0.22.0-android.2"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.22.0-android.3"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release, Android.3 and Android.4 remain untouched.'
 
       - name: Set up JDK 21
@@ -359,9 +363,9 @@ jobs:
           p = Path("adapters/photocraft/Cargo.toml")
           manifest = p.read_text()
           changes = [
-              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.pad222"', 1),
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.pad223"', 1),
               ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
-              ('label = "PhotoCraft"', 'label = "PhotoCraft Test Pad 222"', 2),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Test Pad 223"', 2),
           ]
           for old, new, expected in changes:
               count = manifest.count(old)
@@ -371,8 +375,8 @@ jobs:
           p.write_text(manifest)
           import tomllib
           data = tomllib.loads(manifest)
-          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.pad222"
-          print("Separate com.artcraft.photocraft.candidate.pad222 app: production package and keys untouched")
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.pad223"
+          print("Separate com.artcraft.photocraft.candidate.pad223 app: production package and keys untouched")
           PY
 
       - name: Compile release-optimized upstream v0.22.0 compatibility candidate
@@ -384,7 +388,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.22.0.apk
-          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.2-arm64-v8a-TEST.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-arm64-v8a-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.22.0 adaptation
         if: failure()
@@ -403,7 +407,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0220-android2-ARM64-COMPILER-DIAGNOSTICS
+          name: PhotoCraft-v0220-android3-ARM64-COMPILER-DIAGNOSTICS
           path: logs/photocraft-debug*.log
           retention-days: 3
           if-no-files-found: warn
@@ -419,8 +423,8 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
-          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.pad222'"
-          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.22.0-android.2'"
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.pad223'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.22.0-android.3'"
           # Enforce isolated-package architecture, non-production signer, and realistic size report.
           SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
           test -n "$SIGNER_SHA"
@@ -446,12 +450,12 @@ jobs:
           PY
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
-          echo "Candidate v0.22.0-android.2; scoped Brush Preset trackpad scrolling unverified on device; permanent signer excluded." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.22.0-android.3; guards Brush Library scroll against native canvas gestures and upstream wheel panning; requires HONOR MagicPad 4 validation; production signing excluded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.22.0-android.2-BRUSH-TRACKPAD-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.22.0-android.3-BRUSH-STATIONARY-CANVAS-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

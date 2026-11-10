@@ -41,6 +41,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 3
 
       - name: Checkout pinned reference builder
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -62,8 +63,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "a2cebc4368c96625530771fd9dd348e716f3afff" || { echo "::error::Production source differs from approved v0.17 candidate source"; exit 1; }
-          changed="$(git diff --name-only HEAD^ HEAD)"
+          test "$(git rev-parse HEAD~2)" = "a2cebc4368c96625530771fd9dd348e716f3afff" || { echo "::error::Production source differs from approved v0.17 candidate source"; exit 1; }
+          changed="$(git diff --name-only a2cebc4368c96625530771fd9dd348e716f3afff HEAD)"
           test "$changed" = ".github/workflows/wordcraft-v017-android1-original-publish-once.yml" || { echo "::error::Unexpected source changes: $changed"; exit 1; }
           test "$TAG" = "wordcraft-v0.17.0-android.1"
           test "$VERSION_CODE" = "100017001"

@@ -54,7 +54,7 @@ jobs:
 
         test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = ''d1af238bba9fc814487c81e47b53543dff435c09''
 
-        grep -Fq ''version = "0.17.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+        grep -Fq ''version = "0.19.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
 
         grep -Fq ''license = "MIT OR Apache-2.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
 
@@ -66,7 +66,7 @@ jobs:
 
         echo ''242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png'' | sha256sum --check
 
-        echo ''Official FilmCraft v0.19.0 (d1af238b) is pinned; android.5 stays untouched.'' >> "$GITHUB_STEP_SUMMARY"
+        echo ''Official FilmCraft v0.19.0 (d1af238b) is pinned; protected Android release stays untouched.'' >> "$GITHUB_STEP_SUMMARY"
 
         '
     - name: Set up Java 21
@@ -125,7 +125,7 @@ jobs:
       run: |
         set -euo pipefail
         python3 suite/tools/filmcraft/stage_runtime_hook.py filmcraft-builder/lib/build-common.sh
-        # FilmCraft v0.17's egui 0.37 IME API requires its matching storyTold winit fork.
+        # FilmCraft v0.19's egui 0.37 IME API requires its matching storyTold winit fork.
         # Do not overwrite either upstream Git pin with older Android builder vendors.
         python3 suite/tools/filmcraft/stage_v019_builder_deps.py filmcraft-builder/lib/build-common.sh
         mkdir -p filmcraft-builder/tools/filmcraft

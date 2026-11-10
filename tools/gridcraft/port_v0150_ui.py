@@ -12,7 +12,7 @@ import shutil
 import runpy
 import tomllib
 
-EXPECTED_VERSION = "0.16.1"
+SUPPORTED_VERSIONS = ("0.16.1", "0.18.0")
 MARKER = "GRIDCRAFT_ANDROID_V0150_UI_PORT_V1"
 MENU_MARKER = "GRIDCRAFT_ANDROID_NATIVE_MENU_V1"
 ADDONS = Path(__file__).resolve().parent / "android_addons"
@@ -39,8 +39,8 @@ def stage(root: Path, *, verify_only: bool = False) -> dict:
     if not manifest_path.is_file():
         raise RuntimeError("Expected a separate official GridCraft source checkout")
     version = tomllib.loads(manifest_path.read_text())["workspace"]["package"]["version"]
-    if version != EXPECTED_VERSION:
-        raise RuntimeError(f"Refusing to patch upstream GridCraft {version}; expected {EXPECTED_VERSION}")
+    if version not in SUPPORTED_VERSIONS:
+        raise RuntimeError(f"Refusing to patch upstream GridCraft {version}; expected one of {SUPPORTED_VERSIONS}")
     sources = {}
     for key, relative in FILES.items():
         path = root / relative

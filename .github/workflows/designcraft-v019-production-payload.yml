@@ -60,6 +60,23 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/designcraft-builder"
           bash build-debug.sh -designcraft -designcraft-v017 -packagename=com.artcraft.designcraft -appname='DesignCraft'
+      - name: Repackage with reserved monotonic production versionCode (still TEMP signed)
+        run: |
+          set -euo pipefail
+          BUILDER="$RUNNER_TEMP/designcraft-builder"
+          python3 "$GITHUB_WORKSPACE/tools/designcraft/repack_v019_versioncode.py" "$BUILDER"
+          export CARGO_TARGET_DIR="$BUILDER/build/designcraft/target"
+          export CARGO_APK_DEV_KEYSTORE="$BUILDER/keys/artcraft-builder.jks"
+          export CARGO_APK_DEV_KEYSTORE_PASSWORD="$(cat "$BUILDER/keys/.keystore-password")"
+          echo "::add-mask::$CARGO_APK_DEV_KEYSTORE_PASSWORD"
+          cd "$BUILDER/source/designcraft/apps/designcraft-android"
+          cargo apk2 build
+          REPACKED="$CARGO_TARGET_DIR/debug/apk/designcraft-0.19.0-android.1.apk"
+          test -s "$REPACKED"
+          cp "$REPACKED" "$BUILDER/output/designcraft-0.19.0-android.1-debug.apk"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$REPACKED")"
+          printf '%s\n' "$BADGING" | grep -m1 '^package:'
+          echo 'Repacked exact existing Android core with explicit monotonic manifest in a disposable workspace.'
       - name: Verify temporary signing, original package, monotonic versionCode and ARM64 ABI
         run: |
           set -euo pipefail
@@ -68,7 +85,7 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
           grep -q "name='com.artcraft.designcraft'" <<<"$BADGING"
           CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
-          test -n "$CODE" && test "$CODE" -gt 16800011
+          test "$CODE" = 16800012 || { echo "::error::Wrong reserved production versionCode ($CODE)"; exit 1; }
           grep -q "versionName='0.19.0-android.1'" <<<"$BADGING"
           python3 - "$APK" <<'PY'
           import sys, zipfile

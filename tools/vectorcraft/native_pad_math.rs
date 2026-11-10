@@ -61,10 +61,12 @@ impl Detector {
         if self.mode == Mode::Undecided {
             let travelled = (current.x - origin.x).hypot(current.y - origin.y);
             let stretched = (current.spread - origin.spread).abs();
-            // Small, decisive deadzones: don't turn a two-finger glide into a pinch.
+            // Fast geometry-only pan recognition: 4px of decisive midpoint travel;
+            // stronger motion/spread separation guards the already-working pinch.
+            // Native API 34 axis scroll and pinch still take precedence.
             if stretched >= 3.5 && stretched > 1.05 * travelled {
                 self.mode = Mode::Pinch;
-            } else if travelled >= 7.0 && travelled > 1.15 * stretched {
+            } else if travelled >= 4.0 && travelled > 1.60 * stretched {
                 self.mode = Mode::Pan;
             } else {
                 return Step::None;
@@ -123,6 +125,13 @@ impl Detector {
 mod tests {
     use super::*;
     fn s(x:f64,y:f64,spread:f64)->Sample { Sample{x,y,spread} }
+    #[test] fn early_decisive_two_finger_pan_has_no_long_hold() {
+        let mut d=Detector::default();
+        assert_eq!(d.step(s(0.,0.,90.)),Step::None);
+        assert_eq!(d.step(s(4.,0.,90.)),Step::None);
+        assert_eq!(d.mode(), Mode::Pan);
+        assert_eq!(d.step(s(6.,0.,90.)),Step::Pan(2.,0.));
+    }
     #[test] fn batched_native_pinch_applies_all_historical_samples() {
         let mut totals=AxisTotals::default();
         totals.add(0.0,0.0,1.005);

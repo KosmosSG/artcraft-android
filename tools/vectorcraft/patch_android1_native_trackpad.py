@@ -76,14 +76,14 @@ NEW_ROUTER = r'''
                 let source_device = motion_event.device_id();
                 // Some MagicOS pads report the generic Mouse tool for both
                 // fingers, so two pointer-class pointers also qualify.
-                let is_two_pad = pointer_class && pointer_count == 2;
+                let is_two_pad = (pointer_class || touchpad) && pointer_count == 2;
                 // Android 14+ trackpad gestures may be a *single-pointer*
                 // stream with several historical relative-axis samples.
                 // Official docs require processing EVERY historical sample,
                 // then the current sample: our old code dropped all history.
                 let mut native_axes = vectorcraft_pad_math::AxisTotals::default();
                 let mut historical_pinch_samples = 0u32;
-                if pointer_class || reported != PadGesture::None {
+                if pointer_class || touchpad || reported != PadGesture::None {
                     if let Some(p) = motion_event.pointers().next() {
                         for history in p.history() {
                             let before = native_axes.zoom_count;
@@ -129,8 +129,11 @@ NEW_ROUTER = r'''
                 // CLASSIFICATION_PINCH / TWO_FINGER_SWIPE refer to a touchpad
                 // even if an OEM's source/tool flags confused device_kind.
                 // Never intercept ordinary touchscreen/stylus pointer moves.
+                // Recognize two-finger trackpad packets even before MagicOS assigns
+                // an explicit Swipe classification. Never hijack touchscreen
+                // or stylus events: require touchpad source or pointer-class.
                 let candidate = reported != PadGesture::None ||
-                    (pointer_class && (is_two_pad || has_pad_axes || active_here));
+                    ((pointer_class || touchpad) && (is_two_pad || has_pad_axes || active_here));
                 if candidate {
                     let action = motion_event.action();
                     if matches!(action, MotionAction::Up | MotionAction::PointerUp | MotionAction::Cancel) {

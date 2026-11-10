@@ -62,7 +62,7 @@ jobs:
           python3 - <<'PY'
           import pathlib, tomllib
           cargo = tomllib.loads(pathlib.Path("source/pdfcraft/Cargo.toml").read_text())
-          assert cargo["workspace"]["package"]["version"] == "0.19.0", "Unexpected upstream workspace version"
+          assert cargo["workspace"]["package"]["version"] == "0.20.0", "Unexpected upstream workspace version"
           PY
           echo "Official PDFCraft $PDFCRAFT_REF resolves to $PDFCRAFT_SHA" >> "$GITHUB_STEP_SUMMARY"
 
@@ -188,8 +188,8 @@ jobs:
           assert (dest / "approved-foreground.png").read_bytes() == foreground.read_bytes()
           PY
           bash build.sh -pdfcraft -appname=PDFCraft-Test -packagename=com.artcraft.pdfcraft.v020test1 -appicon=assets/pdfcraft/approved-icon.png
-          test -f output/pdfcraft-0.19.0.apk
-          mv output/pdfcraft-0.19.0.apk output/pdfcraft-0.20.0-android.1.apk
+          test -f output/pdfcraft-0.20.0.apk
+          mv output/pdfcraft-0.20.0.apk output/pdfcraft-0.20.0-android.1.apk
           python3 tools/approved-branding/verify_apk.py . approved-icon-candidate
           test -f approved-icon-candidate/verification.json
           echo "User-supplied Pc launcher and native UI artwork staged in candidate only." >> "$GITHUB_STEP_SUMMARY"
@@ -225,7 +225,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v5
         with:
-          name: PDFCraft-0.20.0-android.1-CTRLQ-LIFECYCLE-ARM64-TEST
+          name: PDFCraft-0.20.0-android.1-PROTECTED-ARM64-TEST
           path: |
             output/pdfcraft-0.20.0-android.1.apk
             output/pdfcraft-ocr-models.txt

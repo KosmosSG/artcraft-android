@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.artcraft.stylusdiagnostic">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
     <application android:label="ArtCraft Stylus Diagnostic" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">

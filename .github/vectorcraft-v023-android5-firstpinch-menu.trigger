@@ -4,3 +4,5 @@ Stacked draft PR #154 on #153
 Strict source guards before native compilation
 No merge, permanent key, tags or release
 Trigger once: 2026-11-10
+
+Source-preflight-only retry #2: Android.23 PhotoCraft parity deliberately removes classify_android_precision_scroll; corrected anchored menu patch. No prior ARM64 compilation.

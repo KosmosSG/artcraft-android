@@ -76,7 +76,7 @@ public final class MainActivity extends Activity {
         super.onCreate(saved);
         getWindow().setStatusBarColor(Color.rgb(20, 28, 43));
         getWindow().setNavigationBarColor(Color.rgb(20, 28, 43));
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = new StylusSafeScrollView();
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(Color.rgb(245, 247, 251));
         LinearLayout column = new LinearLayout(this);
@@ -90,8 +90,8 @@ public final class MainActivity extends Activity {
             13, Color.DKGRAY);
         counts = text(column, "", 14, Color.rgb(27, 48, 82));
         latest = text(column, "", 12, Color.rgb(33, 81, 139));
-        text(column, "Hover over this canvas, draw with different pressure and tilt, "
-            + "then try single, double and long pen button presses while hovering AND drawing.",
+        text(column, "Hover or draw on the dark canvas. Finger swipes can scroll this screen, "
+            + "but the pen must draw without scrolling. Test the pen button during hover and contact.",
             13, Color.DKGRAY);
         pad = new DrawingPad();
         column.addView(pad, new LinearLayout.LayoutParams(-1, dp(320)));
@@ -174,7 +174,49 @@ public final class MainActivity extends Activity {
             latestLine = s + "\n(Key could be from keyboard, system or pen.)";
             updateUi(true);
         }
+        // MagicOS exposes some pen-button signals as keyboard-style DPAD_UP/DOWN
+        // from its external "HONOR Magic-Pencil 4s Mouse" device.  We must
+        // observe them but not let ScrollView interpret them as navigation.
+        if (isMagicPencilNavigationKey(e)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                add("PEN_NAVIGATION_SCROLL_BLOCKED",
+                    KeyEvent.keyCodeToString(e.getKeyCode())
+                    + " device=" + e.getDeviceId());
+                updateUi(true);
+            }
+            return true;
+        }
         return super.dispatchKeyEvent(e);
+    }
+
+    private boolean isMagicPencilNavigationKey(KeyEvent e) {
+        int code = e.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN)
+            return false;
+        InputDevice origin = e.getDevice();
+        return origin != null && origin.getName() != null
+            && origin.getName().contains("Magic-Pencil 4s");
+    }
+
+    // Keep finger-driven scrolling, but never claim stylus swipes as scroll gestures.
+    private final class StylusSafeScrollView extends ScrollView {
+        StylusSafeScrollView() { super(MainActivity.this); }
+
+        @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+            if (isStylus(e)) return false;
+            return super.onInterceptTouchEvent(e);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            if (isStylus(e)) return false;
+            return super.onTouchEvent(e);
+        }
+
+        @Override public boolean onGenericMotionEvent(MotionEvent e) {
+            if (isStylus(e) && e.getActionMasked() == MotionEvent.ACTION_SCROLL)
+                return false;
+            return super.onGenericMotionEvent(e);
+        }
     }
 
     private boolean isStylus(MotionEvent e) {

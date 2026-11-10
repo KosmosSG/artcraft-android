@@ -151,7 +151,7 @@ jobs:
           grep -Fq 'MouseWheel' vendor/winit/src/platform_impl/android/mod.rs
           grep -Fq 'MouseInput' vendor/winit/src/platform_impl/android/mod.rs
           echo 'Exact official pinned winit + limited Android motion adaptation, no production-signing job' >> "$GITHUB_STEP_SUMMARY"
-      - name: Build temporary-key EffectCraft 0.21.0 Android test package
+      - name: Build temporary-key EffectCraft 0.23.1 Android test package
         shell: bash
         run: |
           set -euo pipefail
@@ -162,10 +162,10 @@ jobs:
           test ! -e keys/.keystore-password
           cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
           python3 tools/approved-branding/approved_branding.py install . effectcraft
-          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v023test -appname=EffectCraft-v021-Test -appicon=source/effectcraft/ec-approved-512.png
-          test -s output/effectcraft-0.21.0.apk
+          bash build.sh -effectcraft -packagename=com.artcraft.effectcraft.v023test -appname=EffectCraft-v023-Test -appicon=source/effectcraft/ec-approved-512.png
+          test -s output/effectcraft-0.23.1.apk
           mkdir -p candidate
-          cp output/effectcraft-0.21.0.apk candidate/EffectCraft-v0.23.1-android.1-TEST-arm64-v8a.apk
+          cp output/effectcraft-0.23.1.apk candidate/EffectCraft-v0.23.1-android.1-TEST-arm64-v8a.apk
       - name: Verify test-only package, version, ABI, and disposable signing
         shell: bash
         run: |
@@ -179,7 +179,7 @@ jobs:
           fi
           "$SDK/aapt" dump badging "$APK" > candidate/badging.txt
           grep -F "name='com.artcraft.effectcraft.v023test'" candidate/badging.txt
-          grep -F "versionName='0.21.0-android.14'" candidate/badging.txt
+          grep -F "versionName='0.23.1-android.1'" candidate/badging.txt
           grep -F "versionCode='16840001'" candidate/badging.txt
           "$SDK/zipalign" -c -P 16 -v 4 "$APK"
           python3 - <<'PY'
@@ -196,7 +196,7 @@ jobs:
           (apk.parent/'verification.json').write_text(json.dumps({
               'upstream_tag':'v0.23.1','upstream_sha':'f5e5c8a4d8e0d5aa7e5493b527c0773969a4364a',
               'package':'com.artcraft.effectcraft.v023test',
-              'versionName':'0.21.0-android.14','versionCode':16840001,
+              'versionName':'0.23.1-android.1','versionCode':16840001,
               'apk_size_bytes':apk.stat().st_size,'builder_commit':__import__('os').environ['GITHUB_SHA'],
               'apk_sha256':digest,'production_signing_verified':False,
               'device_tested':False,'eligible_for_release':False

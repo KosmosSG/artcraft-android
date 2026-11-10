@@ -52,6 +52,9 @@ def stage_candidate_android_version(builder: Path):
         '        build_gradle(android_meta["package"], min_sdk, target_sdk, code,\n'
         '                     "0.18.0-android.1-test" if app == "gridcraft"\n'
         '                     and version == "0.18.0"\n'
+        '                     and android_meta["package"] == "com.artcraft.gridcraft.candidate"\n'
+        '                     else "0.16.1-android.3" if app == "gridcraft"\n'
+        '                     and version == "0.16.1"\n'
         '                     and android_meta["package"] in ("com.artcraft.gridcraft.candidate", "com.artcraft.gridcraft")\n'
         '                     else version)', 1)
     compile(revised, str(generator), "exec")
@@ -101,6 +104,15 @@ def install(builder: Path, additions: Path):
         source_version = tomllib.loads(upstream_manifest.read_text())["workspace"]["package"]["version"]
         if source_version not in ("0.11.1", "0.15.0", "0.16.1", "0.18.0"):
             raise RuntimeError(f"Unreviewed GridCraft upstream source version: {source_version}")
+    if source_version == "0.18.0":
+        # Enforce EXACT reviewed source, rather than accepting any ref with 0.18.0 metadata.
+        import subprocess
+        checked = subprocess.check_output(
+            ["git", "-C", str(builder / "source/gridcraft"), "rev-parse", "HEAD"],
+            text=True,
+        ).strip()
+        if checked != "17cb3c83d9e73df6a88ed174cec612f1de2e8244":
+            raise RuntimeError("GridCraft 0.18.0 source commit mismatch: " + checked)
     if source_version in ("0.15.0", "0.16.1", "0.18.0"):
         import runpy
         port_script = Path(__file__).with_name("port_v0150_ui.py")

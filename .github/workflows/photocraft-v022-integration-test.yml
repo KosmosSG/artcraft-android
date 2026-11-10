@@ -69,7 +69,7 @@ jobs:
           names = (
               "photocraft_v019_preservation_gate.py",
               "photocraft_v019_adapter_overlay.py",
-              "photocraft_v019_android1_input_overlay.py",
+              "photocraft_v019_android5_input_overlay.py",
               "photocraft_v019_android6_ui_overlay.py",
               "photocraft_v019_android7_input_overlay.py",
               "photocraft_v0201_keyboard_diagnostics_overlay.py",
@@ -89,13 +89,13 @@ jobs:
               pins += t.count(old_sha)
               versions += t.count("0.20.1-android.")
               t = t.replace(old_sha, new_sha)
-              t = t.replace("0.20.1-android.", "0.21.0-android.")
+              t = t.replace("0.20.1-android.", "0.22.0-android.")
               if name == "photocraft_v019_preservation_gate.py":
                   assert t.count('UPSTREAM_TAG = "v0.20.1"') == 1
                   t = t.replace('UPSTREAM_TAG = "v0.20.1"', 'UPSTREAM_TAG = "v0.22.0"')
               if name == "photocraft_v0201_tablet.py":
-                  assert t.count('version = "0.21.0-android.10"') == 1
-                  t = t.replace('version = "0.21.0-android.10"', 'version = "0.21.0-android.1"')
+                  assert t.count('version = "0.22.0-android.10"') == 1
+                  t = t.replace('version = "0.22.0-android.10"', 'version = "0.22.0-android.1"')
               p.write_text(t, encoding="utf-8")
           assert pins == 6, f"Unexpected upstream pin count: {pins}"
           assert versions == 17, f"Unexpected Android version count: {versions}"
@@ -105,13 +105,18 @@ jobs:
           old = "7c12f647150f8e7b2e07718f7993b1fcaa57fefe"
           assert t.count(old) == 1, "unexpected trackpad source pin"
           assert t.count("0.20.2-android.") == 2, "unexpected trackpad versions"
-          t = t.replace(old, new_sha).replace("0.20.2-android.", "0.21.0-android.")
+          t = t.replace(old, new_sha).replace("0.20.2-android.", "0.22.0-android.")
           p.write_text(t, encoding="utf-8")
           # Keep Android Home/link overlay pinned to the reviewed v0.22.0 checkout.
           p = Path("tools/photocraft_v021_home_interactions.py")
           t = p.read_text(encoding="utf-8")
           assert t.count('PIN = "efb7ebd0c0dab1fc108ee4642aa47c22694271a8"') == 1
           p.write_text(t.replace('PIN = "efb7ebd0c0dab1fc108ee4642aa47c22694271a8"', 'PIN = "5000240c6e5dc30a024d20f97a620c78eca10d1e"'), encoding="utf-8")
+          # Update only the upstream version label in Pc menu, never menu behavior.
+          p = Path("tools/photocraft_v021_pc_menu.py")
+          t = p.read_text(encoding="utf-8")
+          assert t.count('Official upstream: v0.21.0') == 1
+          p.write_text(t.replace('Official upstream: v0.21.0', 'Official upstream: v0.22.0'), encoding="utf-8")
           print("PASS: v0.22.0 source pins, overlay versions, Home and trackpad source retargeted only in runner")
           PY
           python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py tools/photocraft_v021_pc_menu.py tools/photocraft_v021_home_interactions.py tools/photocraft_v021_theme_catalog.py
@@ -150,8 +155,8 @@ jobs:
           python3 tools/photocraft_v019_adapter_overlay.py \
             --upstream source/photocraft \
             --android-adapter adapters/photocraft
-          python3 -m py_compile tools/photocraft_v019_android1_input_overlay.py
-          python3 tools/photocraft_v019_android1_input_overlay.py \
+          python3 -m py_compile tools/photocraft_v019_android5_input_overlay.py
+          python3 tools/photocraft_v019_android5_input_overlay.py \
             --upstream source/photocraft \
             --adapter adapters/photocraft
           python3 -m py_compile tools/photocraft_v019_android6_ui_overlay.py
@@ -224,7 +229,7 @@ jobs:
           from pathlib import Path
           p = Path("adapters/photocraft/Cargo.toml")
           t = p.read_text(encoding="utf-8")
-          old = 'version = "0.21.0-android.2"'
+          old = 'version = "0.22.0-android.2"'
           assert t.count(old) == 1, "Unexpected Android.2 manifest version"
           p.write_text(t.replace(old, 'version = "0.22.0-android.1"'), encoding="utf-8")
           PY
@@ -369,8 +374,8 @@ jobs:
           # this is NOT PhotoCraft's permanent production certificate.
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
-          test -f output/photocraft-0.21.0.apk
-          mv output/photocraft-0.21.0.apk output/PhotoCraft-v0.22.0-android.1-arm64-v8a-TEST.apk
+          test -f output/photocraft-0.22.0.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.1-arm64-v8a-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.22.0 adaptation
         if: failure()
@@ -389,7 +394,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0210-android1-ARM64-COMPILER-DIAGNOSTICS
+          name: PhotoCraft-v0220-android1-ARM64-COMPILER-DIAGNOSTICS
           path: logs/photocraft-debug*.log
           retention-days: 3
           if-no-files-found: warn

@@ -8,3 +8,5 @@ Ctrl+Q: preserve native-first app quit, add VC_QUIT4 persisted stage ONLY (not a
 VersionName v0.23.0-android.4 VersionCode 16783904
 APK com.artcraft.vectorcraft.test ARM64 disposable key, no production secret
 One-shot CI, no permanent signing, merge, tag, release or publication
+
+Retry once after early guard failure: Android.13/14 generated Activity already uses finish(), not finishAndRemoveTask(); corrected fail-closed patch anchor. No ARM64 compilation occurred in first run.

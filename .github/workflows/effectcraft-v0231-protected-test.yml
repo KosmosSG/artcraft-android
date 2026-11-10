@@ -98,7 +98,7 @@ jobs:
           m=json.loads(p.read_text())
           assert m['app']=='effectcraft' and m['version_name']=='0.21.0-android.15' and m['version_code']==16820015
           m['version_name']='0.23.1-android.1'; m['version_code']=16840001
-          p.write_text(json.dumps(m,indent=2)+'\\n')
+          p.write_text(json.dumps(m, indent=2) + chr(10))
           PY
           python3 tools/effectcraft/integrate_updater.py .
           echo 'Omit rejected Android diagnostic menu additions'

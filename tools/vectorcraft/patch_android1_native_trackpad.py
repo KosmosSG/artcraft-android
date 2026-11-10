@@ -77,13 +77,38 @@ NEW_ROUTER = r'''
                 // Some MagicOS pads report the generic Mouse tool for both
                 // fingers, so two pointer-class pointers also qualify.
                 let is_two_pad = pointer_class && pointer_count == 2;
-                let has_pad_axes = pointer_class && touchpad && motion_event.pointers().next()
-                    .is_some_and(|p| {
-                        let x=p.axis_value(Axis::from(50u32));
-                        let y=p.axis_value(Axis::from(51u32));
-                        let z=p.axis_value(Axis::from(52u32));
-                        x != 0.0 || y != 0.0 || z > 0.0 && (z-1.0).abs()>0.0001
-                    });
+                // Android 14+ trackpad gestures may be a *single-pointer*
+                // stream with several historical relative-axis samples.
+                // Official docs require processing EVERY historical sample,
+                // then the current sample: our old code dropped all history.
+                let mut native_axes = vectorcraft_pad_math::AxisTotals::default();
+                let mut historical_pinch_samples = 0u32;
+                if pointer_class || reported != PadGesture::None {
+                    if let Some(p) = motion_event.pointers().next() {
+                        for history in p.history() {
+                            let before = native_axes.zoom_count;
+                            native_axes.add(
+                                history.axis_value(Axis::from(50u32)) as f64,
+                                history.axis_value(Axis::from(51u32)) as f64,
+                                history.axis_value(Axis::from(52u32)) as f64);
+                            if native_axes.zoom_count > before {
+                                historical_pinch_samples += 1;
+                            }
+                        }
+                        native_axes.add(
+                            p.axis_value(Axis::from(50u32)) as f64,
+                            p.axis_value(Axis::from(51u32)) as f64,
+                            p.axis_value(Axis::from(52u32)) as f64);
+                    }
+                }
+                let has_pad_axes = native_axes.has_data();
+                if reported == PadGesture::Pinch { crate::platform::android::vc_pad_note(5); }
+                if reported == PadGesture::Scroll { crate::platform::android::vc_pad_note(6); }
+                if historical_pinch_samples > 0 { crate::platform::android::vc_pad_note(7); }
+                if touchpad && !has_pad_axes && reported == PadGesture::None
+                    && motion_event.action() == MotionAction::Move {
+                    crate::platform::android::vc_pad_note(8);
+                }
                 let active_here = self.vc_pad_active
                     && self.vc_pad_device == Some(source_device);
                 // A stale classified packet must not steal later one-finger
@@ -101,8 +126,11 @@ NEW_ROUTER = r'''
                 }
                 let active_here = self.vc_pad_active
                     && self.vc_pad_device == Some(source_device);
-                let candidate = pointer_class &&
-                    (reported != PadGesture::None || is_two_pad || has_pad_axes || active_here);
+                // CLASSIFICATION_PINCH / TWO_FINGER_SWIPE refer to a touchpad
+                // even if an OEM's source/tool flags confused device_kind.
+                // Never intercept ordinary touchscreen/stylus pointer moves.
+                let candidate = reported != PadGesture::None ||
+                    (pointer_class && (is_two_pad || has_pad_axes || active_here));
                 if candidate {
                     let action = motion_event.action();
                     if matches!(action, MotionAction::Up | MotionAction::PointerUp | MotionAction::Cancel) {
@@ -155,12 +183,12 @@ NEW_ROUTER = r'''
                         let position = first.as_ref().map(|p| pointer_position(p));
                         // Gesture axes are already relative to PREVIOUS event.
                         // Never smooth/replay them or multiply by wheel notches.
-                        let (axis_x, axis_y, axis_scale) = first.as_ref().map_or(
-                            (0.0f64, 0.0f64, 0.0f64), |p| (
-                                p.axis_value(Axis::from(50u32)) as f64,
-                                p.axis_value(Axis::from(51u32)) as f64,
-                                p.axis_value(Axis::from(52u32)) as f64,
-                            ));
+                        // Historical axes were accumulated above exactly
+                        // once. For zoom, relative factors multiply, so the
+                        // stable representation is sum(log(scale)).
+                        let axis_x = native_axes.pan_x;
+                        let axis_y = native_axes.pan_y;
+                        let axis_scale = native_axes.scale();
                         let mut pan: Option<(f64, f64, usize)> = None;
                         let mut zoom: Option<(f64, usize)> = None;
                         // Inspect true two-pointer geometry in ALL classified
@@ -193,6 +221,8 @@ NEW_ROUTER = r'''
                             && (reported == PadGesture::Pinch
                                 || self.vc_pad_scale_confirmed
                                 || scale_change.abs() >= 0.012
+                                || (historical_pinch_samples >= 2
+                                    && scale_change.abs() >= 0.004)
                                 || successive_scale);
                         self.vc_pad_scale_previous = scale_change;
                         if native_pinch { self.vc_pad_scale_confirmed = true; }
@@ -282,6 +312,11 @@ static VC_PAD_AXIS_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 static VC_PAD_FALLBACK_PAN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static VC_PAD_FALLBACK_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static VC_PAD_NO_DATA: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+// Source/classification counters, intentionally no coordinates or file data.
+static VC_PAD_CLASSIFIED_PINCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VC_PAD_CLASSIFIED_SCROLL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VC_PAD_HISTORICAL_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VC_PAD_UNCLASSIFIED_NO_AXIS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub(crate) fn vc_pad_note(route: usize) {
     use std::sync::atomic::Ordering::Relaxed;
     let counter = match route {
@@ -289,6 +324,11 @@ pub(crate) fn vc_pad_note(route: usize) {
         1 => &VC_PAD_AXIS_ZOOM,
         2 => &VC_PAD_FALLBACK_PAN,
         3 => &VC_PAD_FALLBACK_ZOOM,
+        4 => &VC_PAD_NO_DATA,
+        5 => &VC_PAD_CLASSIFIED_PINCH,
+        6 => &VC_PAD_CLASSIFIED_SCROLL,
+        7 => &VC_PAD_HISTORICAL_ZOOM,
+        8 => &VC_PAD_UNCLASSIFIED_NO_AXIS,
         _ => &VC_PAD_NO_DATA,
     };
     counter.fetch_add(1, Relaxed);
@@ -298,15 +338,19 @@ pub fn vc_pad_reset_diagnostics() {
     use std::sync::atomic::Ordering::Relaxed;
     for counter in [&VC_PAD_AXIS_PAN, &VC_PAD_AXIS_ZOOM,
                     &VC_PAD_FALLBACK_PAN, &VC_PAD_FALLBACK_ZOOM,
-                    &VC_PAD_NO_DATA] {
+                    &VC_PAD_NO_DATA, &VC_PAD_CLASSIFIED_PINCH,
+                    &VC_PAD_CLASSIFIED_SCROLL, &VC_PAD_HISTORICAL_ZOOM,
+                    &VC_PAD_UNCLASSIFIED_NO_AXIS] {
         counter.store(0, Relaxed);
     }
 }
-pub fn vc_pad_diagnostics() -> [u64; 5] {
+pub fn vc_pad_diagnostics() -> [u64; 9] {
     use std::sync::atomic::Ordering::Relaxed;
     [VC_PAD_AXIS_PAN.load(Relaxed), VC_PAD_AXIS_ZOOM.load(Relaxed),
      VC_PAD_FALLBACK_PAN.load(Relaxed), VC_PAD_FALLBACK_ZOOM.load(Relaxed),
-     VC_PAD_NO_DATA.load(Relaxed)]
+     VC_PAD_NO_DATA.load(Relaxed), VC_PAD_CLASSIFIED_PINCH.load(Relaxed),
+     VC_PAD_CLASSIFIED_SCROLL.load(Relaxed), VC_PAD_HISTORICAL_ZOOM.load(Relaxed),
+     VC_PAD_UNCLASSIFIED_NO_AXIS.load(Relaxed)]
 }
 '''
 
@@ -317,12 +361,12 @@ def patch_staged(root: Path):
     content = rust.read_text()
     old = '                match self.bridge.copy_diagnostic_report(&report) {'
     new = '''                let pad=winit::platform::android::vc_pad_diagnostics();
-                let report=format!("{report}\\nvc_native_trackpad_axis_pan={}\\nvc_native_trackpad_axis_pinch={}\\nvc_native_trackpad_fallback_pan={}\\nvc_native_trackpad_fallback_pinch={}\\nvc_native_trackpad_no_data={}\\n",pad[0],pad[1],pad[2],pad[3],pad[4]);
+                let report=format!("{report}\\nvc_native_trackpad_axis_pan={}\\nvc_native_trackpad_axis_pinch={}\\nvc_native_trackpad_fallback_pan={}\\nvc_native_trackpad_fallback_pinch={}\\nvc_native_trackpad_no_data={}\\nvc_native_trackpad_classified_pinch={}\\nvc_native_trackpad_classified_scroll={}\\nvc_native_trackpad_historical_zoom_packets={}\\nvc_native_trackpad_unclassified_no_axis={}\\n",pad[0],pad[1],pad[2],pad[3],pad[4],pad[5],pad[6],pad[7],pad[8]);
                 match self.bridge.copy_diagnostic_report(&report) {'''
     content = once(content, old, new)
     content = once(content,
         'VectorCraft Android.15 Diagnostic Session',
-        'VectorCraft v0.23.0-android.3 Diagnostic Session')
+        'VectorCraft v0.23.0-android.4 Diagnostic Session')
     content = once(content,
         '            if vc_diag_start {',
         '            if vc_diag_start {\n'

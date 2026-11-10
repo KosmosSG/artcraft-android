@@ -11,7 +11,7 @@ import argparse
 import json
 import tomllib
 
-VERSION = "0.16.1"
+SUPPORTED_VERSIONS = ("0.16.1", "0.18.0")
 SHOW = "crates/ui-egui/src/grid/show.rs"
 INTERACT = "crates/ui-egui/src/grid/interact.rs"
 MARKER = "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1"
@@ -27,8 +27,11 @@ def once(source, needle, replacement, name):
 def port(root: Path, verify_only=False):
     root = root.resolve()
     manifest = root / "Cargo.toml"
-    if not manifest.exists() or tomllib.loads(manifest.read_text())["workspace"]["package"]["version"] != VERSION:
-        raise RuntimeError("Touch selection port only applies to separate official GridCraft 0.15 checkout")
+    if not manifest.exists():
+        raise RuntimeError("Missing official GridCraft upstream Cargo.toml")
+    version = tomllib.loads(manifest.read_text())["workspace"]["package"]["version"]
+    if version not in SUPPORTED_VERSIONS:
+        raise RuntimeError(f"Touch selection port rejects unreviewed upstream {version}")
     show_path, interact_path = root / SHOW, root / INTERACT
     show, interact = show_path.read_text(), interact_path.read_text()
     if MARKER in show or MARKER in interact:
@@ -103,7 +106,7 @@ def port(root: Path, verify_only=False):
         show_path.write_text(show)
         interact_path.write_text(interact)
     return {
-        "upstream": VERSION,
+        "upstream": version,
         "touch_hold_and_drag_select": True,
         "touch_fill_handle_hit_area": 44,
         "mouse_drag_selection_preserved": True,

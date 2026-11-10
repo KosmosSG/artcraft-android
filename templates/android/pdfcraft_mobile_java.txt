@@ -334,7 +334,18 @@ public String pdfInstalledBuildInfo() {
         return "{}";
     }
 }
-public void pdfCheckForUpdates() {
+// Match PhotoCraft's native Android Toast feedback. Never block the editor
+// with an egui update popup when the app is already up to date.
+private void pdfUpdateToast(String message) {
+    if (message == null || message.isEmpty()) return;
+    runOnUiThread(() -> {
+        if (!isFinishing() && !isDestroyed()) {
+            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show();
+        }
+    });
+}
+public void pdfCheckForUpdates(boolean manual) {
+    if (manual) pdfUpdateToast("Checking for PDFCraft updates…");
     pdfBackground.execute(() -> {
         try {
             String installed = getPackageManager().getPackageInfo(
@@ -442,8 +453,22 @@ public void pdfCheckForUpdates() {
                             ? "No newer PDFCraft APK found in the 300 most recent releases."
                             : "PDFCraft Android is up to date: " + installed);
             }
+            if (manual) {
+                // Only a genuine newer, compatible production APK opens the
+                // existing update dialog. Other outcomes use PhotoCraft's
+                // short, bottom-center Android notification.
+                if (latest == null) {
+                    pdfUpdateToast(reply.optString("message", "No published PDFCraft release found."));
+                } else if (!standardPackage) {
+                    pdfUpdateToast("PDFCraft test package " + installed
+                            + "; latest stable is " + latest + ".");
+                } else if (pdfCompareVersions(latest, installed) <= 0) {
+                    pdfUpdateToast("PDFCraft is up to date (" + installed + ").");
+                }
+            }
             pdfUpdateResults.offer(reply.toString());
         } catch (Exception error) {
+            if (manual) pdfUpdateToast("Couldn't check PDFCraft updates: " + error.getMessage());
             try {
                 JSONObject reply = new JSONObject();
                 reply.put("message", "Update check failed: " + error.getMessage());

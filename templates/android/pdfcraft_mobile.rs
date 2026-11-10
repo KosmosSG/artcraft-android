@@ -5,7 +5,7 @@ use jni::{JavaVM, jni_sig, jni_str, objects::{JObject, JString, JValue}};
 use serde_json::Value;
 
 #[derive(Clone, Copy)]
-enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates }
+enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates { manual: bool } }
 
 pub struct Mobile {
     app: AndroidApp,
@@ -156,8 +156,9 @@ impl Mobile {
                 Action::RefreshFonts => {
                     env.call_method(&*activity, jni_str!("pdfRefreshFontFolder"), jni_sig!("()V"), &[])?;
                 }
-                Action::CheckUpdates => {
-                    env.call_method(&*activity, jni_str!("pdfCheckForUpdates"), jni_sig!("()V"), &[])?;
+                Action::CheckUpdates { manual } => {
+                    env.call_method(&*activity, jni_str!("pdfCheckForUpdates"), jni_sig!("(Z)V"),
+                        &[JValue::Bool(manual)])?;
                 }
             }
             Ok(())
@@ -221,16 +222,24 @@ impl Mobile {
         }).map_err(|err| err.to_string())
     }
     pub fn do_update_check(&mut self) {
+        self.check_updates(true);
+    }
+    fn check_updates(&mut self, manual: bool) {
         if self.checking || self.downloading { return; }
         self.update_url = None;
         self.update_asset_url = None;
         self.update_digest.clear();
         self.download_ready = false;
         self.update_status = "Checking published PDFCraft Android releases…".into();
-        self.updates_open = true;
-        match self.request(Action::CheckUpdates) {
+        // PhotoCraft-style feedback: Java owns native Android toasts.
+        // The update dialog opens only when a compatible new APK exists.
+        self.updates_open = false;
+        match self.request(Action::CheckUpdates { manual }) {
             Ok(()) => self.checking = true,
-            Err(error) => self.update_status = format!("Update checker unavailable: {error}"),
+            Err(error) => {
+                self.update_status = format!("Update checker unavailable: {error}");
+                self.updates_open = true; // show an actionable error if JNI is unavailable
+            }
         }
     }
     pub fn poll(&mut self, ctx: &egui::Context) {
@@ -247,7 +256,7 @@ impl Mobile {
         }
         if self.first_frame {
             self.first_frame = false;
-            if self.startup_check { self.do_update_check(); }
+            if self.startup_check { self.check_updates(false); }
         }
         for _ in 0..8 {
             match self.poll_java(false) {
@@ -287,6 +296,12 @@ impl Mobile {
                                 .map(str::to_owned);
                             self.update_digest = response.get("digest").and_then(Value::as_str)
                                 .unwrap_or("").into();
+                            // A production update needs download/install controls.
+                            // No-update, test-package and check errors remain
+                            // bottom-center Android toasts, without a modal.
+                            if self.update_asset_url.is_some() {
+                                self.updates_open = true;
+                            }
                         }
                     } else {
                         self.checking = false;

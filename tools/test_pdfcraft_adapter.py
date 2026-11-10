@@ -241,4 +241,22 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'Temporary signing — not a production release' not in mobile
     # Generated Java Activity must contain the exact runtime metadata bridge.
     assert 'public String pdfInstalledBuildInfo()' in java
+    # PhotoCraft-style native Android Toast feedback: routine checks must
+    # never open the modal, while a new stable release retains Download/Install.
+    assert 'enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates { manual: bool } }' in mobile
+    assert 'jni_str!("pdfCheckForUpdates"), jni_sig!("(Z)V")' in mobile
+    assert 'self.check_updates(true);' in mobile
+    assert 'if self.startup_check { self.check_updates(false); }' in mobile
+    assert 'self.updates_open = false;' in mobile.split('fn check_updates(&mut self, manual: bool)', 1)[1].split('pub fn poll(', 1)[0]
+    assert 'if self.update_asset_url.is_some() {' in mobile
+    assert 'self.updates_open = true;' in mobile.split('if self.update_asset_url.is_some() {', 1)[1]
+    assert 'public void pdfCheckForUpdates(boolean manual)' in bridge
+    assert 'private void pdfUpdateToast(String message)' in bridge
+    assert 'android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()' in bridge
+    assert 'if (manual) pdfUpdateToast("Checking for PDFCraft updates…");' in bridge
+    assert 'PDFCraft is up to date (' in bridge
+    assert "Couldn't check PDFCraft updates:" in bridge
+    assert 'public void pdfCheckForUpdates(boolean manual)' in java
+    assert 'android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()' in java
+    assert 'ui.button("Download APK")' in mobile and 'self.install_download()' in mobile
 print('PASS: embedded Python syntax, guarded patches, idempotence, Android generator, identity/version and Help bridge')

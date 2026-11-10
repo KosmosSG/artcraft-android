@@ -27,6 +27,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
 
@@ -44,7 +46,8 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView counts, latest, recent;
     private DrawingPad pad;
-    private MotionEvent previousEvent;
+    private final Set<Integer> seenDevices = new HashSet<>();
+    private int nonStylusTouches, markers;
     private int lastButtonMask, hover, touch, pressureSamples, tiltSamples, edges;
     private int keys, singles, doubles, longs;
     private long lastSample, lastRender;
@@ -98,6 +101,15 @@ public final class MainActivity extends Activity {
         export.setText("Export .txt");
         export.setOnClickListener(v -> exportLog());
         controls.addView(export, new LinearLayout.LayoutParams(0, dp(56), 1));
+        Button marker = new Button(this);
+        marker.setText("Mark step");
+        marker.setOnClickListener(v -> {
+            markers++;
+            add("USER_MARKER", "manual_marker=" + markers + " press_pen_button_now");
+            latestLine = "Marker " + markers + " added. Test the pen button now.";
+            updateUi(true);
+        });
+        controls.addView(marker, new LinearLayout.LayoutParams(0, dp(56), 1));
         Button clear = new Button(this);
         clear.setText("Clear log");
         clear.setOnClickListener(v -> clearLog());
@@ -109,6 +121,7 @@ public final class MainActivity extends Activity {
         setContentView(scroll);
         add("SESSION_START", "model=" + Build.MANUFACTURER + " " + Build.MODEL
             + " api=" + Build.VERSION.SDK_INT + " package=com.artcraft.stylusdiagnostic");
+        for (int id : InputDevice.getDeviceIds()) recordDevice(id);
         updateUi(true);
     }
 
@@ -116,6 +129,22 @@ public final class MainActivity extends Activity {
         String date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
         log.addLast(date + "\t" + type + "\t" + details.replace('\n', ' '));
         while (log.size() > MAX_ROWS) log.removeFirst();
+    }
+
+    private void recordDevice(int id) {
+        if (id < 0 || !seenDevices.add(id)) return;
+        InputDevice d = InputDevice.getDevice(id);
+        if (d == null) {
+            add("INPUT_DEVICE", "id=" + id + " descriptor_unavailable");
+            return;
+        }
+        add("INPUT_DEVICE", "id=" + id
+            + " name=" + d.getName().replace('\n', ' ')
+            + " vendorId=" + d.getVendorId()
+            + " productId=" + d.getProductId()
+            + " sources=0x" + Integer.toHexString(d.getSources())
+            + " keyboardType=" + d.getKeyboardType()
+            + " isExternal=" + d.isExternal());
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent e) {
@@ -131,6 +160,7 @@ public final class MainActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getAction() == KeyEvent.ACTION_DOWN || e.getAction() == KeyEvent.ACTION_UP) {
             keys++;
+            recordDevice(e.getDeviceId());
             String s = KeyEvent.keyCodeToString(e.getKeyCode())
                 + " action=" + (e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP")
                 + " repeat=" + e.getRepeatCount() + " scan=" + e.getScanCode()
@@ -171,10 +201,19 @@ public final class MainActivity extends Activity {
     }
 
     private void monitor(MotionEvent e) {
-        if (e == previousEvent) return;
-        previousEvent = e;
-        if (!isStylus(e) || e.getPointerCount() == 0) return;
+        if (e.getPointerCount() == 0) return;
+        recordDevice(e.getDeviceId());
         int a = e.getActionMasked();
+        if (!isStylus(e)) {
+            if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_UP) {
+                nonStylusTouches++;
+                add("NON_STYLUS_TOUCH", action(a) + " toolType=" + e.getToolType(0)
+                    + " device=" + e.getDeviceId()
+                    + " source=0x" + Integer.toHexString(e.getSource()));
+                updateUi(true);
+            }
+            return;
+        }
         long now = SystemClock.uptimeMillis();
         boolean buttonChanged = trackButtons(e, a, now);
         boolean move = a == MotionEvent.ACTION_MOVE || a == MotionEvent.ACTION_HOVER_MOVE;
@@ -256,6 +295,7 @@ public final class MainActivity extends Activity {
         lastRender = now;
         counts.setText("Hover: " + hover + "  Contact: " + touch
             + "  Pressure: " + pressureSamples + "  Tilt: " + tiltSamples
+            + "  Other touches: " + nonStylusTouches
             + "\nButton edges: " + edges + "  Single/Double/Long: "
             + singles + "/" + doubles + "/" + longs + "  KeyEvents: " + keys);
         latest.setText(latestLine);
@@ -271,6 +311,7 @@ public final class MainActivity extends Activity {
         log.clear();
         lastButtonMask = 0;
         hover = touch = pressureSamples = tiltSamples = edges = keys = singles = doubles = longs = 0;
+        nonStylusTouches = markers = 0;
         latestLine = "Cleared. Ready for next test.";
         pad.clear();
         add("SESSION_CLEARED", "user_action");
@@ -301,8 +342,10 @@ public final class MainActivity extends Activity {
             .append("\nButton edges: ").append(edges)
             .append("\nSingle/Double/Long: ").append(singles).append('/')
             .append(doubles).append('/').append(longs)
+            .append("\nOther touch samples: ").append(nonStylusTouches)
             .append("\nUnattributed KeyEvents: ").append(keys)
             .append("\nNote: KeyEvents cannot be attributed to the pen without verification.")
+            .append("\nUse USER_MARKER to correlate key events with deliberately pressing the pen button.")
             .append("\nLog retains newest ").append(MAX_ROWS)
             .append(" rows. Coordinates and local timestamps are included.\n\n")
             .append("TIME\tTYPE\tDETAILS\n");
@@ -342,12 +385,10 @@ public final class MainActivity extends Activity {
             invalidate();
         }
         @Override public boolean onHoverEvent(MotionEvent e) {
-            monitor(e);
             preview(e);
             return isStylus(e) || super.onHoverEvent(e);
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
-            monitor(e);
             preview(e);
             return true;
         }

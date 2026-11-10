@@ -33,3 +33,11 @@ From the GitHub Actions workflow named ArtCraft Stylus Diagnostic ARM64 TEST ONL
 - Future test rebuilds may require uninstalling this diagnostic app because their signing certificates will differ.
 - No GitHub Release publishing, PR merging, stable signing or permanent key use.
 - This experiment is a utility, not a registered ArtCraft editor.
+
+## v0.1.1 diagnostic correction
+
+The first MagicPad 4 report showed one HOVER_ENTER (tilt 0.446), no contact/button transitions and 18 raw key events (DPAD_UP/DOWN and fingerprint identify) from another device ID. Device IDs are session-specific and are not proof of stylus origin.
+
+Fix: no longer retain a MotionEvent object across dispatches; Android can recycle and reuse these objects. Log motion centrally at Activity dispatch to avoid duplicate callbacks, record InputDevice name/vendor/product/source/keyboard/external metadata, count non-stylus touch starts/ends, and add a Mark step button to correlate press sequences with key events. Hardware compatibility still requires the next on-device test.
+
+Press **Mark step**, then only press the Magic-Pencil side button while hovering. Repeat with pen touching the canvas, then test without a connected keyboard or trackpad. Inspect the INPUT_DEVICE rows for names corresponding to source IDs; no automatic macro mapping is performed.

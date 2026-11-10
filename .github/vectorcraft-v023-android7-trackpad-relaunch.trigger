@@ -6,3 +6,5 @@ Trackpad canvas natural X/Y pan, earlier geometry pan, startup ANR mitigation/di
 Fail-closed source preflight and behavior tests before ARM64 Rust compilation
 DO NOT merge, permanently sign, tag or publish
 Trigger 2026-11-10
+
+Retry #2 source-only preflight: corrected misplaced canvas guard, no prior native compilation, preserve all scoped Android.7 behavior.

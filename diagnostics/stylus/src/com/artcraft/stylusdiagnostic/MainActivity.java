@@ -44,10 +44,14 @@ public final class MainActivity extends Activity {
     private final ArrayDeque<String> log = new ArrayDeque<>();
     private final Map<Integer, Press> press = new HashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView counts, latest, recent;
+    private TextView counts, latest, recent, testStatus;
+    private final ArrayList<Button> testButtons = new ArrayList<>();
+    private final ArrayList<String> testSummaries = new ArrayList<>();
+    private TestWindow activeTest;
+    private int completedTests, nextTestId;
     private DrawingPad pad;
     private final Set<Integer> seenDevices = new HashSet<>();
-    private int nonStylusTouches, markers;
+    private int nonStylusTouches;
     private int lastButtonMask, hover, touch, pressureSamples, tiltSamples, edges;
     private int keys, singles, doubles, longs;
     private long lastSample, lastRender;
@@ -56,6 +60,16 @@ public final class MainActivity extends Activity {
     private static final class Press {
         long downAt, lastRelease;
         Runnable pending;
+    }
+
+    private static final class TestWindow {
+        int id;
+        String kind;
+        long startUptime, durationMs;
+        int penKeyDown, penKeyUp, keyRepeats, orphanUp, matchedPairs;
+        int heldAtLeast1400ms, otherKeyEvents, stylusContactEvents, standardButtonEdges;
+        final Map<Integer, Long> pressedAt = new HashMap<>();
+        Runnable timeout;
     }
 
     private int dp(float n) {
@@ -101,20 +115,33 @@ public final class MainActivity extends Activity {
         export.setText("Export .txt");
         export.setOnClickListener(v -> exportLog());
         controls.addView(export, new LinearLayout.LayoutParams(0, dp(56), 1));
-        Button marker = new Button(this);
-        marker.setText("Mark step");
-        marker.setOnClickListener(v -> {
-            markers++;
-            add("USER_MARKER", "manual_marker=" + markers + " press_pen_button_now");
-            latestLine = "Marker " + markers + " added. Test the pen button now.";
-            updateUi(true);
-        });
-        controls.addView(marker, new LinearLayout.LayoutParams(0, dp(56), 1));
         Button clear = new Button(this);
         clear.setText("Clear log");
         clear.setOnClickListener(v -> clearLog());
         controls.addView(clear, new LinearLayout.LayoutParams(0, dp(56), 1));
         column.addView(controls);
+        text(column, "BUTTON GESTURE TESTS — tap a test, then perform that exact action "
+            + "within the recording window. Each test closes automatically.",
+            13, Color.rgb(27, 48, 82));
+        testStatus = text(column, "No button test started. Tap one of the four options below.",
+            13, Color.rgb(33, 81, 139));
+        LinearLayout testRow1 = new LinearLayout(this);
+        testRow1.setOrientation(LinearLayout.HORIZONTAL);
+        addTestButton(testRow1, "1. Single press", "SINGLE_HOVER", 9000,
+            "Hover above the dark canvas and press the pen button ONCE.");
+        addTestButton(testRow1, "2. Double press", "DOUBLE_HOVER", 9000,
+            "Hover above the canvas and press the pen button TWICE quickly.");
+        column.addView(testRow1);
+        LinearLayout testRow2 = new LinearLayout(this);
+        testRow2.setOrientation(LinearLayout.HORIZONTAL);
+        addTestButton(testRow2, "3. Long press", "LONG_HOVER", 11000,
+            "Hover and hold the pen button for TWO SECONDS, then release.");
+        addTestButton(testRow2, "4. While drawing", "PRESS_WHILE_DRAWING", 11000,
+            "Draw on the canvas WHILE pressing and releasing the pen button.");
+        column.addView(testRow2);
+        text(column, "These tests only record signals. Missing button press events "
+            + "are reported rather than guessed. No shortcuts execute.",
+            12, Color.DKGRAY);
         text(column, "RECENT EVENTS. Raw KeyEvents are not automatically attributed to the stylus.",
             12, Color.DKGRAY);
         recent = text(column, "No events yet.", 11, Color.rgb(72, 79, 92));
@@ -122,6 +149,123 @@ public final class MainActivity extends Activity {
         add("SESSION_START", "model=" + Build.MANUFACTURER + " " + Build.MODEL
             + " api=" + Build.VERSION.SDK_INT + " package=com.artcraft.stylusdiagnostic");
         for (int id : InputDevice.getDeviceIds()) recordDevice(id);
+        updateUi(true);
+    }
+
+
+    private void addTestButton(LinearLayout row, String label, String kind,
+            long durationMs, String instruction) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(13);
+        b.setAllCaps(false);
+        b.setOnClickListener(v -> beginTest(kind, durationMs, instruction));
+        row.addView(b, new LinearLayout.LayoutParams(0, dp(64), 1));
+        testButtons.add(b);
+    }
+
+    private void beginTest(String kind, long durationMs, String instruction) {
+        if (activeTest != null) {
+            Toast.makeText(this, "Current test is still recording.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        TestWindow t = new TestWindow();
+        t.id = ++nextTestId;
+        t.kind = kind;
+        t.durationMs = durationMs;
+        t.startUptime = SystemClock.uptimeMillis();
+        activeTest = t;
+        for (Button b : testButtons) b.setEnabled(false);
+        add("TEST_BEGIN", "id=" + t.id + " kind=" + kind
+            + " window_ms=" + durationMs + " instructions=" + instruction);
+        testStatus.setText("RECORDING [" + t.id + " " + kind + "] for "
+            + (durationMs / 1000) + " seconds. " + instruction);
+        latestLine = "Test " + t.id + " started. " + instruction;
+        updateUi(true);
+        Toast.makeText(this, "Recording: " + instruction, Toast.LENGTH_LONG).show();
+        final int id = t.id;
+        t.timeout = () -> endTest(id, false);
+        handler.postDelayed(t.timeout, durationMs);
+    }
+
+    private void observeTestKey(KeyEvent e, InputDevice device) {
+        TestWindow t = activeTest;
+        if (t == null) return;
+        if (device == null || device.getName() == null
+                || !device.getName().contains("Magic-Pencil 4s")) {
+            t.otherKeyEvents++;
+            return;
+        }
+        int code = e.getKeyCode();
+        long now = SystemClock.uptimeMillis();
+        long delta = now - t.startUptime;
+        String key = KeyEvent.keyCodeToString(code);
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            if (e.getRepeatCount() > 0 || t.pressedAt.containsKey(code)) {
+                t.keyRepeats++;
+            } else {
+                t.penKeyDown++;
+                t.pressedAt.put(code, now);
+            }
+        } else if (e.getAction() == KeyEvent.ACTION_UP) {
+            t.penKeyUp++;
+            Long started = t.pressedAt.remove(code);
+            if (started == null) {
+                t.orphanUp++;
+            } else {
+                t.matchedPairs++;
+                if (now - started >= 1400) t.heldAtLeast1400ms++;
+            }
+        }
+        add("TEST_PEN_KEY", "id=" + t.id + " kind=" + t.kind
+            + " elapsed_ms=" + delta + " key=" + key
+            + " action=" + (e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP")
+            + " repeat=" + e.getRepeatCount() + " scan=" + e.getScanCode()
+            + " device=" + e.getDeviceId()
+            + " matched_pairs=" + t.matchedPairs
+            + " orphan_up=" + t.orphanUp);
+        testStatus.setText("Recording " + t.kind + ": pen-key DOWN=" + t.penKeyDown
+            + ", UP=" + t.penKeyUp + ", matched=" + t.matchedPairs
+            + ", unmatched release=" + t.orphanUp
+            + ". Continue the requested gesture until test ends.");
+    }
+
+    private void endTest(int id, boolean cancelled) {
+        TestWindow t = activeTest;
+        if (t == null || t.id != id) return;
+        if (t.timeout != null) handler.removeCallbacks(t.timeout);
+        activeTest = null;
+        for (Button b : testButtons) b.setEnabled(true);
+        int unmatchedDown = t.pressedAt.size();
+        String observation = cancelled ? "CANCELLED"
+            : t.penKeyDown == 0 && t.penKeyUp == 0 && t.standardButtonEdges == 0
+                ? "NO_BUTTON_SIGNAL_OBSERVED"
+            : t.orphanUp > 0 || unmatchedDown > 0
+                ? "PARTIAL_KEY_PAIRS"
+            : "KEY_PAIRS_CAPTURED_NOT_GESTURE_PROOF";
+        String summary = "id=" + t.id + " kind=" + t.kind
+            + " result=" + observation
+            + " pen_down=" + t.penKeyDown + " pen_up=" + t.penKeyUp
+            + " matched_pairs=" + t.matchedPairs + " orphan_up=" + t.orphanUp
+            + " unmatched_down=" + unmatchedDown
+            + " held_1400ms=" + t.heldAtLeast1400ms
+            + " repeat_down=" + t.keyRepeats
+            + " other_key_events=" + t.otherKeyEvents
+            + " stylus_contact_events=" + t.stylusContactEvents
+            + " standard_button_edges=" + t.standardButtonEdges;
+        add(cancelled ? "TEST_CANCELLED" : "TEST_END", summary);
+        if (!cancelled) {
+            completedTests++;
+            testSummaries.add(summary);
+            if (testSummaries.size() > 16) testSummaries.remove(0);
+        }
+        testStatus.setText((cancelled ? "Test cancelled: " : "Test completed: ")
+            + t.kind + ". " + observation + "\n"
+            + "Pen key DOWN/UP: " + t.penKeyDown + "/" + t.penKeyUp
+            + "; matched pairs: " + t.matchedPairs
+            + "; orphan releases: " + t.orphanUp
+            + ". Run the next test or export the log.");
+        latestLine = "Completed " + t.kind + ": " + observation;
         updateUi(true);
     }
 
@@ -171,6 +315,7 @@ public final class MainActivity extends Activity {
                 + " device=" + e.getDeviceId() + " deviceName=" + deviceName
                 + " source=0x" + Integer.toHexString(e.getSource());
             add("UNATTRIBUTED_KEY_EVENT", s);
+            observeTestKey(e, origin);
             latestLine = s + "\n(Key could be from keyboard, system or pen.)";
             updateUi(true);
         }
@@ -261,6 +406,10 @@ public final class MainActivity extends Activity {
             return;
         }
         long now = SystemClock.uptimeMillis();
+        TestWindow t = activeTest;
+        if (t != null && (a == MotionEvent.ACTION_DOWN
+                || a == MotionEvent.ACTION_MOVE || a == MotionEvent.ACTION_UP))
+            t.stylusContactEvents++;
         boolean buttonChanged = trackButtons(e, a, now);
         boolean move = a == MotionEvent.ACTION_MOVE || a == MotionEvent.ACTION_HOVER_MOVE;
         if (move && !buttonChanged && now - lastSample < 45) return;
@@ -294,6 +443,7 @@ public final class MainActivity extends Activity {
             if ((changed & bit) == 0) continue;
             boolean down = (mask & bit) != 0;
             edges++;
+            if (activeTest != null) activeTest.standardButtonEdges++;
             add("BUTTON_EDGE", "button=0x" + Integer.toHexString(bit)
                 + " state=" + (down ? "PRESSED" : "RELEASED")
                 + " device=" + e.getDeviceId());
@@ -343,7 +493,8 @@ public final class MainActivity extends Activity {
             + "  Pressure: " + pressureSamples + "  Tilt: " + tiltSamples
             + "  Other touches: " + nonStylusTouches
             + "\nButton edges: " + edges + "  Single/Double/Long: "
-            + singles + "/" + doubles + "/" + longs + "  KeyEvents: " + keys);
+            + singles + "/" + doubles + "/" + longs + "  KeyEvents: " + keys
+            + "\nCompleted labeled tests: " + completedTests);
         latest.setText(latestLine);
         StringBuilder s = new StringBuilder();
         int skip = Math.max(0, log.size() - 8), i = 0;
@@ -352,12 +503,16 @@ public final class MainActivity extends Activity {
     }
 
     private void clearLog() {
+        if (activeTest != null) endTest(activeTest.id, true);
+        testSummaries.clear();
+        completedTests = nextTestId = 0;
+        if (testStatus != null) testStatus.setText("Ready. Choose a button gesture test.");
         for (Press p : press.values()) if (p.pending != null) handler.removeCallbacks(p.pending);
         press.clear();
         log.clear();
         lastButtonMask = 0;
         hover = touch = pressureSamples = tiltSamples = edges = keys = singles = doubles = longs = 0;
-        nonStylusTouches = markers = 0;
+        nonStylusTouches = 0;
         latestLine = "Cleared. Ready for next test.";
         pad.clear();
         add("SESSION_CLEARED", "user_action");
@@ -365,6 +520,10 @@ public final class MainActivity extends Activity {
     }
 
     private void exportLog() {
+        if (activeTest != null) {
+            Toast.makeText(this, "Finish the active test before exporting.", Toast.LENGTH_LONG).show();
+            return;
+        }
         Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         i.setType("text/plain");
         i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -391,7 +550,12 @@ public final class MainActivity extends Activity {
             .append("\nOther touch samples: ").append(nonStylusTouches)
             .append("\nUnattributed KeyEvents: ").append(keys)
             .append("\nNote: KeyEvents cannot be attributed to the pen without verification.")
-            .append("\nUse USER_MARKER to correlate key events with deliberately pressing the pen button.")
+            .append("\nCompleted labeled button tests: ").append(completedTests)
+            .append("\nLabeled test windows indicate what was asked, not proven gesture recognition.")
+            .append("\nSome pen input devices send orphan key releases; these are counted explicitly.")
+            .append("\nTEST_SUMMARY_BEGIN\n")
+            .append(String.join("\n", testSummaries))
+            .append("\nTEST_SUMMARY_END")
             .append("\nLog retains newest ").append(MAX_ROWS)
             .append(" rows. Coordinates and local timestamps are included.\n\n")
             .append("TIME\tTYPE\tDETAILS\n");
@@ -403,6 +567,14 @@ public final class MainActivity extends Activity {
         } catch (Exception ex) {
             Toast.makeText(this, "Export failed: " + ex.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    @Override protected void onDestroy() {
+        if (activeTest != null && activeTest.timeout != null)
+            handler.removeCallbacks(activeTest.timeout);
+        for (Press p : press.values())
+            if (p.pending != null) handler.removeCallbacks(p.pending);
+        super.onDestroy();
     }
 
     private final class DrawingPad extends View {

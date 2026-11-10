@@ -20,7 +20,7 @@ javac --release 17 -classpath "$ANDROID_JAR" -d "$BUILD/classes" \
   "$ROOT/src/com/artcraft/stylusdiagnostic/MainActivity.java"
 "$TOOLS/aapt2" link -o "$BUILD/base.apk" -I "$ANDROID_JAR" \
   --manifest "$ROOT/AndroidManifest.xml" --min-sdk-version 26 \
-  --target-sdk-version 34 --version-code 4 --version-name "0.1.3-test"
+  --target-sdk-version 34 --version-code 5 --version-name "0.1.4-test"
 "$TOOLS/d8" --min-api 26 --lib "$ANDROID_JAR" --output "$BUILD/dex" \
   "$BUILD"/classes/com/artcraft/stylusdiagnostic/*.class
 (cd "$BUILD/dex" && zip -q -u "$BUILD/base.apk" classes.dex)
@@ -31,7 +31,7 @@ keytool -genkeypair -noprompt -keyalg RSA -keysize 2048 -validity 30 \
   -alias diagnostic -keystore "$BUILD/temporary-test-only.jks" \
   -storepass "$PASS" -keypass "$PASS" \
   -dname "CN=ArtCraft Stylus Diagnostic TEST ONLY"
-APK="$OUT/ArtCraft-Stylus-Diagnostic-v0.1.3-TEST-ONLY.apk"
+APK="$OUT/ArtCraft-Stylus-Diagnostic-v0.1.4-TEST-ONLY.apk"
 "$TOOLS/apksigner" sign --ks "$BUILD/temporary-test-only.jks" \
   --ks-key-alias diagnostic --ks-pass "pass:$PASS" \
   --key-pass "pass:$PASS" --out "$APK" "$BUILD/aligned.apk"

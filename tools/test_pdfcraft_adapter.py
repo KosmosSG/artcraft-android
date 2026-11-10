@@ -224,4 +224,21 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'if (conn != null) conn.disconnect();' in bridge
     assert 'PDFCraft-v' in bridge and '-arm64-release.apk' in bridge
     assert 'pdfCompareVersions(latest, installed) > 0' in bridge
+    # The version shown in Updates and About must come from PackageManager,
+    # never from the former 0.19.0-android.3 test candidate.
+    assert 'public String pdfInstalledBuildInfo()' in bridge
+    assert 'getPackageManager().getPackageInfo(getPackageName(), 0)' in bridge
+    assert 'PDFCRAFT_ANDROID_RUNTIME_BUILD_IDENTITY' in bridge
+    assert 'boolean standardPackage = "com.artcraft.pdfcraft".equals(getPackageName())' in bridge
+    assert 'if (standardPackage) {' in bridge
+    assert 'Separate PDFCraft test package: ' in bridge
+    assert 'read_installed_build_info()' in mobile
+    assert 'jni_str!("pdfInstalledBuildInfo")' in mobile
+    assert 'Installed: PDFCraft {} ({package_type})' in mobile
+    assert 'Version {}' in mobile
+    assert 'Android package: {}' in mobile
+    assert '0.19.0-android.3' not in mobile
+    assert 'Temporary signing — not a production release' not in mobile
+    # Generated Java Activity must contain the exact runtime metadata bridge.
+    assert 'public String pdfInstalledBuildInfo()' in java
 print('PASS: embedded Python syntax, guarded patches, idempotence, Android generator, identity/version and Help bridge')

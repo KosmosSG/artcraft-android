@@ -317,6 +317,23 @@ private void pdfScanFontFolder(Uri tree) {
     });
 }
 
+// PDFCRAFT_ANDROID_RUNTIME_BUILD_IDENTITY: describe the installed APK, not
+// the upstream version or a historic test build. This also avoids guessing
+// from the APK filename or the GitHub release being offered.
+public String pdfInstalledBuildInfo() {
+    try {
+        android.content.pm.PackageInfo info =
+                getPackageManager().getPackageInfo(getPackageName(), 0);
+        JSONObject result = new JSONObject();
+        result.put("version", info.versionName == null || info.versionName.isEmpty()
+                ? "Unavailable" : info.versionName);
+        result.put("package", getPackageName());
+        return result.toString();
+    } catch (Exception error) {
+        Log.w(TAG, "Unable to determine installed PDFCraft identity", error);
+        return "{}";
+    }
+}
 public void pdfCheckForUpdates() {
     pdfBackground.execute(() -> {
         try {
@@ -398,6 +415,8 @@ public void pdfCheckForUpdates() {
             }
             JSONObject reply = new JSONObject();
             reply.put("installed", installed);
+            boolean standardPackage = "com.artcraft.pdfcraft".equals(getPackageName());
+            reply.put("package", getPackageName());
             if (latest == null) {
                 reply.put("message", pageLimitReached
                         ? "No PDFCraft APK found in the 300 most recent ArtCraft releases."
@@ -406,14 +425,22 @@ public void pdfCheckForUpdates() {
                 reply.put("latest", latest);
                 if (pdfCompareVersions(latest, installed) > 0) {
                     reply.put("url", releaseUrl);
-                    reply.put("asset_url", assetUrl);
-                    reply.put("digest", assetDigest == null ? "" : assetDigest);
+                    // A different test package cannot update the production
+                    // package in place, regardless of the version number.
+                    if (standardPackage) {
+                        reply.put("asset_url", assetUrl);
+                        reply.put("digest", assetDigest == null ? "" : assetDigest);
+                    }
                 }
-                reply.put("message", pdfCompareVersions(latest, installed) > 0
-                        ? "New PDFCraft Android release: " + latest
-                        : pageLimitReached
-                          ? "No newer PDFCraft APK found in the 300 most recent releases."
-                          : "PDFCraft Android is up to date: " + installed);
+                reply.put("message", !standardPackage
+                        ? "Separate PDFCraft test package: " + installed
+                          + ". Latest stable release: " + latest
+                          + ". Install stable PDFCraft separately."
+                        : pdfCompareVersions(latest, installed) > 0
+                          ? "New PDFCraft Android release: " + latest
+                          : pageLimitReached
+                            ? "No newer PDFCraft APK found in the 300 most recent releases."
+                            : "PDFCraft Android is up to date: " + installed);
             }
             pdfUpdateResults.offer(reply.toString());
         } catch (Exception error) {

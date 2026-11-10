@@ -29,6 +29,9 @@ pub struct Mobile {
     trackpad_last_poll: Option<std::time::Instant>,
     updates_open: bool,
     about_open: bool,
+    // Retrieved from the Android PackageManager, never hardcoded to a release.
+    installed_version: String,
+    installed_package: String,
     toolbar_shown: bool,
     font_status: String,
     update_status: String,
@@ -53,6 +56,7 @@ impl Mobile {
             trackpad_last_native: "No egui scroll/zoom events yet".into(),
             trackpad_java_status: "No Java input diagnostic sample yet".into(),
             trackpad_last_poll: None, updates_open: false, about_open: false, toolbar_shown: false,
+            installed_version: "Unavailable".into(), installed_package: "unavailable".into(),
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, update_asset_url: None, update_digest: String::new(),
@@ -60,7 +64,29 @@ impl Mobile {
         };
         mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
         mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(false);
+        if let Ok((version, package)) = mobile.read_installed_build_info() {
+            mobile.installed_version = version;
+            mobile.installed_package = package;
+        }
         mobile
+    }
+
+    fn read_installed_build_info(&self) -> Result<(String, String), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let payload = vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pdfInstalledBuildInfo"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok(String::new()); }
+            JString::cast_local(env, value)?.try_to_string(env)
+        }).map_err(|error| error.to_string())?;
+        let info: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let version = info.get("version").and_then(Value::as_str)
+            .filter(|value| !value.is_empty()).ok_or("Android version unavailable")?;
+        let package = info.get("package").and_then(Value::as_str)
+            .filter(|value| !value.is_empty()).ok_or("Android package unavailable")?;
+        Ok((version.to_owned(), package.to_owned()))
     }
 
     fn read_startup_setting(&self) -> Result<bool, String> {
@@ -487,7 +513,14 @@ impl Mobile {
             .min_width(300.0)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Installed: PDFCraft 0.19.0-android.3 (test candidate)");
+                let package_type = if self.installed_package == "com.artcraft.pdfcraft" {
+                    "standard package"
+                } else if self.installed_package.starts_with("com.artcraft.pdfcraft.") {
+                    "separate test package"
+                } else {
+                    "package unavailable"
+                };
+                ui.label(format!("Installed: PDFCraft {} ({package_type})", self.installed_version));
                 ui.label(&self.update_status);
                 if self.checking || self.downloading { ui.spinner(); }
                 ui.horizontal_wrapped(|ui| {
@@ -537,11 +570,17 @@ impl Mobile {
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.heading("PDFCraft");
-                    ui.label("Version 0.19.0-android.3");
-                    ui.label("ARM64 test candidate • separate package");
+                    ui.label(format!("Version {}", self.installed_version));
+                    ui.label(format!("Android package: {}", self.installed_package));
+                    if self.installed_package == "com.artcraft.pdfcraft" {
+                        ui.label("Standard PDFCraft package");
+                    } else if self.installed_package.starts_with("com.artcraft.pdfcraft.") {
+                        ui.label("Separate test package — cannot replace stable PDFCraft");
+                    } else {
+                        ui.label("Package identity unavailable");
+                    }
                     ui.label("PDF editor for Android");
                     ui.label("Updates: published PDFCraft releases only");
-                    ui.label("Temporary signing — not a production release");
                 });
             self.about_open = open;
         }

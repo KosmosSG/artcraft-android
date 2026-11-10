@@ -1,0 +1,62 @@
+name: GridCraft v0.18.0 owner-approved Stable promotion (no APK rebuild)
+on:
+  push:
+    branches:
+      - integration/gridcraft-upstream-20261110
+    paths:
+      - '.github/workflows/gridcraft-v0180-promote-stable-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gridcraft-v0180-promote-stable-once
+  cancel-in-progress: false
+
+jobs:
+  promote-verified-existing-release:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/gridcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: gridcraft-v0.18.0-android.1
+      APK_NAME: GridCraft-v0.18.0-android.1-arm64-v8a.apk
+      PREVIOUS_STABLE: gridcraft-v0.16.1-android.4
+      EXPECTED_RELEASE_COMMIT: 60d3dd428ba2e50229a495f9b50b4de8dc0ae1dc
+    steps:
+      - name: Inspect existing signed release and protect its assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /tmp/gridcraft-current.json
+          jq -e --arg tag "$TAG" --arg commit "$EXPECTED_RELEASE_COMMIT" \
+            '.tag_name == $tag and .draft == false and .target_commitish == $commit' /tmp/gridcraft-current.json
+          jq -e --arg apk "$APK_NAME" \
+            '[.assets[] | select(.name==$apk and .size==57747965)] | length==1' /tmp/gridcraft-current.json
+          jq -e '[.assets[] | select(.name=="SHA256SUMS.txt")] | length==1' /tmp/gridcraft-current.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$PREVIOUS_STABLE" > /tmp/gridcraft-previous.json
+          jq -e '.draft==false and .prerelease==false and (.assets|length)>=2' /tmp/gridcraft-previous.json
+          echo 'PASS: existing signed APK/checksum and previous stable release verified; no rebuild'
+      - name: Promote existing release from Prerelease to Stable
+        shell: bash
+        run: |
+          set -euo pipefail
+          if jq -e '.prerelease==false' /tmp/gridcraft-current.json >/dev/null; then
+            echo 'Already Stable: no change necessary'
+          else
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --prerelease=false --latest=false
+          fi
+      - name: Verify Stable metadata and preservation of original files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /tmp/gridcraft-final.json
+          jq -e --arg apk "$APK_NAME" --arg commit "$EXPECTED_RELEASE_COMMIT" \
+            '.draft==false and .prerelease==false and .target_commitish==$commit and ([.assets[] | select(.name==$apk and .size==57747965)] | length==1) and ([.assets[] | select(.name=="SHA256SUMS.txt")] | length==1)' /tmp/gridcraft-final.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$PREVIOUS_STABLE" | jq -e '.prerelease==false and .draft==false'
+          echo 'PASS: v0.18.0 is Stable; original APK and prior Stable remain unchanged'
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,isPrerelease,isDraft,assets
+      - name: Remove temporary metadata
+        if: always()
+        run: rm -f /tmp/gridcraft-current.json /tmp/gridcraft-final.json /tmp/gridcraft-previous.json

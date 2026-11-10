@@ -29,7 +29,7 @@ class StageV019Tests(unittest.TestCase):
         }
         self.manifest = self.assets / "manifest.json"
         self.manifest.write_text(json.dumps(self.cfg))
-        self.verifier = self.tools / "verify_android_features_apk.py"
+        self.verifier = self.tools / "verify_android_features_apk_v019.py"
         self.old = '("com.artcraft.filmcraft", "1000005", "0.10.0-android.5")'
         self.verifier.write_text("expected = " + self.old + "\n")
         (self.tools / "stage_upstream_v019_variant.py").touch()

@@ -1,0 +1,73 @@
+name: Publish verified LightCraft v0.20.0 Android.1 (ONE SHOT)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Reject existing tag or release (never overwrite)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view lightcraft-v0.20.0-android.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "STOP: release already exists"; exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY.git" refs/tags/lightcraft-v0.20.0-android.1 >/dev/null; then
+            echo "STOP: tag already exists"; exit 1
+          fi
+      - name: Resolve successful v0.20 original-signing run (exact verified workflow)
+        id: signing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          id="$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow lightcraft-v020-official-sign.yml \
+            --branch integration/lightcraft-upstream-20261110 --limit 10 \
+            --json databaseId,conclusion \
+            | jq -r '[.[] | select(.conclusion == "success")][0].databaseId // empty')"
+          test -n "$id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      - name: Download previously signed and certificate-verified APK
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.signing.outputs.id }}
+          github-token: ${{ github.token }}
+          name: LightCraft-v0.20.0-android.1-PRODUCTION-SIGNED-VERIFIED
+          path: signed
+      - name: Independently validate artifact identity, certificate and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='signed/LightCraft-v0.20.0-android.1-arm64-v8a.apk'
+          test -s "$APK"
+          cd signed
+          sed 's#verified/##g' SHA256SUMS.txt | sha256sum -c -
+          cd ..
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          SIGNER="$SDK/build-tools/35.0.0/apksigner"
+          test -x "$AAPT" && test -x "$SIGNER"
+          "$SIGNER" verify --verbose --print-certs "$APK" > verified-certificate.txt
+          grep -Fqi 'certificate SHA-256 digest: b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4' verified-certificate.txt
+          "$AAPT" dump badging "$APK" > verified-badging.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.20.0-android.1'" verified-badging.txt
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
+          echo "Verified same original LightCraft production certificate and ARM64 production package" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish official GitHub Release only once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create lightcraft-v0.20.0-android.1             signed/LightCraft-v0.20.0-android.1-arm64-v8a.apk             signed/SHA256SUMS.txt             --repo "$GITHUB_REPOSITORY"             --target 'cc5dd64a3e5ba4051e994b6451363103413aaa92'             --title 'LightCraft v0.20.0-android.1 — ARM64 Production Release'             --notes 'Official LightCraft v0.20.0-android.1 ARM64 production release. Original LightCraft signing certificate verified against v0.11.0-android.8 (SHA-256 B2:C8:94:BE:26:AF:D5:41:ED:99:15:AA:38:61:B8:2B:04:0F:93:8D:FC:D8:4D:85:3F:EA:ED:8C:E2:9B:F2:F4). Upstream LightCraft v0.20.0 integration with preserved Android menu, updater, SAF controls, and original LightCraft certificate. ARM64 build and package validation passed. End-user device regression results have not been supplied for this v0.20.0 build. Up to 165 FPS is a performance target, not a measured claim. Back up photo libraries before updating.'

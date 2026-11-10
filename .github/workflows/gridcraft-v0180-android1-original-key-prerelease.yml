@@ -1,0 +1,268 @@
+name: GridCraft v0.18.0-android.1 ORIGINAL KEY prerelease (owner request)
+
+on:
+  push:
+    branches:
+      - integration/gridcraft-upstream-20261110
+    paths:
+      - '.github/workflows/gridcraft-v0180-android1-original-key-prerelease.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: gridcraft-v0180-owner-approved-prerelease
+  cancel-in-progress: false
+
+jobs:
+  preflight-and-build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/gridcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      GH_TOKEN: ${{ github.token }}
+      TAG: gridcraft-v0.18.0-android.1
+      APK: GridCraft-v0.18.0-android.1-arm64-v8a.apk
+      PACKAGE: com.artcraft.gridcraft
+      VERSION: 0.18.0-android.1
+      VERSION_CODE: '16781824'
+      EXPECTED_CERT: 09D292709D4DCCE84A65E828BDD8A2CE93DE62FA4DC6C584BD6269839DA8090D
+    steps:
+      - name: Checkout current protected-baseline-derived integration branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned Android reference builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout exact official Storytold GridCraft v0.18.0
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: 17cb3c83d9e73df6a88ed174cec612f1de2e8244
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - name: Verify upstream source, Python syntax, and Android port contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = 17cb3c83d9e73df6a88ed174cec612f1de2e8244
+          python3 tools/gridcraft/v0180_source_preflight.py builder/source/gridcraft
+          python3 -m py_compile tools/gridcraft/install_overlay.py tools/gridcraft/port_v0150_ui.py tools/gridcraft/port_v0150_save_dcs.py tools/gridcraft/port_v0150_touch_selection.py tools/gridcraft/port_v0150_builder_saf.py tools/gridcraft/android_addons/overlay.py tools/gridcraft/android_addons/font_catalog_patch.py
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("builder/source/gridcraft/crates/ui-egui/src")
+          title=(source/"ribbon/title_bar.rs").read_text()
+          show=(source/"grid/show.rs").read_text()
+          dialog=(source/"dialogs/show.rs").read_text()
+          fonts=(source/"fonts.rs").read_text()
+          native=(Path("builder/tools/gridcraft_android/gridcraft_tools.rs")).read_text()
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in title
+          assert "GRIDCRAFT_ANDROID_NATIVE_MENU_V1" in title
+          assert "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1" in show
+          assert "GC_TWO_FINGER_ONLY_PAN_V1" in show
+          assert "gridcraft_android_take_dcs" in dialog
+          assert "pub fn reload_catalog()" in fonts
+          assert "GC_ANDROID_CTRL_Q_V1" in native
+          assert "GC_ANDROID_SAVE_AS_SHORTCUT_V1" in native
+          code=(Path("builder/lib/android_project.py")).read_text()
+          assert "0.18.0-android.1-test" in code
+          assert "com.artcraft.gridcraft.candidate" in code
+          print("PASS: full GridCraft v0.18 source overlay staged with guarded contracts")
+          PY
+      - name: Set up Java 21, Rust stable (upstream requires Rust >= 1.95)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install NDK 27 and approved icon tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          if [ ! -d "$NDK" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+            "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          fi
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Preflight existing release and pin production updater before any signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 && { echo "::error::Release already exists"; exit 1; } || true
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists, refusing overwrite"; exit 1
+          fi
+          test -s assets/gridcraft/launcher-user-20261103.png
+          cp templates/android/ArtCraftUpdater.java builder/templates/android/ArtCraftUpdater.java
+          cp templates/android/updater.rs builder/templates/android/updater.rs
+          cp lib/inapp_updater.py builder/lib/inapp_updater.py
+          python3 - <<'PY'
+          from pathlib import Path
+          installer=Path("builder/lib/inapp_updater.py")
+          data=installer.read_text()
+          old='"gridcraft": "gridcraft-v0.16.1-android.4"'
+          new='"gridcraft": "gridcraft-v0.18.0-android.1"'
+          assert data.count(old)==1
+          installer.write_text(data.replace(old,new,1))
+          shell=Path("builder/lib/build-common.sh")
+          s=shell.read_text()
+          anchor='[[ -f "$ANDROID_DIR/Cargo.toml" && -f "$ANDROID_DIR/src/lib.rs" ]] || fail '
+          assert s.count(anchor)==1
+          patch='''if [[ "$APP" == "gridcraft" ]]; then
+              python3 "$ROOT/lib/inapp_updater.py" "$APP" "$ANDROID_DIR" "$ROOT" || fail "Updater integration failed"
+          fi
+          '''
+          shell.write_text(s.replace(anchor,patch+anchor,1))
+          project=Path("builder/lib/android_project.py")
+          p=project.read_text()
+          a='"0.18.0-android.1-test" if app == "gridcraft"'
+          b='"0.18.0-android.1" if app == "gridcraft"'
+          assert p.count(a)==1
+          p=p.replace(a,b,1)
+          a='and android_meta["package"] == "com.artcraft.gridcraft.candidate"'
+          b='and android_meta["package"] == "com.artcraft.gridcraft"'
+          assert p.count(a)==1
+          p=p.replace(a,b,1)
+          anchor='code = version_code(version)'
+          assert p.count(anchor)==1
+          p=p.replace(anchor,'code = 16781824 if app == "gridcraft" else version_code(version)',1)
+          compile(p,str(project),"exec")
+          project.write_text(p)
+          menu=Path("tools/gridcraft/android_addons/GridCraftNativeMenu.rs.inc").read_text()
+          java=Path("builder/templates/android/ArtCraftUpdater.java").read_text()
+          updater=Path("builder/templates/android/updater.rs").read_text()
+          assert menu.count('ui.menu_button("App Updates"')==1
+          assert menu.count('ui.button("Check for Updates")')==1
+          assert 'ui.button("Download & Install Update…")' in menu
+          assert 'ui.checkbox(&mut startup, "Check at Startup")' in menu
+          assert 'ui.menu_button("Appearance"' in menu
+          assert 'invoke(android, "download")' in updater
+          assert 'poll_menu_state(ctx, android)' in updater
+          assert "verifyPackageAndSigner" in java and "PackageInstaller" in java
+          print("PASS: previously published unified in-app updater and original app package retained")
+          PY
+          bash -n builder/lib/build-common.sh
+      - name: Build size-optimized original-package ARM64 APK using temporary builder key
+        shell: bash
+        timeout-minutes: 145
+        run: |
+          set -euo pipefail
+          test ! -e builder/keys/artcraft-builder.jks
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
+          echo "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2  $ICON" | sha256sum -c -
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft -appicon="$ICON"
+      - name: Verify original-package build, in-app updater, version, ABI and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -type f -iname '*gridcraft*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > apk-signing.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > apk-badging.txt
+          grep -F "name='$PACKAGE'" apk-badging.txt
+          grep -F "versionCode='$VERSION_CODE'" apk-badging.txt
+          grep -F "versionName='$VERSION'" apk-badging.txt
+          test -s builder/source/gridcraft/apps/gridcraft-android/src/updater.rs
+          test -s builder/source/gridcraft/apps/gridcraft-android/java/com/artcraft/gridcraft/ArtCraftUpdater.java
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = z.namelist()
+              assert 'classes.dex' in names
+              assert any(x.startswith('lib/arm64-v8a/') and x.endswith('.so') for x in names)
+              assert all(not x.startswith('lib/') or x.startswith('lib/arm64-v8a/') for x in names)
+              assert not any(x.endswith(('.jks', '.keystore', '.p12')) for x in names)
+          print('PASS: original production package constructed with ARM64 native libraries and approved updater')
+          PY
+      - name: Sign with existing GridCraft production key only after certificate continuity check
+        shell: bash
+        env:
+          KEY_B64: ${{ secrets.GRIDCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.GRIDCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.GRIDCRAFT_KEY_PASSWORD }}
+          KEYALIAS: ${{ secrets.GRIDCRAFT_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEY_B64" && test -n "$STOREPASS" && test -n "$KEYPASS" && test "$KEYALIAS" = "gridcraft" || {
+            echo "::error::Original signing secrets missing or incorrect"; exit 1
+          }
+          printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/gridcraft-production.jks"
+          keytool -exportcert -rfc -keystore "$RUNNER_TEMP/gridcraft-production.jks" -storepass:env STOREPASS -alias "$KEYALIAS" > "$RUNNER_TEMP/gridcraft-production.pem"
+          observed="$(openssl x509 -in "$RUNNER_TEMP/gridcraft-production.pem" -outform DER | sha256sum | awk '{print toupper($1)}')"
+          test "$observed" = "$EXPECTED_CERT" || { echo "::error::Original certificate mismatch; NEVER publish"; exit 1; }
+          APK_SOURCE="$(find builder/output -maxdepth 1 -type f -iname '*gridcraft*.apk' -print -quit)"
+          test -s "$APK_SOURCE"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          mkdir -p publish
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$APK_SOURCE" "$RUNNER_TEMP/gridcraft-aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/gridcraft-production.jks" --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS --v4-signing-enabled false --out "publish/$APK" "$RUNNER_TEMP/gridcraft-aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "publish/$APK" > publish/certificate.txt
+          "$BUILD_TOOLS/aapt" dump badging "publish/$APK" > publish/badging.txt
+          grep -F "name='$PACKAGE'" publish/badging.txt
+          grep -F "versionName='$VERSION'" publish/badging.txt
+          grep -F "versionCode='$VERSION_CODE'" publish/badging.txt
+          python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          cert=Path("publish/certificate.txt").read_text()
+          matches={re.sub("[^0-9A-F]","",x.upper()) for x in re.findall(r"certificate SHA-256 digest:\\s*([0-9a-fA-F:]{64,95})",cert,re.I)}
+          assert matches=={os.environ["EXPECTED_CERT"]}, "Finished APK certificate mismatch"
+          with zipfile.ZipFile(Path("publish")/os.environ["APK"]) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              assert "classes.dex" in names
+              libs=[x for x in names if x.startswith("lib/") and x.endswith(".so")]
+              assert libs and all(x.startswith("lib/arm64-v8a/") for x in libs)
+              assert not any(x.endswith((".jks",".keystore",".p12")) for x in names)
+          print("PASS: original signer / original package / versionCode / ARM64 verified")
+          PY
+          (cd publish && sha256sum "$APK" > SHA256SUMS.txt)
+
+      - name: Publish v0.18.0 original-key-signed prerelease, leaving stable version untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "publish/$APK" && test -s publish/SHA256SUMS.txt
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists, refusing to replace"; exit 1
+          fi
+          cat > publish/NOTES.md <<'NOTES'
+          GridCraft v0.18.0-android.1 — Original-key-signed ARM64 prerelease for owner acceptance.
+
+          WARNING: This build passed CI compilation, source checks, APK certificate, ABI and packaging checks only. It has NOT been validated on HONOR MagicPad 4 or HONOR Pad X7 (Android 15). Do not treat it as a stable device-tested update.
+
+          - Official Storytold GridCraft v0.18.0 and approved Gc Android menu/branding, SAF fonts, keyboard shortcuts, Ctrl+W D/C/S, Ctrl+Q, touch gestures, spreadsheet and save functionality preserved in source integration.
+          - Android in-app updater restored from previously published GridCraft v0.16.1-android.4 workflow, with download/install and startup option.
+          - Production package: com.artcraft.gridcraft; versionName 0.18.0-android.1; versionCode 16781824.
+          - Original signing certificate SHA-256: 09D292709D4DCCE84A65E828BDD8A2CE93DE62FA4DC6C584BD6269839DA8090D.
+          - Prerelease only, not Latest. The previous tested stable release remains published and unchanged.
+          - Back up documents before installing or upgrading.
+          NOTES
+          gh release create "$TAG" "publish/$APK" publish/SHA256SUMS.txt -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "GridCraft v0.18.0-android.1 — ARM64 Prerelease" --notes-file publish/NOTES.md --prerelease --latest=false
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,isPrerelease,assets
+
+      - name: Always erase temporary production signing material
+        if: always()
+        run: |
+          rm -rf builder/keys builder/output
+          rm -f "$RUNNER_TEMP/gridcraft-production.jks" "$RUNNER_TEMP/gridcraft-production.pem" "$RUNNER_TEMP/gridcraft-aligned.apk"

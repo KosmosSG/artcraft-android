@@ -10,3 +10,5 @@ Trigger 2026-11-10
 Retry #2 source-only preflight: corrected misplaced canvas guard, no prior native compilation, preserve all scoped Android.7 behavior.
 
 Retry #3: sync final preflight assertion to deliberate Android.7 direct-splash startup mitigation. Previous retry source-only, no native build.
+
+Retry #4: early two-finger-pan native Rust unit test now uses exact binary-representable movement values; last preflight 12/13 native tests passed; no ARM64 build yet.

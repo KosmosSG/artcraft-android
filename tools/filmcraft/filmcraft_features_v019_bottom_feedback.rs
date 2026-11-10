@@ -386,8 +386,8 @@ impl FilmcraftFeatures {
                     .corner_radius(22.0)
                     .inner_margin(egui::Margin::symmetric(16, 9))
                     .show(ui, |ui| {
-                        ui.set_max_width(560.0);
-                        ui.horizontal(|ui| {
+                        ui.set_max_width(640.0);
+                        ui.horizontal_wrapped(|ui| {
                             egui::Frame::new()
                                 .fill(icon_fill)
                                 .corner_radius(4.0)
@@ -397,7 +397,7 @@ impl FilmcraftFeatures {
                                         .strong().color(egui::Color32::WHITE));
                                 });
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new(&message).color(foreground));
+                            ui.label(egui::RichText::new(message.as_str()).color(foreground));
                         });
                     });
             });

@@ -186,7 +186,7 @@ jobs:
               assert "vc_diag_recording" in rust
               assert "vc_native_trackpad_axis_pan" in rust
               assert "winit::platform::android::vc_pad_reset_diagnostics();" in rust
-              assert "VectorCraft v0.23.0-android.3 Diagnostic Session" in rust
+              assert "VectorCraft v0.23.0-android.4 Diagnostic Session" in rust
               assert "vc_native_trackpad_historical_zoom_packets" in rust
               assert "vcMarkNativeQuitStage" in rust and "vcMarkNativeQuitStage" in java
               assert "VC_QUIT4 stage=" in java

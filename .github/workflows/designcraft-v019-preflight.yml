@@ -1,0 +1,34 @@
+name: DesignCraft v0.19 compatibility preflight (no APK)
+on:
+  push:
+    branches:
+      - integration/designcraft-upstream-20261110
+    paths:
+      - tools/designcraft/audit_v019_compatibility.py
+      - .github/workflows/designcraft-v019-preflight.yml
+      - configs/upstream/integration-20261110-designcraft.json
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-v019-preflight-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch exact audited upstream tag into isolated directory
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch v0.19.0 https://github.com/storytold/designcraft.git "$RUNNER_TEMP/designcraft-v019"
+          test "$(git -C "$RUNNER_TEMP/designcraft-v019" rev-parse HEAD)" = 147b3f475056967353606b90fa0dc8bb39de7f27
+      - name: Check source anchors and existing published Android overlays
+        run: |
+          set -euo pipefail
+          python3 tools/designcraft/audit_v019_compatibility.py "$RUNNER_TEMP/designcraft-v019"
+      - name: Explicit stop before build
+        run: echo 'Audit only; no APK compile, signing, merge or release. Reviewed port required first.'

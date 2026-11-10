@@ -1,0 +1,43 @@
+name: ArtCraft Stylus Diagnostic ARM64 TEST ONLY
+
+on:
+  push:
+    branches:
+      - feature/stylus-diagnostic-20261110
+    paths:
+      - diagnostics/stylus/**
+      - .github/workflows/stylus-diagnostic-test.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artcraft-stylus-diagnostic-test-only
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compile standalone diagnostic and sign with disposable key
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build with Android SDK and disposable signing
+        shell: bash
+        run: bash diagnostics/stylus/build-test-apk.sh
+      - name: Upload test APK and checksums only; do not publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArtCraft-Stylus-Diagnostic-TEST-ONLY
+          path: output/stylus-diagnostic/
+          if-no-files-found: error
+          retention-days: 7

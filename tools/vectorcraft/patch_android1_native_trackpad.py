@@ -293,6 +293,15 @@ pub(crate) fn vc_pad_note(route: usize) {
     };
     counter.fetch_add(1, Relaxed);
 }
+// Session-scoped diagnostic counters: clear only on a user-initiated capture.
+pub fn vc_pad_reset_diagnostics() {
+    use std::sync::atomic::Ordering::Relaxed;
+    for counter in [&VC_PAD_AXIS_PAN, &VC_PAD_AXIS_ZOOM,
+                    &VC_PAD_FALLBACK_PAN, &VC_PAD_FALLBACK_ZOOM,
+                    &VC_PAD_NO_DATA] {
+        counter.store(0, Relaxed);
+    }
+}
 pub fn vc_pad_diagnostics() -> [u64; 5] {
     use std::sync::atomic::Ordering::Relaxed;
     [VC_PAD_AXIS_PAN.load(Relaxed), VC_PAD_AXIS_ZOOM.load(Relaxed),
@@ -308,9 +317,16 @@ def patch_staged(root: Path):
     content = rust.read_text()
     old = '                match self.bridge.copy_diagnostic_report(&report) {'
     new = '''                let pad=winit::platform::android::vc_pad_diagnostics();
-                let report=format!("{report}\\\\nvc_native_trackpad_axis_pan={}\\\\nvc_native_trackpad_axis_pinch={}\\\\nvc_native_trackpad_fallback_pan={}\\\\nvc_native_trackpad_fallback_pinch={}\\\\nvc_native_trackpad_no_data={}\\\\n",pad[0],pad[1],pad[2],pad[3],pad[4]);
+                let report=format!("{report}\\nvc_native_trackpad_axis_pan={}\\nvc_native_trackpad_axis_pinch={}\\nvc_native_trackpad_fallback_pan={}\\nvc_native_trackpad_fallback_pinch={}\\nvc_native_trackpad_no_data={}\\n",pad[0],pad[1],pad[2],pad[3],pad[4]);
                 match self.bridge.copy_diagnostic_report(&report) {'''
     content = once(content, old, new)
+    content = once(content,
+        'VectorCraft Android.15 Diagnostic Session',
+        'VectorCraft v0.23.0-android.3 Diagnostic Session')
+    content = once(content,
+        '            if vc_diag_start {',
+        '            if vc_diag_start {\n'
+        '                winit::platform::android::vc_pad_reset_diagnostics();')
     rust.write_text(content)
     print("PASS: existing private diagnostic Copy Report includes aggregate native trackpad routes")
 

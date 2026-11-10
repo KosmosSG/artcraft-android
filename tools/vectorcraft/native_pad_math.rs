@@ -11,6 +11,10 @@ pub struct Detector {
     first: Option<Sample>,
     previous: Option<Sample>,
     mode: Mode,
+    // Consecutive, same-direction spread-dominant samples allow a deliberate
+    // pinch to take over an early pan without relying on total drag distance.
+    pinch_streak: u8,
+    last_spread_direction: i8,
 }
 impl Detector {
     pub fn reset(&mut self) { *self = Self::default(); }
@@ -30,9 +34,9 @@ impl Detector {
             let travelled = (current.x - origin.x).hypot(current.y - origin.y);
             let stretched = (current.spread - origin.spread).abs();
             // Small, decisive deadzones: don't turn a two-finger glide into a pinch.
-            if stretched >= 4.5 && stretched > 1.15 * travelled {
+            if stretched >= 3.5 && stretched > 1.05 * travelled {
                 self.mode = Mode::Pinch;
-            } else if travelled >= 5.0 && travelled > 0.8 * stretched {
+            } else if travelled >= 7.0 && travelled > 1.15 * stretched {
                 self.mode = Mode::Pan;
             } else {
                 return Step::None;
@@ -40,15 +44,30 @@ impl Detector {
             // Discard the recognition packet to avoid a first-frame jump.
             return Step::None;
         }
-        // A MagicOS touchpad may label an entire pinch as Swipe. Permit a
-        // deliberate spread-dominant handoff from Pan to Pinch, but NEVER
-        // switch for an ordinary two-finger scroll with slight finger drift.
+        // A MagicOS pinch may start as a TwoFingerSwipe. The previous
+        // algorithm compared spread against all midpoint travel since gesture
+        // start: after scrolling, that growing travel made a fresh pinch
+        // nearly impossible. Instead detect TWO consistent local pinch steps.
+        // This also keeps ordinary pan drift from becoming a pinch.
         if self.mode == Mode::Pan {
-            let travelled=(current.x-origin.x).hypot(current.y-origin.y);
-            let stretched=(current.spread-origin.spread).abs();
-            if stretched >= 14.0 && stretched > 1.8 * travelled {
-                self.mode=Mode::Pinch;
-                return Step::None; // Reset origin on handoff; no giant zoom.
+            let ds = current.spread - previous.spread;
+            let dp = (current.x - previous.x).hypot(current.y - previous.y);
+            let direction: i8 = if ds > 0.0 { 1 } else { -1 };
+            if ds.abs() >= 2.0 && ds.abs() > 1.3 * dp {
+                self.pinch_streak = if self.last_spread_direction == direction {
+                    self.pinch_streak.saturating_add(1)
+                } else { 1 };
+                self.last_spread_direction = direction;
+            } else {
+                self.pinch_streak = 0;
+                self.last_spread_direction = 0;
+            }
+            let travelled = (current.x - origin.x).hypot(current.y - origin.y);
+            let stretched = (current.spread - origin.spread).abs();
+            let clear_start_pinch = stretched >= 9.0 && stretched > 1.5 * travelled;
+            if self.pinch_streak >= 2 || clear_start_pinch {
+                self.mode = Mode::Pinch;
+                return Step::None; // Drop transition packet; avoid zoom jump.
             }
         }
         match self.mode {
@@ -112,6 +131,30 @@ mod tests {
         d.step(s(0.,0.,100.)); d.step(s(9.,0.,102.));
         assert_eq!(d.step(s(20.,0.,110.)),Step::Pan(11.,0.));
         assert_eq!(d.step(s(25.,0.,112.)),Step::Pan(5.,0.));
+        assert_eq!(d.mode(),Mode::Pan);
+    }
+    #[test] fn direct_small_pinch_does_not_require_preceding_scroll() {
+        let mut d=Detector::default();
+        assert_eq!(d.step(s(100.,100.,100.)),Step::None);
+        assert_eq!(d.step(s(101.,100.,104.)),Step::None);
+        assert_eq!(d.mode(),Mode::Pinch);
+        assert_eq!(d.step(s(102.,100.,108.)),Step::Pinch(108./104.));
+    }
+    #[test] fn slow_pinch_after_long_scroll_uses_local_movement() {
+        let mut d=Detector::default();
+        d.step(s(0.,0.,100.)); d.step(s(12.,0.,100.));
+        assert_eq!(d.mode(),Mode::Pan);
+        assert_eq!(d.step(s(120.,0.,100.)),Step::Pan(108.,0.));
+        assert_eq!(d.step(s(121.,0.,103.)),Step::Pan(1.,0.));
+        assert_eq!(d.step(s(122.,0.,106.)),Step::None);
+        assert_eq!(d.mode(),Mode::Pinch);
+        assert_eq!(d.step(s(122.,0.,109.)),Step::Pinch(109./106.));
+    }
+    #[test] fn scroll_drift_in_one_direction_is_not_a_pinch() {
+        let mut d=Detector::default();
+        d.step(s(0.,0.,100.)); d.step(s(10.,0.,101.));
+        assert_eq!(d.step(s(20.,0.,104.)),Step::Pan(10.,0.));
+        assert_eq!(d.step(s(30.,0.,107.)),Step::Pan(10.,0.));
         assert_eq!(d.mode(),Mode::Pan);
     }
     #[test] fn thresholds_do_not_confuse_slight_uneven_pan_and_zoom() {

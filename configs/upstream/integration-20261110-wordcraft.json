@@ -23,5 +23,10 @@
     "existing GPU optimizations and adaptive frame pacing",
     "original permanent signing identity"
   ],
-  "test_policy": "Disposable-key-signed ARM64 separate test package, build only after a reviewed compatible source integration; never publish automatically."
+  "test_policy": "Disposable-key-signed ARM64 separate test package, build only after a reviewed compatible source integration; never publish automatically.",
+  "candidate_workflow": ".github/workflows/wordcraft-v017-android1-integration-candidate.yml",
+  "candidate_package": "com.artcraft.wordcraft.upstream017candidate",
+  "candidate_version": "0.17.0-android.1",
+  "candidate_version_code": 100017001,
+  "integration_note": "v0.17.0 candidate workflow staged for first CI compatibility probe; no APK or source compatibility verified yet."
 }

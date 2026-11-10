@@ -8,3 +8,5 @@ DO NOT merge, permanently sign, tag or publish
 Trigger 2026-11-10
 
 Retry #2 source-only preflight: corrected misplaced canvas guard, no prior native compilation, preserve all scoped Android.7 behavior.
+
+Retry #3: sync final preflight assertion to deliberate Android.7 direct-splash startup mitigation. Previous retry source-only, no native build.

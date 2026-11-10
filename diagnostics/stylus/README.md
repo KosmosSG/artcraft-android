@@ -53,3 +53,19 @@ Fix reported MagicPad 4 regression: page scrolls vertically while user draws wit
 ## v0.1.4 — Four labeled pen-button test windows
 
 The previous marked log contained three labels but only incomplete DPAD_UP/DOWN press-release pairs. To make the next session actionable, add four explicit controls: Single hover (9s), Double hover (9s), Long hover (11s), and Press while drawing (11s). Each disabled-all-others timed capture writes TEST_BEGIN, timestamped TEST_PEN_KEY rows, and TEST_END with per-test key down/up, matched pair, unmatched-release, unmatched-press, sustained >=1400ms, standard stylus button edge, and simultaneous pen contact counts. Missing events are reported; no silent guesses, macro playback or injection. Pen-specific key identification uses device name (not hardcoded numeric id) and preserves scroll isolation. The device's MagicOS layer may only supply orphan UP events even when physical gestures work. Export contains TEST_SUMMARY_BEGIN/END and the full latest raw log. The UI remains finger-scrollable outside canvas, and pen movement cannot scroll. This is an isolated test APK, disposable signing, no publication.
+
+## v0.1.5 — five-repeat Magic-Pencil 4s calibration
+Starting from v0.1.4 and retaining all verified stylus drawing, hover, pressure,
+tilt, pen-scroll isolation, finger scrolling, raw KeyEvent capture and SAF export.
+Four on-screen controls select Single Hover, Double Hover, Long Hover, or Press
+While Drawing. Selecting a category immediately starts trial 1/5, followed by
+a dedicated "Record next trial" button between attempts. Each trial lasts 8s
+for single/double or 10s for long/drawing, and explicitly logs
+CALIBRATION_TRIAL_BEGIN, CALIBRATION_PEN_KEY, CALIBRATION_TRIAL_END with event
+signature, matching/missing press-release pairs, app-visible duration and
+simultaneous stylus touch samples. Results aggregate five per gesture, report
+repeatability of observed event signatures rather than claiming OS-independent
+gesture recognition, and flag if single/double share the same dominant pattern.
+Export includes durable trial and per-gesture aggregate summaries independent
+of the last 8000 raw event rows. Existing published ArtCraft editors stay untouched.
+No permissions, macro execution or automated input injection.

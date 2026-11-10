@@ -27,6 +27,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Locale;
@@ -35,7 +36,8 @@ import java.util.Map;
 /** Standalone diagnostic. No networking, input injection or dangerous permissions. */
 public final class MainActivity extends Activity {
     private static final int EXPORT_REQUEST = 201;
-    private static final int MAX_ROWS = 2500;
+    private static final int MAX_ROWS = 8000;
+    private static final int CALIBRATION_REPEATS = 5;
     private static final int[] BUTTONS = {
         MotionEvent.BUTTON_STYLUS_PRIMARY,
         MotionEvent.BUTTON_STYLUS_SECONDARY,
@@ -47,7 +49,11 @@ public final class MainActivity extends Activity {
     private TextView counts, latest, recent, testStatus;
     private final ArrayList<Button> testButtons = new ArrayList<>();
     private final ArrayList<String> testSummaries = new ArrayList<>();
+    private final Map<String, ArrayList<TestWindow>> calibration = new LinkedHashMap<>();
     private TestWindow activeTest;
+    private Button nextTrialButton;
+    private String selectedKind, selectedInstruction;
+    private long selectedDurationMs;
     private int completedTests, nextTestId;
     private DrawingPad pad;
     private final Set<Integer> seenDevices = new HashSet<>();
@@ -63,9 +69,11 @@ public final class MainActivity extends Activity {
     }
 
     private static final class TestWindow {
-        int id;
+        int id, attempt;
         String kind;
         long startUptime, durationMs;
+        final ArrayList<String> penKeySequence = new ArrayList<>();
+        String signature, summary;
         int penKeyDown, penKeyUp, keyRepeats, orphanUp, matchedPairs;
         int heldAtLeast1400ms, otherKeyEvents, stylusContactEvents, standardButtonEdges;
         final Map<Integer, Long> pressedAt = new HashMap<>();
@@ -120,27 +128,34 @@ public final class MainActivity extends Activity {
         clear.setOnClickListener(v -> clearLog());
         controls.addView(clear, new LinearLayout.LayoutParams(0, dp(56), 1));
         column.addView(controls);
-        text(column, "BUTTON GESTURE TESTS — tap a test, then perform that exact action "
-            + "within the recording window. Each test closes automatically.",
+        text(column, "BUTTON CALIBRATION — choose a gesture, then perform it ONCE "
+            + "in each of FIVE individually timed trials. After each trial, tap "
+            + "Record next trial. Repeat for the other gesture types.",
             13, Color.rgb(27, 48, 82));
-        testStatus = text(column, "No button test started. Tap one of the four options below.",
+        testStatus = text(column, "Choose a gesture below to record trial 1 of 5.",
             13, Color.rgb(33, 81, 139));
         LinearLayout testRow1 = new LinearLayout(this);
         testRow1.setOrientation(LinearLayout.HORIZONTAL);
-        addTestButton(testRow1, "1. Single press", "SINGLE_HOVER", 9000,
+        addTestButton(testRow1, "1. Single 5x", "SINGLE_HOVER", 8000,
             "Hover above the dark canvas and press the pen button ONCE.");
-        addTestButton(testRow1, "2. Double press", "DOUBLE_HOVER", 9000,
-            "Hover above the canvas and press the pen button TWICE quickly.");
+        addTestButton(testRow1, "2. Double 5x", "DOUBLE_HOVER", 8000,
+            "Hover above the dark canvas and press TWICE quickly.");
         column.addView(testRow1);
         LinearLayout testRow2 = new LinearLayout(this);
         testRow2.setOrientation(LinearLayout.HORIZONTAL);
-        addTestButton(testRow2, "3. Long press", "LONG_HOVER", 11000,
+        addTestButton(testRow2, "3. Long 5x", "LONG_HOVER", 10000,
             "Hover and hold the pen button for TWO SECONDS, then release.");
-        addTestButton(testRow2, "4. While drawing", "PRESS_WHILE_DRAWING", 11000,
-            "Draw on the canvas WHILE pressing and releasing the pen button.");
+        addTestButton(testRow2, "4. Drawing 5x", "PRESS_WHILE_DRAWING", 10000,
+            "Draw on canvas while pressing and releasing the pen button.");
         column.addView(testRow2);
-        text(column, "These tests only record signals. Missing button press events "
-            + "are reported rather than guessed. No shortcuts execute.",
+        nextTrialButton = new Button(this);
+        nextTrialButton.setText("Record next trial");
+        nextTrialButton.setEnabled(false);
+        nextTrialButton.setOnClickListener(v -> beginNextTrial());
+        column.addView(nextTrialButton, new LinearLayout.LayoutParams(-1, dp(55)));
+        text(column, "Each trial includes its own exact key sequence (even orphan releases). "
+            + "A consistent key sequence is NOT proof that the physical gesture is uniquely "
+            + "recognized. No shortcuts execute.",
             12, Color.DKGRAY);
         text(column, "RECENT EVENTS. Raw KeyEvents are not automatically attributed to the stylus.",
             12, Color.DKGRAY);
@@ -159,33 +174,52 @@ public final class MainActivity extends Activity {
         b.setText(label);
         b.setTextSize(13);
         b.setAllCaps(false);
-        b.setOnClickListener(v -> beginTest(kind, durationMs, instruction));
+        b.setOnClickListener(v -> selectCalibration(kind, durationMs, instruction));
         row.addView(b, new LinearLayout.LayoutParams(0, dp(64), 1));
         testButtons.add(b);
     }
 
-    private void beginTest(String kind, long durationMs, String instruction) {
+    private void selectCalibration(String kind, long durationMs, String instruction) {
         if (activeTest != null) {
-            Toast.makeText(this, "Current test is still recording.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Wait until the active trial finishes.", Toast.LENGTH_SHORT).show();
             return;
         }
+        // Selecting the same category again intentionally starts a new five-trial set.
+        selectedKind = kind;
+        selectedInstruction = instruction;
+        selectedDurationMs = durationMs;
+        calibration.put(kind, new ArrayList<TestWindow>());
+        add("CALIBRATION_BEGIN", "kind=" + kind + " repeats=" + CALIBRATION_REPEATS
+            + " trial_ms=" + durationMs);
+        beginNextTrial();
+    }
+
+    private void beginNextTrial() {
+        if (activeTest != null || selectedKind == null) return;
+        ArrayList<TestWindow> group = calibration.get(selectedKind);
+        if (group == null || group.size() >= CALIBRATION_REPEATS) return;
         TestWindow t = new TestWindow();
         t.id = ++nextTestId;
-        t.kind = kind;
-        t.durationMs = durationMs;
+        t.attempt = group.size() + 1;
+        t.kind = selectedKind;
+        t.durationMs = selectedDurationMs;
         t.startUptime = SystemClock.uptimeMillis();
         activeTest = t;
+        nextTrialButton.setEnabled(false);
         for (Button b : testButtons) b.setEnabled(false);
-        add("TEST_BEGIN", "id=" + t.id + " kind=" + kind
-            + " window_ms=" + durationMs + " instructions=" + instruction);
-        testStatus.setText("RECORDING [" + t.id + " " + kind + "] for "
-            + (durationMs / 1000) + " seconds. " + instruction);
-        latestLine = "Test " + t.id + " started. " + instruction;
+        add("CALIBRATION_TRIAL_BEGIN", "id=" + t.id + " kind=" + t.kind
+            + " attempt=" + t.attempt + "/" + CALIBRATION_REPEATS
+            + " window_ms=" + t.durationMs + " instruction=" + selectedInstruction);
+        testStatus.setText("RECORDING " + t.kind + " (trial " + t.attempt + "/"
+            + CALIBRATION_REPEATS + ") for " + (t.durationMs / 1000)
+            + " seconds. " + selectedInstruction);
+        latestLine = "Trial " + t.attempt + "/5: " + selectedInstruction;
         updateUi(true);
-        Toast.makeText(this, "Recording: " + instruction, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "Trial " + t.attempt + "/5: "
+            + selectedInstruction, Toast.LENGTH_LONG).show();
         final int id = t.id;
         t.timeout = () -> endTest(id, false);
-        handler.postDelayed(t.timeout, durationMs);
+        handler.postDelayed(t.timeout, t.durationMs);
     }
 
     private void observeTestKey(KeyEvent e, InputDevice device) {
@@ -200,6 +234,9 @@ public final class MainActivity extends Activity {
         long now = SystemClock.uptimeMillis();
         long delta = now - t.startUptime;
         String key = KeyEvent.keyCodeToString(code);
+        String edge = e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP";
+        t.penKeySequence.add(key + "(" + code + "):" + edge
+            + (e.getRepeatCount() == 0 ? "" : ":repeat" + e.getRepeatCount()));
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             if (e.getRepeatCount() > 0 || t.pressedAt.containsKey(code)) {
                 t.keyRepeats++;
@@ -217,14 +254,16 @@ public final class MainActivity extends Activity {
                 if (now - started >= 1400) t.heldAtLeast1400ms++;
             }
         }
-        add("TEST_PEN_KEY", "id=" + t.id + " kind=" + t.kind
-            + " elapsed_ms=" + delta + " key=" + key
-            + " action=" + (e.getAction() == KeyEvent.ACTION_DOWN ? "DOWN" : "UP")
+        add("CALIBRATION_PEN_KEY", "id=" + t.id + " kind=" + t.kind
+            + " attempt=" + t.attempt
+            + " elapsed_ms=" + delta + " key=" + key + " code=" + code
+            + " action=" + edge
             + " repeat=" + e.getRepeatCount() + " scan=" + e.getScanCode()
             + " device=" + e.getDeviceId()
             + " matched_pairs=" + t.matchedPairs
             + " orphan_up=" + t.orphanUp);
-        testStatus.setText("Recording " + t.kind + ": pen-key DOWN=" + t.penKeyDown
+        testStatus.setText("Recording " + t.kind + " trial " + t.attempt + "/5"
+            + ": pen-key DOWN=" + t.penKeyDown
             + ", UP=" + t.penKeyUp + ", matched=" + t.matchedPairs
             + ", unmatched release=" + t.orphanUp
             + ". Continue the requested gesture until test ends.");
@@ -243,30 +282,103 @@ public final class MainActivity extends Activity {
             : t.orphanUp > 0 || unmatchedDown > 0
                 ? "PARTIAL_KEY_PAIRS"
             : "KEY_PAIRS_CAPTURED_NOT_GESTURE_PROOF";
-        String summary = "id=" + t.id + " kind=" + t.kind
+        t.signature = t.penKeySequence.isEmpty()
+            ? (t.standardButtonEdges == 0 ? "NONE" : "STANDARD_BUTTON_EDGES")
+            : String.join(",", t.penKeySequence);
+        t.summary = "id=" + t.id + " kind=" + t.kind
+            + " attempt=" + t.attempt + "/" + CALIBRATION_REPEATS
             + " result=" + observation
+            + " signature=" + t.signature
             + " pen_down=" + t.penKeyDown + " pen_up=" + t.penKeyUp
             + " matched_pairs=" + t.matchedPairs + " orphan_up=" + t.orphanUp
             + " unmatched_down=" + unmatchedDown
-            + " held_1400ms=" + t.heldAtLeast1400ms
+            + " keypair_held_1400ms=" + t.heldAtLeast1400ms
             + " repeat_down=" + t.keyRepeats
             + " other_key_events=" + t.otherKeyEvents
             + " stylus_contact_events=" + t.stylusContactEvents
             + " standard_button_edges=" + t.standardButtonEdges;
-        add(cancelled ? "TEST_CANCELLED" : "TEST_END", summary);
+        add(cancelled ? "CALIBRATION_TRIAL_CANCELLED" : "CALIBRATION_TRIAL_END", t.summary);
         if (!cancelled) {
             completedTests++;
-            testSummaries.add(summary);
-            if (testSummaries.size() > 16) testSummaries.remove(0);
+            testSummaries.add(t.summary);
+            ArrayList<TestWindow> group = calibration.get(t.kind);
+            if (group != null) group.add(t);
+            boolean done = group != null && group.size() == CALIBRATION_REPEATS;
+            String summary = calibrationSummary(t.kind);
+            if (done) {
+                add("CALIBRATION_COMPLETE", summary);
+                String contrast = compareHoverSignatures();
+                if (!contrast.isEmpty()) add("CALIBRATION_CROSS_GESTURE", contrast);
+            }
+            testStatus.setText((done ? "5/5 COMPLETE: " : "TRIAL COMPLETE: ")
+                + t.kind + " " + t.attempt + "/" + CALIBRATION_REPEATS
+                + "\\n" + summary + "\\n"
+                + (done ? "Select another category to calibrate."
+                    : "Tap Record next trial for the next repetition."));
+            nextTrialButton.setEnabled(!done && t.kind.equals(selectedKind));
+        } else {
+            nextTrialButton.setEnabled(false);
+            testStatus.setText("Trial cancelled. Choose a gesture.");
         }
-        testStatus.setText((cancelled ? "Test cancelled: " : "Test completed: ")
-            + t.kind + ". " + observation + "\n"
-            + "Pen key DOWN/UP: " + t.penKeyDown + "/" + t.penKeyUp
-            + "; matched pairs: " + t.matchedPairs
-            + "; orphan releases: " + t.orphanUp
-            + ". Run the next test or export the log.");
-        latestLine = "Completed " + t.kind + ": " + observation;
+        latestLine = "Trial " + t.attempt + ": " + observation;
         updateUi(true);
+    }
+
+    private String calibrationSummary(String kind) {
+        ArrayList<TestWindow> group = calibration.get(kind);
+        if (group == null || group.isEmpty()) return "kind=" + kind + " trials=0/5";
+        Map<String, Integer> patterns = new LinkedHashMap<>();
+        for (TestWindow t : group) {
+            Integer n = patterns.get(t.signature);
+            patterns.put(t.signature, n == null ? 1 : n + 1);
+        }
+        String dominant = "", counts = "";
+        int max = 0;
+        for (Map.Entry<String, Integer> entry : patterns.entrySet()) {
+            if (entry.getValue() > max) {
+                max = entry.getValue();
+                dominant = entry.getKey();
+            }
+            if (!counts.isEmpty()) counts += " | ";
+            counts += entry.getValue() + "x{" + entry.getKey() + "}";
+        }
+        boolean complete = group.size() == CALIBRATION_REPEATS;
+        String repeatability = !complete ? "INCOMPLETE"
+            : max == CALIBRATION_REPEATS ? "SAME_EVENT_PATTERN_5_OF_5"
+            : max >= 4 ? "SAME_EVENT_PATTERN_4_OF_5" : "VARIABLE_EVENT_PATTERNS";
+        if ("NONE".equals(dominant) && max == CALIBRATION_REPEATS)
+            repeatability = "NO_INPUT_REPORTED_5_OF_5";
+        return "kind=" + kind + " completed=" + group.size() + "/"
+            + CALIBRATION_REPEATS + " repeatability=" + repeatability
+            + " dominant_count=" + max + " dominant_pattern=" + dominant
+            + " observed_patterns=" + counts
+            + " note=patterns_are_not_proof_of_distinct_physical_gestures";
+    }
+
+    private String compareHoverSignatures() {
+        ArrayList<TestWindow> single = calibration.get("SINGLE_HOVER");
+        ArrayList<TestWindow> dbl = calibration.get("DOUBLE_HOVER");
+        if (single == null || dbl == null
+                || single.size() != CALIBRATION_REPEATS
+                || dbl.size() != CALIBRATION_REPEATS) return "";
+        String a = dominantSignature(single), b = dominantSignature(dbl);
+        if (a.equals(b)) return "SINGLE_AND_DOUBLE_SHARE_DOMINANT_PATTERN="
+            + a + " automated_shortcut_mapping_is_not_safe";
+        return "SINGLE_AND_DOUBLE_DIFFERENT_DOMINANT_PATTERNS single=" + a
+            + " double=" + b + " requires_device_validation";
+    }
+
+    private String dominantSignature(ArrayList<TestWindow> items) {
+        Map<String, Integer> freq = new HashMap<>();
+        String best = "";
+        int n = 0;
+        for (TestWindow item : items) {
+            int count = freq.containsKey(item.signature)
+                ? freq.get(item.signature) + 1 : 1;
+            freq.put(item.signature, count);
+            if (count > n) { best = item.signature; n = count; }
+        }
+        return best;
     }
 
     private void add(String type, String details) {
@@ -494,7 +606,7 @@ public final class MainActivity extends Activity {
             + "  Other touches: " + nonStylusTouches
             + "\nButton edges: " + edges + "  Single/Double/Long: "
             + singles + "/" + doubles + "/" + longs + "  KeyEvents: " + keys
-            + "\nCompleted labeled tests: " + completedTests);
+            + "\nCompleted calibration trials: " + completedTests + "/20");
         latest.setText(latestLine);
         StringBuilder s = new StringBuilder();
         int skip = Math.max(0, log.size() - 8), i = 0;
@@ -504,9 +616,13 @@ public final class MainActivity extends Activity {
 
     private void clearLog() {
         if (activeTest != null) endTest(activeTest.id, true);
+        calibration.clear();
+        selectedKind = selectedInstruction = null;
+        selectedDurationMs = 0;
+        if (nextTrialButton != null) nextTrialButton.setEnabled(false);
         testSummaries.clear();
         completedTests = nextTestId = 0;
-        if (testStatus != null) testStatus.setText("Ready. Choose a button gesture test.");
+        if (testStatus != null) testStatus.setText("Ready. Choose a 5x calibration test.");
         for (Press p : press.values()) if (p.pending != null) handler.removeCallbacks(p.pending);
         press.clear();
         log.clear();
@@ -550,12 +666,20 @@ public final class MainActivity extends Activity {
             .append("\nOther touch samples: ").append(nonStylusTouches)
             .append("\nUnattributed KeyEvents: ").append(keys)
             .append("\nNote: KeyEvents cannot be attributed to the pen without verification.")
-            .append("\nCompleted labeled button tests: ").append(completedTests)
-            .append("\nLabeled test windows indicate what was asked, not proven gesture recognition.")
-            .append("\nSome pen input devices send orphan key releases; these are counted explicitly.")
-            .append("\nTEST_SUMMARY_BEGIN\n")
+            .append("\nCompleted labeled calibration trials: ").append(completedTests)
+            .append("\nEach gesture requires five separate timed trials. The reported signature is an app-visible event sequence, not proven gesture recognition.")
+            .append("\nA 2ms Android key-pair interval cannot measure a physical long press.")
+            .append("\nOrphan releases and missing key signals remain explicit.")
+            .append("\nCALIBRATION_SUMMARY_BEGIN\n");
+        for (String kind : new String[]{"SINGLE_HOVER", "DOUBLE_HOVER",
+                "LONG_HOVER", "PRESS_WHILE_DRAWING"})
+            s.append(calibrationSummary(kind)).append('\n');
+        String comparison = compareHoverSignatures();
+        if (!comparison.isEmpty()) s.append("CROSS_GESTURE ").append(comparison).append('\n');
+        s.append("CALIBRATION_SUMMARY_END\n")
+            .append("CALIBRATION_TRIALS_BEGIN\n")
             .append(String.join("\n", testSummaries))
-            .append("\nTEST_SUMMARY_END")
+            .append("\nCALIBRATION_TRIALS_END")
             .append("\nLog retains newest ").append(MAX_ROWS)
             .append(" rows. Coordinates and local timestamps are included.\n\n")
             .append("TIME\tTYPE\tDETAILS\n");

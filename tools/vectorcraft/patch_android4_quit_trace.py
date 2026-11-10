@@ -35,16 +35,24 @@ def patch(root: Path):
 
     public void vcFinishAfterQuit() {
         vcMarkNativeQuitStage("java_finish_requested");''')
+    // Android.13 and Android.14 already switched this native Activity to
+    // finish() (not finishAndRemoveTask), with a legacy finish_requested
+    // diagnostic write. Preserve that tested lifecycle behavior.
     s=once(s,'''            if (isFinishing() || isDestroyed()) return;
-            Log.i(TAG, "VC_QUIT_ANDROID2 stage=java_finish_after_native_return");
-            finishAndRemoveTask();''',
+            Log.i(TAG, "VC_QUIT_ANDROID2 stage=java_finish_after_native_return");''',
     '''            if (isFinishing() || isDestroyed()) {
                 vcMarkNativeQuitStage("java_already_finishing");
                 return;
             }
             vcMarkNativeQuitStage("java_finish_enter");
-            Log.i(TAG, "VC_QUIT_ANDROID2 stage=java_finish_after_native_return");
-            finishAndRemoveTask();''')
+            Log.i(TAG, "VC_QUIT_ANDROID2 stage=java_finish_after_native_return");''')
+    s=once(s,'''            // Keep a persisted stage marker for diagnosing cold relaunch.
+            getSharedPreferences("vc_diagnostics", MODE_PRIVATE).edit()
+                .putString("last_stage", "finish_requested").apply();
+            finish();''',
+    '''            // VC_QUIT4 already saved a more specific lifecycle stage.
+            // Avoid overwriting it with the old generic finish_requested.
+            finish();''')
     s=once(s,'''    protected void onDestroy() {
         imeWanted=false;''',
     '''    protected void onDestroy() {

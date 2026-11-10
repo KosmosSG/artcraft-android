@@ -431,6 +431,24 @@ jobs:
           cp templates/android/ArtCraftUpdater.java builder/templates/android/ArtCraftUpdater.java
           cp templates/android/updater.rs builder/templates/android/updater.rs
           cp lib/inapp_updater.py builder/lib/inapp_updater.py
+          # Candidate-only updater identity: leave the production updater source untouched.
+          # A separate-package disposable APK must never request installation over production.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/inapp_updater.py")
+          script = p.read_text()
+          old_tag = '"wordcraft": "wordcraft-v0.15.2-android.3",'
+          old_package = '.replace("__TARGET_PACKAGE__", "com.artcraft." + app)'
+          assert script.count(old_tag) == 1, "Old installed-tag anchor changed"
+          assert script.count(old_package) == 1, "Old production-package anchor changed"
+          script = script.replace(old_tag, '"wordcraft": "wordcraft-v0.17.0-android.1",')
+          script = script.replace(old_package, '.replace("__TARGET_PACKAGE__", java_package)')
+          assert '"wordcraft": "wordcraft-v0.17.0-android.1",' in script
+          assert '.replace("__TARGET_PACKAGE__", java_package)' in script
+          p.write_text(script)
+          print("Updater isolated: installed tag v0.17.0 Android.1; target is the disposable candidate package")
+          PY
+          python3 -m py_compile builder/lib/inapp_updater.py
           python3 - <<'PY'
           from pathlib import Path
           p=Path("builder/lib/build-common.sh")
@@ -613,15 +631,15 @@ jobs:
           test -f "builder/source/wordcraft/apps/wordcraft-android/java/$java_pkg/ArtCraftUpdater.java"
           grep -F 'mod updater;' builder/source/wordcraft/apps/wordcraft-android/src/lib.rs
           mkdir -p candidate
-          cp "$apk" candidate/WordCraft-v0.17.0-android.1-ARM64-PAN-FIRST-TEMP-TEST.apk
+          cp "$apk" candidate/WordCraft-v0.17.0-android.1-ARM64-SEPARATE-TEMP-TEST.apk
           (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload temporary signed ARM64 updater test APK
         uses: actions/upload-artifact@v4
         with:
-          name: WordCraft-Android11-PanFirst-ARM64-TEMP-TEST
+          name: WordCraft-v0.17.0-android.1-ARM64-SEPARATE-TEMP-TEST
           path: |
-            candidate/WordCraft-v0.17.0-android.1-ARM64-PAN-FIRST-TEMP-TEST.apk
+            candidate/WordCraft-v0.17.0-android.1-ARM64-SEPARATE-TEMP-TEST.apk
             candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

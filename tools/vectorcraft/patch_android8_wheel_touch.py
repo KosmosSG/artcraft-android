@@ -188,8 +188,7 @@ def patch(root):
                 Err(error) => log::warn!("Wheel preference: {error}"),
             }
         }''')
-    once(ui/'menus/tree.rs', '"Vc",\n            vec![', '"Vc",\n            vec![\n                c("Stylus Wheel", "android.vectorcraft.stylusWheel"),
-                c("Customize Stylus Wheel…", "android.vectorcraft.stylusWheelCustomize"),')
+    once(ui/'menus/tree.rs', '"Vc",\n            vec![', '"Vc",\n            vec![\n                c("Stylus Wheel", "android.vectorcraft.stylusWheel"),\n                c("Customize Stylus Wheel…", "android.vectorcraft.stylusWheelCustomize"),')
     once(ui/'menus/run.rs','            "android.vectorcraft.fontImport" => 1,','''            "android.vectorcraft.stylusWheel" => 256,
             "android.vectorcraft.stylusWheelCustomize" => 512,
             "android.vectorcraft.fontImport" => 1,''')

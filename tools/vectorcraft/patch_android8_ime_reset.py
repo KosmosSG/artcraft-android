@@ -60,9 +60,9 @@ def patch(root):
         let key = egui::Id::unique(("vc-android-ime-reset", viewport));
         ctx.data_mut(|data| {
             if let Some(request_id) = request {
-                data.insert_temp(key, request_id);
+                data.insert_temp(key, Some(request_id));
             } else {
-                data.remove_temp::<egui::ImeResetId>(key);
+                data.remove_temp::<Option<egui::ImeResetId>>(key);
             }
         });
     }''')
@@ -79,13 +79,13 @@ def patch(root):
                             // Only the editor's actual outstanding request can be acked.
                             let key = egui::Id::unique(("vc-android-ime-reset", ctx.viewport_id()));
                             let matching = encoded.parse::<u64>().ok().and_then(|serial| {
-                                ctx.data(|data| data.get_temp::<egui::ImeResetId>(key))
+                                ctx.data(|data| data.get_temp::<Option<egui::ImeResetId>>(key).flatten())
                                     .filter(|id| id.as_u64() == serial
                                         && id.viewport_id() == ctx.viewport_id())
                             });
                             if let Some(request_id) = matching {
                                 ctx.data_mut(|data| {
-                                    data.remove_temp::<egui::ImeResetId>(key);
+                                    data.remove_temp::<Option<egui::ImeResetId>>(key);
                                 });
                                 raw.events.push(egui::Event::ImeResetCompleted { request_id });
                             }
@@ -96,6 +96,15 @@ def patch(root):
     once(host, '        self.ime.poll(raw);', '        self.ime.poll(ctx, raw);')
     assert 'payload.parse().ok()?' not in bridge.read_text()
     assert 'request_id: payload.parse()' not in bridge.read_text()
+    # egui IdTypeMap::remove_temp<T> requires Default. ImeResetId is
+    # deliberately opaque, non-default; an Option<Id> is Default + Clone.
+    # This keeps the exact editor-owned request and discards stale completions.
+    assert 'data.insert_temp(key, Some(request_id));' in upstream_ime.read_text()
+    assert 'remove_temp::<Option<egui::ImeResetId>>(key)' in upstream_ime.read_text()
+    assert 'get_temp::<Option<egui::ImeResetId>>(key).flatten()' in bridge.read_text()
+    assert 'remove_temp::<Option<egui::ImeResetId>>(key)' in bridge.read_text()
+    assert 'remove_temp::<egui::ImeResetId>' not in upstream_ime.read_text()
+    assert 'remove_temp::<egui::ImeResetId>' not in bridge.read_text()
     print('PASS: IME generation isolation and real reset completion staged')
 
 def vendor(root):

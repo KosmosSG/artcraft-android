@@ -479,6 +479,28 @@ jobs:
           python3 android-port/tools/vectorcraft/patch_android1_native_trackpad.py builder --install-hook
           python3 android-port/tools/vectorcraft/patch_android8_wheel_touch.py builder
           python3 android-port/tools/vectorcraft/patch_android8_ime_reset.py builder
+          # Cheap source-preflight for eight editable slots and SharedPreferences.
+          # Keep before ARM64 native compilation to conserve CI minutes.
+          python3 - <<'PY'
+          from pathlib import Path
+          wheel=Path("builder/adapters/vectorcraft/src/stylus_wheel.rs").read_text()
+          patch=Path("android-port/tools/vectorcraft/patch_android8_wheel_touch.py").read_text()
+          java=Path("builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+          host=Path("builder/adapters/vectorcraft/src/lib.rs").read_text()
+          menus=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/tree.rs").read_text()
+          commands=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/run.rs").read_text()
+          assert "const DEFAULT_LAYOUT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7]" in wheel
+          assert "const COMMANDS: [&str; 12]" in wheel and "Reset to Proposal A" in wheel
+          assert "self.layout[i]" in wheel and "set_layout_string" in wheel
+          assert "vcStylusGetLayout" in java and "vcStylusSetLayout" in java
+          assert "vc_stylus_get_layout" in host and "vc_stylus_set_layout" in host
+          assert 'Customize Stylus Wheel…' in menus and 'stylusWheelCustomize" => 512' in commands
+          assert "self.stylus_wheel.open_customizer(ui.ctx())" in host
+          assert "take_layout_change" in host and "take_layout_change" in wheel
+          assert "vc_stylus_native_take" in host
+          assert "patch_android8_ime_reset" in patch
+          print("PASS: eight configurable wheel slots, safe actions, persisted settings and baseline wheel routing")
+          PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
           # Android.3: the real Vc mark is the clickable top-left menu,
           # native launch window is brand maroon, and icon safe-zone padding

@@ -525,7 +525,7 @@ jobs:
           # Touchscreen X/Y follows centroid only on canvas; trackpad unchanged.
           canvas=Path("builder/source/vectorcraft/crates/ui-egui/src/canvas/input.rs").read_text()
           assert 'if active { translated } else { egui::Vec2::ZERO }' in canvas
-          assert 'scroll = if early_pan != egui::Vec2::ZERO' in canvas
+          assert 'scroll = touch.translation_delta;' in canvas
           assert 'native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)' in canvas
           assert 'scroll.y -= 2.0 * native_pan.y' not in canvas
           assert 'delta.x *= -1.15;' in host and 'delta.y *= -1.15;' in host

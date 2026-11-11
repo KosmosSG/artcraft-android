@@ -221,15 +221,35 @@ pub fn set_android_wheel_enabled(enabled: bool) {
     ANDROID_WHEEL_ENABLED.store(enabled, std::sync::atomic::Ordering::Release);
 }
 ''')
-    # Upstream wheel() already adds native touchscreen translation in both axes.
+    # Android.6 had the raw touch centroid fallback only when egui lacked
+    # multi_touch(), but wheel() also includes native/synthetic scrolling.
+    # For consistent finger-following motion use measured raw centroid deltas
+    # when present, native multi_touch translation otherwise; do not add both.
+    once(ui/'canvas/input.rs',
+         'if active && !has_native_multi_touch { translated } else { egui::Vec2::ZERO }',
+         'if active { translated } else { egui::Vec2::ZERO }')
+    once(ui/'canvas/input.rs',
+         'let (touches, has_native_multi_touch) = ui.input(|input| {',
+         'let (touches, _has_native_multi_touch) = ui.input(|input| {')
+    # Keep the upstream wheel's pinch zoom unchanged.
     once(ui/'canvas/input.rs','''    if let Some(native_pan) = ui.input(|i| i.multi_touch().map(|t| t.translation_delta)) {
         scroll.y -= 2.0 * native_pan.y;
     } else {
         scroll.x += early_pan.x;
         scroll.y -= early_pan.y;
-    }''','''    // Follow the fingers in both axes; preserve native pinch and avoid double-pan.
-    if ui.input(|i| i.multi_touch().is_none()) {
-        scroll += early_pan;
+    }''','''    // Touchscreen and trackpad must not share an invert/scroll accumulator.
+    // For a real two-contact canvas gesture the content follows the contact
+    // centroid in X and Y: swipe left/up => artwork left/up. egui wheel()
+    // may also contain smooth synthetic scroll, so REPLACE that scroll for
+    // this touch gesture instead of adding it and double-panning.
+    let native_canvas_touch = ui.input(|i| i.multi_touch())
+        .filter(|t| rect.contains(t.center_pos));
+    if early_two_touch_on_canvas || native_canvas_touch.is_some() {
+        scroll = if early_pan != egui::Vec2::ZERO {
+            early_pan
+        } else {
+            native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
+        };
     }''')
     # The final hook follows android-activity copying, after winit restoration.
     for name in ('patch_android8_wheel_touch.py', 'patch_android8_ime_reset.py', 'stylus_native.rs'):

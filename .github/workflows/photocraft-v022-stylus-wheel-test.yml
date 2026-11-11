@@ -1,4 +1,4 @@
-name: PhotoCraft v0.22.0 Android.3 Magic-Pencil Stylus Wheel ARM64 TEST ONLY
+name: PhotoCraft v0.22.0 Android.3 Magic-Pencil Input Routing FIX ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -48,7 +48,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
           CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
-          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs)"
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py)"
           test "$CHANGED" = "$EXPECTED" || {
             echo "Refusing branch: unexpected changes outside guarded workflow and Brush Library overlay."
             printf '%s\n' "$CHANGED"
@@ -119,7 +119,7 @@ jobs:
           p.write_text(t.replace('Official upstream: v0.21.0', 'Official upstream: v0.22.0'), encoding="utf-8")
           print("PASS: v0.22.0 source pins, overlay versions, Home and trackpad source retargeted only in runner")
           PY
-          python3 -m py_compile tools/photocraft_v022_stylus_wheel.py
+          python3 -m py_compile tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel_native.py
           python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py tools/photocraft_v021_pc_menu.py tools/photocraft_v021_home_interactions.py tools/photocraft_v021_theme_catalog.py tools/photocraft_v022_brush_scroll.py
 
       - name: Check out exact latest official v0.22.0 source without changing project history
@@ -204,6 +204,9 @@ jobs:
             --upstream source/photocraft \
             --adapter adapters/photocraft
           python3 tools/photocraft_v022_stylus_wheel.py --upstream source/photocraft --adapter adapters/photocraft
+          python3 tools/photocraft_v022_stylus_wheel_native.py --adapter adapters/photocraft --vendor vendor
+          grep -Fq 'pc_stylus_native_capture' vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'pc_stylus_device_ids' adapters/photocraft/src/lib.rs
           grep -Fq 'pcStylusIntercept(event)' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'stylus_wheel.capture' adapters/photocraft/src/lib.rs
           grep -Fq 'ui.menu_button("Stylus Wheel"' source/photocraft/crates/ui-egui/src/panels/brand.rs
@@ -393,7 +396,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.22.0.apk
-          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-ARM64-TEST.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-INPUT-FIX-ARM64-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.22.0 adaptation
         if: failure()
@@ -460,7 +463,7 @@ jobs:
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-INPUT-FIX-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

@@ -21,12 +21,14 @@ pub(crate) struct Wheel {
     single_wait: Option<(Instant, Option<Pos2>)>,
     action: Option<usize>,
     opened_at: Instant,
+    last_button: [Option<Instant>; 2],
     message: &'static str,
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
         Self { enabled, open: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
+            last_button: [None, None],
             message: "Hover + single-press: open wheel" }
     }
     pub fn toggle(&mut self, enabled: bool, ctx: &Context) {
@@ -34,12 +36,19 @@ impl Wheel {
         self.open = false;
         self.single_wait = None;
         self.action = None;
+        self.last_button = [None, None];
         self.message = if enabled { "Wheel ON • hover + single press" } else { "Wheel OFF" };
         ctx.data_mut(|d| d.insert_temp(Id::new("pc_stylus_wheel_enabled"), enabled));
         ctx.request_repaint();
     }
     pub fn signal(&mut self, message: &str, ctx: &Context) {
         if !self.enabled { return; }
+        let index = match message { "S" => 0, "D" => 1, _ => return };
+        let now = Instant::now();
+        if self.last_button[index].is_some_and(|when|
+            now.duration_since(when) < Duration::from_millis(650)
+        ) { return; }
+        self.last_button[index] = Some(now);
         match message {
             "S" if self.open => {
                 self.open = false;
@@ -77,6 +86,9 @@ impl Wheel {
             self.action = None;
             return;
         }
+        // Java and native input can consume pen keys without egui receiving
+        // a KeyboardInput redraw. Poll at a low idle cadence only when opt-in.
+        ctx.request_repaint_after(Duration::from_millis(100));
         self.hover = ctx.input(|i| i.pointer.hover_pos()).or(self.hover);
         let mut retained = Vec::with_capacity(raw.events.len());
         for event in raw.events.drain(..) {

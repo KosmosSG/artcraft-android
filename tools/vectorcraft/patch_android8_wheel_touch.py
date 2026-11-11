@@ -188,6 +188,25 @@ def patch(root):
                 Err(error) => log::warn!("Wheel preference: {error}"),
             }
         }''')
+    # The branded Vc icon uses its own compact menu rendered directly in
+    # menus.rs (patch_vc_icon_menu_v021.py). The upstream menu tree is NOT
+    # painted when the owner taps Vc. Register actions in the visible menu too.
+    once(ui/'menus.rs',
+        '''            ui.separator();
+            if ui.button("Touch Shortcut Pad").clicked() {''',
+        '''            ui.separator();
+            let mut wheel_enabled = ANDROID_WHEEL_ENABLED.load(std::sync::atomic::Ordering::Acquire);
+            if ui.checkbox(&mut wheel_enabled, "Stylus Wheel").changed() {
+                clicked = Some(("android.vectorcraft.stylusWheel".into(), serde_json::json!({})));
+                ui.close();
+            }
+            if ui.button("Customize Stylus Wheel…").clicked() {
+                clicked = Some(("android.vectorcraft.stylusWheelCustomize".into(), serde_json::json!({})));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Touch Shortcut Pad").clicked() {''')
+    # Preserve upstream tree registration for other menus and native parity.
     once(ui/'menus/tree.rs', '"Vc",\n            vec![', '"Vc",\n            vec![\n                c("Stylus Wheel", "android.vectorcraft.stylusWheel"),\n                c("Customize Stylus Wheel…", "android.vectorcraft.stylusWheelCustomize"),')
     once(ui/'menus/run.rs','            "android.vectorcraft.fontImport" => 1,','''            "android.vectorcraft.stylusWheel" => 256,
             "android.vectorcraft.stylusWheelCustomize" => 512,

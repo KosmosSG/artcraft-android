@@ -161,6 +161,9 @@ def main():
                 &mut self.inner, ui.ctx(), command, serde_json::json!({})
             ) { log::warn!("Stylus wheel command {command}: {error}"); }
         }
+        ui.ctx().data_mut(|d| d.insert_temp(
+            egui::Id::new("pc_stylus_wheel_enabled"), self.stylus_wheel.enabled
+        ));
         self.inner.ui(ui, _frame);
         self.stylus_wheel.render(ui);
 ''')

@@ -109,7 +109,7 @@ impl Wheel {
             if when.elapsed() >= WAIT {
                 self.single_wait = None;
                 if let Some(pos) = point.or(self.hover) {
-                    self.center = Some(Self::clamped(pos, ctx.screen_rect()));
+                    self.center = Some(Self::clamped(pos, ctx.content_rect()));
                     self.open = true;
                     self.opened_at = Instant::now();
                     self.message = "Hover to highlight • tap tip to select";
@@ -126,7 +126,7 @@ impl Wheel {
     pub fn render(&self, ui: &mut Ui) {
         if !self.enabled { return; }
         let ctx = ui.ctx().clone();
-        let screen = ctx.screen_rect();
+        let screen = ctx.content_rect();
         let y = screen.max.y - 43.0;
         egui::Area::new(Id::new("pc-wheel-bottom"))
             .order(Order::Foreground)

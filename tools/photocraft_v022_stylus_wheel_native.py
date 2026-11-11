@@ -134,7 +134,7 @@ def main():
     with android_lib.open("a", encoding="utf-8") as out:
         out.write(NATIVE_STATE)
     once(native,
-         "            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {",
+         "            if let Some(ndk_event) = next {",
          """            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
                 // Magic-Pencil only: capture before winit dispatches a DPAD
                 // arrow into a PhotoCraft dropdown or canvas navigation.

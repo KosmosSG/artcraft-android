@@ -488,6 +488,9 @@ jobs:
           java=Path("builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
           host=Path("builder/adapters/vectorcraft/src/lib.rs").read_text()
           menus=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/tree.rs").read_text()
+          # The tapped Vc icon is rendered by android_vc_menu in menus.rs,
+          # NOT by the upstream tree: verify the actual onscreen menu.
+          visible_menu=Path("builder/source/vectorcraft/crates/ui-egui/src/menus.rs").read_text()
           commands=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/run.rs").read_text()
           assert "const DEFAULT_LAYOUT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7]" in wheel
           assert "const COMMANDS: [&str; 12]" in wheel and "Reset to Proposal A" in wheel
@@ -495,6 +498,12 @@ jobs:
           assert "vcStylusGetLayout" in java and "vcStylusSetLayout" in java
           assert "vc_stylus_get_layout" in host and "vc_stylus_set_layout" in host
           assert 'Customize Stylus Wheel…' in menus and 'stylusWheelCustomize" => 512' in commands
+          assert 'pub(crate) fn android_vc_menu(' in visible_menu
+          assert 'ui.checkbox(&mut wheel_enabled, "Stylus Wheel").changed()' in visible_menu
+          assert 'clicked = Some(("android.vectorcraft.stylusWheel".into()' in visible_menu
+          assert 'ui.button("Customize Stylus Wheel…").clicked()' in visible_menu
+          assert 'clicked = Some(("android.vectorcraft.stylusWheelCustomize".into()' in visible_menu
+          assert 'ANDROID_WHEEL_ENABLED.load(std::sync::atomic::Ordering::Acquire)' in visible_menu
           assert "self.stylus_wheel.open_customizer(ui.ctx())" in host
           assert "take_layout_change" in host and "take_layout_change" in wheel
           assert "vc_stylus_native_take" in host
@@ -509,6 +518,7 @@ jobs:
           assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime_bridge
           assert "remove_temp::<egui::ImeResetId>" not in ime + ime_bridge
           print("PASS: editor-owned IME reset IDs use Default-safe Option storage; stale IDs remain guarded")
+          print("PASS: actual tapped Vc menu displays checked Stylus Wheel and Customize action; routes to host")
           print("PASS: eight configurable wheel slots, safe actions, persisted settings and baseline wheel routing")
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"

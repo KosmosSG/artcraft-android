@@ -149,7 +149,7 @@ def main():
                         return true;
                     }
                 }
-                let event = match ndk_event {""")
+""")
 
     once(host, "    fn pc_stylus_poll(&self) -> Result<Option<String>, String> {",
          """    fn pc_stylus_device_ids(&self) -> Result<Vec<i32>, String> {

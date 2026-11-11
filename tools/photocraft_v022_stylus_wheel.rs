@@ -35,6 +35,26 @@ impl Wheel {
             message: "Hover + single-press: open wheel",
             message_at: Instant::now() }
     }
+    /// Exact raster of the user-supplied Pc SVG. Build workflow generates
+    /// the transparent RGBA file; no new runtime image decoder is needed.
+    fn pc_logo(ctx: &Context) -> egui::TextureHandle {
+        let texture_id = Id::new("pc-wheel-user-svg-logo");
+        if let Some(existing) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(texture_id)) {
+            return existing;
+        }
+        const PIXELS: &[u8] = include_bytes!("stylus_wheel_pc.rgba");
+        const WIDTH: usize = 192;
+        const HEIGHT: usize = 120;
+        let image = egui::ColorImage::from_rgba_unmultiplied([WIDTH, HEIGHT], PIXELS);
+        let texture = ctx.load_texture(
+            "photocraft-wheel-user-svg-pc",
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        ctx.data_mut(|d| d.insert_temp(texture_id, texture.clone()));
+        texture
+    }
+
     fn notify(&mut self, message: &'static str) {
         self.message = message;
         self.message_at = Instant::now();
@@ -245,19 +265,25 @@ impl Wheel {
                 }
                 painter.circle_stroke(c, R * scale,
                     Stroke::new(0.8, theme.field_border.gamma_multiply(0.58)));
-                // The user-approved reference uses a full navy circular hub,
-                // thin cyan outline, bright cyan Pc, and the active tool
-                // name below. It is intentionally not the square launcher
-                // icon: only the signature cyan-on-navy brand colors.
+                // Full user-selected round hub, no square tile.
+                // The exact uploaded SVG paths are shown here as a texture,
+                // retaining the author's original cyan #27a5de letterforms.
                 let hub_navy = Color32::from_rgb(0, 28, 49);
                 let hub_cyan = Color32::from_rgb(0, 180, 246);
                 painter.circle_filled(c, (INNER + 2.0) * scale, hub_navy);
                 painter.circle_stroke(c, (INNER + 2.0) * scale,
                     Stroke::new(1.3, hub_cyan));
-                painter.text(c - vec2(0.0, 9.0) * scale,
-                    egui::Align2::CENTER_CENTER, "Pc",
-                    FontId::proportional(29.0 * scale), hub_cyan);
-                painter.text(c + vec2(0.0, 20.0) * scale,
+                let pc = Self::pc_logo(&ctx);
+                let mark_rect = egui::Rect::from_center_size(
+                    c - vec2(0.0, 10.0) * scale,
+                    vec2(70.0, 44.0) * scale,
+                );
+                painter.image(
+                    pc.id(), mark_rect,
+                    egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+                painter.text(c + vec2(0.0, 22.0) * scale,
                     egui::Align2::CENTER_CENTER,
                     highlighted.map(|i| LABELS[i]).unwrap_or("Tools"),
                     FontId::proportional(11.0 * scale), Color32::WHITE);

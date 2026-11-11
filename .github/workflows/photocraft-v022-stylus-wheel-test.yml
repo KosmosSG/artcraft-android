@@ -1,4 +1,4 @@
-name: PhotoCraft v0.22.0 Android.3 Stylus Wheel Soft Shadow Cyan Hub ARM64 TEST ONLY
+name: PhotoCraft v0.22.0 Android.3 Exact User SVG Pc Logo ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -48,7 +48,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
           CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
-          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py)"
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py tools/photocraft_v022_wheel_pc_logo.svg tools/photocraft_v022_wheel_pc_raster.py)"
           test "$CHANGED" = "$EXPECTED" || {
             echo "Refusing branch: unexpected changes outside guarded workflow and Brush Library overlay."
             printf '%s\n' "$CHANGED"
@@ -205,6 +205,13 @@ jobs:
             --adapter adapters/photocraft
           python3 tools/photocraft_v022_stylus_wheel.py --upstream source/photocraft --adapter adapters/photocraft
           python3 tools/photocraft_v022_stylus_wheel_native.py --adapter adapters/photocraft --vendor vendor
+          # Build-time only SVG rasterizer: retain the user's exact original
+          # vector mark and avoid adding runtime decoders or APK permissions.
+          python3 -m venv /tmp/pc-wheel-svg-venv
+          /tmp/pc-wheel-svg-venv/bin/python -m pip install -q --disable-pip-version-check             'CairoSVG==2.7.1' 'Pillow==11.3.0'
+          /tmp/pc-wheel-svg-venv/bin/python tools/photocraft_v022_wheel_pc_raster.py             --svg tools/photocraft_v022_wheel_pc_logo.svg             --output adapters/photocraft/src/stylus_wheel_pc.rgba
+          test "$(wc -c < adapters/photocraft/src/stylus_wheel_pc.rgba)" -eq 92160
+          grep -Fq 'include_bytes!("stylus_wheel_pc.rgba")' adapters/photocraft/src/stylus_wheel.rs
           grep -Fq 'pc_stylus_native_capture' vendor/android-activity/src/native_activity/mod.rs
           grep -Fq 'pc_stylus_device_ids' adapters/photocraft/src/lib.rs
           grep -Fq 'pcStylusIntercept(event)' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
@@ -396,7 +403,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.22.0.apk
-          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-CYAN-HUB-ARM64-TEST.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-EXACT-SVG-ARM64-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.22.0 adaptation
         if: failure()
@@ -463,7 +470,7 @@ jobs:
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-CYAN-HUB-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-EXACT-SVG-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

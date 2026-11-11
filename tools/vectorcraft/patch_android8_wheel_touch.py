@@ -244,12 +244,10 @@ pub fn set_android_wheel_enabled(enabled: bool) {
     // this touch gesture instead of adding it and double-panning.
     let native_canvas_touch = ui.input(|i| i.multi_touch())
         .filter(|t| rect.contains(t.center_pos));
-    if early_two_touch_on_canvas || native_canvas_touch.is_some() {
-        scroll = if early_pan != egui::Vec2::ZERO {
-            early_pan
-        } else {
-            native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
-        };
+    if let Some(touch) = native_canvas_touch {
+        // Direct screen-space translation follows the contact centroid.
+        // The raw touch fallback is handled by the existing touch layer.
+        scroll = touch.translation_delta;
     }''')
     # The final hook follows android-activity copying, after winit restoration.
     for name in ('patch_android8_wheel_touch.py', 'patch_android8_ime_reset.py', 'stylus_native.rs'):

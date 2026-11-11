@@ -1,0 +1,51 @@
+name: ArtCraft Suite upstream vs published Android (READ ONLY)
+
+# Reporting only. No push, pull_request, workflow_run or release trigger.
+# Weekly Monday 09:19 Asia/Kuala_Lumpur (01:19 UTC), plus manual dispatch.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '19 1 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artcraft-upstream-comparison-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reporting code only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate offline release classification
+        run: python3 tools/artcraft_upstream_compare.py --self-test
+      - name: Read official GitHub release and commit metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/artcraft_upstream_compare.py
+      - name: Show comparison in the Actions summary
+        if: always()
+        shell: bash
+        run: |
+          if test -f reports/artcraft-upstream-comparison.md; then
+            cat reports/artcraft-upstream-comparison.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Comparison did not produce a report; inspect failed steps.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload detailed Markdown and JSON reports (not APKs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artcraft-suite-upstream-comparison
+          path: |
+            reports/artcraft-upstream-comparison.md
+            reports/artcraft-upstream-comparison.json
+          if-no-files-found: warn
+          retention-days: 30

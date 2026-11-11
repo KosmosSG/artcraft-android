@@ -3,7 +3,11 @@
 VectorCraftActivity extends android.app.NativeActivity. Both shipped Java sources
 use framework Android and the official lightweight AndroidX SplashScreen API.
 Avoid shipping AppCompat/GameActivity/Kotlin that the NativeActivity does not use.
-Keep extractNativeLibs=false (uncompressed/page-aligned .so for startup speed).
+For the disposable ARM64 test only, compress stripped native .so inside the APK
+with Gradle useLegacyPackaging=true (Android extracts it at installation).
+This reduces the distributed APK size while preserving the exact native code,
+in-app behavior, Vulkan acceleration and fonts. It may increase install time
+and installed storage; test startup before ever considering production.
 Rust symbol stripping is selected by CARGO_PROFILE_RELEASE_STRIP=symbols in CI.
 """
 from pathlib import Path
@@ -86,6 +90,14 @@ def patch_builder(builder: Path, android_port: Path) -> None:
     source = generated.read_text()
     updated = patch_source(source, java.read_text(), extras.read_text(), manifest.read_text())
     updated = patch_native_theme(updated)
+    # Legacy packaging compresses only lib/arm64-v8a/*.so in the APK. The
+    # installer extracts native libraries once; no source code or ABIs change.
+    # Do not use a ZIP post-processor: signatures and page alignment are owned
+    # by Gradle/apksigner. Production builder and published release untouched.
+    compress_anchor = "useLegacyPackaging = false"
+    if updated.count(compress_anchor) != 1:
+        raise ValueError("Pinned builder native packaging setting changed; review required")
+    updated = updated.replace(compress_anchor, "useLegacyPackaging = true", 1)
     generated.write_text(updated)
     # The production adapter still names the original framework theme; only
     # this disposable candidate selects the generated brand-coloured theme.
@@ -96,7 +108,7 @@ def patch_builder(builder: Path, android_port: Path) -> None:
     if original.count(old) != 1:
         raise ValueError("Pinned VectorCraft Android theme anchor changed")
     staged.write_text(original.replace(old, 'theme = "@style/Theme.Artcraft"', 1))
-    print("PASS: VectorCraft AndroidX SplashScreen keep condition, maroon post theme, no AppCompat/GameActivity")
+    print("PASS: native Vc splash/theme, no AppCompat/GameActivity, ARM64 native library APK compression")
 
 
 if __name__ == "__main__":

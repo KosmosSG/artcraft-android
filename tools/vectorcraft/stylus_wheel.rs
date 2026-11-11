@@ -8,13 +8,19 @@ const SIZE: f32 = 312.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
-const LABELS: [&str; 8] = ["Select", "Nodes", "Pen", "Type", "Shapes", "Hand", "Undo", "Redo"];
-const ICONS: [&str; 8] = ["dc-selection", "dc-direct", "pen-tool", "dc-type", "shapes", "hand", "undo-2", "redo-2"];
-const COMMANDS: [&str; 9] = ["selection", "directSelection", "pen", "type", "rectangle", "hand", "edit.undo", "edit.redo", "eraser"];
+// All actions below map to existing VectorCraft tools or commands.
+const LABELS: [&str; 12] = ["Select", "Nodes", "Pen", "Type", "Shapes", "Hand", "Undo", "Redo", "Eraser", "Pencil", "Ellipse", "Zoom"];
+const ICONS: [&str; 12] = ["dc-selection", "dc-direct", "pen-tool", "dc-type", "shapes", "hand", "undo-2", "redo-2", "eraser", "pencil", "circle", "zoom-in"];
+const COMMANDS: [&str; 12] = ["selection", "directSelection", "pen", "type", "rectangle", "hand", "edit.undo", "edit.redo", "eraser", "pencil", "ellipse", "zoom"];
+const DEFAULT_LAYOUT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+const POSITIONS: [&str; 8] = ["Upper right", "Right", "Lower right", "Bottom", "Lower left", "Left", "Upper left", "Top"];
 
 pub(crate) struct Wheel {
     pub enabled: bool,
     open: bool,
+    customize_open: bool,
+    layout: [usize; 8],
+    layout_dirty: bool,
     swallow_contact: bool,
     center: Option<Pos2>,
     hover: Option<Pos2>,
@@ -27,7 +33,7 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, swallow_contact: false, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, swallow_contact: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -100,6 +106,35 @@ impl Wheel {
         }
         ctx.request_repaint();
     }
+
+    /// Read a bounded list of tool indices; malformed or outdated preferences
+    /// leave Proposal A intact. Never deserialize unchecked action strings.
+    pub fn set_layout_string(&mut self, encoded: &str) {
+        let indices: Option<Vec<usize>> = encoded
+            .split(',')
+            .map(|part| part.trim().parse::<usize>().ok())
+            .collect();
+        if let Some(indices) = indices {
+            if indices.len() == 8 && indices.iter().all(|index| *index < COMMANDS.len()) {
+                self.layout.copy_from_slice(&indices);
+            }
+        }
+    }
+
+    pub fn take_layout_change(&mut self) -> Option<String> {
+        if !self.layout_dirty { return None; }
+        self.layout_dirty = false;
+        Some(self.layout.iter().map(|index| index.to_string()).collect::<Vec<_>>().join(","))
+    }
+
+    pub fn open_customizer(&mut self, ctx: &Context) {
+        self.open = false;
+        self.single_wait = None;
+        self.action = None;
+        self.customize_open = true;
+        ctx.request_repaint();
+    }
+
     fn clamped(position: Pos2, rect: egui::Rect) -> Pos2 {
         let inset = SIZE * 0.5 + 10.0;
         pos2(position.x.clamp(rect.min.x + inset, (rect.max.x - inset).max(rect.min.x + inset)),
@@ -111,7 +146,7 @@ impl Wheel {
         Some((((vector.y.atan2(vector.x).to_degrees() + 90.0).rem_euclid(360.0) / 45.0).floor() as usize).min(7))
     }
     pub fn capture(&mut self, ctx: &Context, raw: &mut RawInput, blocked: bool) {
-        if !self.enabled || blocked {
+        if !self.enabled || blocked || self.customize_open {
             self.open = false;
             self.single_wait = None;
             self.action = None;
@@ -172,11 +207,54 @@ impl Wheel {
         }
     }
     pub fn take_action(&mut self) -> Option<&'static str> {
-        self.action.take().map(|i| COMMANDS[i])
+        self.action.take().map(|i| COMMANDS[if i == 8 { 8 } else { self.layout[i] }])
     }
-    pub fn render(&self, ui: &mut Ui) {
-        if !self.enabled { return; }
+    pub fn render(&mut self, ui: &mut Ui) {
+        if !self.enabled && !self.customize_open { return; }
         let ctx = ui.ctx().clone();
+
+        if self.customize_open {
+            let mut open = true;
+            let mut done = false;
+            egui::Window::new("Customize Stylus Wheel")
+                .id(Id::new("vc-wheel-settings"))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .default_width(330.0)
+                .show(&ctx, |ui| {
+                    ui.label("Choose the feature for each of the eight wheel positions.");
+                    ui.add_space(6.0);
+                    for slot in 0..8 {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}.", slot + 1));
+                            ui.label(POSITIONS[slot]);
+                            ui.add_space(6.0);
+                            egui::ComboBox::from_id_salt(("vc-wheel-slot", slot))
+                                .selected_text(LABELS[self.layout[slot]])
+                                .width(130.0)
+                                .show_ui(ui, |ui| {
+                                    for index in 0..LABELS.len() {
+                                        if ui.selectable_value(&mut self.layout[slot], index, LABELS[index]).changed() {
+                                            self.layout_dirty = true;
+                                        }
+                                    }
+                                });
+                        });
+                    }
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Reset to Proposal A").clicked() {
+                            self.layout = DEFAULT_LAYOUT;
+                            self.layout_dirty = true;
+                        }
+                        if ui.button("Done").clicked() { done = true; }
+                    });
+                    ui.small("Your layout is saved automatically. Double press keeps the Eraser shortcut.");
+                });
+            self.customize_open = open && !done;
+        }
+        if !self.enabled { return; }
         let screen = ctx.content_rect();
         let theme = vectorcraft_ui_egui::theme::Tokens::get(&ctx);
         // Brief toast: 1.9 seconds visible, then 0.5 seconds fading out.
@@ -261,11 +339,11 @@ impl Wheel {
                             else { theme.input_border.gamma_multiply(0.70) })));
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
-                    vectorcraft_ui_egui::icons::paint(ui, ICONS[i],
+                    vectorcraft_ui_egui::icons::paint(ui, ICONS[self.layout[i]],
                         egui::Rect::from_center_size(icon_pos - vec2(0.0, 10.0), vec2(24.0, 24.0) * scale),
                         if active { Color32::from_rgb(255,159,0) } else { theme.text });
                     painter.text(icon_pos + vec2(0.0, 13.0),
-                        egui::Align2::CENTER_CENTER, LABELS[i],
+                        egui::Align2::CENTER_CENTER, LABELS[self.layout[i]],
                         FontId::proportional(11.0), theme.text_dim);
                 }
                 painter.circle_stroke(c, R * scale,
@@ -290,7 +368,7 @@ impl Wheel {
                 );
                 painter.text(c + vec2(0.0, 22.0) * scale,
                     egui::Align2::CENTER_CENTER,
-                    highlighted.map(|i| LABELS[i]).unwrap_or("Tools"),
+                    highlighted.map(|i| LABELS[self.layout[i]]).unwrap_or("Tools"),
                     FontId::proportional(11.0 * scale), Color32::WHITE);
             });
     }

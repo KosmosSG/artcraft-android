@@ -517,6 +517,19 @@ jobs:
           assert "get_temp::<Option<egui::ImeResetId>>(key).flatten()" in ime_bridge
           assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime_bridge
           assert "remove_temp::<egui::ImeResetId>" not in ime + ime_bridge
+          # Opened .ai text edit: active Type host and selected live text fallback.
+          live_text=Path("builder/source/vectorcraft/crates/tools/src/text.rs").read_text()
+          assert 'cx.selection.objects.iter().copied().find' in live_text
+          assert 'let text_id = h?.leaf' in live_text  # desktop unaffected
+          assert 'if (imeWanted)' in java and 'imeView.requestFocus()' in java
+          # Touchscreen X/Y follows centroid only on canvas; trackpad unchanged.
+          canvas=Path("builder/source/vectorcraft/crates/ui-egui/src/canvas/input.rs").read_text()
+          assert 'if active { translated } else { egui::Vec2::ZERO }' in canvas
+          assert 'scroll = if early_pan != egui::Vec2::ZERO' in canvas
+          assert 'native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)' in canvas
+          assert 'scroll.y -= 2.0 * native_pan.y' not in canvas
+          assert 'delta.x *= -1.15;' in host and 'delta.y *= -1.15;' in host
+          print("PASS: opened live text fallback, Type IME focus recovery and direct two-touch pan")
           print("PASS: editor-owned IME reset IDs use Default-safe Option storage; stale IDs remain guarded")
           print("PASS: actual tapped Vc menu displays checked Stylus Wheel and Customize action; routes to host")
           print("PASS: eight configurable wheel slots, safe actions, persisted settings and baseline wheel routing")
@@ -541,7 +554,9 @@ jobs:
           assert "implementation 'androidx.appcompat:" not in source
           assert "implementation 'androidx.games:" not in source
           assert 'android:windowFullscreen' in source
-          print("PASS: no native launcher AppCompat theme mismatch before compile")
+          assert 'useLegacyPackaging = true' in source
+          assert 'useLegacyPackaging = false' not in source
+          print("PASS: native Vc theme and compressed ARM64 test package; no AppCompat mismatch")
           PY
           # Reuse unchanged system-font symlink layout across cold launches
           # without affecting native font fallbacks or SAF imported fonts.
@@ -632,6 +647,7 @@ jobs:
               libs=[x for x in files if x.startswith("lib/") and x.endswith(".so")]
               assert libs and all(x.startswith("lib/arm64-v8a/") for x in libs),libs
               assert "lib/arm64-v8a/libvectorcraft_android.so" in files
+              assert z.getinfo("lib/arm64-v8a/libvectorcraft_android.so").compress_type == zipfile.ZIP_DEFLATED, "Native library not compressed"
               dex=[z.read(x) for x in files if x.endswith(".dex")]
               assert dex and any(b"VectorCraftActivity" in x for x in dex)
               # aapt2/Gradle compiles launcher mipmap entries into resources.arsc;
@@ -644,9 +660,8 @@ jobs:
           PY
           cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
-          # Record sizes inside the APK for subsequent APK.3 vs APK.2
-          # comparisons; JNI libraries must remain uncompressed for
-          # Android's direct page-aligned loading and faster startup.
+          # Compare against prior test APK (163407944 bytes); this candidate
+          # compresses native code in the package, extracting once on install.
           python3 - "$APK" <<'PY'
           import json,sys,zipfile
           from pathlib import Path
@@ -659,7 +674,11 @@ jobs:
               report={"apk_bytes":path.stat().st_size,"native_library_raw_bytes":total_lib,
                       "largest_entries":details,"release_symbols_stripped":True,
                       "unused_androidx_gameactivity_removed":True,
-                      "native_library_direct_loading_retained":True}
+                      "native_library_compressed_in_apk":True,
+                      "native_library_extracted_at_install":True,
+                      "previous_uncompressed_apk_bytes":163407944,
+                      "apk_download_bytes_saved":163407944-path.stat().st_size}
+              assert report["apk_download_bytes_saved"] > 0, "Native APK compression did not reduce download size"
           Path("private-test/size-report.json").write_text(json.dumps(report,indent=2)+"\n")
           print("PASS: APK size report recorded",report["apk_bytes"],"bytes")
           PY

@@ -70,6 +70,10 @@ jobs:
             "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
           fi
           echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+          # Reference builder requires Pillow for Android adaptive icon layers.
+          # Use a wheel rather than Ubuntu apt mirrors; fail before compiling.
+          python3 -m pip install --user --disable-pip-version-check "Pillow>=10,<13"
+          python3 -c 'from PIL import Image; print("Pillow ready:", Image.__version__)'
 
       - name: Prepare official CADCraft v0.19.0 and exact Cc Android menu overlay
         shell: bash

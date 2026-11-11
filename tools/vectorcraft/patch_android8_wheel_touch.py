@@ -17,6 +17,15 @@ def patch(root):
     once(java,'    public String imePoll() {', '''    private volatile boolean vcWheelEnabled = false;
     private final ConcurrentLinkedQueue<String> vcWheelKeys = new ConcurrentLinkedQueue<>();
     private long vcWheelLastUp, vcWheelLastDown;
+    public String vcStylusGetLayout() {
+        return getSharedPreferences("vc_stylus_wheel", MODE_PRIVATE)
+            .getString("layout", "0,1,2,3,4,5,6,7");
+    }
+    public void vcStylusSetLayout(String layout) {
+        if (layout != null && layout.length() <= 64)
+            getSharedPreferences("vc_stylus_wheel", MODE_PRIVATE)
+                .edit().putString("layout", layout).apply();
+    }
     public boolean vcStylusEnabled() { return vcWheelEnabled; }
     public void vcStylusSetEnabled(boolean enabled) {
         vcWheelEnabled = enabled;
@@ -65,7 +74,29 @@ def patch(root):
     once(host,'    ime: ime_bridge::ime::ImeBridge,','''    ime: ime_bridge::ime::ImeBridge,
     stylus_wheel: stylus_wheel::Wheel,
     stylus_device_scan_at: std::time::Instant,''')
-    once(host,'    fn files_dir(&self) -> Result<String, String> {', '''    fn vc_stylus_set_enabled(&self, enabled: bool) -> Result<(), String> {
+    once(host,'    fn files_dir(&self) -> Result<String, String> {', '''    fn vc_stylus_get_layout(&self) -> Result<String, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("vcStylusGetLayout"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(String::new()); }
+            let value = JString::cast_local(env, result)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+    fn vc_stylus_set_layout(&self, layout: &str) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.new_string(layout)?;
+            let object = JObject::from(value);
+            env.call_method(&*activity, jni_str!("vcStylusSetLayout"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&object)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+    fn vc_stylus_set_enabled(&self, enabled: bool) -> Result<(), String> {
         self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
@@ -106,7 +137,9 @@ def patch(root):
                 stylus_wheel: {
                     let enabled = app_bridge.vc_stylus_enabled().unwrap_or(false);
                     android_activity::vc_stylus_configure(enabled, &app_bridge.vc_stylus_device_ids().unwrap_or_default());
-                    stylus_wheel::Wheel::new(enabled)
+                    let mut wheel = stylus_wheel::Wheel::new(enabled);
+                    if let Ok(layout) = app_bridge.vc_stylus_get_layout() { wheel.set_layout_string(&layout); }
+                    wheel
                 },
                 stylus_device_scan_at: std::time::Instant::now(),''')
     once(host,'        self.inner.raw_input_hook(ctx, raw);','''        let wheel_blocked = self.inner.session.active().is_none()
@@ -135,8 +168,16 @@ def patch(root):
         }
         vectorcraft_ui_egui::menus::set_android_wheel_enabled(self.stylus_wheel.enabled);
         self.inner.ui(ui);
-        self.stylus_wheel.render(ui);''')
+        self.stylus_wheel.render(ui);
+        if let Some(layout) = self.stylus_wheel.take_layout_change() {
+            if let Err(error) = self.bridge.vc_stylus_set_layout(&layout) {
+                log::warn!("Wheel layout could not be saved: {error}");
+            }
+        }''')
     once(host,'        let menu = vectorcraft_ui_egui::menus::take_android_menu_bits();','''        let menu = vectorcraft_ui_egui::menus::take_android_menu_bits();
+        if menu & 512 != 0 {
+            self.stylus_wheel.open_customizer(ui.ctx());
+        }
         if menu & 256 != 0 {
             let enabled = !self.stylus_wheel.enabled;
             match self.bridge.vc_stylus_set_enabled(enabled) {
@@ -147,8 +188,10 @@ def patch(root):
                 Err(error) => log::warn!("Wheel preference: {error}"),
             }
         }''')
-    once(ui/'menus/tree.rs', '"Vc",\n            vec![', '"Vc",\n            vec![\n                c("Stylus Wheel", "android.vectorcraft.stylusWheel"),')
+    once(ui/'menus/tree.rs', '"Vc",\n            vec![', '"Vc",\n            vec![\n                c("Stylus Wheel", "android.vectorcraft.stylusWheel"),
+                c("Customize Stylus Wheel…", "android.vectorcraft.stylusWheelCustomize"),')
     once(ui/'menus/run.rs','            "android.vectorcraft.fontImport" => 1,','''            "android.vectorcraft.stylusWheel" => 256,
+            "android.vectorcraft.stylusWheelCustomize" => 512,
             "android.vectorcraft.fontImport" => 1,''')
     once(ui/'menus/state.rs','        "android.vectorcraft.startupUpdates" =>', '''        "android.vectorcraft.stylusWheel" => return Some(super::ANDROID_WHEEL_ENABLED.load(std::sync::atomic::Ordering::Acquire)),
         "android.vectorcraft.startupUpdates" =>''')

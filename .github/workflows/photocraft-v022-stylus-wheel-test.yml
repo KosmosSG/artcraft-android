@@ -1,4 +1,4 @@
-name: PhotoCraft v0.22.0 Android.3 Stylus Wheel Theme and Toast Polish ARM64 TEST ONLY
+name: PhotoCraft v0.22.0 Android.3 Stylus Wheel Soft Shadow Cyan Hub ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -396,7 +396,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.22.0.apk
-          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-POLISH-ARM64-TEST.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-CYAN-HUB-ARM64-TEST.apk
 
       - name: Print compiler failure summary for upstream v0.22.0 adaptation
         if: failure()
@@ -463,7 +463,7 @@ jobs:
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-POLISH-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.22.0-android.3-STYLUS-WHEEL-CYAN-HUB-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

@@ -195,14 +195,18 @@ impl Wheel {
                 let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
                 let painter = ui.painter_at(rect);
                 let c = rect.center();
-                // Soft layered shadow: no hard dark outer ring.
-                for (spread, strength) in [
-                    (22.0, 0.09), (17.0, 0.13), (12.0, 0.17),
-                    (8.0, 0.21), (4.0, 0.25),
-                ] {
-                    painter.circle_filled(c + vec2(1.0, 4.0) * scale,
-                        (R + spread) * scale,
-                        theme.shadow.gamma_multiply(strength));
+                // Close, feathered shadow from the approved proposal.
+                // Twelve thin low-alpha layers avoid the hard concentric
+                // grey rings of the original 22-point spread. Keep radius
+                // <= 12 points and position just 2 points below the wheel.
+                for step in 0..12 {
+                    let spread = (12.0 - step as f32 * 0.82) * scale;
+                    let softness = 0.008 + step as f32 * 0.0017;
+                    painter.circle_filled(
+                        c + vec2(0.8, 2.0) * scale,
+                        R * scale + spread,
+                        theme.shadow.gamma_multiply(softness),
+                    );
                 }
                 painter.circle_filled(c, R * scale,
                     Color32::from_rgba_unmultiplied(
@@ -240,15 +244,23 @@ impl Wheel {
                         FontId::proportional(11.0), theme.text_dim);
                 }
                 painter.circle_stroke(c, R * scale,
-                    Stroke::new(1.1, theme.field_border.gamma_multiply(0.85)));
-                painter.circle_filled(c, (INNER + 2.0) * scale, theme.field);
+                    Stroke::new(0.8, theme.field_border.gamma_multiply(0.58)));
+                // The user-approved reference uses a full navy circular hub,
+                // thin cyan outline, bright cyan Pc, and the active tool
+                // name below. It is intentionally not the square launcher
+                // icon: only the signature cyan-on-navy brand colors.
+                let hub_navy = Color32::from_rgb(0, 28, 49);
+                let hub_cyan = Color32::from_rgb(0, 180, 246);
+                painter.circle_filled(c, (INNER + 2.0) * scale, hub_navy);
                 painter.circle_stroke(c, (INNER + 2.0) * scale,
-                    Stroke::new(1.7, theme.accent));
-                painter.text(c - vec2(0.0, 7.0), egui::Align2::CENTER_CENTER, "Pc",
-                    FontId::proportional(19.0), theme.text);
-                painter.text(c + vec2(0.0, 14.0), egui::Align2::CENTER_CENTER,
+                    Stroke::new(1.3, hub_cyan));
+                painter.text(c - vec2(0.0, 9.0) * scale,
+                    egui::Align2::CENTER_CENTER, "Pc",
+                    FontId::proportional(29.0 * scale), hub_cyan);
+                painter.text(c + vec2(0.0, 20.0) * scale,
+                    egui::Align2::CENTER_CENTER,
                     highlighted.map(|i| LABELS[i]).unwrap_or("Tools"),
-                    FontId::proportional(10.0), theme.text_dim);
+                    FontId::proportional(11.0 * scale), Color32::WHITE);
             });
     }
 }

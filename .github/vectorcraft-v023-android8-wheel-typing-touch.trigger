@@ -1,1 +1,1 @@
-Owner authorized 2026-11-11: build one isolated disposable-signed ARM64 Proposal A wheel, touch direction and IME reset test. Stop before production signing or publication.
+Owner approved unattended TEST ONLY iteration 2026-11-11. Rerun Android.8 after safe opaque IME reset fix and configurable 8-position Proposal A Stylus Wheel. ARM64 disposable signing and com.artcraft.vectorcraft.test only. Preserve published android.7, do not use production keys, merge, tag or publish.

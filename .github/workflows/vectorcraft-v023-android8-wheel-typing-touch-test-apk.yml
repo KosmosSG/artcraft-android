@@ -499,6 +499,16 @@ jobs:
           assert "take_layout_change" in host and "take_layout_change" in wheel
           assert "vc_stylus_native_take" in host
           assert "patch_android8_ime_reset" in patch
+          # Verify opaque egui reset tokens use Option<T>: the upstream IdTypeMap
+          # remove_temp<T>() requires Default, which ImeResetId does not implement.
+          ime=Path("builder/source/vectorcraft/crates/ui-egui/src/ime.rs").read_text()
+          ime_bridge=Path("builder/adapters/vectorcraft/src/ime_bridge.rs").read_text()
+          assert "data.insert_temp(key, Some(request_id));" in ime
+          assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime
+          assert "get_temp::<Option<egui::ImeResetId>>(key).flatten()" in ime_bridge
+          assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime_bridge
+          assert "remove_temp::<egui::ImeResetId>" not in ime + ime_bridge
+          print("PASS: editor-owned IME reset IDs use Default-safe Option storage; stale IDs remain guarded")
           print("PASS: eight configurable wheel slots, safe actions, persisted settings and baseline wheel routing")
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"

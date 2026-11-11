@@ -124,8 +124,8 @@ def main():
     for old, new in routes:
         once(activity, old, new)
     once(activity,
-         "                public boolean onKeyUp(int keyCode, KeyEvent event) {\n                    return false;",
-         "                public boolean onKeyUp(int keyCode, KeyEvent event) {\n                    if (pcStylusIntercept(event)) return true;\n                    return false;")
+         "                public boolean onKeyUp(int keyCode, KeyEvent event) {",
+         "                public boolean onKeyUp(int keyCode, KeyEvent event) {\n                    if (pcStylusIntercept(event)) return true;")
 
     # Capture from the NativeActivity AInputQueue before winit synthesizes
     # generic DPAD keys. This is the path missed by Java in the first video.

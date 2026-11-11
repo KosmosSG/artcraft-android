@@ -1,0 +1,84 @@
+"""Complete Android IME reset requests with an ordered, generation-guarded Java fence.
+
+The pinned backend only hides/shows the IME and ignores request_id. Upstream
+VectorCraft waits for that ID after retargeting composition, so later commits
+can remain blocked. Never fabricate completion without resetting the host.
+"""
+from pathlib import Path
+import sys
+from patch_android8_wheel_touch import once
+
+def patch(root):
+    a=root/'adapters/vectorcraft'
+    java=a/'java/com/artcraft/vectorcraft/VectorCraftActivity.java'
+    once(java,'    public String imePoll() {', '''    private long vcImeGeneration = 0L;
+    private boolean vcImeResetting = false;
+    public void vcResetIme(long requestId) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || imeView == null) return;
+            InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if (imm == null) return;
+            // All InputConnection callbacks and this reset run on the UI thread.
+            // Invalidate the old connection before clearing its composing buffer.
+            vcImeResetting = true;
+            vcImeGeneration++;
+            imeEvents.clear();
+            android.view.inputmethod.BaseInputConnection.removeComposingSpans(imeView.getText());
+            imeView.setText("");
+            imm.restartInput(imeView);
+            // Queue the matching fence before permitting fresh connection commits.
+            imeEvents.offer("r" + Long.toUnsignedString(requestId));
+            vcImeResetting = false;
+            vcWakeNativeLoop();
+        });
+    }
+    public String imePoll() {''')
+    signature='public InputConnection onCreateInputConnection(EditorInfo outAttrs) {'
+    once(java,signature,signature+'\n                    final long connectionGeneration = vcImeGeneration;')
+    # Reject late callbacks from the invalidated InputConnection. A new connection
+    # captures the current epoch and resumes only after the completion marker.
+    for sig in (
+        'public boolean commitText(CharSequence text, int newCursorPosition) {',
+        'public boolean setComposingText(CharSequence text, int newCursorPosition) {',
+        'public boolean finishComposingText() {',
+        'public boolean deleteSurroundingText(int beforeLength, int afterLength) {',
+        'public boolean performEditorAction(int actionCode) {',
+        'public boolean sendKeyEvent(KeyEvent event) {',
+    ):
+        once(java,sig,sig+'\n                            if (vcImeResetting || connectionGeneration != vcImeGeneration) return false;')
+    once(a/'src/ime_bridge.rs',"        match tag {", """        match tag {
+            'r' => Some(egui::Event::ImeResetCompleted { request_id: payload.parse().ok()? }),""")
+    print('PASS: IME generation isolation and real reset completion staged')
+
+def vendor(root):
+    lib=root/'vendor/android-activity/src/lib.rs'
+    native=root/'vendor/android-activity/src/native_activity/mod.rs'
+    winit=root/'vendor/winit/src/platform_impl/android/mod.rs'
+    once(lib,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    #[cfg(feature = "native-activity")]
+    pub fn vc_reset_ime(&self, request_id: u64) {
+        self.inner.read().unwrap().vc_reset_ime(request_id);
+    }
+    pub fn show_soft_input(&self, show_implicit: bool) {''')
+    once(native,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    pub fn vc_reset_ime(&self, request_id: u64) {
+        let result = self.jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            env.call_method(self.activity.as_ref(), jni::jni_str!("vcResetIme"),
+                jni::jni_sig!("(J)V"), &[jni::objects::JValue::Long(request_id as i64)])?;
+            Ok(())
+        });
+        if let Err(error) = result { log::warn!("VectorCraft IME reset not completed: {error:?}"); }
+    }
+    pub fn show_soft_input(&self, show_implicit: bool) {''')
+    once(winit,'''    pub fn reset_ime_with_request(&self, _request_id: u64) {
+        // On NativeActivity the IME is driven by the system input method framework; asking the
+        // IME to reset its state is done by toggling `set_ime_allowed` off and on again.
+        self.set_ime_allowed(false);
+        self.set_ime_allowed(true);
+    }''','''    pub fn reset_ime_with_request(&self, request_id: u64) {
+        // Java clears the old composition, invalidates old InputConnections,
+        // restarts the IME, then queues this exact ID for the adapter to deliver.
+        self.app.vc_reset_ime(request_id);
+    }''')
+    print('PASS: native reset request forwarded with its ID; no synthetic success')
+
+if __name__=='__main__':
+    (vendor if '--vendor' in sys.argv else patch)(Path(sys.argv[1]))

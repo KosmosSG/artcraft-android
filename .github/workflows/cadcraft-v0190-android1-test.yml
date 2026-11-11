@@ -57,8 +57,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq librsvg2-bin
+          # Avoid apt: GitHub-hosted Ubuntu mirrors can be temporarily unreachable.
+          # ImageMagick is normally preinstalled; no production key or repo mutation.
+          if command -v magick >/dev/null 2>&1; then
+            echo "SVG_RENDERER=magick" >> "$GITHUB_ENV"
+          elif command -v convert >/dev/null 2>&1; then
+            echo "SVG_RENDERER=convert" >> "$GITHUB_ENV"
+          elif command -v rsvg-convert >/dev/null 2>&1; then
+            echo "SVG_RENDERER=rsvg-convert" >> "$GITHUB_ENV"
+          else
+            echo "::error::No installed SVG rasterizer (magick, convert, or rsvg-convert)."
+            exit 1
+          fi
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
@@ -77,7 +87,13 @@ jobs:
           python3 -m py_compile tools/cadcraft_android_patch.py
           python3 tools/cadcraft_android_patch.py --source reference/source/cadcraft --reference reference
           mkdir -p reference/assets/cadcraft
-          rsvg-convert --width 1024 --height 1024 assets/cadcraft/Cc-launcher-icon.svg -o reference/assets/cadcraft/cc-icon-1024.png
+          case "$SVG_RENDERER" in
+            rsvg-convert)
+              rsvg-convert --width 1024 --height 1024 assets/cadcraft/Cc-launcher-icon.svg -o reference/assets/cadcraft/cc-icon-1024.png ;;
+            magick|convert)
+              "$SVG_RENDERER" -background none -density 192 assets/cadcraft/Cc-launcher-icon.svg -resize 1024x1024 reference/assets/cadcraft/cc-icon-1024.png ;;
+          esac
+          file reference/assets/cadcraft/cc-icon-1024.png
           file reference/assets/cadcraft/cc-icon-1024.png
           grep -q 'CADCRAFT_ANDROID_CC_MENU_V1' reference/source/cadcraft/crates/ui-egui/src/menus.rs
           echo "Source and Cc menu overlay staged. No production app or key touched."

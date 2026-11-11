@@ -25,6 +25,16 @@ def patch(root):
             imeEvents.clear();
             android.view.inputmethod.BaseInputConnection.removeComposingSpans(imeView.getText());
             imeView.setText("");
+            // A document opened via SAF can leave the hidden input host
+            // invisible/unfocused even though the Type editor requests IME.
+            // Restore only the active Type route; do not steal focus from
+            // shortcuts, dialogs, or a non-editing canvas.
+            if (imeWanted) {
+                imeView.setVisibility(View.VISIBLE);
+                imeView.setFocusable(true);
+                imeView.setFocusableInTouchMode(true);
+                if (!imeView.isFocused()) imeView.requestFocus();
+            }
             imm.restartInput(imeView);
             // Queue the matching fence before permitting fresh connection commits.
             imeEvents.offer("r" + Long.toUnsignedString(requestId));
@@ -66,6 +76,51 @@ def patch(root):
             }
         });
     }''')
+    # In imported Illustrator/AI artwork a selected live Text object may sit
+    # below another hit-testable shape. A direct hit then returns that shape,
+    # which made the Type tool silently fail to enter text editing. Prefer an
+    # ordinary directly hit live-text object first; on Android only, fall back
+    # to the already-selected live Text node IF the tap lands inside its
+    # layout bounds. Do not edit paths, outlined glyphs or locked objects.
+    live_type=root/'source/vectorcraft/crates/tools/src/text.rs'
+    once(live_type, '''        let h = hit_test(cx.doc, p, vectorcraft_doc::hit::HitOptions { type_path_only: false, ..cx.hit_options() })?;
+        let Some(NodeKind::Text(t)) = cx.doc.node(h.leaf).map(|n| &n.kind) else { return None };
+        let lay = self.layout(t);
+        let byte = vectorcraft_text::hit_byte(&lay, t.xf.inverse() * p);
+        let mut out = self.finish(cx);
+        self.start_editing(h.leaf, byte);
+        self.remember(cx);
+        self.clicks = (Some(p), 1);
+        out.push(Action::Exec("select.set".into(), json!({"ids": [h.leaf.0]})));
+        Some(out)''',
+        '''        let h = hit_test(cx.doc, p, vectorcraft_doc::hit::HitOptions { type_path_only: false, ..cx.hit_options() });
+        #[cfg(target_os = "android")]
+        let text_id = h.and_then(|hit| {
+            cx.doc.node(hit.leaf).is_some_and(|node| matches!(&node.kind, NodeKind::Text(_))).then_some(hit.leaf)
+        }).or_else(|| {
+            // A selected live text layer inside imported artwork can be hidden
+            // behind another object's hit area. Only accept it within the
+            // visible text layout; do not redirect unrelated canvas taps.
+            cx.selection.objects.iter().copied().find(|id| {
+                let Some(NodeKind::Text(t)) = cx.doc.node(*id).map(|n| &n.kind) else { return false };
+                let local = t.xf.inverse() * p;
+                self.layout(t).bounds.inflate(cx.tol(6.0), cx.tol(6.0)).contains(local)
+            })
+        })?;
+        #[cfg(not(target_os = "android"))]
+        let text_id = h?.leaf;
+        let Some(NodeKind::Text(t)) = cx.doc.node(text_id).map(|n| &n.kind) else { return None };
+        let lay = self.layout(t);
+        let byte = vectorcraft_text::hit_byte(&lay, t.xf.inverse() * p);
+        let mut out = self.finish(cx);
+        self.start_editing(text_id, byte);
+        self.remember(cx);
+        self.clicks = (Some(p), 1);
+        out.push(Action::Exec("select.set".into(), json!({"ids": [text_id.0]})));
+        Some(out)''')
+    assert 'cx.selection.objects.iter().copied().find' in live_type.read_text()
+    assert 'let text_id = h?.leaf' in live_type.read_text()
+    assert 'if (imeWanted)' in java.read_text()
     bridge=a/'src/ime_bridge.rs'
     once(bridge,
         '        pub fn poll(&mut self, raw: &mut egui::RawInput) {',

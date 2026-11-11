@@ -224,14 +224,14 @@ def main():
         self.stylus_wheel.capture(ctx, raw, wheel_blocked);""")
     once(wheel, '                self.single_wait = Some((Instant::now(), self.hover));',
          '''                self.single_wait = Some((Instant::now(), self.hover));
-                self.message = "Pen button received • opening wheel…";''')
+                self.notify("Pen button received • opening wheel…");''')
     once(wheel, '''        if pen_down { self.single_wait = None; }''',
          '''        if pen_down {
             self.single_wait = None;
             // Ignore any pen-button shortcut occurring during drawing.
             if self.action.is_some() {
                 self.action = None;
-                self.message = "Pen contact • drawing remains active";
+                self.notify("Pen contact • drawing remains active");
             }
         }''')
     # Static preservation checks before the full 20-minute native compile.

@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 
 const R: f32 = 128.0;
 const INNER: f32 = 46.0;
-const SIZE: f32 = 284.0;
+const SIZE: f32 = 312.0;
+const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
+const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
 const LABELS: [&str; 6] = ["Undo", "Brush", "Eraser", "Hand", "Picker", "Redo"];
 const ICONS: [&str; 6] = ["U", "B", "E", "H", "I", "R"];
@@ -23,13 +25,24 @@ pub(crate) struct Wheel {
     opened_at: Instant,
     last_button: [Option<Instant>; 2],
     message: &'static str,
+    message_at: Instant,
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
         Self { enabled, open: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
-            message: "Hover + single-press: open wheel" }
+            message: "Hover + single-press: open wheel",
+            message_at: Instant::now() }
+    }
+    fn notify(&mut self, message: &'static str) {
+        self.message = message;
+        self.message_at = Instant::now();
+    }
+    fn mix(a: Color32, b: Color32, fraction: f32) -> Color32 {
+        let t = fraction.clamp(0.0, 1.0);
+        let channel = |x: u8, y: u8| ((x as f32 * (1.0 - t) + y as f32 * t).round()) as u8;
+        Color32::from_rgb(channel(a.r(), b.r()), channel(a.g(), b.g()), channel(a.b(), b.b()))
     }
     pub fn toggle(&mut self, enabled: bool, ctx: &Context) {
         self.enabled = enabled;
@@ -37,7 +50,7 @@ impl Wheel {
         self.single_wait = None;
         self.action = None;
         self.last_button = [None, None];
-        self.message = if enabled { "Wheel ON • hover + single press" } else { "Wheel OFF" };
+        self.notify(if enabled { "Wheel ON • hover + single press" } else { "Wheel OFF" });
         ctx.data_mut(|d| d.insert_temp(Id::new("pc_stylus_wheel_enabled"), enabled));
         ctx.request_repaint();
     }
@@ -53,7 +66,7 @@ impl Wheel {
             "S" if self.open => {
                 self.open = false;
                 self.single_wait = None;
-                self.message = "Wheel cancelled";
+                self.notify("Wheel cancelled");
             }
             "S" => {
                 self.single_wait = Some((Instant::now(), self.hover));
@@ -63,7 +76,7 @@ impl Wheel {
                 self.single_wait = None;
                 self.open = false;
                 self.action = Some(2);
-                self.message = "Double press • Eraser";
+                self.notify("Double press • Eraser");
             }
             _ => {}
         }
@@ -99,15 +112,15 @@ impl Wheel {
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
                     self.action = self.center.and_then(|center| Self::hit(center, pos));
-                    self.message = if self.action.is_some() { "Wheel selection accepted" }
-                        else { "Wheel cancelled • tapped outside" };
+                    self.notify(if self.action.is_some() { "Wheel selection accepted" }
+                        else { "Wheel cancelled • tapped outside" });
                     self.open = false;
                     ctx.request_repaint();
                 }
                 egui::Event::PointerButton {..} if self.open => {}
                 egui::Event::Key {key: egui::Key::Escape, pressed: true, ..} if self.open => {
                     self.open = false;
-                    self.message = "Wheel cancelled";
+                    self.notify("Wheel cancelled");
                 }
                 other => retained.push(other),
             }
@@ -124,9 +137,9 @@ impl Wheel {
                     self.center = Some(Self::clamped(pos, ctx.content_rect()));
                     self.open = true;
                     self.opened_at = Instant::now();
-                    self.message = "Hover to highlight • tap tip to select";
+                    self.notify("Hover to highlight • tap tip to select");
                     ctx.request_repaint();
-                } else { self.message = "Hover the pen over the canvas first"; }
+                } else { self.notify("Hover the pen over the canvas first"); }
             } else {
                 ctx.request_repaint_after(WAIT.saturating_sub(when.elapsed()));
             }
@@ -139,19 +152,33 @@ impl Wheel {
         if !self.enabled { return; }
         let ctx = ui.ctx().clone();
         let screen = ctx.content_rect();
-        let y = screen.max.y - 43.0;
-        egui::Area::new(Id::new("pc-wheel-bottom"))
-            .order(Order::Foreground)
-            .fixed_pos(pos2((screen.center().x - 175.0).max(screen.min.x), y))
-            .interactable(false)
-            .show(&ctx, |ui| {
-                let (rect, _) = ui.allocate_exact_size(vec2(350.0, 31.0), Sense::hover());
-                let painter = ui.painter_at(rect);
-                painter.rect_filled(rect, 13.0, Color32::from_rgba_unmultiplied(19, 30, 45, 233));
-                painter.rect_stroke(rect, 13.0, Stroke::new(1.0, Color32::from_rgb(77, 118, 153)), StrokeKind::Inside);
-                painter.text(rect.center(), egui::Align2::CENTER_CENTER, self.message,
-                    FontId::proportional(11.0), Color32::from_rgb(229, 240, 251));
-            });
+        let theme = photocraft_ui_egui::theme::Tokens::get(&ctx);
+        // Brief toast: 1.9 seconds visible, then 0.5 seconds fading out.
+        let elapsed = self.message_at.elapsed();
+        if elapsed < FEEDBACK_HOLD + FEEDBACK_FADE {
+            let alpha = if elapsed <= FEEDBACK_HOLD { 1.0 } else {
+                1.0 - (elapsed - FEEDBACK_HOLD).as_secs_f32() / FEEDBACK_FADE.as_secs_f32()
+            };
+            let alpha = alpha.clamp(0.0, 1.0);
+            if alpha < 1.0 { ctx.request_repaint_after(Duration::from_millis(40)); }
+            egui::Area::new(Id::new("pc-wheel-bottom"))
+                .order(Order::Foreground)
+                .fixed_pos(pos2((screen.center().x - 175.0).max(screen.min.x),
+                    screen.max.y - 43.0))
+                .interactable(false)
+                .show(&ctx, |ui| {
+                    let (rect, _) = ui.allocate_exact_size(vec2(350.0, 31.0), Sense::hover());
+                    let painter = ui.painter_at(rect);
+                    painter.rect_filled(rect, 13.0, Color32::from_rgba_unmultiplied(
+                        theme.card.r(), theme.card.g(), theme.card.b(),
+                        (244.0 * alpha) as u8));
+                    painter.rect_stroke(rect, 13.0,
+                        Stroke::new(1.0, theme.field_border.gamma_multiply(alpha)),
+                        StrokeKind::Inside);
+                    painter.text(rect.center(), egui::Align2::CENTER_CENTER, self.message,
+                        FontId::proportional(11.0), theme.text.gamma_multiply(alpha));
+                });
+        }
         if !self.open { return; }
         let Some(center) = self.center else { return };
         let t = (self.opened_at.elapsed().as_secs_f32() / 0.18).min(1.0);
@@ -159,6 +186,7 @@ impl Wheel {
         let scale = 0.86 + 0.14 * t;
         let size = SIZE * scale;
         let highlighted = self.hover.and_then(|p| Self::hit(center, p));
+        let dark = theme.kind.is_dark();
         egui::Area::new(Id::new("pc-wheel-plate"))
             .order(Order::Foreground)
             .fixed_pos(center - vec2(size * 0.5, size * 0.5))
@@ -167,9 +195,18 @@ impl Wheel {
                 let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
                 let painter = ui.painter_at(rect);
                 let c = rect.center();
-                painter.circle_filled(c + vec2(2.0, 6.0), 134.0 * scale,
-                    Color32::from_rgba_unmultiplied(2, 8, 20, 122));
-                painter.circle_filled(c, R * scale, Color32::from_rgb(24, 35, 52));
+                // Soft layered shadow: no hard dark outer ring.
+                for (spread, strength) in [
+                    (22.0, 0.09), (17.0, 0.13), (12.0, 0.17),
+                    (8.0, 0.21), (4.0, 0.25),
+                ] {
+                    painter.circle_filled(c + vec2(1.0, 4.0) * scale,
+                        (R + spread) * scale,
+                        theme.shadow.gamma_multiply(strength));
+                }
+                painter.circle_filled(c, R * scale,
+                    Color32::from_rgba_unmultiplied(
+                        theme.card.r(), theme.card.g(), theme.card.b(), 245));
                 for i in 0..6 {
                     let degrees = -90.0 + i as f32 * 60.0;
                     let first = (degrees - 28.4).to_radians();
@@ -180,31 +217,38 @@ impl Wheel {
                         vertices.push(c + vec2(angle.cos(), angle.sin()) * R * scale);
                     }
                     let active = highlighted == Some(i);
-                    let fill = if active { Color32::from_rgb(49, 112, 166) }
-                        else if i % 2 == 0 { Color32::from_rgb(36, 52, 73) }
-                        else { Color32::from_rgb(30, 44, 64) };
+                    let normal = if i % 2 == 0 {
+                        Self::mix(theme.card, theme.field, if dark { 0.18 } else { 0.30 })
+                    } else {
+                        Self::mix(theme.card, theme.field, if dark { 0.68 } else { 0.72 })
+                    };
+                    let fill = if active {
+                        Self::mix(normal, theme.accent, if dark { 0.48 } else { 0.22 })
+                    } else { normal };
                     painter.add(Shape::convex_polygon(vertices, fill,
-                        Stroke::new(if active {2.0} else {0.8},
-                            if active { Color32::from_rgb(153, 218, 255) }
-                            else { Color32::from_rgb(79, 105, 134) })));
+                        Stroke::new(if active { 1.8 } else { 0.65 },
+                            if active { theme.accent }
+                            else { theme.field_border.gamma_multiply(0.70) })));
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
                     painter.text(icon_pos - vec2(0.0, 10.0),
                         egui::Align2::CENTER_CENTER, ICONS[i],
                         FontId::proportional(if active {22.0} else {19.0}),
-                        Color32::WHITE);
+                        theme.text);
                     painter.text(icon_pos + vec2(0.0, 13.0),
                         egui::Align2::CENTER_CENTER, LABELS[i],
-                        FontId::proportional(11.0), Color32::from_rgb(209, 229, 250));
+                        FontId::proportional(11.0), theme.text_dim);
                 }
-                painter.circle_filled(c, (INNER + 2.0) * scale, Color32::from_rgb(14, 25, 40));
+                painter.circle_stroke(c, R * scale,
+                    Stroke::new(1.1, theme.field_border.gamma_multiply(0.85)));
+                painter.circle_filled(c, (INNER + 2.0) * scale, theme.field);
                 painter.circle_stroke(c, (INNER + 2.0) * scale,
-                    Stroke::new(2.0, Color32::from_rgb(124, 171, 217)));
+                    Stroke::new(1.7, theme.accent));
                 painter.text(c - vec2(0.0, 7.0), egui::Align2::CENTER_CENTER, "Pc",
-                    FontId::proportional(19.0), Color32::WHITE);
+                    FontId::proportional(19.0), theme.text);
                 painter.text(c + vec2(0.0, 14.0), egui::Align2::CENTER_CENTER,
                     highlighted.map(|i| LABELS[i]).unwrap_or("Tools"),
-                    FontId::proportional(10.0), Color32::from_rgb(176, 216, 249));
+                    FontId::proportional(10.0), theme.text_dim);
             });
     }
 }

@@ -22,3 +22,11 @@ Build is ARM64 only, stripped symbols, separate `com.artcraft.vectorcraft.test` 
 7. Ctrl+Q/relaunch ten times; fonts, shared fonts, updater, Appearance, save and import regressions.
 
 Local verification: all baseline Python checks passed (128 tests, one skipped); baseline plus new adapter/source overlays apply to pinned sources; native queue and reset patches apply to pinned vendor sources. ARM64 compilation and on-device behavior pending.
+
+## Android.8 Vc menu visibility regression (HONOR MagicPad 4)
+
+A screenshot of the installed `com.artcraft.vectorcraft.test` Android.8 app showed that tapping the top-left Vc icon opened the compact Android launcher menu with fonts, updates, appearance, Touch Shortcut Pad and diagnostics, **but not** the Stylus Wheel or its customizer. The Android.8 patch initially registered the commands in `menus/tree.rs` only; the compact icon invokes `android_vc_menu` in `menus.rs` directly and does not render those tree entries.
+
+Test-only correction: insert the checkbox-backed **Stylus Wheel** toggle and **Customize Stylus Wheel…** action into the actual Android Vc launcher menu, next to Touch Shortcut Pad, preserving the existing font, updates, appearance and keyboard entries. The toggle uses the same persisted JNI/SharedPreferences state and Android menu bit 256; Customize uses bit 512. Add a CI assertion that checks `android_vc_menu` in the staged `menus.rs`, not only the tree, before compiling the APK.
+
+Device tests: confirm both entries visibly appear; toggle shows a check and stays checked after relaunch, opens wheel only on stylus input; Customize opens even while disabled, eight slot settings persist, Reset to Proposal A works, and existing entries continue to work.

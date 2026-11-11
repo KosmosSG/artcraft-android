@@ -135,7 +135,7 @@ def main():
         out.write(NATIVE_STATE)
     once(native,
          "            if let Some(ndk_event) = next {",
-         """            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
+         """            if let Some(ndk_event) = next {
                 // Magic-Pencil only: capture before winit dispatches a DPAD
                 // arrow into a PhotoCraft dropdown or canvas navigation.
                 if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
@@ -237,6 +237,8 @@ def main():
     # Static preservation checks before the full 20-minute native compile.
     assert "pcStylusDeviceIds" in activity.read_text()
     assert "InputConnection.sendKeyEvent" in activity.read_text()
+    assert native.read_text().count("queue.pre_dispatch(ndk_event)") == 1
+    assert native.read_text().count("if let Some(ndk_event) = next {") == 1
     assert "pc_stylus_native_capture" in native.read_text()
     assert "pc_stylus_native_take" in android_lib.read_text()
     assert "artcraft_brush_scroll_area" in (a.adapter / "src/trackpad_wheel.rs").read_text()

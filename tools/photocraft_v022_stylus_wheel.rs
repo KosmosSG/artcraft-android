@@ -275,8 +275,8 @@ impl Wheel {
                     Stroke::new(1.3, hub_cyan));
                 let pc = Self::pc_logo(&ctx);
                 let mark_rect = egui::Rect::from_center_size(
-                    c - vec2(0.0, 10.0) * scale,
-                    vec2(70.0, 44.0) * scale,
+                    c - vec2(0.0, 8.0) * scale,
+                    vec2(40.0, 25.0) * scale,
                 );
                 painter.image(
                     pc.id(), mark_rect,

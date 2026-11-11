@@ -46,8 +46,56 @@ def patch(root):
         'public boolean sendKeyEvent(KeyEvent event) {',
     ):
         once(java,sig,sig+'\n                            if (vcImeResetting || connectionGeneration != vcImeGeneration) return false;')
-    once(a/'src/ime_bridge.rs',"        match tag {", """        match tag {
-            'r' => Some(egui::Event::ImeResetCompleted { request_id: payload.parse().ok()? }),""")
+    # ImeResetId is intentionally opaque: it contains a viewport and a
+    # process-unique serial, and cannot be reconstructed from an Android u64.
+    # The upstream editor owns the exact request. Retain that request on the
+    # egui Context, then match Java's *completed* serial to it before forwarding.
+    # A stale, wrong-viewport or duplicate acknowledgement is discarded.
+    upstream_ime=root/'source/vectorcraft/crates/ui-egui/src/ime.rs'
+    once(upstream_ime,
+        '    let request = ctx.request_ime_reset(viewport);',
+        '''    let request = ctx.request_ime_reset(viewport);
+    #[cfg(target_os = "android")]
+    {
+        let key = egui::Id::unique(("vc-android-ime-reset", viewport));
+        ctx.data_mut(|data| {
+            if let Some(request_id) = request {
+                data.insert_temp(key, request_id);
+            } else {
+                data.remove_temp::<egui::ImeResetId>(key);
+            }
+        });
+    }''')
+    bridge=a/'src/ime_bridge.rs'
+    once(bridge,
+        '        pub fn poll(&mut self, raw: &mut egui::RawInput) {',
+        '        pub fn poll(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {')
+    once(bridge,
+        '''                        if let Some(event) = translate(&event) {
+                            raw.events.push(event);
+                        }''',
+        '''                        if let Some(encoded) = event.strip_prefix('r') {
+                            // Never parse a numeric ID directly into opaque ImeResetId.
+                            // Only the editor's actual outstanding request can be acked.
+                            let key = egui::Id::unique(("vc-android-ime-reset", ctx.viewport_id()));
+                            let matching = encoded.parse::<u64>().ok().and_then(|serial| {
+                                ctx.data(|data| data.get_temp::<egui::ImeResetId>(key))
+                                    .filter(|id| id.as_u64() == serial
+                                        && id.viewport_id() == ctx.viewport_id())
+                            });
+                            if let Some(request_id) = matching {
+                                ctx.data_mut(|data| {
+                                    data.remove_temp::<egui::ImeResetId>(key);
+                                });
+                                raw.events.push(egui::Event::ImeResetCompleted { request_id });
+                            }
+                        } else if let Some(event) = translate(&event) {
+                            raw.events.push(event);
+                        }''')
+    host=a/'src/lib.rs'
+    once(host, '        self.ime.poll(raw);', '        self.ime.poll(ctx, raw);')
+    assert 'payload.parse().ok()?' not in bridge.read_text()
+    assert 'request_id: payload.parse()' not in bridge.read_text()
     print('PASS: IME generation isolation and real reset completion staged')
 
 def vendor(root):

@@ -117,8 +117,11 @@ jobs:
           p = Path("tools/photocraft_v022_brush_scroll.py")
           t = p.read_text(encoding="utf-8")
           assert t.count('UPSTREAM_SHA = "5000240c6e5dc30a024d20f97a620c78eca10d1e"') == 1
-          p.write_text(t.replace('UPSTREAM_SHA = "5000240c6e5dc30a024d20f97a620c78eca10d1e"',
-                                 'UPSTREAM_SHA = "9963efcb2f04867b56c564f876befd412b6c3c4e"'), encoding="utf-8")
+          assert t.count("0.22.0-android.") == 3, "Brush-scrolling version anchors drifted"
+          t = t.replace('UPSTREAM_SHA = "5000240c6e5dc30a024d20f97a620c78eca10d1e"',
+                        'UPSTREAM_SHA = "9963efcb2f04867b56c564f876befd412b6c3c4e"')
+          t = t.replace("0.22.0-android.", "0.23.0-android.")
+          p.write_text(t, encoding="utf-8")
           p = Path("tools/photocraft_v022_vc_style_menu.py")
           t = p.read_text(encoding="utf-8")
           assert t.count('Official upstream: v0.22.0') == 1

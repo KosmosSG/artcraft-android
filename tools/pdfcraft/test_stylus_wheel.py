@@ -15,6 +15,21 @@ class WheelIntegration(unittest.TestCase):
   for part in ['TOOL_TYPE_STYLUS','TOOL_TYPE_ERASER','ACTION_HOVER_MOVE','pdfPenHover = ""','Magic-Pencil 4s','return false;','layout.length() <= 128']:
    self.assertIn(part,java)
   self.assertNotIn('ACCESSIBILITY',java)
+ def test_precontact_activity_hover_dispatch_remains_passive(self):
+  java=(ROOT/'templates/android/pdfcraft_stylus_java.txt').read_text()
+  native=(ROOT/'tools/pdfcraft/stylus_native.rs').read_text()
+  # Activity-level generic input is observed even before SurfaceView listeners
+  # are installed on first focus. No synthetic contact or event consumption.
+  self.assertIn('dispatchGenericMotionEvent(android.view.MotionEvent event)',java)
+  self.assertIn('pdfObservePen(event);\\n    return super.dispatchGenericMotionEvent(event);',java)
+  self.assertIn('dispatchTouchEvent(android.view.MotionEvent event)',java)
+  self.assertIn('return super.dispatchTouchEvent(event);',java)
+  self.assertIn('getLocationInWindow(location)',java)
+  self.assertIn('ACTION_HOVER_ENTER',java)
+  self.assertIn('ACTION_HOVER_EXIT',java)
+  self.assertIn('ACTION_DOWN',java)
+  self.assertIn('ACTION_CANCEL',java)
+  self.assertIn('Do not erase genuine pen hover',native)
  def test_command_allowlist_and_customizer(self):
   s=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
   self.assertIn('75.0..=150.0',s); self.assertIn('40.0..=100.0',s)

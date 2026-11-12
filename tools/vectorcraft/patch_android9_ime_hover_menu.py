@@ -39,9 +39,18 @@ def patch(root):
               '        final EditText view = imeView;',
               '''        final long focusToken = vcImeFocusEpoch.incrementAndGet();
         final EditText view = imeView;''')
-    in_method(java, '    public void imeShow() {',
-              '    public void vcEndTypeEditing() {',
-              'if (!imeWanted) {', 'if (!imeWanted || vcImeFocusEpoch.get() != focusToken) {')
+    # imeShow has exactly two guards: before keyboard focus and within
+    # the deferred IME retry callback. The bounded method has two matches.
+    source = java.read_text()
+    start = source.index('    public void imeShow() {')
+    end = source.index('    public void vcEndTypeEditing() {', start)
+    method = source[start:end]
+    guard = 'if (!imeWanted) {'
+    count = method.count(guard)
+    if count != 2:
+        raise RuntimeError(f"imeShow focus guard count expected 2, got {count}")
+    method = method.replace(guard, 'if (!imeWanted || vcImeFocusEpoch.get() != focusToken) {')
+    java.write_text(source[:start] + method + source[end:])
     in_method(java, '    public void imeShow() {',
               '    public void vcEndTypeEditing() {',
               '                view.setFocusable(true);',
@@ -53,10 +62,8 @@ def patch(root):
               '                if (imm != null && imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)) {',
               '''                if (imm != null && !alreadyFocused) {\n                    vcImeGeneration++;\n                    imm.restartInput(view);\n                }
                 if (imm != null && imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)) {''')
-    # The same show callback has a retry closure: guard its own epoch, too.
-    in_method(java, '    public void imeShow() {',
-              '    public void vcEndTypeEditing() {',
-              'if (!imeWanted) {', 'if (!imeWanted || vcImeFocusEpoch.get() != focusToken) {')
+    # Both synchronous and deferred retry paths are already guarded above.
+
 
     in_method(java, '    public void vcEndTypeEditing() {',
               '    public void imeHide() {',

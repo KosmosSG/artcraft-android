@@ -559,7 +559,8 @@ jobs:
           # inherit an asynchronous IME hide/reset from the previous document.
           assert 'com.artcraft.vectorcraft.test' in Path("builder/lib/android_project.py").read_text() or 'com.artcraft.vectorcraft.test' in Path("builder/adapters/vectorcraft/src/lib.rs").read_text() or 'com.artcraft.vectorcraft.test' in Path("android-port/tools/vectorcraft/patch_test_package_v021.py").read_text()
           assert 'vcImeFocusEpoch.incrementAndGet()' in java
-          assert 'vcDocumentChanged()' in java and 'imeEvents.clear();' in java
+          assert 'vcDocumentChanged()' in java, "Missing vcDocumentChanged Java method"
+          assert 'imeEvents.clear();' in java, "Missing synchronous stale IME queue clear"
           assert 'vcPenHoverActive()' in java
           assert 'setOnHoverListener((view, motion) -> {' in java
           assert 'return false;' in java  # native pointer delivery not consumed

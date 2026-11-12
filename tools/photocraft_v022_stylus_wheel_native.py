@@ -168,7 +168,7 @@ def main():
     fn pc_stylus_poll(&self) -> Result<Option<String>, String> {""")
     once(host, "    stylus_wheel: stylus_wheel::Wheel,\n",
          "    stylus_wheel: stylus_wheel::Wheel,\n    stylus_device_scan_at: std::time::Instant,\n")
-    once(host, "                stylus_wheel: stylus_wheel::Wheel::new(app_bridge.pc_stylus_enabled().unwrap_or(false)),",
+    once(host, "                stylus_wheel: stylus_wheel::Wheel::new(app_bridge.pc_stylus_enabled().unwrap_or(false), app_bridge.files_dir().ok()),",
          """                stylus_wheel: {
                     let enabled = app_bridge.pc_stylus_enabled().unwrap_or(false);
                     let ids = app_bridge.pc_stylus_device_ids().unwrap_or_default();

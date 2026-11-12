@@ -46,24 +46,58 @@
         }
         return true;
     }
-// Passive stylus-only hover: no event is consumed, no coordinates are logged or saved.
+// Passive stylus-only hover: never consume, click, draw or persist positions.
+// NativeActivity can deliver pre-contact hover to Activity rather than SurfaceView.
+// Observe both dispatch routes, including on a fresh launch before the first tap.
 private volatile String pdfPenHover = "";
-private void pdfObservePen(android.view.MotionEvent event) {
+private void pdfObservePen(android.view.MotionEvent event, View localView) {
     if (event == null || event.getPointerCount() == 0) return;
     int tool = event.getToolType(0);
+    // Ignore unrelated mouse/trackpad/touch pointer motion; do not steal input.
     if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
             && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) return;
     int action = event.getActionMasked();
     if (action == android.view.MotionEvent.ACTION_HOVER_ENTER
             || action == android.view.MotionEvent.ACTION_HOVER_MOVE) {
-        pdfPenHover = event.getX() + "," + event.getY();
-    } else { pdfPenHover = ""; }
+        float x = event.getX(), y = event.getY();
+        // Surface listeners see view-local pixels. Activity dispatch sees window
+        // pixels already; normalise fallback into the same window coordinates.
+        if (localView != null) {
+            int[] location = new int[2];
+            localView.getLocationInWindow(location);
+            x += location[0];
+            y += location[1];
+        }
+        if (Float.isFinite(x) && Float.isFinite(y)) {
+            pdfPenHover = x + "," + y;
+        } else {
+            pdfPenHover = "";
+        }
+    } else if (action == android.view.MotionEvent.ACTION_HOVER_EXIT
+            || action == android.view.MotionEvent.ACTION_DOWN
+            || action == android.view.MotionEvent.ACTION_UP
+            || action == android.view.MotionEvent.ACTION_CANCEL) {
+        // Contact never counts as hover and must clear the previous location.
+        pdfPenHover = "";
+    }
+}
+private void pdfObservePen(android.view.MotionEvent event) {
+    pdfObservePen(event, null);
 }
 public String pdfStylusHover() { return pdfPenHover; }
+@Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+    // First hover can precede SurfaceView attachment/focus/touch.
+    pdfObservePen(event);
+    return super.dispatchGenericMotionEvent(event);
+}
+@Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+    pdfObservePen(event);
+    return super.dispatchTouchEvent(event);
+}
 private void pdfInstallHover(View view) {
     if (view instanceof android.view.SurfaceView) {
-        view.setOnHoverListener((v, event) -> { pdfObservePen(event); return false; });
-        view.setOnTouchListener((v, event) -> { pdfObservePen(event); return false; });
+        view.setOnHoverListener((v, event) -> { pdfObservePen(event, v); return false; });
+        view.setOnTouchListener((v, event) -> { pdfObservePen(event, v); return false; });
     } else if (view instanceof android.view.ViewGroup) {
         android.view.ViewGroup group = (android.view.ViewGroup) view;
         for (int i = 0; i < group.getChildCount(); i++) pdfInstallHover(group.getChildAt(i));

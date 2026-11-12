@@ -209,7 +209,7 @@ jobs:
           # protected themes/commands were staged in this disposable runner.
           python3 tools/photocraft_v022_vc_style_menu.py --upstream source/photocraft --adapter adapters/photocraft
           python3 tools/photocraft_v022_android8_refinements.py --upstream source/photocraft --adapter adapters/photocraft
-          grep -Fq 'pc-shortcut-pad-hover-shield' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'pad_hover' adapters/photocraft/src/shortcut_pad.rs
           grep -Fq 'let wheel_dropdown = ' adapters/photocraft/src/trackpad_wheel.rs
           grep -Fq 'egui::Event::PointerGone' adapters/photocraft/src/stylus_wheel.rs
           grep -Fq 'action(ui, "Customization", 35);' source/photocraft/crates/ui-egui/src/panels/brand.rs

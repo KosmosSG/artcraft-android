@@ -68,22 +68,42 @@ def patch_staged(root: Path) -> None:
     dropdown=root/"source/vectorcraft/crates/ui-egui/src/widgets/dropdowns.rs"
     s=dropdown.read_text()
     start='        let area = egui::ScrollArea::vertical().scroll_source('
-    end='        area.show(ui, add_contents).inner'
-    if s.count(start)!=1 or s.count(end)!=1:
+    old_end='        area.show(ui, add_contents).inner'
+    new_end='        let out = area.show(ui, |ui| {'
+    if s.count(start) != 1:
         raise ValueError("Android.25 popup ScrollArea source drift")
-    a=s.index(start)
-    b=s.index(end,a)+len(end)
-    existing=s[a:b]
-    for required in ("vectorcraft-android-smooth-menu","wheel_scroll_multiplier(egui::vec2(1.0, 0.90))","request_repaint"):
-        if required not in existing:
-            raise ValueError(f"Expected Android.24 popup override missing: {required}")
-    release_style='''        egui::ScrollArea::vertical()
+    if s.count(new_end) == 1 and s.count(old_end) == 0:
+        # v0.24.1 changed popup placement and scroll-item width measurement.
+        # Retain its native layout instead of restoring the obsolete 0.23
+        # body; keep the Android-specific touch/trackpad scroll source.
+        a=s.index(start)
+        b=s.index(new_end,a)+len(new_end)
+        existing=s[a:b]
+        for required in ("ScrollSource::ALL", "vectorcraft-android-smooth-menu",
+                         "wheel_scroll_multiplier(egui::vec2(1.0, 0.78))",
+                         "request_repaint"):
+            if required not in existing:
+                raise ValueError(f"v0.24.1 approved popup input missing: {required}")
+        for required in ("menu_room_either(", "popup_anchor(", "let width = first.unwrap_or(out.content_size.x);"):
+            if required not in s:
+                raise ValueError(f"v0.24.1 upstream popup layout missing: {required}")
+        print("PASS: v0.24.1 popup positioning/width preserved with approved Android scrolling")
+    elif s.count(old_end) == 1 and s.count(new_end) == 0:
+        a=s.index(start)
+        b=s.index(old_end,a)+len(old_end)
+        existing=s[a:b]
+        for required in ("vectorcraft-android-smooth-menu","wheel_scroll_multiplier(egui::vec2(1.0, 0.90))","request_repaint"):
+            if required not in existing:
+                raise ValueError(f"Expected Android.24 popup override missing: {required}")
+        release_style='''        egui::ScrollArea::vertical()
             .scroll_source(egui::containers::scroll_area::ScrollSource::ALL)
             .max_height(room)
             .min_scrolled_height(room)
             .show(ui, add_contents).inner'''
-    s=s[:a]+release_style+s[b:]
-    dropdown.write_text(s)
+        s=s[:a]+release_style+s[b:]
+        dropdown.write_text(s)
+    else:
+        raise ValueError("Android.25 unrecognized popup ScrollArea lifecycle")
 
     # Report precise startup boundaries without changing the startup-cover
     # behavior again. Stage logs are strictly timing metadata, no user data.

@@ -112,7 +112,7 @@ def patch_cadcraft_ui(source: Path) -> None:
 """)
     src = replace_once(src, "        self.opening.show(ui.ctx());\n",
         """        #[cfg(target_os = "android")]
-        crate::cadcraft_android_wheel::show(self, ui.ctx());
+        crate::cadcraft_android_wheel::show(self, ui.ctx(), ui.max_rect());
         self.opening.show(ui.ctx());
 """)
     lib.write_text(src, encoding="utf-8")

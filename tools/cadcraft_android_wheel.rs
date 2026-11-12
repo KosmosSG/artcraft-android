@@ -174,7 +174,7 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usiz
 
 /// Draw after the canvas and before modal prompts so the wheel gets foreground
 /// hit-testing and doesn't create a CAD selection underneath the ring.
-pub fn show(app: &mut CadApp, ctx: &egui::Context) {
+pub fn show(app: &mut CadApp, ctx: &egui::Context, bounds: egui::Rect) {
     if app.ui.cad_wheel_customize {
         let mut open = true;
         egui::Window::new("Customize CADCraft Stylus Wheel")
@@ -212,7 +212,7 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context) {
         app.ui.cad_wheel_customize = open;
     }
 
-    let bounds = ctx.screen_rect();
+    // Screen bounds come from the host Ui because pinned egui 0.37 has no Context::screen_rect.
     if !app.ui.cad_wheel_open {
         // A small unobtrusive, accessible launcher remains on screen; users can
         // also open the wheel via Cc ▸ Stylus Wheel. No CAD right-click hijack.

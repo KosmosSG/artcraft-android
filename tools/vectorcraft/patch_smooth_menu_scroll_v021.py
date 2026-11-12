@@ -29,10 +29,28 @@ REPLACEMENT = '''        let area = egui::ScrollArea::vertical().scroll_source(e
         area.show(ui, add_contents).inner'''
 
 
+# The official v0.24.1 menu_scroll now positions popups above/below their
+# anchor, retains popup width and lays out the scroll body separately.
+# Add the tablet-specific tuning in place; never revert that upstream layout.
+V0241_ORIGINAL = '''        let area = egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room);'''
+V0241_REPLACEMENT = '''        let area = egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room);
+        #[cfg(target_os = "android")]
+        let area = area
+            .id_salt("vectorcraft-android-smooth-menu")
+            .wheel_scroll_multiplier(egui::vec2(1.0, 0.78));
+        #[cfg(target_os = "android")]
+        if ui.input(|input| input.is_scrolling()) {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        }'''
+
+
 def patch_source(source: str) -> str:
-    if source.count(ORIGINAL) != 1:
-        raise ValueError("Unreviewed upstream VectorCraft menu_scroll; refusing change")
-    return source.replace(ORIGINAL, REPLACEMENT, 1)
+    legacy, current = source.count(ORIGINAL), source.count(V0241_ORIGINAL)
+    if legacy == 1 and current == 0:
+        return source.replace(ORIGINAL, REPLACEMENT, 1)
+    if current == 1 and legacy == 0:
+        return source.replace(V0241_ORIGINAL, V0241_REPLACEMENT, 1)
+    raise ValueError("Unreviewed upstream VectorCraft menu_scroll; refusing change")
 
 
 def patch(builder: Path) -> None:

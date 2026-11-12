@@ -315,7 +315,7 @@ impl Wheel {
         // Geometry and hit targets always share the same configured scale.
         let size = SIZE * scale;
         let highlighted = self.hover.and_then(|p| Self::hit(center, p, scale));
-        let dark = ctx.style().visuals.dark_mode;
+        let dark = ui.visuals().dark_mode;
         egui::Area::new(Id::new("pdf-wheel-plate"))
             .order(Order::Foreground)
             .fixed_pos(center - vec2(size * 0.5, size * 0.5))

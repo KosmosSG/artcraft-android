@@ -142,6 +142,18 @@ impl Mobile {
             Ok(ids.split(',').filter_map(|s| s.parse::<i32>().ok()).collect())
         }).map_err(|e| e.to_string())
     }
+    // The MagicPad window can have focus before winit's initial egui focus
+    // event (which on some devices only arrives after the first pen contact).
+    // Query the Android Activity instead of gating pre-contact hover on raw.focused.
+    fn pdf_stylus_window_focused(&self) -> Result<bool, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfStylusWindowFocused"),
+                jni_sig!("()Z"), &[])?.z()
+        }).map_err(|error| error.to_string())
+    }
     fn pen_hover(&self, ctx: &egui::Context) -> Option<egui::Pos2> {
         if let Some((x, y)) = android_activity::pdf_stylus_native_hover() {
             return Some(egui::pos2(x, y) / ctx.pixels_per_point());
@@ -163,8 +175,16 @@ impl Mobile {
             android_activity::pdf_stylus_configure(self.wheel.enabled, &self.pdf_stylus_device_ids().unwrap_or_default());
             self.wheel_scan = std::time::Instant::now();
         }
-        if !raw.focused { android_activity::pdf_stylus_clear_hover(); }
-        self.wheel.set_pen_hover(self.pen_hover(ctx));
+        // Use Activity window focus: egui/winit may report false until the
+        // first stylus tap even when the Android window is already interactive.
+        let focused = self.pdf_stylus_window_focused().unwrap_or(raw.focused);
+        if !focused { android_activity::pdf_stylus_clear_hover(); }
+        // Keep polling while popups and the customizer are open; those UI
+        // states used to stop redraws and made hover appear only on contact.
+        if self.wheel.enabled && focused {
+            ctx.request_repaint_after(std::time::Duration::from_millis(45));
+        }
+        self.wheel.set_pen_hover(if focused { self.pen_hover(ctx) } else { None });
         let blocked = blocked || self.panel_open || self.fonts_open || self.updates_open || self.about_open;
         for code in android_activity::pdf_stylus_native_take() {
             if !blocked { self.wheel.signal(if code == 19 { "D" } else { "S" }, ctx); }
@@ -182,7 +202,7 @@ impl Mobile {
         // as the custom wheel, in *points* rather than Android physical pixels.
         // Append after winit events so a stale mouse move cannot overwrite it.
         // This is passive motion only: never synthesize Touch or PointerButton.
-        let pen = if raw.focused { self.pen_hover(ctx) } else { None };
+        let pen = if focused { self.pen_hover(ctx) } else { None };
         let hover_id = egui::Id::new("pdfcraft.native.pen-hover-active");
         let was_hovering = ctx.data(|d| d.get_temp::<bool>(hover_id).unwrap_or(false));
         let contacting = ctx.input(|i| i.pointer.any_down()) ||

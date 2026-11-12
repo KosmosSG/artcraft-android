@@ -561,7 +561,7 @@ jobs:
           assert 'vcImeFocusEpoch.incrementAndGet()' in java
           assert 'vcDocumentChanged()' in java, "Missing vcDocumentChanged Java method"
           assert 'imeEvents.clear();' in java, "Missing synchronous stale IME queue clear"
-          assert 'vcPenHoverActive()' in java
+          assert 'public boolean vcStylusHoverActive()' in java
           assert 'setOnHoverListener((view, motion) -> {' in java
           assert 'return false;' in java  # native pointer delivery not consumed
           assert 'vc_last_doc_uid: Option<u64>' in host

@@ -143,6 +143,10 @@ impl Mobile {
         }).map_err(|e| e.to_string())
     }
     fn pen_hover(&self, ctx: &egui::Context) -> Option<egui::Pos2> {
+        if !ctx.input(|input| input.focused) { return None; }
+        if let Some((x, y)) = android_activity::pdf_stylus_native_hover() {
+            return Some(egui::pos2(x, y) / ctx.pixels_per_point());
+        }
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         let value = vm.attach_current_thread(|env| -> jni::errors::Result<String> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -160,6 +164,7 @@ impl Mobile {
             android_activity::pdf_stylus_configure(self.wheel.enabled, &self.pdf_stylus_device_ids().unwrap_or_default());
             self.wheel_scan = std::time::Instant::now();
         }
+        if !raw.focused { android_activity::pdf_stylus_clear_hover(); }
         self.wheel.set_pen_hover(self.pen_hover(ctx));
         let blocked = blocked || self.panel_open || self.fonts_open || self.updates_open || self.about_open;
         for code in android_activity::pdf_stylus_native_take() {

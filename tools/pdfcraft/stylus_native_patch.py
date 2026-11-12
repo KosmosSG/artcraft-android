@@ -11,6 +11,19 @@ anchor = '            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {'
 if 'crate::pdf_stylus_native_capture' not in s:
     assert s.count(anchor) == 1
     s = s.replace(anchor, """
+            if let ndk::event::InputEvent::MotionEvent(ref motion) = ndk_event {
+                let raw = motion.ptr().as_ptr();
+                // Borrowed event remains owned by the queue; no motion is consumed.
+                unsafe {
+                    if ndk_sys::AMotionEvent_getPointerCount(raw) > 0 {
+                        crate::pdf_stylus_observe_motion(
+                            ndk_sys::AMotionEvent_getToolType(raw, 0),
+                            ndk_sys::AMotionEvent_getAction(raw) & 0xff,
+                            ndk_sys::AMotionEvent_getX(raw, 0),
+                            ndk_sys::AMotionEvent_getY(raw, 0));
+                    }
+                }
+            }
             if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
                 let raw = key.ptr().as_ptr();
                 let id = unsafe { ndk_sys::AInputEvent_getDeviceId(raw) };

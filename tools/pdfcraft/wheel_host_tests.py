@@ -4,7 +4,8 @@ import subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory() as td:
  p=Path(td);(p/'src').mkdir()
- (p/'Cargo.toml').write_text('[package]\nname="pdf-wheel-tests"\nversion="0.1.0"\nedition="2024"\n[dependencies]\negui="=0.37.0"\n')
+ (p/'Cargo.toml').write_text('[package]\nname="pdf-wheel-tests"\nversion="0.1.0"\nedition="2024"\n[dependencies]\negui="=0.37.0"\nlog="0.4"\n[features]\ndefault=["native-activity"]\nnative-activity=[]\n')
+ (p/'src/native.rs').write_text((root/'tools/pdfcraft/stylus_native.rs').read_text())
  (p/'src/wheel.rs').write_text((root/'templates/android/pdfcraft_stylus_wheel.rs').read_text())
  subprocess.run(['python3',str(root/'tools/pdfcraft/wheel_brand.py'),str(p/'src/stylus_wheel_pc.rgba')],check=True)
  (p/'src/lib.rs').write_text('''extern crate self as pdfcraft_ui_egui;
@@ -14,5 +15,6 @@ with tempfile.TemporaryDirectory() as td:
  }
  pub mod icons {pub fn paint(_: &egui::Ui,_:egui::Rect,_:&str,_:f32,_:egui::Color32){}}
  mod wheel;
+ mod native;
 ''')
  subprocess.run(['cargo','test','--manifest-path',str(p/'Cargo.toml')],check=True)

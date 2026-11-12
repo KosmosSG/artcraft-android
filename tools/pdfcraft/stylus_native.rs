@@ -64,3 +64,45 @@ pub fn pdf_stylus_native_take() -> Vec<u8> {
         Vec::new()
     }
 }
+
+// Observe pen hover before NativeActivity forwards input to winit. Native input
+// can bypass Java View listeners, so neither route may be the sole source.
+#[cfg(feature = "native-activity")]
+static PDF_PEN_HOVER: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+#[cfg(feature = "native-activity")]
+pub fn pdf_stylus_observe_motion(tool: i32, action: i32, x: f32, y: f32) {
+    if let Ok(mut hover) = PDF_PEN_HOVER.lock() {
+        *hover = if (tool == 2 || tool == 4) && (action == 7 || action == 9)
+            && x.is_finite() && y.is_finite() { Some((x, y)) } else { None };
+    }
+}
+#[cfg(feature = "native-activity")]
+pub fn pdf_stylus_native_hover() -> Option<(f32, f32)> {
+    PDF_PEN_HOVER.lock().ok().and_then(|value| *value)
+}
+#[cfg(feature = "native-activity")]
+pub fn pdf_stylus_clear_hover() {
+    if let Ok(mut hover) = PDF_PEN_HOVER.lock() { *hover = None; }
+}
+#[cfg(all(test, feature = "native-activity"))]
+mod hover_tests {
+    #[test]
+    fn pen_hover_never_survives_contact_exit_or_mouse() {
+        for tool in [2, 4] {
+            super::pdf_stylus_observe_motion(tool, 9, 12.0, 24.0);
+            assert_eq!(super::pdf_stylus_native_hover(), Some((12.0, 24.0)));
+            for end in [0, 1, 2, 3, 10] {
+                super::pdf_stylus_observe_motion(tool, 7, 30.0, 40.0);
+                super::pdf_stylus_observe_motion(tool, end, 30.0, 40.0);
+                assert_eq!(super::pdf_stylus_native_hover(), None);
+            }
+        }
+        super::pdf_stylus_observe_motion(3, 7, 1.0, 2.0);
+        assert_eq!(super::pdf_stylus_native_hover(), None);
+        super::pdf_stylus_observe_motion(2, 7, f32::NAN, 2.0);
+        assert_eq!(super::pdf_stylus_native_hover(), None);
+        super::pdf_stylus_observe_motion(2, 7, 1.0, 2.0);
+        super::pdf_stylus_clear_hover();
+        assert_eq!(super::pdf_stylus_native_hover(), None);
+    }
+}

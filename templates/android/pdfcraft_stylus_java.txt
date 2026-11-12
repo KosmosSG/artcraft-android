@@ -50,6 +50,12 @@
 // NativeActivity can deliver pre-contact hover to Activity rather than SurfaceView.
 // Observe both dispatch routes, including on a fresh launch before the first tap.
 private volatile String pdfPenHover = "";
+// The rendered native surface is the origin used by Android's native event queue.
+private volatile View pdfPenSurface = null;
+public boolean pdfStylusWindowFocused() {
+    return getWindow() != null && getWindow().getDecorView() != null
+        && getWindow().getDecorView().hasWindowFocus();
+}
 private void pdfObservePen(android.view.MotionEvent event, View localView) {
     if (event == null || event.getPointerCount() == 0) return;
     int tool = event.getToolType(0);
@@ -60,16 +66,28 @@ private void pdfObservePen(android.view.MotionEvent event, View localView) {
     if (action == android.view.MotionEvent.ACTION_HOVER_ENTER
             || action == android.view.MotionEvent.ACTION_HOVER_MOVE) {
         float x = event.getX(), y = event.getY();
-        // Surface listeners see view-local pixels. Activity dispatch sees window
-        // pixels already; normalise fallback into the same window coordinates.
+        // All paths must end in native SurfaceView-local physical pixels.
+        // Listener events are local to their originating view. Activity
+        // dispatch is window-local. Convert via window position, then subtract
+        // the native rendering surface offset exactly once.
         if (localView != null) {
-            int[] location = new int[2];
-            localView.getLocationInWindow(location);
-            x += location[0];
-            y += location[1];
+            int[] origin = new int[2];
+            localView.getLocationInWindow(origin);
+            x += origin[0];
+            y += origin[1];
+        }
+        View surface = pdfPenSurface;
+        if (surface != null && surface.isAttachedToWindow()) {
+            int[] origin = new int[2];
+            surface.getLocationInWindow(origin);
+            x -= origin[0];
+            y -= origin[1];
         }
         if (Float.isFinite(x) && Float.isFinite(y)) {
             pdfPenHover = x + "," + y;
+            // Wakes the view-side hover path without changing tool selection.
+            // egui separately polls at idle cadence when the wheel is enabled.
+            getWindow().getDecorView().postInvalidateOnAnimation();
         } else {
             pdfPenHover = "";
         }
@@ -91,7 +109,13 @@ public String pdfStylusHover() { return pdfPenHover; }
     return super.dispatchTouchEvent(event);
 }
 private void pdfInstallHover(View view) {
+    // Decor callback provides an early passive fallback before the native
+    // SurfaceView has received its first touch. Never consume the motion.
+    if (view == getWindow().getDecorView()) {
+        view.setOnHoverListener((v, event) -> { pdfObservePen(event, v); return false; });
+    }
     if (view instanceof android.view.SurfaceView) {
+        pdfPenSurface = view;
         view.setOnHoverListener((v, event) -> { pdfObservePen(event, v); return false; });
         view.setOnTouchListener((v, event) -> { pdfObservePen(event, v); return false; });
     } else if (view instanceof android.view.ViewGroup) {

@@ -20,9 +20,11 @@ class WheelIntegration(unittest.TestCase):
   native=(ROOT/'tools/pdfcraft/stylus_native.rs').read_text()
   # Activity-level generic input is observed even before SurfaceView listeners
   # are installed on first focus. No synthetic contact or event consumption.
-  self.assertIn('dispatchGenericMotionEvent(android.view.MotionEvent event)',java)
-  self.assertIn('pdfObservePen(event);',java)
-  self.assertIn('return super.dispatchGenericMotionEvent(event);',java)
+  base=(ROOT/'templates/android/pdfcraft_mobile_java.txt').read_text()
+  self.assertEqual(base.count('public boolean dispatchGenericMotionEvent('),1)
+  self.assertEqual(java.count('public boolean dispatchGenericMotionEvent('),0)
+  self.assertIn('pdfObservePen(event);',base)
+  self.assertIn('return super.dispatchGenericMotionEvent(event);',base)
   self.assertIn('dispatchTouchEvent(android.view.MotionEvent event)',java)
   self.assertIn('return super.dispatchTouchEvent(event);',java)
   self.assertIn('getLocationInWindow(location)',java)

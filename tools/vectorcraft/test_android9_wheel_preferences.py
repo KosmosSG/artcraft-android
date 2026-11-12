@@ -15,8 +15,8 @@ class Android9WheelPreferences(unittest.TestCase):
         s = WHEEL.read_text()
         for expected in (
             "size_percent: 100, opacity_percent: 100",
-            '.text("Wheel Size").suffix("%").step_by(5.0)',
-            '.text("Opacity").suffix("%").step_by(5.0)',
+            'egui::Label::new("Wheel Size")',
+            'egui::Label::new("Opacity")',
             "75..=140", "30..=100",
             "self.size_percent = 100;",
             "self.opacity_percent = 100;",

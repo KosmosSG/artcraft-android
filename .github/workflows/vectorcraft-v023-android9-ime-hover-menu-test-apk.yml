@@ -170,6 +170,19 @@ jobs:
               patch5(root)
               patch6(root)
               patch7(root)
+              # Android.9 hover patch must target stable Java declarations, not
+              # transient comments introduced/removed by earlier overlays.
+              java_preflight=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              for declaration in (
+                  "    public void vcNativeUiReady() {",
+                  "    public void onWindowFocusChanged(boolean hasFocus) {",
+                  "    private void imeSetup() {",
+              ):
+                  assert java_preflight.count(declaration) == 1, declaration
+              from patch_android9_ime_hover_menu import guard_both_ime_show_paths
+              guard_both_ime_show_paths(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java")
+              assert 'vcImeFocusEpoch.get() != focusToken' in (dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              print("PASS: Android.9 stable hover method anchors and both Java IME show guards before NDK")
               assert 'delta.x *= -1.15;' in (dst/'src/lib.rs').read_text()
               assert 'delta.y *= -1.15;' in (dst/'src/lib.rs').read_text()
               assert 'main_looper_max_delay_ms' in (dst/'java/com/artcraft/vectorcraft/VectorCraftActivity.java').read_text()

@@ -496,9 +496,11 @@ jobs:
           NDK_LLVM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           test -x "$NDK_LLVM/llvm-objcopy"
           test -x "$NDK_LLVM/llvm-readelf"
-          COUNT="$(find build/photocraft/target -type f -name 'libphotocraft_android.so' -path '*/aarch64-linux-android/release/*' | wc -l)"
-          test "$COUNT" -eq 1 || { echo "Expected exactly one ARM64 native release library, found $COUNT"; exit 1; }
-          SO="$(find build/photocraft/target -type f -name 'libphotocraft_android.so' -path '*/aarch64-linux-android/release/*' -print -quit)"
+          # Cargo may retain a second copy in release/deps. Select the final
+          # top-level cdylib, not an intermediate dependency artifact.
+          SO="build/photocraft/target/aarch64-linux-android/release/libphotocraft_android.so"
+          test -f "$SO" || { echo "Final ARM64 release cdylib missing: $SO"; find build/photocraft/target -name 'libphotocraft_android.so' -print; exit 1; }
+          echo "Selected final ARM64 release library: $SO"
           test -f "$SO"
           "$NDK_LLVM/llvm-readelf" -S "$SO" | grep -q '.debug_line'
           mkdir -p diagnostics

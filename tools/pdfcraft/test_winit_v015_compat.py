@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from winit_v015_compat import with_ime_api
+from winit_v015_compat import with_ime_api, with_passive_stylus_hover
 
 
 class WinitCompatibilityTest(unittest.TestCase):
@@ -23,6 +23,22 @@ class WinitCompatibilityTest(unittest.TestCase):
         self.assertIn("pub fn reset_ime_with_request(&self, _request_id: u64)", result)
         self.assertIn("MotionAction::Scroll", result)
         self.assertIn("MotionAction::HoverMove", result)
+
+    def test_magic_pencil_hover_wakes_egui_without_touch(self):
+        android = (Path(__file__).resolve().parents[2] /
+                   "vendor/winit/src/platform_impl/android/mod.rs").read_text()
+        patched = with_passive_stylus_hover(android)
+        self.assertIn(
+            "if pointer_class || matches!(tool_type, ToolType::Stylus | ToolType::Eraser) =>",
+            patched)
+        self.assertIn("event::WindowEvent::CursorMoved", patched)
+        self.assertIn("event::WindowEvent::CursorLeft", patched)
+        # Touch/down/pressure routing must remain byte-for-byte unchanged.
+        before = android.split("// Fingers and styluses (and any device", 1)[1]
+        after = patched.split("// Fingers and styluses (and any device", 1)[1]
+        self.assertEqual(before, after)
+        with self.assertRaisesRegex(ValueError, "already patched"):
+            with_passive_stylus_hover(patched)
 
     def test_rejects_missing_mouse_overlay(self):
         with self.assertRaisesRegex(ValueError, "Mouse/hover"):

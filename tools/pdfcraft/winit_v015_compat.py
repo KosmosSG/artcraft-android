@@ -35,6 +35,30 @@ def with_ime_api(android_mod: str) -> str:
     )
 
 
+def with_passive_stylus_hover(android_mod: str) -> str:
+    """Forward pen HOVER_ENTER/MOVE/EXIT as winit cursor events, never as touch.
+
+    The existing Android pointer_class excludes styluses and erasers, which
+    means a Magic-Pencil hover does not generate CursorMoved or wake egui
+    before the first physical contact. Only widen the hover match arm:
+    pen DOWN/UP/MOVE remains in the original touch/pressure pipeline.
+    """
+    anchor = (
+        "                    MotionAction::HoverMove\n"
+        "                    | MotionAction::HoverEnter\n"
+        "                    | MotionAction::HoverExit\n"
+        "                        if pointer_class =>"
+    )
+    if android_mod.count(anchor) != 1:
+        raise ValueError("PDFCraft pen-hover insertion anchor changed or already patched")
+    return android_mod.replace(
+        anchor,
+        anchor.replace("if pointer_class =>",
+                       "if pointer_class || matches!(tool_type, ToolType::Stylus | ToolType::Eraser) =>"),
+        1,
+    )
+
+
 def prepare(source: Path, builder_android: Path) -> None:
     raw = (source / "Cargo.toml").read_text()
     data = tomllib.loads(raw)
@@ -55,6 +79,9 @@ def prepare(source: Path, builder_android: Path) -> None:
     from android_onefinger_patch import patch as patch_onefinger
     from android_trackpad_patch import patch as patch_trackpad
     overlay = patch_trackpad(patch_onefinger(overlay))
+    # Stylus hover must enter winit's CursorMoved stream to wake egui from
+    # the very first pre-contact hover; leave contact and mouse paths intact.
+    overlay = with_passive_stylus_hover(overlay)
     keycodes = (builder_android / "keycodes.rs").read_bytes()
     with tempfile.TemporaryDirectory(prefix=".pdfcraft-winit-", dir=vendor.parent) as temp:
         pinned = Path(temp) / "pinned"

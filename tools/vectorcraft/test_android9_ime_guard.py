@@ -42,15 +42,15 @@ class Android9ImeShowGuards(unittest.TestCase):
         boundary = "    public String imePoll() {"
         self.assertEqual(1, source.count(boundary))
         source = source.replace(boundary,
-            "    public void vcResetIme(long requestId) {}\\n" + boundary, 1)
-        anchor = "        runOnUiThread(() -> {\\n            try {\\n                InputMethodManager imm ="
+            "    public void vcResetIme(long requestId) {}\n" + boundary, 1)
+        anchor = "        runOnUiThread(() -> {\n            try {\n                InputMethodManager imm ="
         self.assertEqual(1, source.count(anchor))
         with tempfile.TemporaryDirectory() as folder:
             java = Path(folder) / "VectorCraftActivity.java"
             java.write_text(source)
             in_method(java, "    public void imeHide() {",
                 "    public void vcResetIme(long requestId) {", anchor,
-                "        runOnUiThread(() -> {\\n            if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;\\n            try {\\n                InputMethodManager imm =")
+                "        runOnUiThread(() -> {\n            if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;\n            try {\n                InputMethodManager imm =")
             changed = java.read_text()
             self.assertEqual(1, changed.count("vcImeFocusEpoch.get() != focusToken || imeWanted"))
             self.assertEqual(0, changed.count(anchor))

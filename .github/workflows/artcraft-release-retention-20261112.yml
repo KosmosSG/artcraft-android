@@ -1,0 +1,37 @@
+name: ArtCraft one-time GitHub Releases retention cleanup
+
+# Owner-approved 2026-11-12. Runs only for this one maintenance-branch workflow addition.
+# Does not build APKs or access production signing keys.
+on:
+  push:
+    branches:
+      - maintenance/release-retention-3-stable-20261112
+    paths:
+      - .github/workflows/artcraft-release-retention-20261112.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: artcraft-release-retention-20261112
+  cancel-in-progress: false
+
+jobs:
+  prune-old-releases:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/maintenance/release-retention-3-stable-20261112'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ARTCRAFT_RELEASE_PRUNE_APPROVED: authorized-nov-12-2026
+    steps:
+      - name: Check out pinned owner-controlled cleanup branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Compile guarded cleanup script (fail before any changes)
+        run: python3 -m py_compile .github/scripts/artcraft_release_retention_20261112.py
+
+      - name: Verify pinned release inventory and remove only approved old releases
+        run: python3 .github/scripts/artcraft_release_retention_20261112.py

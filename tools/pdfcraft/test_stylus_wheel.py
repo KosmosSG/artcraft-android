@@ -27,7 +27,7 @@ class WheelIntegration(unittest.TestCase):
   self.assertIn('return super.dispatchGenericMotionEvent(event);',base)
   self.assertIn('dispatchTouchEvent(android.view.MotionEvent event)',java)
   self.assertIn('return super.dispatchTouchEvent(event);',java)
-  self.assertIn('getLocationInWindow(location)',java)
+  self.assertIn('getLocationInWindow(origin)',java)
   self.assertIn('ACTION_HOVER_ENTER',java)
   self.assertIn('ACTION_HOVER_EXIT',java)
   self.assertIn('ACTION_DOWN',java)

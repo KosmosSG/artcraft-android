@@ -15,10 +15,8 @@ const LABELS: [&str; 15] = [
     "Undo", "Brush", "Eraser", "Hand", "Picker", "Redo", "Layers",
     "Adjust", "Move", "Crop", "Selection", "Type", "Fill", "Shape", "Transform",
 ];
-const ICONS: [&str; 15] = [
-    "↶", "✎", "◇", "✋", "◉", "↷", "▤",
-    "☷", "✥", "⌗", "▧", "T", "▰", "□", "⤢",
-];
+// Tool marks are drawn as paths; unsupported font glyphs rendered as tofu
+// boxes on MagicOS/egui and must never be used for wheel iconography.
 const COMMANDS: [&str; 15] = [
     "edit.undo", "tools.select.brush", "tools.select.eraser",
     "tools.select.hand", "tools.select.eyedropper", "edit.redo",
@@ -173,6 +171,132 @@ impl Wheel {
         let channel = |x: u8, y: u8| ((x as f32 * (1.0 - t) + y as f32 * t).round()) as u8;
         Color32::from_rgb(channel(a.r(), b.r()), channel(a.g(), b.g()), channel(a.b(), b.b()))
     }
+
+    /// Resolution-independent icons rendered as native egui vector paths.
+    /// No Unicode symbol fonts, Android resources, or new runtime decoders.
+    fn paint_icon(p: &egui::Painter, center: Pos2, item: usize, color: Color32, scale: f32) {
+        let ink = Stroke::new(1.85 * scale, color);
+        let xy = |x: f32, y: f32| center + vec2(x, y) * scale;
+        let line = |ax: f32, ay: f32, bx: f32, by: f32| {
+            p.line_segment([xy(ax, ay), xy(bx, by)], ink);
+        };
+        let path = |dots: &[(f32, f32)]| {
+            p.add(Shape::line(dots.iter().map(|&(x,y)| xy(x,y)).collect(), ink));
+        };
+        let outline = |dots: &[(f32, f32)]| {
+            let n = dots.len();
+            for i in 0..n {
+                let (ax, ay) = dots[i];
+                let (bx, by) = dots[(i + 1) % n];
+                line(ax, ay, bx, by);
+            }
+        };
+        let dot = |x: f32, y: f32, radius: f32| {
+            p.circle_filled(xy(x,y), radius * scale, color);
+        };
+        match item {
+            // Undo — left-pointing, curved hooked arrow.
+            0 => {
+                path(&[(-8.0,-1.0),(-6.0,-5.0),(-2.0,-7.5),(3.0,-7.5),
+                    (7.5,-4.0),(8.2,1.0),(6.2,5.0),(2.0,7.2)]);
+                line(-8.0,-1.0,-3.0,-1.0);
+                line(-8.0,-1.0,-5.0,-5.0);
+            }
+            // Brush — distinct bristle head, ferrule, and diagonal handle.
+            1 => {
+                outline(&[(1.0,-7.5),(7.3,-2.0),(1.3,4.0),(-4.7,-1.5)]);
+                line(0.0,3.0,-5.7,9.0);
+                line(-3.5,0.0,-8.3,5.0);
+                line(-5.7,9.0,-8.3,5.0);
+                line(3.8,-5.0,6.8,-2.2);
+            }
+            // Eraser — skewed parallelogram and contrasting front edge.
+            2 => {
+                outline(&[(-8.5,1.5),(-1.0,-7.7),(8.5,-0.5),(1.4,8.4)]);
+                line(-4.8,5.6,2.7,-4.9);
+                line(-4.8,5.6,1.4,8.4);
+            }
+            // Hand — five finger outline, independent of emoji fonts.
+            3 => {
+                path(&[(-7.5,1.5),(-5.3,-0.5),(-3.0,2.0),(-3.0,-7.0),
+                    (-1.6,-9.0),(0.0,-7.0),(0.0,-2.0),(0.5,-9.0),
+                    (2.1,-10.0),(3.4,-8.3),(3.4,-2.0),(4.0,-7.8),
+                    (5.5,-8.0),(6.8,-6.0),(6.8,1.0),(8.0,-2.0),
+                    (9.3,-1.0),(9.0,4.5),(5.8,9.0),(-1.5,9.0),(-6.8,6.0),(-7.5,1.5)]);
+            }
+            // Picker — eyedropper tip, shaft, and bulb.
+            4 => {
+                line(-7.8,8.8,4.0,-3.0);
+                line(-4.6,9.5,7.0,-2.0);
+                line(-8.8,7.0,-5.6,10.0);
+                p.circle_stroke(xy(6.0,-5.0), 3.7*scale, ink);
+                line(1.5,-2.1,3.3,-0.3);
+            }
+            // Redo — right-pointing counterpart to Undo.
+            5 => {
+                path(&[(8.0,-1.0),(6.0,-5.0),(2.0,-7.5),(-3.0,-7.5),
+                    (-7.5,-4.0),(-8.2,1.0),(-6.2,5.0),(-2.0,7.2)]);
+                line(8.0,-1.0,3.0,-1.0);
+                line(8.0,-1.0,5.0,-5.0);
+            }
+            // Layers — three consistent stacked diamonds.
+            6 => {
+                for y in [-5.0, 0.0, 5.0] {
+                    outline(&[(0.0,y-3.0),(8.0,y),(0.0,y+3.0),(-8.0,y)]);
+                }
+            }
+            // Adjustments — three horizontal sliders with knobs.
+            7 => {
+                for y in [-6.0, 0.0, 6.0] { line(-9.0,y,9.0,y); }
+                for (x,y) in [(-3.0,-6.0),(4.0,0.0),(-1.0,6.0)] {
+                    p.circle_filled(xy(x,y), 2.9*scale, color);
+                    p.circle_filled(xy(x,y), 1.25*scale, Color32::from_rgb(27,36,48));
+                }
+            }
+            // Move — four-direction arrows.
+            8 => {
+                line(-9.0,0.0,9.0,0.0); line(0.0,-9.0,0.0,9.0);
+                line(-9.0,0.0,-5.5,-3.2); line(-9.0,0.0,-5.5,3.2);
+                line(9.0,0.0,5.5,-3.2); line(9.0,0.0,5.5,3.2);
+                line(0.0,-9.0,-3.2,-5.5); line(0.0,-9.0,3.2,-5.5);
+                line(0.0,9.0,-3.2,5.5); line(0.0,9.0,3.2,5.5);
+            }
+            // Crop — crossing crop-corner rules.
+            9 => {
+                line(-8.0,-9.0,-8.0,5.0); line(-8.0,5.0,6.0,5.0);
+                line(-4.5,-5.0,8.0,-5.0); line(4.5,-9.0,4.5,9.0);
+            }
+            // Selection marquee — alternating dashed outline.
+            10 => {
+                for x in [-8.0,-2.0,4.0] {line(x,-7.0,x+3.0,-7.0);line(x,7.0,x+3.0,7.0);}
+                for y in [-7.0,-1.0,5.0] {line(-8.0,y,-8.0,y+3.0);line(8.0,y,8.0,y+3.0);}
+            }
+            // Type — regular ASCII T is available on all supported font stacks.
+            11 => {
+                line(-7.5,-8.0,7.5,-8.0); line(0.0,-8.0,0.0,8.0);
+                line(-3.0,8.0,3.0,8.0);
+            }
+            // Fill — tilted bucket and paint droplet.
+            12 => {
+                outline(&[(-6.5,-5.0),(-0.5,-9.0),(7.0,-0.5),(1.0,4.5)]);
+                line(-7.5,6.5,3.5,6.5);
+                dot(7.0,7.5,2.2);
+            }
+            // Shape — rectangle tool.
+            13 => {
+                outline(&[(-8.0,-7.0),(8.0,-7.0),(8.0,7.0),(-8.0,7.0)]);
+            }
+            // Transform — bounding box and corner handles.
+            14 => {
+                outline(&[(-7.0,-6.0),(7.0,-6.0),(7.0,6.0),(-7.0,6.0)]);
+                for (x,y) in [(-7.0,-6.0),(7.0,-6.0),(-7.0,6.0),(7.0,6.0)] {
+                    p.circle_filled(xy(x,y), 2.0*scale, color);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn toggle(&mut self, enabled: bool, ctx: &Context) {
         self.enabled = enabled;
         self.open = false;
@@ -373,10 +497,8 @@ impl Wheel {
                             else { theme.field_border.gamma_multiply(0.70) })));
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
-                    painter.text(icon_pos - vec2(0.0, 10.0),
-                        egui::Align2::CENTER_CENTER, ICONS[item],
-                        FontId::proportional(if active {22.0} else {19.0}),
-                        theme.text);
+                    Self::paint_icon(&painter, icon_pos - vec2(0.0, 10.0),
+                        item, theme.text, scale);
                     painter.text(icon_pos + vec2(0.0, 13.0),
                         egui::Align2::CENTER_CENTER, LABELS[item],
                         FontId::proportional(11.0), theme.text_dim);

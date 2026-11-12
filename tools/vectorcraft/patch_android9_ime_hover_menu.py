@@ -18,6 +18,25 @@ def in_method(path, beginning, ending, old, new):
     path.write_text(source[:a] + part.replace(old, new, 1) + source[b:])
 
 
+def guard_both_ime_show_paths(java):
+    """Bounded conversion of immediate + deferred IME show guards.
+
+    Exactly two guards are expected in the known Android.8 source; a
+    mismatch fails in source-only preflight, never silently patches the
+    wrong Java method.
+    """
+    source = java.read_text()
+    start = source.index('    public void imeShow() {')
+    end = source.index('    public void vcEndTypeEditing() {', start)
+    method = source[start:end]
+    guard = 'if (!imeWanted) {'
+    count = method.count(guard)
+    if count != 2:
+        raise RuntimeError(f"imeShow focus guard count expected 2, got {count}")
+    method = method.replace(guard, 'if (!imeWanted || vcImeFocusEpoch.get() != focusToken) {')
+    java.write_text(source[:start] + method + source[end:])
+
+
 def patch(root):
     adapter = root / "adapters/vectorcraft"
     java = adapter / "java/com/artcraft/vectorcraft/VectorCraftActivity.java"
@@ -39,18 +58,7 @@ def patch(root):
               '        final EditText view = imeView;',
               '''        final long focusToken = vcImeFocusEpoch.incrementAndGet();
         final EditText view = imeView;''')
-    # imeShow has exactly two guards: before keyboard focus and within
-    # the deferred IME retry callback. The bounded method has two matches.
-    source = java.read_text()
-    start = source.index('    public void imeShow() {')
-    end = source.index('    public void vcEndTypeEditing() {', start)
-    method = source[start:end]
-    guard = 'if (!imeWanted) {'
-    count = method.count(guard)
-    if count != 2:
-        raise RuntimeError(f"imeShow focus guard count expected 2, got {count}")
-    method = method.replace(guard, 'if (!imeWanted || vcImeFocusEpoch.get() != focusToken) {')
-    java.write_text(source[:start] + method + source[end:])
+    guard_both_ime_show_paths(java)
     in_method(java, '    public void imeShow() {',
               '    public void vcEndTypeEditing() {',
               '                view.setFocusable(true);',

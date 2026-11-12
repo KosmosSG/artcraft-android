@@ -1,6 +1,7 @@
 //! Experimental, opt-in PhotoCraft Magic-Pencil 4s wheel. TEST ONLY.
 use egui::{Color32, Context, FontId, Id, Order, Pos2, RawInput, Sense, Shape, Stroke, StrokeKind, Ui, pos2, vec2};
 use std::time::{Duration, Instant};
+use std::path::PathBuf;
 
 const R: f32 = 128.0;
 const INNER: f32 = 46.0;
@@ -8,32 +9,140 @@ const SIZE: f32 = 312.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
-const LABELS: [&str; 6] = ["Undo", "Brush", "Eraser", "Hand", "Picker", "Redo"];
-const ICONS: [&str; 6] = ["U", "B", "E", "H", "I", "R"];
-const COMMANDS: [&str; 6] = [
-    "edit.undo", "tools.select.brush", "tools.select.eraser",
-    "tools.select.hand", "tools.select.eyedropper", "edit.redo"
+// First eight entries of the user-facing "Default" preset are chosen via DEFAULT_SLOTS.
+// Keep command IDs grounded in official Storytold PhotoCraft v0.22.0.
+const LABELS: [&str; 15] = [
+    "Undo", "Brush", "Eraser", "Hand", "Picker", "Redo", "Layers",
+    "Adjust", "Move", "Crop", "Selection", "Type", "Fill", "Shape", "Transform",
 ];
+const ICONS: [&str; 15] = [
+    "↶", "✎", "◇", "✋", "◉", "↷", "▤",
+    "☷", "✥", "⌗", "▧", "T", "▰", "□", "⤢",
+];
+const COMMANDS: [&str; 15] = [
+    "edit.undo", "tools.select.brush", "tools.select.eraser",
+    "tools.select.hand", "tools.select.eyedropper", "edit.redo",
+    "window.toggle.layers", "window.toggle.properties", "tools.select.move",
+    "tools.select.crop", "tools.select.rectMarquee", "tools.select.type",
+    "tools.select.paintBucket", "tools.select.rectangle", "edit.freeTransform",
+];
+const DEFAULT_SLOTS: [usize; 8] = [1, 2, 6, 7, 3, 4, 5, 0];
+const WHEEL_STYLE: &str = "Default";
 
 pub(crate) struct Wheel {
     pub enabled: bool,
+    pub settings_open: bool,
+    slots: [usize; 8],
+    size_percent: f32,
+    opacity_percent: f32,
+    settings_path: Option<PathBuf>,
     open: bool,
     center: Option<Pos2>,
     hover: Option<Pos2>,
     single_wait: Option<(Instant, Option<Pos2>)>,
-    action: Option<usize>,
+    action: Option<&'static str>,
     opened_at: Instant,
     last_button: [Option<Instant>; 2],
     message: &'static str,
     message_at: Instant,
 }
 impl Wheel {
-    pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, center: None, hover: None,
+    pub fn new(enabled: bool, files_dir: Option<PathBuf>) -> Self {
+        let settings_path = files_dir.map(|p| p.join("photocraft-stylus-wheel-default.v1"));
+        let mut slots = DEFAULT_SLOTS;
+        let mut size_percent = 100.0f32;
+        let mut opacity_percent = 85.0f32;
+        // A short, versioned app-private file. Invalid files fall back to Default.
+        if let Some(stored) = settings_path.as_ref().and_then(|p| std::fs::read_to_string(p).ok()) {
+            let fields: Vec<_> = stored.trim().split('|').collect();
+            if fields.len() == 4 && fields[0] == "v1" {
+                let chosen: Vec<usize> = fields[1].split(',')
+                    .filter_map(|n| n.parse::<usize>().ok()).collect();
+                if chosen.len() == 8
+                    && chosen.iter().all(|n| *n < LABELS.len())
+                    && chosen.iter().enumerate().all(|(i, n)|
+                        !chosen[..i].contains(n))
+                {
+                    slots.copy_from_slice(&chosen);
+                }
+                if let Ok(value) = fields[2].parse::<f32>() {
+                    if value.is_finite() { size_percent = value.clamp(75.0, 125.0); }
+                }
+                if let Ok(value) = fields[3].parse::<f32>() {
+                    if value.is_finite() { opacity_percent = value.clamp(60.0, 100.0); }
+                }
+            }
+        }
+        Self { enabled, settings_open: false, slots, size_percent, opacity_percent,
+            settings_path, open: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
             message_at: Instant::now() }
+    }
+
+    fn persist_settings(&self) {
+        let Some(path) = &self.settings_path else { return; };
+        let settings = format!("v1|{}|{:.0}|{:.0}",
+            self.slots.iter().map(usize::to_string).collect::<Vec<_>>().join(","),
+            self.size_percent, self.opacity_percent);
+        if let Err(error) = std::fs::write(path, settings) {
+            log::warn!("Could not save stylus wheel settings: {error}");
+        }
+    }
+
+    fn scale(&self) -> f32 { self.size_percent / 100.0 }
+
+    fn customize(&mut self, ctx: &Context) {
+        if !self.settings_open { return; }
+        let mut open = self.settings_open;
+        let mut changed = false;
+        egui::Window::new("Stylus Wheel — Default")
+            .id(Id::new("pc-wheel-customize"))
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .default_width(320.0)
+            .show(ctx, |ui| {
+                ui.label("Style: Default  •  8 segments");
+                ui.label("Choose a tool for each position. Existing selections swap positions.");
+                ui.separator();
+                for slot in 0..8 {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Slot {}", slot + 1));
+                        let mut selected = self.slots[slot];
+                        egui::ComboBox::from_id_salt(("pc-wheel-slot", slot))
+                            .selected_text(LABELS[selected])
+                            .width(180.0)
+                            .show_ui(ui, |ui| {
+                                for i in 0..LABELS.len() {
+                                    ui.selectable_value(&mut selected, i, LABELS[i]);
+                                }
+                            });
+                        if selected != self.slots[slot] {
+                            if let Some(previous) = self.slots.iter().position(|n| *n == selected) {
+                                self.slots[previous] = self.slots[slot];
+                            }
+                            self.slots[slot] = selected;
+                            changed = true;
+                        }
+                    });
+                }
+                ui.separator();
+                changed |= ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=125.0)
+                    .text("Wheel size").suffix("%")).changed();
+                changed |= ui.add(egui::Slider::new(&mut self.opacity_percent, 60.0..=100.0)
+                    .text("Opacity").suffix("%")).changed();
+                if ui.button("Restore Default").clicked() {
+                    self.slots = DEFAULT_SLOTS;
+                    self.size_percent = 100.0;
+                    self.opacity_percent = 85.0;
+                    changed = true;
+                }
+                ui.label("Pen button: single opens wheel, double selects Eraser.");
+            });
+        self.settings_open = open;
+        if changed { self.persist_settings(); ctx.request_repaint(); }
     }
     /// Exact raster of the user-supplied Pc SVG. Build workflow generates
     /// the transparent RGBA file; no new runtime image decoder is needed.
@@ -95,22 +204,25 @@ impl Wheel {
             "D" => {
                 self.single_wait = None;
                 self.open = false;
-                self.action = Some(2);
+                self.action = Some("tools.select.eraser");
                 self.notify("Double press • Eraser");
             }
             _ => {}
         }
         ctx.request_repaint();
     }
-    fn clamped(position: Pos2, rect: egui::Rect) -> Pos2 {
-        let inset = SIZE * 0.5 + 10.0;
+    fn clamped(position: Pos2, rect: egui::Rect, scale: f32) -> Pos2 {
+        let inset = SIZE * scale * 0.5 + 10.0;
         pos2(position.x.clamp(rect.min.x + inset, (rect.max.x - inset).max(rect.min.x + inset)),
              position.y.clamp(rect.min.y + inset, (rect.max.y - inset).max(rect.min.y + inset)))
     }
-    fn hit(center: Pos2, pos: Pos2) -> Option<usize> {
+    fn hit(center: Pos2, pos: Pos2, scale: f32) -> Option<usize> {
         let vector = pos - center;
-        if vector.length() < INNER || vector.length() > R + 11.0 { return None; }
-        Some((((vector.y.atan2(vector.x).to_degrees() + 120.0).rem_euclid(360.0) / 60.0).floor() as usize).min(5))
+        if vector.length() < INNER * scale || vector.length() > (R + 11.0) * scale {
+            return None;
+        }
+        Some((((vector.y.atan2(vector.x).to_degrees() + 112.5)
+            .rem_euclid(360.0) / 45.0).floor() as usize).min(7))
     }
     pub fn capture(&mut self, ctx: &Context, raw: &mut RawInput, blocked: bool) {
         if !self.enabled || blocked {
@@ -131,7 +243,9 @@ impl Wheel {
                     retained.push(egui::Event::PointerMoved(pos));
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
-                    self.action = self.center.and_then(|center| Self::hit(center, pos));
+                    self.action = self.center.and_then(|center|
+                        Self::hit(center, pos, self.scale()))
+                        .map(|slot| COMMANDS[self.slots[slot]]);
                     self.notify(if self.action.is_some() { "Wheel selection accepted" }
                         else { "Wheel cancelled • tapped outside" });
                     self.open = false;
@@ -154,7 +268,7 @@ impl Wheel {
             if when.elapsed() >= WAIT {
                 self.single_wait = None;
                 if let Some(pos) = point.or(self.hover) {
-                    self.center = Some(Self::clamped(pos, ctx.content_rect()));
+                    self.center = Some(Self::clamped(pos, ctx.content_rect(), self.scale()));
                     self.open = true;
                     self.opened_at = Instant::now();
                     self.notify("Hover to highlight • tap tip to select");
@@ -166,11 +280,12 @@ impl Wheel {
         }
     }
     pub fn take_action(&mut self) -> Option<&'static str> {
-        self.action.take().map(|i| COMMANDS[i])
+        self.action.take()
     }
-    pub fn render(&self, ui: &mut Ui) {
-        if !self.enabled { return; }
+    pub fn render(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        self.customize(&ctx);
+        if !self.enabled { return; }
         let screen = ctx.content_rect();
         let theme = photocraft_ui_egui::theme::Tokens::get(&ctx);
         // Brief toast: 1.9 seconds visible, then 0.5 seconds fading out.
@@ -204,8 +319,9 @@ impl Wheel {
         let t = (self.opened_at.elapsed().as_secs_f32() / 0.18).min(1.0);
         if t < 1.0 { ctx.request_repaint(); }
         let scale = 0.86 + 0.14 * t;
+        let scale = scale * self.scale();
         let size = SIZE * scale;
-        let highlighted = self.hover.and_then(|p| Self::hit(center, p));
+        let highlighted = self.hover.and_then(|p| Self::hit(center, p, scale));
         let dark = theme.kind.is_dark();
         egui::Area::new(Id::new("pc-wheel-plate"))
             .order(Order::Foreground)
@@ -230,11 +346,13 @@ impl Wheel {
                 }
                 painter.circle_filled(c, R * scale,
                     Color32::from_rgba_unmultiplied(
-                        theme.card.r(), theme.card.g(), theme.card.b(), 245));
-                for i in 0..6 {
-                    let degrees = -90.0 + i as f32 * 60.0;
-                    let first = (degrees - 28.4).to_radians();
-                    let last = (degrees + 28.4).to_radians();
+                        theme.card.r(), theme.card.g(), theme.card.b(),
+                        (245.0 * self.opacity_percent / 100.0) as u8));
+                for i in 0..8 {
+                    let degrees = -90.0 + i as f32 * 45.0;
+                    let first = (degrees - 21.5).to_radians();
+                    let last = (degrees + 21.5).to_radians();
+                    let item = self.slots[i];
                     let mut vertices = vec![c];
                     for step in 0..=16 {
                         let angle = first + (last - first) * step as f32 / 16.0;
@@ -247,8 +365,8 @@ impl Wheel {
                         Self::mix(theme.card, theme.field, if dark { 0.68 } else { 0.72 })
                     };
                     let fill = if active {
-                        Self::mix(normal, theme.accent, if dark { 0.48 } else { 0.22 })
-                    } else { normal };
+                        Self::mix(normal, Color32::from_rgb(0, 118, 212), 0.76)
+                    } else { normal }.gamma_multiply(self.opacity_percent / 100.0);
                     painter.add(Shape::convex_polygon(vertices, fill,
                         Stroke::new(if active { 1.8 } else { 0.65 },
                             if active { theme.accent }
@@ -256,11 +374,11 @@ impl Wheel {
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
                     painter.text(icon_pos - vec2(0.0, 10.0),
-                        egui::Align2::CENTER_CENTER, ICONS[i],
+                        egui::Align2::CENTER_CENTER, ICONS[item],
                         FontId::proportional(if active {22.0} else {19.0}),
                         theme.text);
                     painter.text(icon_pos + vec2(0.0, 13.0),
-                        egui::Align2::CENTER_CENTER, LABELS[i],
+                        egui::Align2::CENTER_CENTER, LABELS[item],
                         FontId::proportional(11.0), theme.text_dim);
                 }
                 painter.circle_stroke(c, R * scale,
@@ -285,7 +403,7 @@ impl Wheel {
                 );
                 painter.text(c + vec2(0.0, 22.0) * scale,
                     egui::Align2::CENTER_CENTER,
-                    highlighted.map(|i| LABELS[i]).unwrap_or("Tools"),
+                    highlighted.map(|i| LABELS[self.slots[i]]).unwrap_or(WHEEL_STYLE),
                     FontId::proportional(11.0 * scale), Color32::WHITE);
             });
     }

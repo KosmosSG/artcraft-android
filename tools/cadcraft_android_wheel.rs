@@ -212,7 +212,7 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context) {
         app.ui.cad_wheel_customize = open;
     }
 
-    let bounds = ctx.available_rect();
+    let bounds = ctx.screen_rect();
     if !app.ui.cad_wheel_open {
         // A small unobtrusive, accessible launcher remains on screen; users can
         // also open the wheel via Cc ▸ Stylus Wheel. No CAD right-click hijack.

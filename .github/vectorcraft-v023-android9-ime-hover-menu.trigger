@@ -1,0 +1,1 @@
+2026-11-12 Android.9 isolated TEST ONLY. Fix .ai text and document-switch IME state, existing adaptive cursor, passive pen hovering, Stylus Wheel > Stylus Wheel On / Customization. Preserve wheel design/touchscreen/trackpad. Separate ARM64 package com.artcraft.vectorcraft.test; disposable sign; compress native APK; no merge/tag/permanent key/publish.

@@ -65,7 +65,9 @@ These source corrections still need generated-code compilation and tablet tests.
 - Full engine probe, Java/Rust adapter compilation, behavioral regression tests,
   pre-NDK gates and ARM64 APK verification are pending.
 
-The two new overlays are deliberately not wired into an APK-triggering workflow
-at this checkpoint. Finish the investigation and behavioral gates before the
-single authorized disposable-key ARM64 build. Never use production keys, merge,
+The resumed workflow now stages both overlays and runs generated-source checks,
+modal/input checks and host engine text/UI typing/IME tests before the
+authorized disposable-key ARM64 diagnostic build. The original AI-specific
+engine probe remains pending; generic tests cannot establish its import fidelity.
+The candidate is for diagnosis, not a claim that typing has been corrected. Never use production keys, merge,
 tag, or publish a release. Preserve com.artcraft.vectorcraft.test.

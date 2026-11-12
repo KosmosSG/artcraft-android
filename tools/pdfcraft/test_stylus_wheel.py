@@ -21,6 +21,22 @@ class WheelIntegration(unittest.TestCase):
   self.assertIn('size.is_finite() && opacity.is_finite()',s)
   self.assertIn('Reset to Default',s)
   self.assertIn('self.opacity_percent / 100.0',s)
+ def test_native_hover_is_last_passive_egui_event(self):
+  mobile=(ROOT/'templates/android/pdfcraft_mobile.rs').read_text()
+  wheel=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
+  native=(ROOT/'tools/pdfcraft/stylus_native.rs').read_text()
+  self.assertIn('android_activity::pdf_stylus_native_hover()',mobile)
+  self.assertIn('ctx.pixels_per_point()',mobile)
+  self.assertIn('raw.events.push(egui::Event::PointerMoved(pos))',mobile)
+  self.assertIn('raw.events.push(egui::Event::PointerGone)',mobile)
+  self.assertIn('ctx.data_mut(|d| d.insert_temp(hover_id, false))',mobile)
+  self.assertIn('if self.pen_hover.is_none() { self.hover = Some(pos); }',wheel)
+  self.assertIn('self.hover.and_then(|p| Self::hit(center, p, scale))',wheel)
+  self.assertIn('action == 7 || action == 9',native)
+  # Hover must never synthesize a button press or touch selection.
+  passive=mobile.split('// NativeActivity receives stylus HOVER_MOVE')[1].split('pub fn take_wheel_action')[0]
+  self.assertNotIn('raw.events.push(egui::Event::PointerButton',passive)
+  self.assertNotIn('raw.events.push(egui::Event::Touch',passive)
  def test_staged_native_patch_idempotent(self):
   import shutil
   with tempfile.TemporaryDirectory() as d:

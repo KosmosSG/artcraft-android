@@ -173,7 +173,7 @@ def main():
                     let enabled = app_bridge.pc_stylus_enabled().unwrap_or(false);
                     let ids = app_bridge.pc_stylus_device_ids().unwrap_or_default();
                     android_activity::pc_stylus_configure(enabled, &ids);
-                    stylus_wheel::Wheel::new(enabled)
+                    stylus_wheel::Wheel::new(enabled, app_bridge.files_dir().ok())
                 },
                 stylus_device_scan_at: std::time::Instant::now(),""")
     once(host, "                    Ok(()) => self.stylus_wheel.toggle(requested, ui.ctx()),",

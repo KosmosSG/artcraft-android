@@ -270,7 +270,7 @@ jobs:
               'if !self.open { self.hover_blocked = false; }',
           ):
               assert marker in wheel, f"Missing preview/hover guard: {marker}"
-          assert wheel.count('egui::Event::PointerGone') == 3, "Unexpected hover masking sites"
+          assert wheel.count('egui::Event::PointerGone') == 4, "Unexpected hover masking sites"
           assert '.interactable(false)' in wheel
           assert '.interactable(true)' not in wheel, "Android.8 pointer area regression"
           assert 'raw.events = retained;' in wheel

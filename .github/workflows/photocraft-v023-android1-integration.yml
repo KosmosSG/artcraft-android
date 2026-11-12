@@ -133,13 +133,13 @@ jobs:
           # attach the tested Android Y/N/C modal route after it.
           p = Path("tools/photocraft_v019_android7_input_overlay.py")
           t = p.read_text(encoding="utf-8")
-          old = '''    let mut answer = ctx.input_mut(|i| buttons.iter().find(|b| b.2.is_some_and(|k| i.consume_key(egui::Modifiers::NONE, k))).map(|b| b.4));
-'''
-          new = '''    let mut answer = ctx.input_mut(|i| {
-        let letter = buttons.iter().find(|b| b.2.is_some_and(|k| i.consume_key(egui::Modifiers::NONE, k))).map(|b| b.4);
-        if letter.is_none() && mac && !reverts && i.consume_key(egui::Modifiers::COMMAND, Key::D) { Some(Answer::Discard) } else { letter }
-    });
-'''
+          old = '    let mut answer = ctx.input_mut(|i| buttons.iter().find(|b| b.2.is_some_and(|k| i.consume_key(egui::Modifiers::NONE, k))).map(|b| b.4));\n'
+          new = (
+              '    let mut answer = ctx.input_mut(|i| {\n'
+              '        let letter = buttons.iter().find(|b| b.2.is_some_and(|k| i.consume_key(egui::Modifiers::NONE, k))).map(|b| b.4);\n'
+              '        if letter.is_none() && mac && !reverts && i.consume_key(egui::Modifiers::COMMAND, Key::D) { Some(Answer::Discard) } else { letter }\n'
+              '    });\n'
+          )
           assert t.count(old) == 1, "Unreviewed Android modal anchor"
           p.write_text(t.replace(old, new), encoding="utf-8")
           print("PASS: v0.23.0 source pins, overlay versions, Home and trackpad source retargeted only in runner")

@@ -185,18 +185,16 @@ def patch(root):
     }
 
     public String imePoll() {''')
-    once(java, '''    public void vcNativeUiReady() {
-        // JNI is a signal''',
-         '''    public void vcNativeUiReady() {
-        vcInstallPenHoverListener();
-        // JNI is a signal''')
-    once(java, '''            nativePointerIconType = -1;
-            applyImmersiveFullscreen();''',
-         '''            nativePointerIconType = -1;
+    once(java, '    public void vcNativeUiReady() {',
+         '    public void vcNativeUiReady() {\n        vcInstallPenHoverListener();')
+    in_method(java, '    public void onWindowFocusChanged(boolean hasFocus) {',
+              '    private void imeSetup() {',
+              '        if (hasFocus) {',
+              '''        if (hasFocus) {
+            // SurfaceView may be recreated after the Android file picker.
             vcPenHoverSurface = null;
             vcPenHoverVisible = false;
-            vcInstallPenHoverListener();
-            applyImmersiveFullscreen();''')
+            vcInstallPenHoverListener();''')
 
     once(host, '    fn files_dir(&self) -> Result<String, String> {',
          '''    fn vc_document_changed(&self) -> Result<(), String> {

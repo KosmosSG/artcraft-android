@@ -105,6 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
           python3 tools/test_pdfcraft_adapter.py source/pdfcraft
           python3 tools/pdfcraft/test_android6_lifecycle_trace.py
           python3 -m unittest discover -s tools/pdfcraft -p 'test_*.py' -v

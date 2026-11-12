@@ -140,7 +140,7 @@ jobs:
               '        if letter.is_none() && mac && !reverts && i.consume_key(egui::Modifiers::COMMAND, Key::D) { Some(Answer::Discard) } else { letter }\n'
               '    });\n'
           )
-          assert t.count(old) == 1, "Unreviewed Android modal anchor"
+          assert t.count(old) == 2, "Unreviewed Android modal anchor (input + output)"
           p.write_text(t.replace(old, new), encoding="utf-8")
           print("PASS: v0.23.0 source pins, overlay versions, Home and trackpad source retargeted only in runner")
           PY

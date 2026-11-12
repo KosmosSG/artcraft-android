@@ -109,11 +109,11 @@ def main():
     once(host, "    ai_menu: ai_menu::AndroidAiMenu,\n",
          "    ai_menu: ai_menu::AndroidAiMenu,\n    stylus_wheel: stylus_wheel::Wheel,\n")
     once(host, '                ai_menu: ai_menu::AndroidAiMenu::new(',
-         '                stylus_wheel: stylus_wheel::Wheel::new(app_bridge.pc_stylus_enabled().unwrap_or(false)),\n'
+         '                stylus_wheel: stylus_wheel::Wheel::new(app_bridge.pc_stylus_enabled().unwrap_or(false), app_bridge.files_dir().ok()),\n'
          '                ai_menu: ai_menu::AndroidAiMenu::new(')
 
-    # A checked row in the established Pc menu, without a separate floating
-    # settings window. 34 is outside existing 1-33 action IDs.
+    # Action 34 retains persisted enable; action 35 opens the native
+    # app-private Default wheel customization dialog.
     once(brand, '            ui.menu_button("Shortcut Pad", |ui| {',
          '''            ui.menu_button("Stylus Wheel", |ui| {
                 let enabled = ui.ctx().data(|d|
@@ -125,7 +125,8 @@ def main():
                     "Stylus Wheel OFF (tap to enable)"
                 }, 34);
                 ui.label("Magic-Pencil 4s • hover + press");
-                ui.label("Single: six-tool wheel");
+                ui.label("Default: 8 customizable segments");
+                action(ui, "Customize Wheel…", 35);
                 ui.label("Double: quick Eraser");
                 ui.label("Tap pen tip: select • Esc: cancel");
             });
@@ -138,6 +139,9 @@ def main():
                     Ok(()) => self.stylus_wheel.toggle(requested, ui.ctx()),
                     Err(error) => log::warn!("Stylus wheel toggle unavailable: {error}"),
                 }
+            }
+            35 => {
+                self.stylus_wheel.settings_open = true;
             }
             20..=33 => {''')
     once(host, "        self.inner.raw_input_hook(ctx, raw);\n",

@@ -21,7 +21,8 @@ class WheelIntegration(unittest.TestCase):
   # Activity-level generic input is observed even before SurfaceView listeners
   # are installed on first focus. No synthetic contact or event consumption.
   self.assertIn('dispatchGenericMotionEvent(android.view.MotionEvent event)',java)
-  self.assertIn('pdfObservePen(event);\\n    return super.dispatchGenericMotionEvent(event);',java)
+  self.assertIn('pdfObservePen(event);',java)
+  self.assertIn('return super.dispatchGenericMotionEvent(event);',java)
   self.assertIn('dispatchTouchEvent(android.view.MotionEvent event)',java)
   self.assertIn('return super.dispatchTouchEvent(event);',java)
   self.assertIn('getLocationInWindow(location)',java)

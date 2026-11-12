@@ -45,7 +45,7 @@ fn icon_texture(ctx: &egui::Context) -> egui::TextureHandle {
 fn paint_cc(ui: &egui::Ui, rect: Rect) {
     let tex = icon_texture(ui.ctx());
     ui.painter().image(
-        tex.id(), rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+        tex.id(), rect, Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
         Color32::WHITE,
     );
 }
@@ -189,13 +189,13 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context) {
                     ui.horizontal(|ui| {
                         ui.label(format!("Slot {}", idx + 1));
                         let current = app.ui.cad_wheel_actions.get(idx)
-                            .map_or(DEFAULT_ACTIONS[idx], String::as_str);
+                            .cloned().unwrap_or_else(|| DEFAULT_ACTIONS[idx].to_owned());
                         egui::ComboBox::from_id_salt(("cadcraft_wheel_slot", idx))
-                            .selected_text(label(current))
+                            .selected_text(label(current.as_str()))
                             .width(145.0)
                             .show_ui(ui, |ui| {
                                 for (name, id) in ACTIONS {
-                                    if ui.selectable_label(current == id, name).clicked() {
+                                    if ui.selectable_label(current.as_str() == id, name).clicked() {
                                         if let Some(slot) = app.ui.cad_wheel_actions.get_mut(idx) {
                                             *slot = id.to_string();
                                         }

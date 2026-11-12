@@ -72,8 +72,21 @@ static PDF_PEN_HOVER: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::n
 #[cfg(feature = "native-activity")]
 pub fn pdf_stylus_observe_motion(tool: i32, action: i32, x: f32, y: f32) {
     if let Ok(mut hover) = PDF_PEN_HOVER.lock() {
-        *hover = if (tool == 2 || tool == 4) && (action == 7 || action == 9)
-            && x.is_finite() && y.is_finite() { Some((x, y)) } else { None };
+        if tool == 2 || tool == 4 {
+            if (action == 7 || action == 9) && x.is_finite() && y.is_finite() {
+                // Hover enter/move is useful even before the first pen contact.
+                *hover = Some((x, y));
+            } else if action == 0 || action == 1 || action == 2 ||
+                      action == 3 || action == 10 ||
+                      ((action == 7 || action == 9) && (!x.is_finite() || !y.is_finite())) {
+                *hover = None;
+            }
+        } else if action == 0 {
+            // A genuine other-pointer contact changes the input owner.
+            *hover = None;
+        }
+        // Do not erase genuine pen hover because a stale hover/move from a
+        // mouse/trackpad was delivered immediately afterwards.
     }
 }
 #[cfg(feature = "native-activity")]
@@ -97,7 +110,10 @@ mod hover_tests {
                 assert_eq!(super::pdf_stylus_native_hover(), None);
             }
         }
+        super::pdf_stylus_observe_motion(2, 7, 12.0, 24.0);
         super::pdf_stylus_observe_motion(3, 7, 1.0, 2.0);
+        assert_eq!(super::pdf_stylus_native_hover(), Some((12.0, 24.0)));
+        super::pdf_stylus_observe_motion(3, 0, 1.0, 2.0);
         assert_eq!(super::pdf_stylus_native_hover(), None);
         super::pdf_stylus_observe_motion(2, 7, f32::NAN, 2.0);
         assert_eq!(super::pdf_stylus_native_hover(), None);

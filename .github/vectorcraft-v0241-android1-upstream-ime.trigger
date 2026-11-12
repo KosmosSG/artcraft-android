@@ -12,3 +12,5 @@ Rebase check 4: Android.24 wheel setting 0.90 preserved by v0.24.1 popup.
 Rebase check 5: assert approved v0.24.1 wheel tuning after final patch.
 
 Rebase check 6: idempotency guard for v0.24.1 menu scrolling.
+
+Rebase check 7: reviewed owner-adapter API patch allows official 0.24.1.

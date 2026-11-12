@@ -293,7 +293,7 @@ impl Wheel {
                                 egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
                                     .show_value(false)
                             ).changed() { self.layout_dirty = true; }
-                            ui.label(format!("{:.0}%", self.size_percent));
+                            ui.label(format!("{:.1}%", self.size_percent));
                             ui.end_row();
 
                             ui.label("Opacity");
@@ -302,7 +302,7 @@ impl Wheel {
                                 egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
                                     .show_value(false)
                             ).changed() { self.layout_dirty = true; }
-                            ui.label(format!("{:.0}%", self.opacity_percent));
+                            ui.label(format!("{:.1}%", self.opacity_percent));
                             ui.end_row();
                         });
 

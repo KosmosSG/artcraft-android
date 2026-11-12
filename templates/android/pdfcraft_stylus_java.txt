@@ -85,11 +85,7 @@ private void pdfObservePen(android.view.MotionEvent event) {
     pdfObservePen(event, null);
 }
 public String pdfStylusHover() { return pdfPenHover; }
-@Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
-    // First hover can precede SurfaceView attachment/focus/touch.
-    pdfObservePen(event);
-    return super.dispatchGenericMotionEvent(event);
-}
+// Pre-contact generic hover is handled by the existing PDFCraft Activity override.
 @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
     pdfObservePen(event);
     return super.dispatchTouchEvent(event);

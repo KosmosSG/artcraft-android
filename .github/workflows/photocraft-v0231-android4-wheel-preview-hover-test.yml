@@ -48,7 +48,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
           CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
-          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml .github/workflows/photocraft-v0231-android4-wheel-preview-hover-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py tools/photocraft_v022_vc_style_menu.py tools/photocraft_v022_wheel_pc_logo.svg tools/photocraft_v022_wheel_pc_raster.py)"
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml .github/workflows/photocraft-v0231-android3-android7-baseline-test.yml .github/workflows/photocraft-v0231-android4-wheel-preview-hover-test.yml tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py tools/photocraft_v022_vc_style_menu.py tools/photocraft_v022_wheel_pc_logo.svg tools/photocraft_v022_wheel_pc_raster.py)"
           test "$CHANGED" = "$EXPECTED" || {
             echo "Refusing branch: unexpected changes outside guarded workflow and Brush Library overlay."
             printf '%s\n' "$CHANGED"

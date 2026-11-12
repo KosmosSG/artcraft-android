@@ -9,6 +9,8 @@ enum Action { ImportFont, SelectFolder, RefreshFonts, CheckUpdates { manual: boo
 
 pub struct Mobile {
     app: AndroidApp,
+    wheel: crate::pdfcraft_stylus_wheel::Wheel,
+    wheel_scan: std::time::Instant,
     renderer: String,
     panel_open: bool,
     fonts_open: bool,
@@ -48,6 +50,7 @@ pub struct Mobile {
 impl Mobile {
     pub fn new(app: AndroidApp) -> Self {
         let mut mobile = Self {
+            wheel: crate::pdfcraft_stylus_wheel::Wheel::new(false), wheel_scan: std::time::Instant::now(),
             app, renderer: "Renderer not initialized".into(), panel_open: false, fonts_open: false, gpu_details_open: false,
             trackpad_details_open: false, performance_enabled: false,
             perf_last_frame: None, perf_frame_count: 0, perf_mean_ms: 0.0,
@@ -68,7 +71,134 @@ impl Mobile {
             mobile.installed_version = version;
             mobile.installed_package = package;
         }
+        let enabled = mobile.pdf_stylus_enabled().unwrap_or(false);
+        mobile.wheel = crate::pdfcraft_stylus_wheel::Wheel::new(enabled);
+        if let Ok(layout) = mobile.pdf_stylus_get_layout() { mobile.wheel.set_layout_string(&layout); }
+        android_activity::pdf_stylus_configure(enabled, &mobile.pdf_stylus_device_ids().unwrap_or_default());
         mobile
+    }
+
+    fn pdf_stylus_get_layout(&self) -> Result<String, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("pdfStylusGetLayout"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(String::new()); }
+            let value = JString::cast_local(env, result)?;
+            value.try_to_string(env)
+        }).map_err(|e| e.to_string())
+    }
+    fn pdf_stylus_set_layout(&self, layout: &str) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.new_string(layout)?;
+            let object = JObject::from(value);
+            env.call_method(&*activity, jni_str!("pdfStylusSetLayout"),
+                jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&object)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+    fn pdf_stylus_set_enabled(&self, enabled: bool) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfStylusSetEnabled"), jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+    fn pdf_stylus_enabled(&self) -> Result<bool, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfStylusEnabled"), jni_sig!("()Z"), &[])?.z()
+        }).map_err(|e| e.to_string())
+    }
+    fn pdf_stylus_poll(&self) -> Result<Option<String>, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("pdfStylusPoll"), jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if result.is_null() { return Ok(None); }
+            let value = JString::cast_local(env, result)?;
+            Ok(Some(value.try_to_string(env)?))
+        }).map_err(|e| e.to_string())
+    }
+    fn pdf_stylus_device_ids(&self) -> Result<Vec<i32>, String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<Vec<i32>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pdfStylusDeviceIds"), jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok(Vec::new()); }
+            let value = JString::cast_local(env, value)?;
+            let ids: String = value.try_to_string(env)?;
+            Ok(ids.split(',').filter_map(|s| s.parse::<i32>().ok()).collect())
+        }).map_err(|e| e.to_string())
+    }
+    fn pen_hover(&self, ctx: &egui::Context) -> Option<egui::Pos2> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        let value = vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("pdfStylusHover"), jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            JString::cast_local(env, value)?.try_to_string(env)
+        }).ok()?;
+        let (x, y) = value.split_once(',')?;
+        let x = x.parse::<f32>().ok()? / ctx.pixels_per_point();
+        let y = y.parse::<f32>().ok()? / ctx.pixels_per_point();
+        if x.is_finite() && y.is_finite() { Some(egui::pos2(x,y)) } else { None }
+    }
+    pub fn wheel_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput, blocked: bool) {
+        if self.wheel_scan.elapsed() > std::time::Duration::from_secs(2) {
+            android_activity::pdf_stylus_configure(self.wheel.enabled, &self.pdf_stylus_device_ids().unwrap_or_default());
+            self.wheel_scan = std::time::Instant::now();
+        }
+        self.wheel.set_pen_hover(self.pen_hover(ctx));
+        let blocked = blocked || self.panel_open || self.fonts_open || self.updates_open || self.about_open;
+        for code in android_activity::pdf_stylus_native_take() {
+            if !blocked { self.wheel.signal(if code == 19 { "D" } else { "S" }, ctx); }
+        }
+        for _ in 0..12 {
+            match self.pdf_stylus_poll() {
+                Ok(Some(signal)) => if !blocked { self.wheel.signal(&signal, ctx); },
+                _ => break,
+            }
+        }
+        self.wheel.capture(ctx, raw, blocked);
+    }
+    pub fn take_wheel_action(&mut self) -> Option<&'static str> { self.wheel.take_action() }
+    pub fn wheel_ui(&mut self, ui: &mut egui::Ui) {
+        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pdfcraft.wheel.enabled"), self.wheel.enabled));
+        let request = ui.ctx().data_mut(|d| d.remove_temp::<u8>(egui::Id::new("pdfcraft.wheel.request")));
+        if request == Some(1) {
+            let enabled = !self.wheel.enabled;
+            match self.pdf_stylus_set_enabled(enabled) {
+                Ok(()) => {
+                    self.wheel.toggle(enabled, ui.ctx());
+                    android_activity::pdf_stylus_configure(enabled, &self.pdf_stylus_device_ids().unwrap_or_default());
+                },
+                Err(error) => log::warn!("Cannot save stylus setting: {error}"),
+            }
+        }
+        if request == Some(2) { self.wheel.open_customizer(ui.ctx()); }
+        if !self.wheel.is_visible() && !egui::Popup::is_any_open(ui.ctx()) && !self.panel_open && !self.fonts_open && !self.updates_open && !self.about_open {
+            if let Some(position) = self.pen_hover(ui.ctx()) {
+                let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("pdf.pen.hover")));
+                painter.circle_stroke(position, 5.0, egui::Stroke::new(1.25, egui::Color32::from_rgb(251,180,176)));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        self.wheel.render(ui);
+        if let Some(layout) = self.wheel.take_layout_change() {
+            if let Err(error) = self.pdf_stylus_set_layout(&layout) { log::warn!("Cannot save wheel layout: {error}"); }
+        }
     }
 
     fn read_installed_build_info(&self) -> Result<(String, String), String> {

@@ -69,12 +69,12 @@ def patch(root):
               '''        runOnUiThread(() -> {
             if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;''')
     in_method(java, '    public void imeHide() {',
-              '    public String imePoll() {',
+              '    public void vcResetIme(long requestId) {',
               '        imeWanted = false;',
               '''        final long focusToken = vcImeFocusEpoch.incrementAndGet();
         imeWanted = false;''')
     in_method(java, '    public void imeHide() {',
-              '    public String imePoll() {',
+              '    public void vcResetIme(long requestId) {',
               '        runOnUiThread(() -> {',
               '''        runOnUiThread(() -> {
             if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;''')

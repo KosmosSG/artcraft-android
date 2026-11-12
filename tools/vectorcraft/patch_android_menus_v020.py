@@ -8,7 +8,7 @@ closed rather than producing a partially working Android app.
 from pathlib import Path
 import argparse
 
-SUPPORTED_VERSIONS = ('version = "0.20.0"', 'version = "0.21.0"', 'version = "0.23.0"')
+SUPPORTED_VERSIONS = ('version = "0.20.0"', 'version = "0.21.0"', 'version = "0.23.0"', 'version = "0.24.1"')
 
 
 def insert_once(source: str, old: str, new: str, label: str) -> str:
@@ -52,7 +52,7 @@ def patch(builder: Path) -> None:
     upstream = builder / "source/vectorcraft"
     manifest = (upstream / "Cargo.toml").read_text()
     if sum(manifest.count(v) for v in SUPPORTED_VERSIONS) != 1:
-        raise RuntimeError("Only reviewed upstream VectorCraft v0.20.0, v0.21.0 or v0.23.0 is supported")
+        raise RuntimeError("Only reviewed upstream VectorCraft v0.20.0, v0.21.0, v0.23.0 or v0.24.1 is supported")
     root = upstream / "crates/ui-egui/src"
     menus = root / "menus.rs"
     run = root / "menus/run.rs"
@@ -193,10 +193,21 @@ pub fn take_android_menu_bits() -> u32 {
     # system gestures or rewrite motion events globally.
     dropdowns = root / "widgets/dropdowns.rs"
     dropdowns_src = dropdowns.read_text()
-    dropdowns_src = insert_once(dropdowns_src,
-        'egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner',
-        'egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL).max_height(room).min_scrolled_height(room).show(ui, add_contents).inner',
-        "menu scroll source (touch drag + wheel)")
+    legacy = 'egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'
+    v0241 = 'let area = egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room);'
+    scroll = 'egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL)'
+    if dropdowns_src.count(legacy) == 1 and dropdowns_src.count(v0241) == 0:
+        dropdowns_src = insert_once(dropdowns_src, legacy,
+                                    legacy.replace('egui::ScrollArea::vertical()', scroll),
+                                    "legacy menu scroll source (touch drag + wheel)")
+    elif dropdowns_src.count(v0241) == 1 and dropdowns_src.count(legacy) == 0:
+        # v0.24.1 already has position-aware menu heights and popup-width
+        # retention. Do not replace the function with its v0.23.0 ancestor.
+        dropdowns_src = insert_once(dropdowns_src, v0241,
+                                    v0241.replace('egui::ScrollArea::vertical()', scroll),
+                                    "v0.24.1 menu scroll source (touch drag + wheel)")
+    else:
+        raise RuntimeError("Unreviewed upstream menu_scroll; expected one compatible source form")
 
     # Validate all replacement targets BEFORE writing any source.
     for modified, marker in ((s, "ANDROID_MENU_BITS"),

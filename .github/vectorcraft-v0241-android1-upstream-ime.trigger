@@ -6,3 +6,5 @@ Preserve D/C/S Ctrl+Q wheel fonts icons IME reset and gestures. Disposable test 
 Rebase check 2: preserve v0.24.1 popup room/width and owner trackpad scrolling.
 
 Rebase check 3: v0.24.1 popup placement and width preservation under Android.25.
+
+Rebase check 4: Android.24 wheel setting 0.90 preserved by v0.24.1 popup.

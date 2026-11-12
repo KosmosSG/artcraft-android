@@ -71,7 +71,7 @@ jobs:
               "photocraft_v019_adapter_overlay.py",
               "photocraft_v019_android5_input_overlay.py",
               "photocraft_v019_android6_ui_overlay.py",
-              "photocraft_v019_android8_input_overlay.py",
+              "photocraft_v019_android7_input_overlay.py",
               "photocraft_v0201_keyboard_diagnostics_overlay.py",
               "photocraft_v0201_keyboard_repair.py",
               "photocraft_v0201_escape_overlay.py",
@@ -164,8 +164,8 @@ jobs:
           python3 tools/photocraft_v019_android6_ui_overlay.py \
             --upstream source/photocraft \
             --adapter adapters/photocraft
-          python3 -m py_compile tools/photocraft_v019_android8_input_overlay.py
-          python3 tools/photocraft_v019_android8_input_overlay.py \
+          python3 -m py_compile tools/photocraft_v019_android7_input_overlay.py
+          python3 tools/photocraft_v019_android7_input_overlay.py \
             --upstream source/photocraft \
             --adapter adapters/photocraft
           python3 -m py_compile tools/photocraft_v0201_keyboard_diagnostics_overlay.py

@@ -81,42 +81,53 @@ def main() -> None:
             .fixed_pos(center - vec2(size * 0.5, size * 0.5))
             .interactable(true)''')
 
-    # The Shortcut Pad is different from the radial wheel: its buttons need
-    # egui pointer events. Give its entire reserved edge strip a foreground
-    # hover hit target rather than removing input needed by Undo/Redo/Zoom.
+    # Tablet pad has a custom touch/pointer input router and its own painter.
+    # Preserve its key/ring controls, but scrub pointer hover while the actual
+    # reserved pad panel owns the contact, so tools underneath never highlight.
     replace_once(pad,
-        '''                .show(ctx, |ui| {
-                    let frame = egui::Frame::new()''',
-        '''                .show(ctx, |ui| {
-                    // Register a hit target across the WHOLE visible pad,
-                    // including the gaps between buttons and its zoom ring.
-                    // Child controls remain clickable/drag-capable.
-                    let _hover_shield = ui.interact(
-                        strip, egui::Id::new("pc-shortcut-pad-hover-shield"),
-                        egui::Sense::hover(),
-                    );
-                    let frame = egui::Frame::new()''')
+        '''        let touch_frame = !self.contacts.is_empty() || raw.events.iter().any(|e|''',
+        '''        let mut pad_hover = false;
+        let touch_frame = !self.contacts.is_empty() || raw.events.iter().any(|e|''')
     replace_once(pad,
-        '''        panel.exact_size(78.0).show(ui, |panel_ui| {
-            self.reserved = Some(panel_ui.max_rect());
-        });''',
-        '''        panel.exact_size(78.0).show(ui, |panel_ui| {
-            self.reserved = Some(panel_ui.max_rect());
-            panel_ui.ctx().data_mut(|data| data.insert_temp(
-                egui::Id::new("pc-shortcut-pad-reserved-rect"),
-                panel_ui.max_rect(),
-            ));
-        });''')
+        '''                Event::PointerMoved(pos) if self.mouse.is_some() => {
+                    if let Some(c)=self.mouse { self.touch(PadTouch::Move(c,pos), &mut out); }
+                }
+                _ => out.push(event),''',
+        '''                Event::PointerMoved(pos) if self.mouse.is_some() => {
+                    pad_hover |= hit(pos);
+                    if let Some(c)=self.mouse { self.touch(PadTouch::Move(c,pos), &mut out); }
+                }
+                Event::PointerMoved(pos) if hit(pos) => {
+                    // The pad paints itself; no editor hover is required.
+                    pad_hover = true;
+                }
+                _ => out.push(event),''')
+    replace_once(pad,
+        '''        raw.events = out;
+    }
+    fn touch(&mut self, t: PadTouch, out: &mut Vec<Event>) {''',
+        '''        raw.events = out;
+        if pad_hover {
+            // Clear hovered toolbar/canvas state, without suppressing the
+            // pad's own input handling, actions or keyboard shortcuts.
+            raw.events.push(Event::PointerGone);
+        }
+    }
+    fn touch(&mut self, t: PadTouch, out: &mut Vec<Event>) {''')
     replace_once(pad,
         '''        self.reserved = None;
-        if !menus::artcraft_pad_visible() { return; }''',
+        android_activity::pc_pen::pad(None);''',
         '''        self.reserved = None;
-        if !menus::artcraft_pad_visible() {
-            ui.ctx().data_mut(|data| data.remove::<egui::Rect>(
-                egui::Id::new("pc-shortcut-pad-reserved-rect")
-            ));
-            return;
-        }''')
+        ui.ctx().data_mut(|d| d.remove::<egui::Rect>(
+            egui::Id::new("pc-shortcut-pad-reserved-rect")
+        ));
+        android_activity::pc_pen::pad(None);''')
+    replace_once(pad,
+        '''            self.reserved=Some(r); self.layer=Some(ui.layer_id());''',
+        '''            self.reserved=Some(r); self.layer=Some(ui.layer_id());
+            ui.ctx().data_mut(|d| d.insert_temp(
+                egui::Id::new("pc-shortcut-pad-reserved-rect"), r
+            ));''')
 
     # Guard direct canvas hover/navigation over that reserved strip. This
     # covers upstream manual canvas hit-testing that ignores egui layers.
@@ -213,7 +224,7 @@ def main() -> None:
     assert 'ui.menu_button("Appearance"' in brand.read_text()
     assert 'action(ui, "Keyboard Shortcuts…", 36);' in brand.read_text()
     assert "egui::Event::PointerGone" in wheel.read_text()
-    assert "pc-shortcut-pad-hover-shield" in pad.read_text()
+    assert "pad_hover" in pad.read_text()
     assert "wheel_dropdown" in trackpad.read_text()
     assert "self.stylus_wheel.settings_open" in host.read_text()
     assert "pc_keyboard_diag.show" in host.read_text()

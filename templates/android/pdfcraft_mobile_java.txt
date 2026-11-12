@@ -40,6 +40,8 @@ private volatile String pdfCursorError = "None";
 
 @Override
 public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+    // Capture pre-contact pen hover without changing existing trackpad diagnostics.
+    pdfObservePen(event);
     // Always forward exactly as before, regardless of diagnostics.
     if (event != null) {
         int action = event.getActionMasked();

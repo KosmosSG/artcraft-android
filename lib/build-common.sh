@@ -399,7 +399,7 @@ marker = android_dir / ".artcraft-android-builder-generated"
 # Bump this whenever the generated launcher template changes so stale wrappers (which live in the
 # source checkout and would otherwise be preserved forever) are regenerated automatically instead
 # of failing against a newer app API.
-GENERATOR_VERSION = "28-pdfcraft" if app == "pdfcraft" else "24"
+GENERATOR_VERSION = "29-pdfcraft" if app == "pdfcraft" else "24"
 
 # A complete adapter supplied by the user wins over auto-detection. This folder is maintained
 # inside the builder, while its contents are copied into this source checkout.
@@ -2210,11 +2210,19 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
         )
         if app == "pdfcraft":
             extension = ((root / "templates" / "android" / "pdfcraft_mobile_java.txt").read_text()
-                         + "\n" + (root / "templates" / "android" / "pdfcraft_update_java.txt").read_text())
+                         + "\n" + (root / "templates" / "android" / "pdfcraft_update_java.txt").read_text()
+                         + "\n" + (root / "templates/android/pdfcraft_stylus_java.txt").read_text()
+                         + "\n" + (root / "templates/android/pdfcraft_update_snapshot.java.txt").read_text())
             marker = "public String safPoll() { return results.poll(); }"
             if java_src.count(marker) != 1:
                 raise SystemExit("Cannot safely extend PDFCraft Activity: SAF poll anchor changed")
             java_src = java_src.replace(marker, marker + "\n" + extension, 1)
+            for signature in ('public boolean onKeyDown(int keyCode, KeyEvent event) {', 'public boolean onKeyUp(int keyCode, KeyEvent event) {', 'public boolean sendKeyEvent(KeyEvent event) {'):
+                if java_src.count(signature) != 1: raise SystemExit("PDFCraft pen key bridge changed")
+                java_src = java_src.replace(signature, signature + '\n                    if (pdfStylusIntercept(event)) return true;', 1)
+            hover_hook = '        super.onWindowFocusChanged(hasFocus);'
+            if java_src.count(hover_hook) != 1: raise SystemExit("PDFCraft focus callback changed")
+            java_src = java_src.replace(hover_hook, hover_hook + '\n        if (hasFocus) getWindow().getDecorView().post(() -> pdfInstallHover(getWindow().getDecorView()));\n        else pdfPenHover = "";', 1)
             # PDFCRAFT_ANDROID7_LAUNCH_TRACE: instrument the actual generated
             # PDFCraft Activity only. No shared template or lifecycle behavior change.
             create_hook = "        super.onCreate(savedInstanceState);\n        applyImmersiveFullscreen();"
@@ -2224,14 +2232,17 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
                 '        pdfLifecycleTrace("onCreate:beforeSuper");\n'
                 '        super.onCreate(savedInstanceState);\n'
                 '        pdfLifecycleTrace("onCreate:afterSuper");\n'
-                '        applyImmersiveFullscreen();', 1)
+                '        applyImmersiveFullscreen();\n'
+                '        pdfWheelEnabled = getSharedPreferences("pdf_stylus_wheel", MODE_PRIVATE).getBoolean("enabled", false);\n'
+                '        pdfHandleInstallResult(getIntent());', 1)
             new_intent_hook = "        super.onNewIntent(intent);"
             if java_src.count(new_intent_hook) != 1:
                 raise SystemExit("PDFCraft onNewIntent lifecycle anchor changed")
             java_src = java_src.replace(new_intent_hook,
                 '        pdfLifecycleTrace("onNewIntent:beforeSuper");\n'
                 '        super.onNewIntent(intent);\n'
-                '        pdfLifecycleTrace("onNewIntent:afterSuper");', 1)
+                '        pdfLifecycleTrace("onNewIntent:afterSuper");\n'
+                '        if (pdfHandleInstallResult(intent)) return;', 1)
             # PDFCRAFT_ANDROID_RELAUNCH_STALE_INTENT: if MagicOS delivers a
             # singleTask MAIN/document intent to a Java Activity whose native
             # editor has already exited, reconstruct a fresh NativeActivity
@@ -2267,7 +2278,7 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
     # android-activity (which forwards show/hide to the Activity's imeShow/imeHide) in step.
     imports.append("mod ime_bridge;")
     if app == "pdfcraft":
-        imports.append("mod pdfcraft_mobile;\nmod pdfcraft_ocr;")
+        imports.append("mod pdfcraft_mobile;\nmod pdfcraft_ocr;\nmod pdfcraft_stylus_wheel;")
     if re.search(r"\bSession\b", construct):
         imports.append(f"use {engine_ident}::Session;")
     services_syms = [s for s in ("NoServices", "Services") if re.search(r"\b" + s + r"\b", (SAF_RECIPES.get(app) or {}).get("construct_expr") or construct)]
@@ -2787,7 +2798,7 @@ impl eframe::App for AndroidShell {{
              "        egui_winit::pdfcraft_adaptive_cursor::set_activity(app.activity_as_ptr() as usize);\n        let pdf_mobile = pdfcraft_mobile::Mobile::new(app.clone());\n        inner.set_android_tools_visible(pdf_mobile.toolbar_shown());\n        let ime = ime_bridge::ime::ImeBridge::new(&app);"),
             ("probe: InputProbe::default()", "probe: InputProbe::default(), pdf_mobile"),
             ("        self.poll_file_picker();", "        self.poll_file_picker();\n        if self.inner.take_android_update_request() { self.pdf_mobile.do_update_check(); }\n        self.pdf_mobile.handle_menu(self.inner.take_android_tools_request());\n        self.pdf_mobile.poll(ctx);\n        self.pdf_mobile.sync_toolbar_preference(self.inner.android_tools_visible());"),
-            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        let pdf_perf_start = self.pdf_mobile.begin_ui_sample();\n        self.inner.ui(ui, frame);\n        self.pdf_mobile.end_ui_sample(pdf_perf_start);\n        self.pdf_mobile.dialog(ui.ctx());\n        // PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK: bypass missing winit hover cache.\n        egui_winit::pdfcraft_adaptive_cursor::apply(ui.ctx().output(|o| o.cursor_icon));"),
+            ("        self.inner.ui(ui, frame);", "        if self.inner.android_tools_visible() {\n            if self.pdf_mobile.toolbar(ui) { self.inner.set_android_tools_visible(false); }\n        }\n        let pdf_perf_start = self.pdf_mobile.begin_ui_sample();\n        self.inner.ui(ui, frame);\n        self.pdf_mobile.end_ui_sample(pdf_perf_start);\n        self.pdf_mobile.dialog(ui.ctx());\n        self.pdf_mobile.wheel_ui(ui);\n        if let Some(command) = self.pdf_mobile.take_wheel_action() { self.inner.android_wheel_action(ui.ctx(), command); }\n        // PDFCRAFT_ANDROID_POST_UI_CURSOR_FALLBACK: bypass missing winit hover cache.\n        egui_winit::pdfcraft_adaptive_cursor::apply(ui.ctx().output(|o| o.cursor_icon));"),
         ]
         for needle, replacement in checks:
             if shell.count(needle) != 1:
@@ -2797,7 +2808,7 @@ impl eframe::App for AndroidShell {{
         hook = "        self.handle_clipboard_shortcuts(raw);"
         if shell.count(hook) != 1:
             raise SystemExit("PDFCraft raw input diagnostics hook changed")
-        shell = shell.replace(hook, hook + "\n        self.pdf_mobile.observe_raw_input(raw);", 1)
+        shell = shell.replace(hook, hook + "\n        self.pdf_mobile.observe_raw_input(raw);\n        let gate = self.inner.menu_gate(ctx);\n        self.pdf_mobile.wheel_input(ctx, raw, self.inner.active_ids().is_none() || gate.modal || gate.text_editing || egui::Popup::is_any_open(ctx));", 1)
     # Install fonts before the first pass. Some apps (figcraft) lay out text with a named font family
     # ("semibold") that only exists after their theme installs the fonts, and egui applies `set_fonts`
     # at the *next* pass: installing from the app's own first frame is one pass too late, so the frame
@@ -2956,6 +2967,8 @@ fn finish_pdfcraft_android_activity(app: &android_activity::AndroidApp) {
         if src_audio.is_file():
             shutil.copy2(src_audio, staging_dir / "src" / filename)
     if app == "pdfcraft":
+        shutil.copy2(root / "templates/android/pdfcraft_stylus_wheel.rs", staging_dir / "src/pdfcraft_stylus_wheel.rs")
+        __import__('subprocess').run([sys.executable, str(root / "tools/pdfcraft/wheel_brand.py"), str(staging_dir / "src/stylus_wheel_pc.rgba")], check=True)
         shutil.copy2(root / "templates/android/pdfcraft_modifiers.rs", staging_dir / "src/pdfcraft_modifiers.rs")
         shutil.copy2(root / "templates/android/pdfcraft_ocr.rs", staging_dir / "src/pdfcraft_ocr.rs")
         marker = "    let saf_bridge = saf::Bridge::new(&android_app);"
@@ -3143,6 +3156,7 @@ if grep -qE 'ARTCRAFT_ANDROID_SAF_BRIDGE|mod ime_bridge' "$ANDROID_DIR/src/lib.r
     cp -a "$ROOT/vendor/android-activity" "$SRC/vendor/android-activity"
     if [[ "$APP" == "pdfcraft" ]]; then
         python3 "$ROOT/tools/pdfcraft/activity_history_patch.py" "$SRC/vendor/android-activity"
+        python3 "$ROOT/tools/pdfcraft/stylus_native_patch.py" "$SRC/vendor/android-activity"
     fi
     python3 - "$SRC/Cargo.toml" <<'PY'
 from pathlib import Path

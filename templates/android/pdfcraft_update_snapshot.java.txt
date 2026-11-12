@@ -1,0 +1,25 @@
+// Pure Java helper: the same code is exercised by the tamper/size-limit tests.
+private static File pdfVerifiedSnapshot(File source, File directory, String expected, long limit) throws Exception {
+    if (expected == null || !expected.matches("sha256:[a-fA-F0-9]{64}"))
+        throw new SecurityException("A published SHA-256 digest is required");
+    File snapshot = File.createTempFile("pdf-update-", ".apk", directory);
+    boolean verified = false;
+    try {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        long total = 0;
+        try (InputStream in = new FileInputStream(source); FileOutputStream out = new FileOutputStream(snapshot)) {
+            byte[] buffer = new byte[65536]; int count;
+            while ((count = in.read(buffer)) != -1) {
+                total += count;
+                if (total > limit) throw new SecurityException("APK exceeds size limit");
+                digest.update(buffer, 0, count); out.write(buffer, 0, count);
+            }
+            out.getFD().sync();
+        }
+        StringBuilder actual = new StringBuilder("sha256:");
+        for (byte value : digest.digest()) actual.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+        if (!actual.toString().equalsIgnoreCase(expected)) throw new SecurityException("GitHub asset SHA-256 mismatch");
+        verified = true;
+        return snapshot;
+    } finally { if (!verified) snapshot.delete(); }
+}

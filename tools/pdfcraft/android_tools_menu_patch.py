@@ -33,6 +33,13 @@ def replace(old: str, new: str):
     assert count == 1, f"PDFCraft 0.17 menus changed: expected one anchor {old!r}, found {count}"
     text = text.replace(old, new, 1)
 
+replace('    pub fn run_menu_command(&mut self, ctx: &egui::Context, command: &CommandRef) {',
+        '    pub fn android_wheel_action(&mut self, ctx: &egui::Context, id: &\'static str) {\n'
+        '        if self.active_ids().is_some() && !self.modal_open() && !self.palette_open && !ctx.text_edit_focused() {\n'
+        '            self.dispatch_command(ctx, id);\n'
+        '        }\n    }\n'
+        '    pub fn run_menu_command(&mut self, ctx: &egui::Context, command: &CommandRef) {')
+
 replace('const PANEL: &str = "view.panel";',
         'const PANEL: &str = "view.panel";\n'
         'const ANDROID_TOOLS: &str = "view.android_tools";')
@@ -94,6 +101,20 @@ replace('        let ctx = ui.ctx().clone();',
                 // PDFCRAFT_ANDROID_PC_APPEARANCE: the Pc launcher menu is
                 // where Android users choose Light/Dark. Reuse upstream
                 // theme preferences so the choice persists across relaunches.
+                ui.menu_button("Stylus Wheel", |ui| {
+                    // A real checked checkbox communicates whether the
+                    // persisted wheel is enabled (not just a selected row).
+                    let mut enabled = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("pdfcraft.wheel.enabled")).unwrap_or(false));
+                    if ui.checkbox(&mut enabled, "Stylus Wheel On").changed() {
+                        ui.ctx().data_mut(|d|
+                            d.insert_temp(egui::Id::new("pdfcraft.wheel.request"), 1u8));
+                        ui.close();
+                    }
+                    if ui.button("Customization…").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pdfcraft.wheel.request"), 2u8)); ui.close();
+                    }
+                });
                 ui.menu_button("Appearance", |ui| {
                     if ui.selectable_label(
                         self.theme_preference == ThemePreference::Light, "Light"

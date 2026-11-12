@@ -499,7 +499,7 @@ jobs:
           assert "self.layout[i]" in wheel and "set_layout_string" in wheel
           assert "vcStylusGetLayout" in java and "vcStylusSetLayout" in java
           assert "vc_stylus_get_layout" in host and "vc_stylus_set_layout" in host
-          assert 'Customize Stylus Wheel…' in menus and 'stylusWheelCustomize" => 512' in commands
+          assert 'sub("Stylus Wheel", vec![' in menus and 'stylusWheelCustomize" => 512' in commands
           assert 'pub(crate) fn android_vc_menu(' in visible_menu
           assert 'ui.menu_button("Stylus Wheel", |ui| {' in visible_menu
           assert 'ui.checkbox(&mut wheel_enabled, "Stylus Wheel On").changed()' in visible_menu
@@ -535,6 +535,7 @@ jobs:
           assert 'delta.x *= -1.15;' in host and 'delta.y *= -1.15;' in host
           # Android.9: imported .ai → close → new blank document must not
           # inherit an asynchronous IME hide/reset from the previous document.
+          assert 'com.artcraft.vectorcraft.test' in Path("builder/lib/android_project.py").read_text() or 'com.artcraft.vectorcraft.test' in Path("builder/adapters/vectorcraft/src/lib.rs").read_text() or 'com.artcraft.vectorcraft.test' in Path("android-port/tools/vectorcraft/patch_test_package_v021.py").read_text()
           assert 'vcImeFocusEpoch.incrementAndGet()' in java
           assert 'vcDocumentChanged()' in java and 'imeEvents.clear();' in java
           assert 'vcPenHoverActive()' in java

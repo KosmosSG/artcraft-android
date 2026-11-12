@@ -242,33 +242,75 @@ impl Wheel {
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width(330.0)
+                .default_width(450.0)
+                .min_width(450.0)
                 .show(&ctx, |ui| {
-                    ui.label("Choose the feature for each of the eight wheel positions.");
-                    ui.add_space(6.0);
-                    for slot in 0..8 {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{}.", slot + 1));
-                            ui.label(POSITIONS[slot]);
-                            ui.add_space(6.0);
-                            egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
-                                .selected_text(LABELS[self.layout[slot]])
-                                .width(130.0)
-                                .show_ui(ui, |ui| {
-                                    for index in 0..LABELS.len() {
-                                        if ui.selectable_value(&mut self.layout[slot], index, LABELS[index]).changed() {
-                                            self.layout_dirty = true;
-                                        }
-                                    }
-                                });
-                        });
-                    }
+                    ui.set_min_width(430.0);
+                    ui.label("Assign an action to each of the eight wheel segments.");
                     ui.add_space(8.0);
-                    if ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=150.0).text("Wheel Size").suffix("%")).changed() { self.layout_dirty = true; }
-                    if ui.add(egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0).text("Opacity").suffix("%")).changed() { self.layout_dirty = true; }
-                    ui.small("Live preview on canvas • defaults: size 100%, opacity 100%");
+                    ui.heading("Wheel slots");
+                    ui.add_space(4.0);
+
+                    // Grid columns preserve alignment even with different slot
+                    // label lengths and long translated command names.
+                    egui::Grid::new("pdf-wheel-slot-grid")
+                        .num_columns(3)
+                        .spacing(vec2(14.0, 8.0))
+                        .show(ui, |ui| {
+                            for slot in 0..8 {
+                                ui.label(format!("{:02}", slot + 1));
+                                ui.label(POSITIONS[slot]);
+                                egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
+                                    .selected_text(LABELS[self.layout[slot]])
+                                    .width(178.0)
+                                    .show_ui(ui, |ui| {
+                                        for index in 0..LABELS.len() {
+                                            if ui.selectable_value(
+                                                &mut self.layout[slot], index, LABELS[index]
+                                            ).changed() {
+                                                self.layout_dirty = true;
+                                            }
+                                        }
+                                    });
+                                ui.end_row();
+                            }
+                        });
+
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(7.0);
+                    ui.heading("Appearance");
+                    ui.add_space(5.0);
+                    // Fixed slider widths prevent the squeezed values and
+                    // overlapping labels seen on the MagicPad screenshot.
+                    egui::Grid::new("pdf-wheel-appearance-grid")
+                        .num_columns(3)
+                        .spacing(vec2(14.0, 10.0))
+                        .show(ui, |ui| {
+                            ui.label("Wheel size");
+                            if ui.add_sized(
+                                [215.0, 23.0],
+                                egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
+                                    .show_value(false)
+                            ).changed() { self.layout_dirty = true; }
+                            ui.label(format!("{:.0}%", self.size_percent));
+                            ui.end_row();
+
+                            ui.label("Opacity");
+                            if ui.add_sized(
+                                [215.0, 23.0],
+                                egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
+                                    .show_value(false)
+                            ).changed() { self.layout_dirty = true; }
+                            ui.label(format!("{:.0}%", self.opacity_percent));
+                            ui.end_row();
+                        });
+
+                    ui.add_space(9.0);
+                    ui.small("Preview updates live. All changes save automatically.");
+                    ui.add_space(7.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Reset to Default").clicked() {
+                        if ui.button("Reset defaults").clicked() {
                             self.layout = DEFAULT_LAYOUT;
                             self.size_percent = 100.0;
                             self.opacity_percent = 100.0;
@@ -276,7 +318,7 @@ impl Wheel {
                         }
                         if ui.button("Done").clicked() { done = true; }
                     });
-                    ui.small("Your layout is saved automatically. Double press keeps the Eraser shortcut.");
+                    ui.small("Double press keeps the Eraser shortcut.");
                 });
             self.customize_open = open && !done;
         }
@@ -311,7 +353,7 @@ impl Wheel {
         }
         if !self.open && !self.customize_open { return; }
         let scale = self.display_scale(screen);
-        let center = if self.customize_open { Self::clamped(pos2(screen.left() + SIZE * scale * 0.5 + 20.0, screen.center().y), screen, scale) }
+        let center = if self.customize_open { Self::clamped(pos2(screen.right() - SIZE * scale * 0.5 - 28.0, screen.center().y), screen, scale) }
             else if let Some(c) = self.center { Self::clamped(c, screen, scale) } else { return };
         let t = (self.opened_at.elapsed().as_secs_f32() / 0.18).min(1.0);
         if t < 1.0 { ctx.request_repaint(); }

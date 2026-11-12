@@ -1,0 +1,526 @@
+name: PhotoCraft v0.22.0 Android.8 VectorCraft-Style Pc Menu ARM64 TEST ONLY
+
+# Independent review branch. Deliberately not on the auto-preview publisher allowlist.
+on:
+  push:
+    branches:
+      - feature/photocraft-v022-android8-menu-scroll-hover-20261112
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-v022-android8-refinements
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "2"
+      # Release-optimized build without embedded debug symbols.
+      # Keep upstream opt-level defaults to protect graphics and AI performance.
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_STRIP: "symbols"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.22.0-android.8"
+      ARTCRAFT_TARGET_SDK: "35"
+      ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
+      UPSTREAM_TAG: "v0.22.0"
+      UPSTREAM_SHA: "5000240c6e5dc30a024d20f97a620c78eca10d1e"
+      STABLE_SHA: "3af883c9db9d57d1b1641629707c2927176b484a"
+      PUBLISHED_SHA: "2a79f2475b052f2b68cd1913a042d4b77557d700"
+    steps:
+      - name: Checkout preserved owner-tested Android branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify v0.14.0-android.4 runtime remains identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feature/photocraft-v022-android8-menu-scroll-hover-20261112"
+          git fetch --no-tags --depth=1 origin "$STABLE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$STABLE_SHA"
+          git fetch --no-tags --depth=1 origin "$PUBLISHED_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$PUBLISHED_SHA"
+          CHANGED="$(git diff --name-only "$PUBLISHED_SHA" HEAD)"
+          EXPECTED="$(printf '%s\n' .github/workflows/photocraft-v022-android8-refinements.yml .github/workflows/photocraft-v022-integration-test.yml .github/workflows/photocraft-v022-stylus-wheel-test.yml tools/photocraft_v022_android8_refinements.py tools/photocraft_v022_brush_scroll.py tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel.rs tools/photocraft_v022_stylus_wheel_native.py tools/photocraft_v022_vc_style_menu.py tools/photocraft_v022_wheel_pc_logo.svg tools/photocraft_v022_wheel_pc_raster.py)"
+          test "$CHANGED" = "$EXPECTED" || {
+            echo "Refusing branch: unexpected changes outside guarded workflow and Brush Library overlay."
+            printf '%s\n' "$CHANGED"
+            exit 1
+          }
+          python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
+          echo "The published production PhotoCraft app and validated previous Android.3 and Android.4 branches are unchanged."
+
+      - name: Retarget exact upstream pin and Android version in disposable CI checkout only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Published adapters, scripts, keys and Android release tags remain unchanged.
+          python3 - <<'PY'
+          from pathlib import Path
+          old_sha = "327c4cc82e737a3e0af7c147a477126d77525495"
+          new_sha = "5000240c6e5dc30a024d20f97a620c78eca10d1e"
+          names = (
+              "photocraft_v019_preservation_gate.py",
+              "photocraft_v019_adapter_overlay.py",
+              "photocraft_v019_android5_input_overlay.py",
+              "photocraft_v019_android6_ui_overlay.py",
+              "photocraft_v019_android8_input_overlay.py",
+              "photocraft_v0201_keyboard_diagnostics_overlay.py",
+              "photocraft_v0201_keyboard_repair.py",
+              "photocraft_v0201_escape_overlay.py",
+              "photocraft_v0201_cursor_overlay.py",
+              "photocraft_v0201_owned_keys.py",
+              "photocraft_v0201_activity_repair.py",
+              "photocraft_v0201_context_cancel.py",
+              "photocraft_v0201_menu_scroll.py",
+              "photocraft_v0201_tablet.py",
+          )
+          pins = versions = 0
+          for name in names:
+              p = Path("tools") / name
+              t = p.read_text(encoding="utf-8")
+              pins += t.count(old_sha)
+              versions += t.count("0.20.1-android.")
+              t = t.replace(old_sha, new_sha)
+              t = t.replace("0.20.1-android.", "0.22.0-android.")
+              if name == "photocraft_v019_preservation_gate.py":
+                  assert t.count('UPSTREAM_TAG = "v0.20.1"') == 1
+                  t = t.replace('UPSTREAM_TAG = "v0.20.1"', 'UPSTREAM_TAG = "v0.22.0"')
+              if name == "photocraft_v0201_tablet.py":
+                  assert t.count('version = "0.22.0-android.10"') == 1
+                  t = t.replace('version = "0.22.0-android.10"', 'version = "0.22.0-android.1"')
+              p.write_text(t, encoding="utf-8")
+          assert pins == 6, f"Unexpected upstream pin count: {pins}"
+          assert versions == 17, f"Unexpected Android version count: {versions}"
+          # Retarget trackpad-specific source/version pins only in this CI runner.
+          p = Path("tools/photocraft_v0202_trackpad.py")
+          t = p.read_text(encoding="utf-8")
+          old = "7c12f647150f8e7b2e07718f7993b1fcaa57fefe"
+          assert t.count(old) == 1, "unexpected trackpad source pin"
+          assert t.count("0.20.2-android.") == 2, "unexpected trackpad versions"
+          t = t.replace(old, new_sha).replace("0.20.2-android.", "0.22.0-android.")
+          p.write_text(t, encoding="utf-8")
+          # Keep Android Home/link overlay pinned to the reviewed v0.22.0 checkout.
+          p = Path("tools/photocraft_v021_home_interactions.py")
+          t = p.read_text(encoding="utf-8")
+          assert t.count('PIN = "efb7ebd0c0dab1fc108ee4642aa47c22694271a8"') == 1
+          p.write_text(t.replace('PIN = "efb7ebd0c0dab1fc108ee4642aa47c22694271a8"', 'PIN = "5000240c6e5dc30a024d20f97a620c78eca10d1e"'), encoding="utf-8")
+          # Update only the upstream version label in Pc menu, never menu behavior.
+          p = Path("tools/photocraft_v021_pc_menu.py")
+          t = p.read_text(encoding="utf-8")
+          assert t.count('Official upstream: v0.21.0') == 1
+          p.write_text(t.replace('Official upstream: v0.21.0', 'Official upstream: v0.22.0'), encoding="utf-8")
+          print("PASS: v0.22.0 source pins, overlay versions, Home and trackpad source retargeted only in runner")
+          PY
+          python3 -m py_compile tools/photocraft_v022_stylus_wheel.py tools/photocraft_v022_stylus_wheel_native.py tools/photocraft_v022_vc_style_menu.py tools/photocraft_v022_android8_refinements.py
+          python3 -m compileall -q tools/photocraft_v019_*.py tools/photocraft_v0201_*.py tools/photocraft_v0202_trackpad.py tools/photocraft_v021_pc_menu.py tools/photocraft_v021_home_interactions.py tools/photocraft_v021_theme_catalog.py tools/photocraft_v022_brush_scroll.py
+
+      - name: Check out exact latest official v0.22.0 source without changing project history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
+          python3 tools/photocraft_v019_preservation_gate.py --upstream source/photocraft
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          root = Path("source/photocraft")
+          expected = {
+              "crates/ui-egui/src/menus.rs": "95a57d9588d5e461b8acd1a3f15a754030e10311",
+              "crates/ui-egui/src/menus/items.rs": "4c36419c9009ecc4884e180e1ecde7f91841edf9",
+              "crates/ui-egui/src/menus/invoke.rs": "cbe858eba6820f7a9e09f6afc9c74ab98eaa3c82",
+              "crates/ui-egui/src/panels/brand.rs": "1c3a35a2ba48cd4acd2514be50bf9c3d9e385c06",
+              "crates/ui-egui/src/dialogs/discard_ui.rs": "b08fb22247c05d99d3484c2933fd0be96074c01c",
+              "crates/text/src/fonts.rs": "489f2eef5ee260e40585531f368194cc2f76f41e",
+            "crates/ui-egui/src/canvas/start_screen.rs": "b033500d03a7b34b379620df0e83b6b9a4190260",
+          }
+          for rel, sha in expected.items():
+              actual = subprocess.check_output(["git","-C",str(root),"hash-object",rel], text=True).strip()
+              assert actual == sha, f"Unreviewed upstream overlay anchor: {rel} {actual}"
+          print("PASS: exact official v0.22.0 upstream UI/font overlay target blobs")
+          PY
+          echo "Source pin: $UPSTREAM_SHA"
+
+      - name: Adapt upstream v0.22.0 UI while preserving owner Android features (runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_v019_adapter_overlay.py
+          python3 tools/photocraft_v019_adapter_overlay.py \
+            --upstream source/photocraft \
+            --android-adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android5_input_overlay.py
+          python3 tools/photocraft_v019_android5_input_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android6_ui_overlay.py
+          python3 tools/photocraft_v019_android6_ui_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v019_android8_input_overlay.py
+          python3 tools/photocraft_v019_android8_input_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 -m py_compile tools/photocraft_v0201_keyboard_diagnostics_overlay.py
+          python3 tools/photocraft_v0201_keyboard_diagnostics_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 tools/photocraft_v0201_keyboard_repair.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 tools/photocraft_v0201_escape_overlay.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 tools/photocraft_v0201_cursor_overlay.py --adapter adapters/photocraft
+          python3 tools/photocraft_v0201_owned_keys.py --adapter adapters/photocraft --vendor vendor
+          python3 tools/photocraft_v0201_activity_repair.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
+          python3 tools/photocraft_v0201_context_cancel.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
+          python3 tools/photocraft_v0201_menu_scroll.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
+          python3 tools/photocraft_v0201_tablet.py --adapter adapters/photocraft --upstream source/photocraft --vendor vendor
+          python3 tools/photocraft_v0202_trackpad.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft \
+            --vendor vendor
+          python3 tools/photocraft_v022_brush_scroll.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          # Final isolated UI pass: match the owner's compact GridCraft Gc style.
+          python3 tools/photocraft_v021_pc_menu.py --upstream source/photocraft
+          # Preserve validated Android.4 Pc menu, Android.3 Home/links and all Android.2 functionality; add full Theme catalogue only.
+          python3 tools/photocraft_v021_home_interactions.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          # Android.1 only: 14 official themes, active ticks and top-level
+          # Sync with System / Next Appearance Mode inside Appearance.
+          # The previous Android.3/Android.4 UI stages remain unchanged.
+          python3 tools/photocraft_v021_theme_catalog.py \
+            --upstream source/photocraft \
+            --adapter adapters/photocraft
+          python3 tools/photocraft_v022_stylus_wheel.py --upstream source/photocraft --adapter adapters/photocraft
+          python3 tools/photocraft_v022_stylus_wheel_native.py --adapter adapters/photocraft --vendor vendor
+          # Final menu-only pass after original native stylus routing and all
+          # protected themes/commands were staged in this disposable runner.
+          python3 tools/photocraft_v022_vc_style_menu.py --upstream source/photocraft --adapter adapters/photocraft
+          python3 tools/photocraft_v022_android8_refinements.py --upstream source/photocraft --adapter adapters/photocraft
+          grep -Fq 'pc-shortcut-pad-hover-shield' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'let wheel_dropdown = ' adapters/photocraft/src/trackpad_wheel.rs
+          grep -Fq 'egui::Event::PointerGone' adapters/photocraft/src/stylus_wheel.rs
+          grep -Fq 'action(ui, "Customization", 35);' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'ui.menu_button("Touch Shortcut Pad"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          ! grep -Fq 'ui.menu_button("Diagnostics"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq '"edit.keyboardShortcuts"' adapters/photocraft/src/lib.rs
+          # Previous published Android.3 baseline stays untouched. Only this
+          # temporary runner manifests a higher Android.4 versionCode/name.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("adapters/photocraft/Cargo.toml")
+          manifest = p.read_text()
+          old = 'version = "0.22.0-android.3"'
+          assert manifest.count(old) == 1, "Refusing unexpected wheel test version"
+          p.write_text(manifest.replace(old, 'version = "0.22.0-android.8"'))
+          PY
+          grep -Fq 'Stylus Wheel On' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'action(ui, "Customization", 35);' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'const DEFAULT_SLOTS: [usize; 8]' adapters/photocraft/src/stylus_wheel.rs
+          # Render wheel icons from the identical official SVG asset/renderer
+          # as the main PhotoCraft toolbar (no bespoke approximate drawings).
+          grep -Fq 'const TOOLBAR_ICONS: [&str; 15]' adapters/photocraft/src/stylus_wheel.rs
+          grep -Fq 'photocraft_ui_egui::icons::paint(' adapters/photocraft/src/stylus_wheel.rs
+          ! grep -Fq 'fn paint_icon(' adapters/photocraft/src/stylus_wheel.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          wheel = Path("adapters/photocraft/src/stylus_wheel.rs").read_text()
+          icons = Path("source/photocraft/crates/ui-egui/src/icon_data.rs").read_text()
+          render = Path("source/photocraft/crates/ui-egui/src/icons.rs").read_text()
+          assert "pub fn paint(ui: &egui::Ui" in render, "shared toolbar SVG painter missing"
+          assert 'pub mod icons;' in Path("source/photocraft/crates/ui-egui/src/lib.rs").read_text()
+          names = ["undo-2", "brush", "eraser", "hand", "pipette", "redo-2",
+                   "layers", "sliders-horizontal", "move", "crop", "square-dashed",
+                   "type", "paint-bucket", "rectangle-horizontal", "scaling"]
+          for name in names:
+              assert f'("{name}", include_bytes!' in icons, f"missing official SVG: {name}"
+              assert f'"{name}"' in wheel, f"missing wheel mapping: {name}"
+          for tool, icon in [("Brush", "brush"), ("Eraser", "eraser"),
+                             ("Eyedropper", "pipette"), ("Hand", "hand")]:
+              assert f'Tool::{tool} => "{icon}"' in render
+          print("PASS: all 15 wheel slots reuse embedded official PhotoCraft toolbar SVG assets")
+          PY
+          grep -Fq 'photocraft-stylus-wheel-default.v1' adapters/photocraft/src/stylus_wheel.rs
+          # Build-time only SVG rasterizer: retain the user's exact original
+          # vector mark and avoid adding runtime decoders or APK permissions.
+          python3 -m venv /tmp/pc-wheel-svg-venv
+          /tmp/pc-wheel-svg-venv/bin/python -m pip install -q --disable-pip-version-check             'CairoSVG==2.7.1' 'Pillow==11.3.0'
+          /tmp/pc-wheel-svg-venv/bin/python tools/photocraft_v022_wheel_pc_raster.py             --svg tools/photocraft_v022_wheel_pc_logo.svg             --output adapters/photocraft/src/stylus_wheel_pc.rgba
+          test "$(wc -c < adapters/photocraft/src/stylus_wheel_pc.rgba)" -eq 92160
+          grep -Fq 'include_bytes!("stylus_wheel_pc.rgba")' adapters/photocraft/src/stylus_wheel.rs
+          grep -Fq 'pc_stylus_native_capture' vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'pc_stylus_device_ids' adapters/photocraft/src/lib.rs
+          grep -Fq 'pcStylusIntercept(event)' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'stylus_wheel.capture' adapters/photocraft/src/lib.rs
+          grep -Fq 'ui.menu_button("Stylus Wheel"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'pcOpenExternalUrl' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'open_url: Some(Box::new' adapters/photocraft/src/lib.rs
+          grep -Fq 'artcraft_home_open_touch(ui, open_rect)' source/photocraft/crates/ui-egui/src/canvas/start_screen.rs
+          grep -Fq 'ui.menu_button("Appearance", |ui| {' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'ui.menu_button("Theme", |ui| {' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          b = Path("source/photocraft/crates/ui-egui/src/panels/brand.rs").read_text()
+          start = b.index('ui.menu_button("Appearance", |ui| {')
+          end = b.index('ui.menu_button("Touch Shortcut Pad", |ui| {', start)
+          subtree = b[start:end]
+          assert subtree.count('ui.menu_button("Theme", |ui| {') == 1
+          for label, action in [("Sync with System", 16), ("Next Appearance Mode", 13)]:
+              assert subtree.count(f'action(ui, "{label}", {action});') == 1
+          assert subtree.count('ui.menu_button("Dark Theme", |ui| {') == 1
+          assert subtree.count('ui.menu_button("Light Theme", |ui| {') == 1
+          assert subtree.count("theme_action(ui,") == 14
+          host = Path("adapters/photocraft/src/lib.rs").read_text()
+          for code in range(20, 34):
+              assert subtree.count(f", {code});") == 1
+              assert host.count(f'{code} => "window.theme.') == 1
+          items = Path("source/photocraft/crates/ui-egui/src/menus/items.rs").read_text()
+          assert 'item.id.starts_with("window.theme.")' in items
+          print("PASS: Pc > Appearance > Theme: 7 dark, 7 light, live checked indicator; Sync/Next directly under Appearance")
+          print("PASS: Window duplicate theme UI hidden on Android while commands remain live")
+          PY
+          # The working Android trackpad overlay produces .2; the scoped
+          # brush library guard upgrades the disposable test manifest to .3.
+          grep -Fq 'version = "0.22.0-android.8"' adapters/photocraft/Cargo.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          brush = Path("source/photocraft/crates/ui-egui/src/panels/brushes_tab.rs").read_text()
+          wheel = Path("adapters/photocraft/src/trackpad_wheel.rs").read_text()
+          assert "brush_scroll.inner_rect" in brush
+          assert "artcraft_brush_scroll_area" in brush
+          assert "native_brush.push((pos, scroll))" in wheel
+          assert wheel.count("artcraft_brush_scroll_area") == 1
+          assert "brush_open: bool" in wheel
+          assert "let brush_target = " in wheel
+          assert "layer_id_at(point)" in Path("source/photocraft/crates/ui-egui/src/canvas.rs").read_text()
+          assert "gestures.trackpad_view" in wheel
+          assert "MouseWheelSource::Trackpad" in wheel
+          print("PASS: trackpad two-finger brush-list scrolling routed separately from canvas pan/pinch")
+          PY
+          grep -Fq 'About PhotoCraft' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'pcTrackpadPinchPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'pub fn pc_pad_gesture_take()' vendor/android-activity/src/lib.rs
+          grep -Fq 'pub(crate) fn trackpad_view(' adapters/photocraft/src/canvas_gesture.rs
+          grep -Fq '0.22.0-android.8' adapters/photocraft/Cargo.toml
+          grep -Fq 'pc_keyboard_diag.show' adapters/photocraft/src/lib.rs
+          grep -Fq 'pcKeyDiagSetEnabled' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          # The diagnostic backend remains intact, but its old Pc-menu entry
+          # must be absent from the user-facing GridCraft-style launcher.
+          ! grep -Fq 'Keyboard Diagnostics (test)' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          ! grep -Fq 'Keyboard & Diagnostics' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'ui.menu_button("Touch Shortcut Pad"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'Show Shortcut Pad' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'artcraft_set_ai_tools_visible' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'window.artcraft.showAiTools' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'import_with_options(name, bytes, options)' adapters/photocraft/src/lib.rs
+          grep -Fq 'touch_scroll.route(ctx, raw)' adapters/photocraft/src/lib.rs
+          grep -Fq 'mod shortcut_pad;' adapters/photocraft/src/lib.rs
+          grep -Fq 'artcraft_pad_visible' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pcCheckUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'hardware_keys::inject' adapters/photocraft/src/lib.rs
+          grep -Fq 'trackpad_wheel::route' adapters/photocraft/src/lib.rs
+          ! grep -Fq 'artcraft_tool_pending' adapters/photocraft/src/lib.rs
+          grep -Fq 'dispatchGenericMotionEvent' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq '("file.artcraftImportFonts", "Import Font…", "Type")' tools/photocraft_v019_adapter_overlay.py
+          grep -Fq 'std::thread::Builder::new()' adapters/photocraft/src/android_fonts.rs
+          grep -Fq 'fn pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java || grep -Fq 'String pcHardwareKeyPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'delayed_taps' adapters/photocraft/src/ui_touch_scroll.rs
+          grep -Fq 'artcraft_take_pc_menu_action' source/photocraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'artcraft_pc_icon_menu' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'canvas_gesture.apply' adapters/photocraft/src/lib.rs
+          grep -Fq 'pub(crate) fn refresh' adapters/photocraft/src/android_fonts.rs
+          grep -Fq 'pcToggleStartupUpdates' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'artcraft_android_edge_pad' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'self.reserved' adapters/photocraft/src/shortcut_pad.rs
+          grep -Fq 'artcraft_queue_dialog_key' source/photocraft/crates/ui-egui/src/menus.rs
+          ! grep -Fq 'artcraft_take_dialog_key' source/photocraft/crates/ui-egui/src/dialogs/discard_ui.rs
+          grep -Fq 'AXIS_GESTURE_SCROLL_Y_DISTANCE' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'pcRequestFontImport' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
+          grep -Fq 'Paste token from Android clipboard' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
+          grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
+          grep -Fq 'version = "0.22.0-android.8"' adapters/photocraft/Cargo.toml
+          echo 'Only disposable-runner source files were patched. Published release, Android.3 and Android.4 remain untouched.'
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+
+      - name: Configure Android SDK 35 and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Confirm Android winit IME API shim before expensive compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'ImeResetCompleted { request_id: u64 }' vendor/winit/src/event.rs
+          grep -Fq 'pub fn reset_ime_with_request(&self, _request_id: u64)' vendor/winit/src/window.rs
+          echo "Reviewed Android winit IME compatibility APIs present."
+
+      - name: Run PhotoCraft keyboard regression tests before compiling the APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pc-keyboard-tests"
+          javac -d "$RUNNER_TEMP/pc-keyboard-tests" \
+            tools/photocraft_keyboard_repair/PcHardwareKeyGate.java \
+            tools/photocraft_keyboard_repair/PcHardwareKeyGateTest.java
+          java -cp "$RUNNER_TEMP/pc-keyboard-tests" PcHardwareKeyGateTest
+          cargo test --locked --manifest-path tools/photocraft_keyboard_repair/Cargo.toml
+
+      - name: Stage owner's blue Pc icon into disposable upstream checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON=source/photocraft/assets/app-icon/hicolor/256x256/apps/ai.storyteller.photocraft.png
+          test -d "$(dirname "$ICON")"
+          base64 --decode tools/photocraft_v019_pc_launcher.png.b64 > "$ICON"
+          echo "addd5c0eec37a85984e53981b811288cbc06ea238ed453e4381cb828b4c4e5a7  $ICON" | sha256sum --check --status
+          # Upstream title-bar mark embeds the SEPARATE 128px icon at compile time.
+          # Use the same owner-approved pixels for launcher and in-app logo.
+          BRAND=source/photocraft/assets/app-icon/hicolor/128x128/apps/ai.storyteller.photocraft.png
+          test -f "$BRAND"
+          cp -f "$ICON" "$BRAND"
+          cmp -s "$ICON" "$BRAND"
+          echo "Owner's Pc logo now matches in Android launcher and PhotoCraft title bar."
+          echo "Owner-provided Pc icon staged, SHA-256 verified; the stable launcher remains unchanged."
+
+      - name: Isolate temporary-signed candidate from owner's production PhotoCraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Modify the CI workspace copy only. The committed production Android
+          # adapter, signing identity and protected release tree are untouched.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("adapters/photocraft/Cargo.toml")
+          manifest = p.read_text()
+          changes = [
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.pad228"', 1),
+              ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Test Pc Menu 228"', 2),
+          ]
+          for old, new, expected in changes:
+              count = manifest.count(old)
+              if count != expected:
+                  raise SystemExit(f"Refusing ambiguous test-package override: {old}: {count} != {expected}")
+              manifest = manifest.replace(old, new)
+          p.write_text(manifest)
+          import tomllib
+          data = tomllib.loads(manifest)
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.pad228"
+          print("Separate com.artcraft.photocraft.candidate.pad228 app: production package and keys untouched")
+          PY
+
+      - name: Compile release-optimized upstream v0.22.0 compatibility candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # build.sh uses a freshly generated builder-owned JKS in this isolated CI job;
+          # this is NOT PhotoCraft's permanent production certificate.
+          # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
+          bash build.sh -photocraft
+          test -f output/photocraft-0.22.0.apk
+          mv output/photocraft-0.22.0.apk output/PhotoCraft-v0.22.0-android.8-DEFAULT-WHEEL-VC-MENU-ARM64-TEST.apk
+
+      - name: Print compiler failure summary for upstream v0.22.0 adaptation
+        if: failure()
+        shell: bash
+        run: |
+          echo "Compiler diagnostics; current candidate did not produce a verified APK."
+          if compgen -G 'logs/photocraft-debug*.log' > /dev/null; then
+            sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' logs/photocraft-debug*.log |
+              grep -En 'error(\[E[0-9]+\])?:|failed to|could not compile|no method named|no variant named' |
+              tail -n 80 || true
+          else
+            echo "No debug compiler log was produced."
+          fi
+
+      - name: Retain compiler diagnostics on failure (NO RELEASE)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0220-android3-ARM64-COMPILER-DIAGNOSTICS
+          path: logs/photocraft-debug*.log
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Inspect compiled APK identity (candidate is NOT an in-place update)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' apks < <(find output -maxdepth 1 -name '*.apk' -type f -print0)
+          test "${#apks[@]}" -eq 1
+          APK="${apks[0]}"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          "$AAPT" dump badging "$APK" | grep '^package:'
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.pad228'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.22.0-android.8'"
+          # Enforce isolated-package architecture, non-production signer, and realistic size report.
+          SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
+          test -n "$SIGNER_SHA"
+          test "$SIGNER_SHA" != "EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936"
+          python3 - "$APK" <<'PY'
+          from pathlib import Path
+          import sys, zipfile
+          apk = Path(sys.argv[1])
+          with zipfile.ZipFile(apk) as archive:
+              bad = archive.testzip()
+              if bad:
+                  raise SystemExit(f"Corrupt APK ZIP entry: {bad}")
+              libs = [n for n in archive.namelist() if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs), libs
+          baseline_bytes = 35824177  # Protected published PhotoCraft v0.21.0-android.5 APK.
+          actual_bytes = apk.stat().st_size
+          delta = actual_bytes - baseline_bytes
+          percent = 100.0 * delta / baseline_bytes
+          print(f"PASS ARM64-only APK ZIP integrity: {len(libs)} native libraries")
+          print(f"Optimized test APK: {actual_bytes} bytes / {actual_bytes / 1048576:.2f} MiB")
+          print(f"Published v0.21.0-android.5: {baseline_bytes} bytes / {baseline_bytes / 1048576:.2f} MiB")
+          print(f"APK size difference: {delta:+d} bytes ({percent:+.2f}%)")
+          PY
+          sha256sum "$APK" | tee SHA256SUMS.txt
+          echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate v0.22.0-android.8; guards Brush Library scroll against native canvas gestures and upstream wheel panning; requires HONOR MagicPad 4 validation; production signing excluded." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.22.0-android.8-DEFAULT-WHEEL-VC-MENU-ARM64-ISOLATED-TEST
+          path: |
+            output/*.apk
+            SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error

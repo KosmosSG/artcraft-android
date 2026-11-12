@@ -143,7 +143,6 @@ impl Mobile {
         }).map_err(|e| e.to_string())
     }
     fn pen_hover(&self, ctx: &egui::Context) -> Option<egui::Pos2> {
-        if !ctx.input(|input| input.focused) { return None; }
         if let Some((x, y)) = android_activity::pdf_stylus_native_hover() {
             return Some(egui::pos2(x, y) / ctx.pixels_per_point());
         }
@@ -177,6 +176,37 @@ impl Mobile {
             }
         }
         self.wheel.capture(ctx, raw, blocked);
+
+        // NativeActivity receives stylus HOVER_MOVE even when winit does not
+        // produce egui PointerMoved. egui menus must receive the same location
+        // as the custom wheel, in *points* rather than Android physical pixels.
+        // Append after winit events so a stale mouse move cannot overwrite it.
+        // This is passive motion only: never synthesize Touch or PointerButton.
+        let pen = if raw.focused { self.pen_hover(ctx) } else { None };
+        let hover_id = egui::Id::new("pdfcraft.native.pen-hover-active");
+        let was_hovering = ctx.data(|d| d.get_temp::<bool>(hover_id).unwrap_or(false));
+        let contacting = ctx.input(|i| i.pointer.any_down()) ||
+            raw.events.iter().any(|e| matches!(e,
+                egui::Event::PointerButton { pressed: true, .. } |
+                egui::Event::Touch { phase: egui::TouchPhase::Start, .. }));
+        if let Some(pos) = pen.filter(|p| p.x.is_finite() && p.y.is_finite()
+            && ctx.content_rect().contains(*p)) {
+            if !contacting {
+                raw.events.push(egui::Event::PointerMoved(pos));
+                ctx.data_mut(|d| d.insert_temp(hover_id, true));
+                ctx.request_repaint();
+            } else {
+                ctx.data_mut(|d| d.insert_temp(hover_id, false));
+            }
+        } else {
+            // Clear the hover highlight when the pen leaves. Do not interfere
+            // with current real mouse/trackpad motion on the same frame.
+            if was_hovering && !raw.events.iter().any(|e| matches!(e,
+                egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. })) {
+                raw.events.push(egui::Event::PointerGone);
+            }
+            ctx.data_mut(|d| d.insert_temp(hover_id, false));
+        }
     }
     pub fn take_wheel_action(&mut self) -> Option<&'static str> { self.wheel.take_action() }
     pub fn wheel_ui(&mut self, ui: &mut egui::Ui) {

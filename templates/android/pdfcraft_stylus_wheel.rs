@@ -251,26 +251,47 @@ impl Wheel {
                     ui.heading("Wheel slots");
                     ui.add_space(4.0);
 
-                    // Grid columns preserve alignment even with different slot
-                    // label lengths and long translated command names.
+                    // Each assignment has a bordered row AND a framed
+                    // selector, so the setting reads as a control instead
+                    // of bare text on MagicPad's dark theme.
                     egui::Grid::new("pdf-wheel-slot-grid")
-                        .num_columns(3)
-                        .spacing(vec2(14.0, 8.0))
+                        .num_columns(1)
+                        .spacing(vec2(0.0, 5.0))
                         .show(ui, |ui| {
                             for slot in 0..8 {
-                                ui.label(format!("{:02}", slot + 1));
-                                ui.label(POSITIONS[slot]);
-                                egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
-                                    .selected_text(LABELS[self.layout[slot]])
-                                    .width(178.0)
-                                    .show_ui(ui, |ui| {
-                                        for index in 0..LABELS.len() {
-                                            if ui.selectable_value(
-                                                &mut self.layout[slot], index, LABELS[index]
-                                            ).changed() {
-                                                self.layout_dirty = true;
-                                            }
-                                        }
+                                egui::Frame::new()
+                                    .fill(ui.visuals().faint_bg_color)
+                                    .stroke(Stroke::new(0.8, ui.visuals().widgets.noninteractive.bg_stroke.color))
+                                    .corner_radius(egui::CornerRadius::same(7))
+                                    .inner_margin(egui::Margin::symmetric(10, 5))
+                                    .show(ui, |ui| {
+                                        ui.set_min_width(395.0);
+                                        ui.horizontal(|ui| {
+                                            ui.add_sized([26.0, 25.0],
+                                                egui::Label::new(format!("{:02}", slot + 1)));
+                                            ui.add_sized([98.0, 25.0],
+                                                egui::Label::new(POSITIONS[slot]));
+                                            egui::Frame::new()
+                                                .fill(ui.visuals().extreme_bg_color)
+                                                .stroke(Stroke::new(1.0,
+                                                    ui.visuals().widgets.inactive.bg_stroke.color))
+                                                .corner_radius(egui::CornerRadius::same(6))
+                                                .inner_margin(egui::Margin::symmetric(7, 2))
+                                                .show(ui, |ui| {
+                                                    egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
+                                                        .selected_text(LABELS[self.layout[slot]])
+                                                        .width(163.0)
+                                                        .show_ui(ui, |ui| {
+                                                            for index in 0..LABELS.len() {
+                                                                if ui.selectable_value(
+                                                                    &mut self.layout[slot], index, LABELS[index]
+                                                                ).changed() {
+                                                                    self.layout_dirty = true;
+                                                                }
+                                                            }
+                                                        });
+                                                });
+                                        });
                                     });
                                 ui.end_row();
                             }

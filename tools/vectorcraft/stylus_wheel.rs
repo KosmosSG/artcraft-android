@@ -21,6 +21,8 @@ pub(crate) struct Wheel {
     customize_open: bool,
     layout: [usize; 8],
     layout_dirty: bool,
+    size_percent: u32,
+    opacity_percent: u32,
     swallow_contact: bool,
     center: Option<Pos2>,
     hover: Option<Pos2>,
@@ -33,7 +35,7 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, swallow_contact: false, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: 100, opacity_percent: 100, swallow_contact: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -110,13 +112,23 @@ impl Wheel {
     /// Read a bounded list of tool indices; malformed or outdated preferences
     /// leave Proposal A intact. Never deserialize unchecked action strings.
     pub fn set_layout_string(&mut self, encoded: &str) {
-        let indices: Option<Vec<usize>> = encoded
+        // Eight legacy slot indices remain supported. Newer settings append
+        // bounded size and opacity percentages, preserving old user layouts.
+        let values: Option<Vec<usize>> = encoded
             .split(',')
             .map(|part| part.trim().parse::<usize>().ok())
             .collect();
-        if let Some(indices) = indices {
-            if indices.len() == 8 && indices.iter().all(|index| *index < COMMANDS.len()) {
-                self.layout.copy_from_slice(&indices);
+        if let Some(values) = values {
+            let valid = (values.len() == 8 || values.len() == 10)
+                && values[..8].iter().all(|index| *index < COMMANDS.len())
+                && (values.len() == 8 || ((75..=140).contains(&values[8])
+                    && (30..=100).contains(&values[9])));
+            if valid {
+                self.layout.copy_from_slice(&values[..8]);
+                if values.len() == 10 {
+                    self.size_percent = values[8] as u32;
+                    self.opacity_percent = values[9] as u32;
+                }
             }
         }
     }
@@ -124,7 +136,9 @@ impl Wheel {
     pub fn take_layout_change(&mut self) -> Option<String> {
         if !self.layout_dirty { return None; }
         self.layout_dirty = false;
-        Some(self.layout.iter().map(|index| index.to_string()).collect::<Vec<_>>().join(","))
+        let mut saved = self.layout.iter().map(|index| index.to_string()).collect::<Vec<_>>().join(",");
+        saved.push_str(&format!(",{},{}", self.size_percent, self.opacity_percent));
+        Some(saved)
     }
 
     pub fn open_customizer(&mut self, ctx: &Context) {
@@ -135,13 +149,13 @@ impl Wheel {
         ctx.request_repaint();
     }
 
-    fn clamped(position: Pos2, rect: egui::Rect) -> Pos2 {
-        let inset = SIZE * 0.5 + 10.0;
+    fn clamped(&self, position: Pos2, rect: egui::Rect) -> Pos2 {
+        let inset = SIZE * self.size_percent as f32 / 200.0 + 10.0;
         pos2(position.x.clamp(rect.min.x + inset, (rect.max.x - inset).max(rect.min.x + inset)),
              position.y.clamp(rect.min.y + inset, (rect.max.y - inset).max(rect.min.y + inset)))
     }
-    fn hit(center: Pos2, pos: Pos2) -> Option<usize> {
-        let vector = pos - center;
+    fn hit(&self, center: Pos2, pos: Pos2) -> Option<usize> {
+        let vector = (pos - center) * (100.0 / self.size_percent as f32);
         if vector.length() < INNER || vector.length() > R + 11.0 { return None; }
         Some((((vector.y.atan2(vector.x).to_degrees() + 90.0).rem_euclid(360.0) / 45.0).floor() as usize).min(7))
     }
@@ -169,7 +183,7 @@ impl Wheel {
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
                     self.swallow_contact = true;
-                    self.action = self.center.and_then(|center| Self::hit(center, pos));
+                    self.action = self.center.and_then(|center| self.hit(center, pos));
                     self.notify(if self.action.is_some() { "Wheel selection accepted" }
                         else { "Wheel cancelled • tapped outside" });
                     self.open = false;
@@ -195,7 +209,7 @@ impl Wheel {
             if when.elapsed() >= WAIT {
                 self.single_wait = None;
                 if let Some(pos) = point.or(self.hover) {
-                    self.center = Some(Self::clamped(pos, ctx.content_rect()));
+                    self.center = Some(self.clamped(pos, ctx.content_rect()));
                     self.open = true;
                     self.opened_at = Instant::now();
                     self.notify("Hover to highlight • tap tip to select");
@@ -242,10 +256,22 @@ impl Wheel {
                                 });
                         });
                     }
+                    ui.separator();
+                    ui.add_space(3.0);
+                    if ui.add(egui::Slider::new(&mut self.size_percent, 75..=140)
+                        .text("Wheel Size").suffix("%").step_by(5.0)).changed() {
+                        self.layout_dirty = true;
+                    }
+                    if ui.add(egui::Slider::new(&mut self.opacity_percent, 30..=100)
+                        .text("Opacity").suffix("%").step_by(5.0)).changed() {
+                        self.layout_dirty = true;
+                    }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset to Proposal A").clicked() {
                             self.layout = DEFAULT_LAYOUT;
+                            self.size_percent = 100;
+                            self.opacity_percent = 100;
                             self.layout_dirty = true;
                         }
                         if ui.button("Done").clicked() { done = true; }
@@ -287,9 +313,10 @@ impl Wheel {
         let Some(center) = self.center else { return };
         let t = (self.opened_at.elapsed().as_secs_f32() / 0.18).min(1.0);
         if t < 1.0 { ctx.request_repaint(); }
-        let scale = 0.86 + 0.14 * t;
+        let scale = (0.86 + 0.14 * t) * self.size_percent as f32 / 100.0;
+        let opacity = self.opacity_percent as f32 / 100.0;
         let size = SIZE * scale;
-        let highlighted = self.hover.and_then(|p| Self::hit(center, p));
+        let highlighted = self.hover.and_then(|p| self.hit(center, p));
         let dark = theme.dark;
         egui::Area::new(Id::new("vc-wheel-plate"))
             .order(Order::Foreground)
@@ -309,12 +336,13 @@ impl Wheel {
                     painter.circle_filled(
                         c + vec2(0.8, 2.0) * scale,
                         R * scale + spread,
-                        Color32::BLACK.gamma_multiply(softness),
+                        Color32::BLACK.gamma_multiply(softness * opacity),
                     );
                 }
                 painter.circle_filled(c, R * scale,
                     Color32::from_rgba_unmultiplied(
-                        theme.panel.r(), theme.panel.g(), theme.panel.b(), 245));
+                        theme.panel.r(), theme.panel.g(), theme.panel.b(),
+                        (245.0 * opacity).round() as u8));
                 for i in 0..8 {
                     let degrees = -67.5 + i as f32 * 45.0;
                     let first = (degrees - 21.4).to_radians();
@@ -333,29 +361,29 @@ impl Wheel {
                     let fill = if active {
                         Self::mix(normal, Color32::from_rgb(255, 159, 0), if dark { 0.48 } else { 0.22 })
                     } else { normal };
-                    painter.add(Shape::convex_polygon(vertices, fill,
+                    painter.add(Shape::convex_polygon(vertices, fill.gamma_multiply(opacity),
                         Stroke::new(if active { 1.8 } else { 0.65 },
-                            if active { Color32::from_rgb(255, 159, 0) }
-                            else { theme.input_border.gamma_multiply(0.70) })));
+                            (if active { Color32::from_rgb(255, 159, 0) }
+                            else { theme.input_border.gamma_multiply(0.70) }).gamma_multiply(opacity))));
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
                     vectorcraft_ui_egui::icons::paint(ui, ICONS[self.layout[i]],
                         egui::Rect::from_center_size(icon_pos - vec2(0.0, 10.0), vec2(24.0, 24.0) * scale),
-                        if active { Color32::from_rgb(255,159,0) } else { theme.text });
+                        (if active { Color32::from_rgb(255,159,0) } else { theme.text }).gamma_multiply(opacity));
                     painter.text(icon_pos + vec2(0.0, 13.0),
                         egui::Align2::CENTER_CENTER, LABELS[self.layout[i]],
-                        FontId::proportional(11.0), theme.text_dim);
+                        FontId::proportional(11.0 * scale), theme.text_dim.gamma_multiply(opacity));
                 }
                 painter.circle_stroke(c, R * scale,
-                    Stroke::new(0.8, theme.input_border.gamma_multiply(0.58)));
+                    Stroke::new(0.8, theme.input_border.gamma_multiply(0.58 * opacity)));
                 // Full user-selected round hub, no square tile.
                 // The exact uploaded SVG paths are shown here as a texture,
                 // retaining the approved orange Vc letterforms.
                 let hub_burgundy = Color32::from_rgb(45, 0, 0);
                 let hub_orange = Color32::from_rgb(255, 159, 0);
-                painter.circle_filled(c, (INNER + 2.0) * scale, hub_burgundy);
+                painter.circle_filled(c, (INNER + 2.0) * scale, hub_burgundy.gamma_multiply(opacity));
                 painter.circle_stroke(c, (INNER + 2.0) * scale,
-                    Stroke::new(1.3, hub_orange));
+                    Stroke::new(1.3, hub_orange.gamma_multiply(opacity)));
                 let pc = Self::vc_logo(&ctx);
                 let mark_rect = egui::Rect::from_center_size(
                     c - vec2(0.0, 8.0) * scale,
@@ -364,12 +392,12 @@ impl Wheel {
                 painter.image(
                     pc.id(), mark_rect,
                     egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                    Color32::WHITE,
+                    Color32::WHITE.gamma_multiply(opacity),
                 );
                 painter.text(c + vec2(0.0, 22.0) * scale,
                     egui::Align2::CENTER_CENTER,
                     highlighted.map(|i| LABELS[self.layout[i]]).unwrap_or("Tools"),
-                    FontId::proportional(11.0 * scale), Color32::WHITE);
+                    FontId::proportional(11.0 * scale), Color32::WHITE.gamma_multiply(opacity));
             });
     }
 }

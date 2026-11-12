@@ -80,7 +80,7 @@ def patch_staged(root: Path) -> None:
         b=s.index(new_end,a)+len(new_end)
         existing=s[a:b]
         for required in ("ScrollSource::ALL", "vectorcraft-android-smooth-menu",
-                         "wheel_scroll_multiplier(egui::vec2(1.0, 0.78))",
+                         "wheel_scroll_multiplier(egui::vec2(1.0, 0.90))",
                          "request_repaint"):
             if required not in existing:
                 raise ValueError(f"v0.24.1 approved popup input missing: {required}")

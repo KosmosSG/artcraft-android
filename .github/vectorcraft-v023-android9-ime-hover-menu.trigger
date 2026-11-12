@@ -1,3 +1,1 @@
-2026-11-12 v0.23.0-android.9 SOURCE-VALIDATED replacement TEST ONLY. Commit incorporates durable vcNativeUiReady hover method anchor, epoch-protected .ai to blank document IME, adaptive pointer, persisted 8-slot wheel size 75-140%, opacity 30-100%, nested menu, same-direction touch pan. Check source-only preflight before NDK, then build ONE disposable-signed com.artcraft.vectorcraft.test ARM64 APK. No permanent sign, merge, tag or release.
-
-Android.9 assertion diagnostic retry: print exact failing staged invariant before expensive native compile.
+2026-11-12 source guard correction Android.9 second test-only attempt. JNI hover preflight now checks real vcStylusHoverActive method; all approved wheel size opacity settings, existing .ai to new blank typing, adaptive cursor and gestures retained. Build only disposable signed com.artcraft.vectorcraft.test ARM64 APK, no production operations.

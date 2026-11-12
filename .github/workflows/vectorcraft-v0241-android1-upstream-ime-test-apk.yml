@@ -131,9 +131,18 @@ jobs:
               dropdowns=target/"widgets/dropdowns.rs"
               menu_source=dropdowns.read_text()
               original_line='        egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'
-              assert menu_source.count(original_line) == 1
-              dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
+              v0241_line='        let area = egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room);'
+              scroll='egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL)'
+              if menu_source.count(original_line) == 1 and menu_source.count(v0241_line) == 0:
+                  dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
+              elif menu_source.count(v0241_line) == 1 and menu_source.count(original_line) == 0:
+                  dropdowns.write_text(menu_source.replace(v0241_line, v0241_line.replace('egui::ScrollArea::vertical()', scroll), 1))
+              else:
+                  raise AssertionError("Unreviewed upstream menu scroll; refuse incompatible patch")
               smooth_scroll(root)
+              new_menu = dropdowns.read_text()
+              assert 'vectorcraft-android-smooth-menu' in new_menu
+              assert 'wheel_scroll_multiplier(egui::vec2(1.0, 0.78))' in new_menu
               # Earlier full-build Android menu integration supplies these
               # two anchors to the keyboard diagnostic overlay. Mirror that
               # exact source transformation in this cheap dry-run.

@@ -51,7 +51,7 @@ def patch(root):
     in_method(java, '    public void imeShow() {',
               '    public void vcEndTypeEditing() {',
               '                if (imm != null && imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)) {',
-              '''                if (imm != null && !alreadyFocused) imm.restartInput(view);
+              '''                if (imm != null && !alreadyFocused) {\n                    vcImeGeneration++;\n                    imm.restartInput(view);\n                }
                 if (imm != null && imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)) {''')
     # The same show callback has a retry closure: guard its own epoch, too.
     in_method(java, '    public void imeShow() {',
@@ -214,6 +214,9 @@ def patch(root):
             }
         }
         self.ime.poll(ctx, raw);''')
+    # Wheel owns its approved hover highlights; avoid painting over it.
+    with (adapter / "src/stylus_wheel.rs").open("a") as wheel_src:
+        wheel_src.write("\nimpl Wheel { pub(crate) fn is_visible(&self) -> bool { self.open } }\n")
     once(host, '        self.stylus_wheel.render(ui);',
          '''        self.stylus_wheel.render(ui);
         // Draw a very light pen-hover marker only for a real hovering stylus.
@@ -222,7 +225,7 @@ def patch(root):
         if self.bridge.vc_stylus_hovering().unwrap_or(false)
             && !ctx.input(|i| i.pointer.any_down())
             && !self.inner.session.tool_wants_text()
-            && self.inner.ui.dialog.is_none()
+            && self.inner.ui.dialog.is_none()\n            && !self.inner.ui.palette_open\n            && !self.stylus_wheel.is_visible()\n            && !egui::Popup::is_any_open(ctx)
         {
             if let Some(pos) = ctx.pointer_hover_pos() {
                 let painter = ctx.layer_painter(egui::LayerId::new(

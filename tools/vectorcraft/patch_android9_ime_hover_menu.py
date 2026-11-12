@@ -88,11 +88,17 @@ def patch(root):
               '        imeWanted = false;',
               '''        final long focusToken = vcImeFocusEpoch.incrementAndGet();
         imeWanted = false;''')
+    # Other Android callbacks in the bounded region also run on the main
+    # thread. Target the actual imeHide keyboard teardown, not every lambda.
     in_method(java, '    public void imeHide() {',
               '    public void vcResetIme(long requestId) {',
-              '        runOnUiThread(() -> {',
               '''        runOnUiThread(() -> {
-            if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;''')
+            try {
+                InputMethodManager imm =''',
+              '''        runOnUiThread(() -> {
+            if (vcImeFocusEpoch.get() != focusToken || imeWanted) return;
+            try {
+                InputMethodManager imm =''')
     # The scheduled SAF-return cleanup must recheck its precondition when
     # actually executed; otherwise it can cancel a subsequent Type editor.
     once(java, 'getWindow().getDecorView().post(this::vcEndTypeEditing);',

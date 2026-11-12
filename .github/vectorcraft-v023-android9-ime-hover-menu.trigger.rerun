@@ -1,0 +1,1 @@
+2026-11-12 Android.9 disposable ARM64 source patch validation complete. Trigger replacement CI after fixing duplicate imeShow guards; no permanent signing/merge/tag/release.

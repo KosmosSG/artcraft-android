@@ -182,7 +182,10 @@ impl Wheel {
                 }
                 egui::Event::Touch {..} if self.open || self.swallow_contact => {}
                 egui::Event::PointerMoved(pos) => {
-                    self.hover = Some(pos);
+                    // During pen hover, winit may also report a stale mouse/trackpad
+                    // position. Keep that event for normal egui input handling, but
+                    // do not let it replace the authoritative native pen position.
+                    if self.pen_hover.is_none() { self.hover = Some(pos); }
                     retained.push(egui::Event::PointerMoved(pos));
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {

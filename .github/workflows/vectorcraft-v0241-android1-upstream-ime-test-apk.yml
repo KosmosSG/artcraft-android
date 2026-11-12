@@ -223,7 +223,7 @@ jobs:
               assert "firstFrameProbeStartMs = System.currentTimeMillis();" in java
               assert "android_owner_unsaved_key" in shortcuts and "android_owner_unsaved_key" in rust
               assert 'self.inner.select_tool(tool_id)' in rust
-              assert ".wheel_scroll_multiplier(" not in (target/"widgets/dropdowns.rs").read_text()
+              assert ".wheel_scroll_multiplier(egui::vec2(1.0, 0.90))" in (target/"widgets/dropdowns.rs").read_text()  # v0.24.1 retains revised upstream popup with Android.24 wheel tuning
               assert ".scroll_source(egui::containers::scroll_area::ScrollSource::ALL)" in (target/"widgets/dropdowns.rs").read_text()
               assert 'let hovered_menu = egui::Popup::is_any_open(ctx);' in (dst/"src/android_modifiers.rs").read_text()
               assert "vcDiagnosticSnapshot" in java

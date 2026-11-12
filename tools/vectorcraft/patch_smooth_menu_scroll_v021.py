@@ -45,6 +45,8 @@ V0241_REPLACEMENT = '''        let area = egui::ScrollArea::vertical().scroll_so
 
 
 def patch_source(source: str) -> str:
+    if 'vectorcraft-android-smooth-menu' in source:
+        raise ValueError("Android menu scroll already patched; refusing duplicate")
     legacy, current = source.count(ORIGINAL), source.count(V0241_ORIGINAL)
     if legacy == 1 and current == 0:
         return source.replace(ORIGINAL, REPLACEMENT, 1)

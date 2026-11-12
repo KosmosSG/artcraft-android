@@ -4,3 +4,5 @@ Protected parent Android.13 1ac7927de0219dad84eca4665c2f7008ad092d2b
 Preserve D/C/S Ctrl+Q wheel fonts icons IME reset and gestures. Disposable test signing and separate com.artcraft.vectorcraft.test package only.
 
 Rebase check 2: preserve v0.24.1 popup room/width and owner trackpad scrolling.
+
+Rebase check 3: v0.24.1 popup placement and width preservation under Android.25.

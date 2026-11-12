@@ -44,6 +44,8 @@ pub(crate) struct Wheel {
     open: bool,
     center: Option<Pos2>,
     hover: Option<Pos2>,
+    // True only while a pointer is within the visible wheel; reset on exit.
+    hover_blocked: bool,
     single_wait: Option<(Instant, Option<Pos2>)>,
     action: Option<&'static str>,
     opened_at: Instant,
@@ -79,7 +81,7 @@ impl Wheel {
             }
         }
         Self { enabled, settings_open: false, slots, size_percent, opacity_percent,
-            settings_path, open: false, center: None, hover: None,
+            settings_path, open: false, center: None, hover: None, hover_blocked: false,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -144,6 +146,15 @@ impl Wheel {
                     self.opacity_percent = 85.0;
                     changed = true;
                 }
+                ui.separator();
+                ui.label("Live wheel preview — size and opacity update instantly:");
+                ui.vertical_centered(|ui| {
+                    // Use exactly the wheel's normal painter, scaled to fit
+                    // inside the settings dialog, without dispatching commands.
+                    let (preview_rect, _) = ui.allocate_exact_size(
+                        vec2(248.0, 242.0), Sense::hover());
+                    self.paint_wheel(ui, preview_rect, self.scale() * 0.58, None);
+                });
                 ui.label("Pen button: single opens wheel, double selects Eraser.");
             });
         self.settings_open = open;
@@ -182,6 +193,7 @@ impl Wheel {
     pub fn toggle(&mut self, enabled: bool, ctx: &Context) {
         self.enabled = enabled;
         self.open = false;
+        self.hover_blocked = false;
         self.single_wait = None;
         self.action = None;
         self.last_button = [None, None];
@@ -241,12 +253,36 @@ impl Wheel {
         // a KeyboardInput redraw. Poll at a low idle cadence only when opt-in.
         ctx.request_repaint_after(Duration::from_millis(100));
         self.hover = ctx.input(|i| i.pointer.hover_pos()).or(self.hover);
-        let mut retained = Vec::with_capacity(raw.events.len());
+        // Android.7 safe path: consume only wheel-owned input. Do NOT install
+        // Android.8's global PointerGone filtering or make the wheel Area
+        // interactable: both can interfere with the editor's canvas event loop.
+        let mut retained = Vec::with_capacity(raw.events.len() + 1);
         for event in raw.events.drain(..) {
             match event {
                 egui::Event::PointerMoved(pos) => {
                     self.hover = Some(pos);
-                    retained.push(egui::Event::PointerMoved(pos));
+                    let inside = self.open && self.center.is_some_and(|center|
+                        (pos - center).length() <= (R + 12.0) * self.scale());
+                    if inside {
+                        // Clear the underlying egui hover ONCE on entry only.
+                        // Repeated PointerGone injections caused a prior ANR
+                        // regression and must never run every frame.
+                        if !self.hover_blocked {
+                            retained.push(egui::Event::PointerGone);
+                            self.hover_blocked = true;
+                        }
+                    } else {
+                        self.hover_blocked = false;
+                        retained.push(egui::Event::PointerMoved(pos));
+                    }
+                }
+                egui::Event::PointerGone => {
+                    self.hover_blocked = false;
+                    retained.push(egui::Event::PointerGone);
+                }
+                egui::Event::Touch { pos, .. } if self.open && self.center.is_some_and(|center|
+                    (pos - center).length() <= (R + 12.0) * self.scale()) => {
+                    // A touch over an open wheel must not select the image below.
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
                     self.action = self.center.and_then(|center|
@@ -284,6 +320,16 @@ impl Wheel {
                 ctx.request_repaint_after(WAIT.saturating_sub(when.elapsed()));
             }
         }
+        // Wheel can open without a fresh motion event (pen side-button).
+        // Clear the previous canvas hover once as soon as it covers that
+        // point, then leave the normal Android.7 pointer router untouched.
+        if self.open && !self.hover_blocked && self.center.is_some_and(|center|
+            self.hover.is_some_and(|pos| (pos - center).length() <= (R + 12.0) * self.scale()))
+        {
+            raw.events.push(egui::Event::PointerGone);
+            self.hover_blocked = true;
+        }
+        if !self.open { self.hover_blocked = false; }
     }
     pub fn take_action(&mut self) -> Option<&'static str> {
         self.action.take()
@@ -335,8 +381,18 @@ impl Wheel {
             .interactable(false)
             .show(&ctx, |ui| {
                 let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
-                let painter = ui.painter_at(rect);
-                let c = rect.center();
+                self.paint_wheel(ui, rect, scale, highlighted);
+            });
+    }
+
+    // Single painter for the interactive wheel and non-interactive settings preview.
+    // Keep the owner's Pc SVG, exact toolbar icons and segment shading identical.
+    fn paint_wheel(&self, ui: &mut Ui, rect: egui::Rect, scale: f32, highlighted: Option<usize>) {
+        let ctx = ui.ctx().clone();
+        let theme = photocraft_ui_egui::theme::Tokens::get(&ctx);
+        let dark = theme.kind.is_dark();
+        let painter = ui.painter_at(rect);
+        let c = rect.center();
                 // Close, feathered shadow from the approved proposal.
                 // Twelve thin low-alpha layers avoid the hard concentric
                 // grey rings of the original 22-point spread. Keep radius
@@ -417,6 +473,5 @@ impl Wheel {
                     egui::Align2::CENTER_CENTER,
                     highlighted.map(|i| LABELS[self.slots[i]]).unwrap_or(WHEEL_STYLE),
                     FontId::proportional(11.0 * scale), Color32::WHITE);
-            });
     }
 }

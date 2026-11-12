@@ -102,9 +102,14 @@ replace('        let ctx = ui.ctx().clone();',
                 // where Android users choose Light/Dark. Reuse upstream
                 // theme preferences so the choice persists across relaunches.
                 ui.menu_button("Stylus Wheel", |ui| {
-                    let enabled = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("pdfcraft.wheel.enabled")).unwrap_or(false));
-                    if ui.selectable_label(enabled, "Stylus Wheel On").clicked() {
-                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pdfcraft.wheel.request"), 1u8)); ui.close();
+                    // A real checked checkbox communicates whether the
+                    // persisted wheel is enabled (not just a selected row).
+                    let mut enabled = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("pdfcraft.wheel.enabled")).unwrap_or(false));
+                    if ui.checkbox(&mut enabled, "Stylus Wheel On").changed() {
+                        ui.ctx().data_mut(|d|
+                            d.insert_temp(egui::Id::new("pdfcraft.wheel.request"), 1u8));
+                        ui.close();
                     }
                     if ui.button("Customization…").clicked() {
                         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("pdfcraft.wheel.request"), 2u8)); ui.close();

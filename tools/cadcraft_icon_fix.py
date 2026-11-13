@@ -17,7 +17,7 @@ def patch_reference(reference: Path) -> None:
         raise SystemExit("Pinned reference icon builder changed; refusing unsafe CADCraft icon patch.")
     helper = '''
 def _cadcraft_exact_icon(src: Path, app: str, res_dir: Path, explicit: Path) -> Path:
-    """A branded adaptive icon with an opaque red background and cream glyph only."""
+    """A branded adaptive icon with ample padding inside the MagicOS mask."""
     Image, _ = _pillow()
     original = Image.open(explicit).convert("RGBA")
     original.load()
@@ -29,7 +29,6 @@ def _cadcraft_exact_icon(src: Path, app: str, res_dir: Path, explicit: Path) -> 
     sample = original.getpixel((sx // 2, sy // 6))
     if sample[:3] != brand or sample[3] < 250:
         raise SystemExit(f"CADCraft icon brand color mismatch: {sample}")
-    _write_legacy(explicit, original.resize((WORK_PX, WORK_PX), Image.Resampling.LANCZOS), res_dir)
     (res_dir / "drawable").mkdir(parents=True, exist_ok=True)
     (res_dir / "drawable" / "ic_launcher_background.xml").write_text(
         _BG_XML.format(color="#D13153"), encoding="utf-8"
@@ -51,9 +50,15 @@ def _cadcraft_exact_icon(src: Path, app: str, res_dir: Path, explicit: Path) -> 
     if not bbox:
         raise SystemExit("Could not extract cream Cc glyph from source")
     glyph = glyph.crop(bbox)
-    size = (round(ARTWORK_PX * glyph.width / max(glyph.width, glyph.height)),
-            round(ARTWORK_PX * glyph.height / max(glyph.width, glyph.height)))
+    size = (round(ARTWORK_PX * 0.78 * glyph.width / max(glyph.width, glyph.height)),
+            round(ARTWORK_PX * 0.78 * glyph.height / max(glyph.width, glyph.height)))
     glyph = glyph.resize(size, Image.Resampling.LANCZOS)
+    # Legacy launchers also require real internal padding; do not put a second
+    # rounded-square tile under the system adaptive mask.
+    legacy = Image.new("RGBA", (WORK_PX, WORK_PX), (*brand, 255))
+    legacy_glyph = glyph.resize((round(glyph.width * 0.94), round(glyph.height * 0.94)), Image.Resampling.LANCZOS)
+    legacy.alpha_composite(legacy_glyph, ((WORK_PX - legacy_glyph.width) // 2, (WORK_PX - legacy_glyph.height) // 2))
+    _write_legacy(explicit, legacy, res_dir)
     canvas = Image.new("RGBA", (CANVAS_PX, CANVAS_PX), (0, 0, 0, 0))
     canvas.alpha_composite(glyph, ((CANVAS_PX - size[0]) // 2, (CANVAS_PX - size[1]) // 2))
     (res_dir / "drawable-xxxhdpi").mkdir(parents=True, exist_ok=True)

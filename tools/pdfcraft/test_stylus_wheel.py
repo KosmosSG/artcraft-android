@@ -22,18 +22,18 @@ class WheelIntegration(unittest.TestCase):
   # Wheel touch hit targets and 8-sector geometry must remain unchanged.
   self.assertIn('const R: f32 = 128.0;',s)
   self.assertIn('const INNER: f32 = 46.0;',s)
- def test_first_use_and_reset_default_to_75_percent(self):
+ def test_first_use_and_reset_default_to_photocraft(self):
   wheel=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
-  self.assertIn('const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;',wheel)
-  self.assertIn('size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 100.0',wheel)
+  self.assertIn('const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 100.0;',wheel)
+  self.assertIn('size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 85.0',wheel)
   self.assertIn('fn reset_defaults(&mut self) {',wheel)
   self.assertIn('self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;',wheel)
   self.assertIn('self.reset_defaults();',wheel)
   self.assertIn('wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85")',wheel)
   self.assertIn('let saved = wheel.take_layout_change().unwrap();',wheel)
-  # No hardcoded 100% initial size or reset should remain.
-  self.assertNotIn('size_percent: 100.0, opacity_percent: 100.0',wheel)
-  self.assertNotIn('self.size_percent = 100.0;',wheel)
+  self.assertIn('self.opacity_percent = 85.0;',wheel)
+  self.assertIn('Stylus Wheel — Default',wheel)
+  self.assertIn('preview_dialog',wheel)
  def test_hover_and_button_paths_are_passive_and_device_scoped(self):
   java=(ROOT/'templates/android/pdfcraft_stylus_java.txt').read_text()
   for part in ['TOOL_TYPE_STYLUS','TOOL_TYPE_ERASER','ACTION_HOVER_MOVE','pdfPenHover = ""','Magic-Pencil 4s','return false;','layout.length() <= 128']:
@@ -61,7 +61,7 @@ class WheelIntegration(unittest.TestCase):
   s=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
   self.assertIn('75.0..=150.0',s); self.assertIn('40.0..=100.0',s)
   self.assertIn('size.is_finite() && opacity.is_finite()',s)
-  self.assertIn('Reset defaults',s)
+  self.assertIn('Restore Default',s)
   self.assertIn('self.opacity_percent / 100.0',s)
  def test_first_contact_not_required_and_customizer_readable(self):
   mobile=(ROOT/'templates/android/pdfcraft_mobile.rs').read_text()
@@ -76,9 +76,9 @@ class WheelIntegration(unittest.TestCase):
   self.assertIn('pdfPenSurface = view;',java)
   self.assertIn('surface.getLocationInWindow(origin)',java)
   self.assertIn('postInvalidateOnAnimation()',java)
-  self.assertIn('egui::Grid::new("pdf-wheel-slot-grid")',wheel)
-  self.assertIn('egui::Grid::new("pdf-wheel-appearance-grid")',wheel)
-  self.assertIn('.show_value(false)',wheel)
+  self.assertIn('egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))',wheel)
+  self.assertIn('Actual-size preview appears beside this window.',wheel)
+  self.assertIn('.trailing_fill(true)',wheel)
   self.assertIn('ui.checkbox(&mut enabled, "Stylus Wheel On")',menu)
   self.assertNotIn('ui.selectable_label(enabled, "Stylus Wheel On")',menu)
  def test_native_hover_is_last_passive_egui_event(self):

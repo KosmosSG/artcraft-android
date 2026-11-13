@@ -14,7 +14,14 @@
         });
     }
 
-    // Read-only release discovery. Downloads and installation always stay with the user.
+    // Explicit user-confirmed update download. The APK is validated before
+    // handing it to Android's installer; never silently install anything.
+    private final java.util.concurrent.atomic.AtomicBoolean dcDownloading =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final android.os.Handler dcUpdateHandler =
+        new android.os.Handler(android.os.Looper.getMainLooper());
+
+    // The production updater still refuses disposable-key test package IDs.
     private void dcCheckUpdates(boolean manual) {
         // The disposable-key candidate is a different Android package and cannot update
         // over the permanent production certificate. Never present it as compatible.
@@ -40,7 +47,7 @@
                 String installed = installedInfo.versionName == null ? "unknown" : installedInfo.versionName;
                 long installedCode = installedInfo.getLongVersionCode();
                 long bestCode = installedCode;
-                String bestTag = null, bestUrl = null;
+                String bestTag = null, bestUrl = null, bestApkUrl = null, bestApkSha = null;
                 int metadataRequests = 0;
                 boolean exhausted = false;
                 long deadline = android.os.SystemClock.elapsedRealtime() + 120000;
@@ -82,21 +89,39 @@
                         if (hasApk && DesignCraftUpdatePolicy.newer(bestCode, code)) {
                             bestCode = code; bestTag = tag;
                             bestUrl = DesignCraftUpdatePolicy.REPOSITORY + "/releases/tag/" + tag;
+                            bestApkUrl = manifest.getString("apk_url");
+                            bestApkSha = manifest.getString("apk_sha256");
                         }
                     }
                     if (releases.length() < 100) { exhausted = true; break; }
                 }
                 if (!exhausted) throw new java.io.IOException("Release inventory exceeds the supported bound");
                 final String tag = bestTag, url = bestUrl;
+                final String apkUrl = bestApkUrl, apkSha = bestApkSha;
+                final long apkCode = bestCode;
                 if (manual || tag != null) runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this).setTitle("DesignCraft updates")
-                        .setMessage(tag == null ? "Installed: " + installed + "\nNo newer published DesignCraft ARM64 release was found." : "Installed: " + installed + "\nAvailable: " + tag + "\nOpen the release to download. Android verifies the APK signature during installation.")
-                        .setNegativeButton("Close", null);
-                    if (url != null) dialog.setPositiveButton("View release", (d, w) -> {
-                        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
-                        catch (Exception error) { Log.w(TAG, "Cannot open release page", error); }
-                    });
+                    android.app.AlertDialog.Builder dialog =
+                        new android.app.AlertDialog.Builder(this)
+                            .setTitle("DesignCraft updates")
+                            .setMessage(tag == null
+                                ? "Installed: " + installed
+                                    + "\\nNo newer published DesignCraft ARM64 release was found."
+                                : "Installed: " + installed
+                                    + "\\nAvailable: " + tag
+                                    + "\\nDownload and verify the APK inside DesignCraft. "
+                                    + "Android will request permission before installation.")
+                            .setNegativeButton("Close", null);
+                    if (url != null) {
+                        dialog.setNeutralButton("View release", (d, w) -> {
+                            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
+                            catch (Exception error) { Log.w(TAG, "Cannot open release page", error); }
+                        });
+                    }
+                    if (apkUrl != null && apkSha != null) {
+                        dialog.setPositiveButton("Download APK", (d, w) ->
+                            dcDownloadVerifiedApk(tag, apkUrl, apkSha, apkCode));
+                    }
                     dialog.show();
                 });
             } catch (Exception error) {
@@ -111,6 +136,204 @@
         });
     }
 
+
+    /** Download an explicitly selected, public, release-pinned production APK. */
+    private void dcDownloadVerifiedApk(String tag, String apkUrl,
+                                      String expectedSha, long expectedCode) {
+        if (!"com.artcraft.designcraft".equals(getPackageName())) {
+            dcUpdateMessage("The separately signed test app cannot install production updates.");
+            return;
+        }
+        String canonical = DesignCraftUpdatePolicy.REPOSITORY
+            + "/releases/download/" + tag + "/DesignCraft-v"
+            + tag.substring("designcraft-v".length()) + "-arm64-v8a.apk";
+        String legacy = DesignCraftUpdatePolicy.REPOSITORY
+            + "/releases/download/" + tag + "/DesignCraft-"
+            + tag.substring("designcraft-v".length()) + "-arm64-v8a.apk";
+        if (!tag.matches("designcraft-v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-android\\\\.[1-9][0-9]*")
+                || (!apkUrl.equals(canonical) && !apkUrl.equals(legacy))
+                || !expectedSha.matches("[0-9a-f]{64}")
+                || expectedCode <= 0) {
+            dcUpdateMessage("Update metadata did not match the approved release.");
+            return;
+        }
+        if (!dcDownloading.compareAndSet(false, true)) {
+            dcUpdateMessage("An APK download is already in progress.");
+            return;
+        }
+        try {
+            java.io.File folder = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+            if (folder == null || (!folder.isDirectory() && !folder.mkdirs()))
+                throw new java.io.IOException("App download directory unavailable");
+            String fileName = "DesignCraft-" + tag + "-arm64-v8a.apk";
+            java.io.File apk = new java.io.File(folder, fileName);
+            if (apk.exists() && !apk.delete())
+                throw new java.io.IOException("Cannot replace a previous update download");
+            android.app.DownloadManager manager =
+                (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            if (manager == null) throw new java.io.IOException("Android Download Manager unavailable");
+            android.app.DownloadManager.Request request =
+                new android.app.DownloadManager.Request(Uri.parse(apkUrl));
+            request.setTitle("DesignCraft update " + tag);
+            request.setDescription("Secure GitHub release APK download");
+            request.setMimeType("application/vnd.android.package-archive");
+            request.setNotificationVisibility(
+                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(false);
+            request.setDestinationInExternalFilesDir(this,
+                android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
+            long id = manager.enqueue(request);
+            android.widget.ProgressBar bar = new android.widget.ProgressBar(
+                this, null, android.R.attr.progressBarStyleHorizontal);
+            bar.setMax(100);
+            bar.setProgress(0);
+            android.app.AlertDialog progress = new android.app.AlertDialog.Builder(this)
+                .setTitle("Downloading DesignCraft")
+                .setMessage("Downloading from the verified GitHub release…")
+                .setView(bar)
+                .setNegativeButton("Cancel", (dialog, which) -> {
+                    dcDownloading.set(false);
+                    manager.remove(id);
+                })
+                .create();
+            progress.setCancelable(false);
+            progress.show();
+            long deadline = android.os.SystemClock.elapsedRealtime() + 600000L;
+            dcUpdateHandler.post(new Runnable() {
+                @Override public void run() {
+                    if (!dcDownloading.get() || isFinishing() || isDestroyed()) {
+                        progress.dismiss();
+                        return;
+                    }
+                    if (android.os.SystemClock.elapsedRealtime() > deadline) {
+                        manager.remove(id);
+                        dcDownloading.set(false);
+                        progress.dismiss();
+                        dcUpdateMessage("APK download timed out.");
+                        return;
+                    }
+                    try (android.database.Cursor cursor = manager.query(
+                            new android.app.DownloadManager.Query().setFilterById(id))) {
+                        if (cursor == null || !cursor.moveToFirst())
+                            throw new java.io.IOException("Android lost the update download");
+                        int status = cursor.getInt(cursor.getColumnIndexOrThrow(
+                            android.app.DownloadManager.COLUMN_STATUS));
+                        if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                            progress.dismiss();
+                            // Verify on the existing background I/O executor, not the UI thread.
+                            dcUpdateIo.execute(() -> {
+                                try {
+                                    dcVerifyDownloadedApk(apk, expectedSha, expectedCode);
+                                    Uri verified = manager.getUriForDownloadedFile(id);
+                                    if (verified == null)
+                                        throw new java.io.IOException("Downloaded APK cannot be shared with Android installer");
+                                    runOnUiThread(() -> {
+                                        dcDownloading.set(false);
+                                        dcOfferInstallVerifiedApk(verified);
+                                    });
+                                } catch (Exception error) {
+                                    Log.w(TAG, "Downloaded APK failed verification", error);
+                                    apk.delete();
+                                    runOnUiThread(() -> {
+                                        dcDownloading.set(false);
+                                        dcUpdateMessage("APK verification failed: " + error.getMessage());
+                                    });
+                                }
+                            });
+                            return;
+                        }
+                        if (status == android.app.DownloadManager.STATUS_FAILED) {
+                            throw new java.io.IOException("Android download error "
+                                + cursor.getInt(cursor.getColumnIndexOrThrow(
+                                    android.app.DownloadManager.COLUMN_REASON)));
+                        }
+                        long total = cursor.getLong(cursor.getColumnIndexOrThrow(
+                            android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+                        long bytes = cursor.getLong(cursor.getColumnIndexOrThrow(
+                            android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                        if (total > 0)
+                            bar.setProgress((int) Math.min(100L, bytes * 100L / total));
+                        dcUpdateHandler.postDelayed(this, 700L);
+                    } catch (Exception error) {
+                        manager.remove(id);
+                        dcDownloading.set(false);
+                        progress.dismiss();
+                        dcUpdateMessage("Download failed: " + error.getMessage());
+                    }
+                }
+            });
+        } catch (Exception error) {
+            dcDownloading.set(false);
+            dcUpdateMessage("Unable to start APK download: " + error.getMessage());
+        }
+    }
+
+    /** Check both the published SHA-256 and the actual package/signing identity. */
+    private void dcVerifyDownloadedApk(java.io.File apk, String expectedSha,
+                                       long expectedCode) throws Exception {
+        if (!apk.isFile() || apk.length() < 1024)
+            throw new java.io.IOException("Downloaded APK is missing or empty");
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (java.io.InputStream in = new java.io.BufferedInputStream(
+                new java.io.FileInputStream(apk))) {
+            byte[] chunk = new byte[65536];
+            int n;
+            while ((n = in.read(chunk)) != -1) digest.update(chunk, 0, n);
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest.digest()) hex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
+        if (!expectedSha.equals(hex.toString()))
+            throw new java.io.IOException("APK SHA-256 differs from verified update metadata");
+        android.content.pm.PackageInfo downloaded = getPackageManager()
+            .getPackageArchiveInfo(apk.getAbsolutePath(), android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+        if (downloaded == null || !"com.artcraft.designcraft".equals(downloaded.packageName)
+                || downloaded.getLongVersionCode() != expectedCode
+                || downloaded.signingInfo == null)
+            throw new java.io.IOException("Downloaded APK package/version is incompatible");
+        android.content.pm.Signature[] certs = downloaded.signingInfo.getApkContentsSigners();
+        if (certs == null || certs.length != 1)
+            throw new java.io.IOException("Unexpected APK certificate count");
+        byte[] certHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(certs[0].toByteArray());
+        StringBuilder certHex = new StringBuilder();
+        for (byte b : certHash)
+            certHex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
+        if (!DesignCraftUpdatePolicy.CERT.equals(certHex.toString()))
+            throw new java.io.IOException("APK signature differs from production DesignCraft");
+        android.content.pm.PackageInfo installed =
+            getPackageManager().getPackageInfo(getPackageName(), 0);
+        if (downloaded.getLongVersionCode() <= installed.getLongVersionCode())
+            throw new java.io.IOException("APK is not newer than installed DesignCraft");
+    }
+
+    private void dcOfferInstallVerifiedApk(Uri uri) {
+        if (isFinishing() || isDestroyed()) return;
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("DesignCraft APK verified")
+            .setMessage("The downloaded APK matches the release SHA-256 and DesignCraft's "
+                + "production certificate. Open Android's package installer?")
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Install", (dialog, which) -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception error) {
+                    dcUpdateMessage("Android installer unavailable: " + error.getMessage());
+                }
+            }).show();
+    }
+
+    private void dcUpdateMessage(String message) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            new android.app.AlertDialog.Builder(this).setTitle("DesignCraft updates")
+                .setMessage(message).setPositiveButton("Close", null).show();
+        });
+    }
 
     /** Public, read-only metadata requests. Redirects never carry credentials. */
     private byte[] dcUpdateBytes(String address, int limit) throws Exception {

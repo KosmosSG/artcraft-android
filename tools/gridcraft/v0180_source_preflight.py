@@ -77,7 +77,7 @@ def audit(source: Path, check_commit: bool) -> dict:
         "compiled_apk_verified": False,
         "production_signing_authorized": False,
         "production_package_unchanged": "com.artcraft.gridcraft",
-        "side_by_side_test_package": "com.artcraft.gridcraft.candidate",
+        "side_by_side_test_package": "com.artcraft.gridcraft.candidate2",
     }
 
 

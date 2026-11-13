@@ -2781,7 +2781,7 @@ impl eframe::App for AndroidShell {{
         # Official PDFCraft v0.20.0's eframe App::on_exit now expects an
         # optional Glow context even when the Android renderer is WGPU.
         # Keep the v0.19 lifecycle signature untouched for the published baseline.
-        if tomllib.loads((src / "Cargo.toml").read_text())["workspace"]["package"]["version"] == "0.20.0":
+        if tomllib.loads((src / "Cargo.toml").read_text())["workspace"]["package"]["version"] in ("0.20.0", "0.21.1"):
             old_signature = "    fn on_exit(&mut self) {\n"
             if shell.count(old_signature) != 1:
                 raise SystemExit("PDFCraft v0.20 on_exit signature anchor changed")
@@ -3115,7 +3115,7 @@ fi
 # builder's older mouse-aware vendor copy lacks it. For this disposable candidate
 # only, restore the exact official winit commit and reapply the guarded Android
 # mouse/scroll/hover backend. Do not silently fall back to touch-only input.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
     # PDFCRAFT_ANDROID5_DESTROY_EXITS_NATIVE_LOOP: pinned Android winit
@@ -3181,7 +3181,7 @@ fi
 # Select the already reviewed Android JNI implementation for this *candidate only*;
 # never silently replace it with a stub or bypass clipboard tests. Cargo will fail
 # closed if a newer upstream dependency actually requires arboard >=3.7.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
     grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
         fail "PDFCraft Android clipboard patch missing; refusing pinned v0.17/v0.18 build"
     cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||

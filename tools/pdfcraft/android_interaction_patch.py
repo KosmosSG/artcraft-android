@@ -11,6 +11,9 @@ def change(path: Path, old: str, new: str):
     text=path.read_text()
     if new in text:
         return
+    # v0.21 routes page shortcuts through PageKeys; retain its overlay guard.
+    if path.name == "keys.rs" and "let keys = self.page_keys;" in text:
+        old = old.replace("ctx.input(|input| input.key_pressed(Key::V))", "keys.pressed(ctx, Key::V)").replace("ctx.input(|input| input.key_pressed(Key::H))", "keys.pressed(ctx, Key::H)")
     n=text.count(old)
     if n!=1:
         raise SystemExit(f"PDFCraft v0.17 input patch: expected one anchor {old[:70]!r} in {path}; got {n}")
@@ -156,7 +159,7 @@ change(app,
 # in the pinned Android winit adapter; neither touch nor selection is changed.
 canvas=src/"crates/ui-egui/src/canvas.rs"
 canvas_text=canvas.read_text()
-assert "let navigation_enabled = app.dialog.is_none()" in canvas_text, (
+assert ("let navigation_enabled = app.dialog.is_none()" in canvas_text or "let navigation_enabled = zoom_enabled && ui.input(|i| i.focused);" in canvas_text), (
     "PDFCraft canvas navigation anchor changed; inspect upstream")
 assert "pdfcraft-touch-select-hint" not in canvas_text, (
     "Unexpected legacy Android touch hint was retained")

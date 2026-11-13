@@ -62,12 +62,13 @@ def with_passive_stylus_hover(android_mod: str) -> str:
 def prepare(source: Path, builder_android: Path) -> None:
     raw = (source / "Cargo.toml").read_text()
     data = tomllib.loads(raw)
-    if data["workspace"]["package"]["version"] not in ("0.15.0", "0.17.0", "0.18.0", "0.19.0", "0.20.0"):
+    if data["workspace"]["package"]["version"] not in ("0.15.0", "0.17.0", "0.18.0", "0.19.0", "0.20.0", "0.21.1"):
         raise ValueError("Only audited official PDFCraft v0.15.0/v0.17.0/v0.18.0/v0.19.0/v0.20.0 are supported")
     patches = data["patch"]["crates-io"]
     if patches["winit"].get("rev") != PIN or patches["winit"].get("git") != REMOTE:
         raise ValueError("PDFCraft official winit source pin changed")
-    if patches["egui"].get("rev") != EGUI_PIN:
+    expected_egui = "725a39fca940f77149ffbb9c58eef405a16997bc" if data["workspace"]["package"]["version"] == "0.21.1" else EGUI_PIN
+    if patches["egui"].get("rev") != expected_egui:
         raise ValueError("PDFCraft official egui source pin changed")
     vendor = source / "vendor" / "winit"
     if not vendor.is_dir():

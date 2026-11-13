@@ -186,7 +186,9 @@ impl Wheel {
                     // position. Keep that event for normal egui input handling, but
                     // do not let it replace the authoritative native pen position.
                     if self.pen_hover.is_none() { self.hover = Some(pos); }
-                    retained.push(egui::Event::PointerMoved(pos));
+                    if !self.open && !self.swallow_contact {
+                        retained.push(egui::Event::PointerMoved(pos));
+                    }
                 }
                 egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
                     self.swallow_contact = true;
@@ -203,6 +205,11 @@ impl Wheel {
                 }
                 other => retained.push(other),
             }
+        }
+        // Clear egui's previously retained document hover as well as suppressing
+        // new motion. Wheel highlighting uses self.hover, independently of egui.
+        if self.open || self.swallow_contact {
+            retained.push(egui::Event::PointerGone);
         }
         raw.events = retained;
         let pen_down = ctx.input(|i| i.pointer.any_down())
@@ -508,8 +515,28 @@ mod tests {
         wheel.open=true;wheel.center=Some(pos2(300.0,300.0));
         let mut raw=RawInput::default();
         raw.events.push(egui::Event::PointerButton{pos:pos2(380.0,260.0),button:egui::PointerButton::Primary,pressed:true,modifiers:egui::Modifiers::NONE});
-        wheel.capture(&ctx,&mut raw,false);assert!(raw.events.is_empty());
+        wheel.capture(&ctx,&mut raw,false);assert!(raw.events.iter().all(|e| matches!(e, egui::Event::PointerGone)));
         raw.events.push(egui::Event::PointerButton{pos:pos2(380.0,260.0),button:egui::PointerButton::Primary,pressed:false,modifiers:egui::Modifiers::NONE});
-        wheel.capture(&ctx,&mut raw,false);assert!(raw.events.is_empty());
+        wheel.capture(&ctx,&mut raw,false);assert!(raw.events.iter().all(|e| matches!(e, egui::Event::PointerGone)));
     }
+    #[test]
+    fn open_wheel_clears_document_hover_and_keeps_local_highlight() {
+        let ctx = Context::default();
+        let mut wheel = Wheel::new(true);
+        wheel.open = true;
+        wheel.center = Some(pos2(300.0, 300.0));
+        let point = pos2(300.0, 220.0);
+        let mut raw = RawInput::default();
+        raw.events.push(egui::Event::PointerMoved(point));
+        wheel.capture(&ctx, &mut raw, false);
+        assert_eq!(wheel.hover, Some(point));
+        assert!(raw.events.iter().any(|e| matches!(e, egui::Event::PointerGone)));
+        assert!(!raw.events.iter().any(|e| matches!(e, egui::Event::PointerMoved(_))));
+        assert!(wheel.take_action().is_none());
+        wheel.open = false;
+        raw.events = vec![egui::Event::PointerMoved(point)];
+        wheel.capture(&ctx, &mut raw, false);
+        assert!(matches!(raw.events.as_slice(), [egui::Event::PointerMoved(_)]));
+    }
+
 }

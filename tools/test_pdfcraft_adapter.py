@@ -16,7 +16,7 @@ script = (root / 'lib/build-common.sh').read_text()
 # winit overlay; a skipped guard compiled but failed at egui-winit previously.
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.19.0"' in script
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.20.0"' in script, 'v0.19 IME winit overlay was skipped by builder'
-assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.19.0" || "\u0024{PDFCRAFT_REF:-}" == "v0.20.0" ) ]]; then' in script, 'v0.19 Android arboard compatibility guard missing'
+assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.19.0" || "\u0024{PDFCRAFT_REF:-}" == "v0.20.0" || "\u0024{PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then' in script, 'v0.19 Android arboard compatibility guard missing'
 
 
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY", script, re.S)
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'jni_str!("pdfFinishNativeLoop")' in native
     assert native.count('finish_pdfcraft_android_activity(') == 2
     on_exit_signature = ('fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)'
-                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] == '0.20.0'
+                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] in ('0.20.0', '0.21.1')
                          else 'fn on_exit(&mut self)')
     assert on_exit_signature in native
     assert native.index(on_exit_signature) < native.index('let result = eframe::run_native(')

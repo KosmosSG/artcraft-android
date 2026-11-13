@@ -638,7 +638,7 @@ impl Wheel {
                         }
                     });
                     ui.add_space(10.0);
-                    ui.small("Changes preview on the canvas while you adjust the wheel.");
+                    ui.small("Adjust a slider or shortcut to see the wheel preview beside this dialog.");
                     ui.add_space(5.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset to default").clicked() {

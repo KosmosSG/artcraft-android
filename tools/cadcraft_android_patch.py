@@ -291,7 +291,7 @@ android-activity = { version = "0.6", default-features = false, features = ["nat
     bridge_src.mkdir(parents=True, exist_ok=True)
     (bridge / "Cargo.toml").write_text(
         '[package]\nname = "cadcraft-android-updater-bridge"\nversion = "0.1.0"\nedition = "2021"\n'
-        '[dependencies]\njni = "0.22"\nndk-context = "0.1"\n', encoding="utf-8")
+        '[dependencies]\njni = "0.21"\nndk-context = "0.1"\n', encoding="utf-8")
     (bridge_src / "lib.rs").write_text(
         Path(__file__).with_name("cadcraft_android_updater_bridge.rs").read_text(encoding="utf-8"),
         encoding="utf-8")

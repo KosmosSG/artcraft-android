@@ -522,60 +522,122 @@ impl Wheel {
             ctx.request_repaint_after(std::time::Duration::from_millis(60));
         }
         if self.settings_open {
+            // WC_ANDROID10_POLISHED_CUSTOMIZATION_DIALOG_V1:
+            // Dialog layout only. The approved Android.9 radial painter,
+            // slots, logo, hover and pop-out preview are not modified.
             let mut open = true;
-            let settings_window = egui::Window::new("WordCraft Stylus Wheel Customization")
+            let mut done_clicked = false;
+            let settings_window = egui::Window::new("Customize Stylus Wheel")
                 .id(egui::Id::new("wc_stylus_wheel_settings"))
                 .open(&mut open)
-                .default_width(450.0)
+                .default_width(510.0)
                 .default_pos(egui::pos2(screen.left() + 28.0, screen.top() + 80.0))
                 .show(ctx, |ui| {
-                    ui.set_min_width(410.0);
-                    ui.label("Default • WordCraft blue/cyan • PhotoCraft layout");
-                    ui.separator();
-                    // Align both labels and values in matching columns.
-                    ui.horizontal(|ui| {
-                        ui.add_sized([112.0, 24.0], egui::Label::new("Wheel size"));
-                        changed |= Self::bar_slider(ui, &mut self.size, 170.0, 380.0, 190.0);
-                        ui.add_sized([70.0, 24.0], egui::Label::new(
-                            format!("{:.0} pt", self.size)));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add_sized([112.0, 24.0], egui::Label::new("Wheel opacity"));
-                        changed |= Self::bar_slider(ui, &mut self.opacity, 0.25, 1.0, 190.0);
-                        ui.add_sized([70.0, 24.0], egui::Label::new(
-                            format!("{:.0}%", self.opacity * 100.0)));
-                    });
-                    ui.small("Adjust a slider to pop out the full-size preview beside this dialog.");
-                    ui.small("The preview does not select or edit document text.");
-                    ui.separator();
-                    ui.label("Edit shortcuts • each slot can be assigned independently");
-                    for row in 0..4 {
+                    ui.set_min_width(480.0);
+                    let dark = ui.visuals().dark_mode;
+                    let panel_fill = if dark {
+                        Color32::from_rgb(36, 39, 46)
+                    } else {
+                        Color32::from_rgb(242, 246, 252)
+                    };
+                    let row_fill = if dark {
+                        Color32::from_rgb(43, 46, 54)
+                    } else {
+                        Color32::from_rgb(251, 252, 255)
+                    };
+                    let border = if dark {
+                        Color32::from_rgb(78, 98, 124)
+                    } else {
+                        Color32::from_rgb(161, 185, 210)
+                    };
+                    let heading = if dark { CYAN } else { HUB };
+                    let panel = |ui: &mut egui::Ui| {
+                        egui::Frame::group(ui.style())
+                            .fill(panel_fill)
+                            .stroke(Stroke::new(1.0, border))
+                            .inner_margin(egui::Margin::same(12))
+                    };
+                    ui.add_space(4.0);
+                    panel(ui).show(ui, |ui| {
+                        ui.label(egui::RichText::new("Appearance")
+                            .size(17.0).strong().color(heading));
+                        ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            for col in 0..2 {
-                                let slot = row * 2 + col;
-                                let mut selected = self.slots[slot];
-                                egui::ComboBox::from_id_salt(("wc_wheel_slot", slot))
-                                    .width(148.0)
-                                    .selected_text(format!("{}: {}", slot+1, CHOICES[selected].0))
-                                    .show_ui(ui, |ui| {
-                                        for (index, (label, _)) in CHOICES.iter().enumerate() {
-                                            ui.selectable_value(&mut selected, index, *label);
+                            ui.add_sized([110.0, 26.0], egui::Label::new("Wheel size"));
+                            changed |= Self::bar_slider(
+                                ui, &mut self.size, 170.0, 380.0, 215.0);
+                            ui.add_sized([65.0, 26.0], egui::Label::new(
+                                format!("{:.0} pt", self.size)));
+                        });
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.add_sized([110.0, 26.0], egui::Label::new("Wheel opacity"));
+                            changed |= Self::bar_slider(
+                                ui, &mut self.opacity, 0.25, 1.0, 215.0);
+                            ui.add_sized([65.0, 26.0], egui::Label::new(
+                                format!("{:.0}%", self.opacity * 100.0)));
+                        });
+                    });
+                    ui.add_space(10.0);
+                    panel(ui).show(ui, |ui| {
+                        ui.label(egui::RichText::new("Edit shortcuts")
+                            .size(17.0).strong().color(heading));
+                        ui.label("Choose an action for each of the eight segments.");
+                        ui.add_space(8.0);
+                        for slot in 0..8 {
+                            egui::Frame::group(ui.style())
+                                .fill(row_fill)
+                                .stroke(Stroke::new(0.7, border))
+                                .inner_margin(egui::Margin::symmetric(10, 5))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.add_sized([36.0, 24.0],
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    format!("{:02}", slot + 1))
+                                                    .strong().color(heading)));
+                                        ui.add_sized([68.0, 24.0],
+                                            egui::Label::new("Wheel slot"));
+                                        let mut selected = self.slots[slot];
+                                        egui::ComboBox::from_id_salt(("wc_wheel_slot", slot))
+                                            .width(250.0)
+                                            .selected_text(CHOICES[selected].0)
+                                            .show_ui(ui, |ui| {
+                                                for (index, (label, _)) in CHOICES.iter().enumerate() {
+                                                    ui.selectable_value(
+                                                        &mut selected, index, *label);
+                                                }
+                                            });
+                                        if selected != self.slots[slot] {
+                                            self.slots[slot] = selected;
+                                            changed = true;
                                         }
                                     });
-                                if selected != self.slots[slot] {
-                                    self.slots[slot] = selected;
-                                    changed = true;
+                                });
+                            ui.add_space(3.0);
+                        }
+                    });
+                    ui.add_space(10.0);
+                    ui.small("Adjust a slider or shortcut to see the wheel preview beside this dialog.");
+                    ui.add_space(5.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Reset to default").clicked() {
+                            self.reset();
+                            changed = true;
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.add_sized([90.0, 30.0],
+                                    egui::Button::new(egui::RichText::new("Done")
+                                        .strong().color(Color32::WHITE))
+                                        .fill(HUB)).clicked() {
+                                    done_clicked = true;
                                 }
-                            }
-                        });
-                    }
-                    ui.separator();
-                    if ui.button("Reset to default").clicked() {
-                        self.reset();
-                        changed = true;
-                    }
+                            });
+                    });
                 });
-            self.settings_open = open;
+            self.settings_open = open && !done_clicked;
             // WC_ANDROID8_POPOUT_LIVE_PREVIEW_V1: wheel is rendered in a
             // separate non-interactive top-level Area, NOT inside the dialog.
             // Size, opacity, shortcuts and Reset all re-use the real painter.

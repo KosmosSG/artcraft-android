@@ -26,6 +26,16 @@ const DEFAULT: [usize; 8] = [0, 1, 4, 5, 3, 2, 6, 7];
 const CYAN: Color32 = Color32::from_rgb(122, 216, 252);
 const HUB: Color32 = Color32::from_rgb(14, 82, 165);
 
+// WC_ANDROID9_APPROVED_DEFAULTS_AND_GREY_SEGMENTS_V1:
+// Defaults are applied only to new installs and Reset to default.
+// Persisted size / opacity choices remain authoritative on existing installs.
+const DEFAULT_WHEEL_SIZE: f32 = 200.0;
+const DEFAULT_WHEEL_OPACITY: f32 = 1.0;
+// Same alternating two-tone approach as PhotoCraft's eight radial slots,
+// adapted to WordCraft's fixed, neutral charcoal palette.
+const SEGMENT_GREY_LIGHT: Color32 = Color32::from_rgb(68, 70, 75);
+const SEGMENT_GREY_DARK: Color32 = Color32::from_rgb(51, 54, 59);
+
 pub struct Wheel {
     pub enabled: bool,
     pub visible: bool,
@@ -58,8 +68,8 @@ impl Wheel {
             preview_center: None,
             preview_last_adjust: None,
             settings_open: false,
-            size: 284.0,
-            opacity: 0.82,
+            size: DEFAULT_WHEEL_SIZE,
+            opacity: DEFAULT_WHEEL_OPACITY,
             slots: DEFAULT,
             hovered: None,
             active: 0,
@@ -97,8 +107,8 @@ impl Wheel {
     }
 
     pub fn reset(&mut self) {
-        self.size = 284.0;
-        self.opacity = 0.82;
+        self.size = DEFAULT_WHEEL_SIZE;
+        self.opacity = DEFAULT_WHEEL_OPACITY;
         self.slots = DEFAULT;
         self.visible = false;
     }
@@ -443,10 +453,12 @@ impl Wheel {
                 points.push(center + egui::vec2(a.cos(), a.sin()) * radius * 0.37);
             }
             let highlighted = selected == Some(i);
+            let normal = if i % 2 == 0 { SEGMENT_GREY_LIGHT } else { SEGMENT_GREY_DARK };
             let background = if highlighted {
                 Color32::from_rgba_unmultiplied(9, 113, 212, (opacity * 244.0) as u8)
             } else {
-                Color32::from_rgba_unmultiplied(65, 68, 73, (opacity * 245.0) as u8)
+                Color32::from_rgba_unmultiplied(
+                    normal.r(), normal.g(), normal.b(), (opacity * 245.0) as u8)
             };
             painter.add(egui::Shape::convex_polygon(
                 points, background, Stroke::new(if highlighted {2.1} else {0.75},
@@ -466,8 +478,10 @@ impl Wheel {
         painter.circle_filled(center, radius * 0.37, HUB);
         painter.circle_stroke(center, radius * 0.37, Stroke::new(1.6, CYAN));
         let logo = Self::wc_mark(ctx);
-        let logo_rect = Rect::from_center_size(center - egui::vec2(0.0, size * 0.034),
-            egui::vec2(size * 0.212, size * 0.098));
+        // WC_ANDROID9_APPROVED_WC_LOGO_V1: keep owner-approved launcher bitmap,
+        // scale both axes to 90% and lower the glyph slightly within the hub.
+        let logo_rect = Rect::from_center_size(center - egui::vec2(0.0, size * 0.018),
+            egui::vec2(size * 0.1908, size * 0.0882));
         painter.image(logo.id(), logo_rect, Rect::from_min_max(
             egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         painter.text(center + egui::vec2(0.0, size * 0.106), egui::Align2::CENTER_CENTER,

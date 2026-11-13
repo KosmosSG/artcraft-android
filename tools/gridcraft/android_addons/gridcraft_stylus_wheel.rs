@@ -147,6 +147,8 @@ pub struct Wheel {
     preview_center: Option<Pos2>,
     hover: Option<Pos2>,
     last_stylus_hover: Option<Instant>,
+    contact_point: Option<Pos2>,
+    contact_updated: Option<Instant>,
     hover_blocked: bool,
     suppress_release: bool,
     single_wait: Option<(Instant, Option<Pos2>)>,
@@ -163,7 +165,8 @@ impl Wheel {
             enabled: false, settings_open: false, slots: DEFAULT,
             size_percent: 100.0, opacity_percent: 85.0, settings_path,
             open: false, center: None, preview_center: None, hover: None,
-            last_stylus_hover: None,
+            last_stylus_hover: None, contact_point: None,
+            contact_updated: None,
             hover_blocked: false,
             suppress_release: false, single_wait: None, pending_action: None,
             opened_at: Instant::now(),
@@ -337,6 +340,29 @@ impl Wheel {
         if self.open { ctx.request_repaint(); }
     }
 
+    /// Only a real stylus ACTION_DOWN/MOVE activates the visible round
+    /// cursor. ACTION_UP/CANCEL clears it; hovering alone never paints it.
+    pub fn stylus_contact(&mut self, report: &str, ctx: &Context) {
+        if !self.enabled { return; }
+        if report == "U" {
+            self.contact_point = None;
+            self.contact_updated = None;
+            ctx.request_repaint();
+            return;
+        }
+        let Some(data) = report.strip_prefix("D:") else { return; };
+        let Some((x,y)) = data.split_once(',') else { return; };
+        let (Ok(x),Ok(y)) = (x.parse::<f32>(),y.parse::<f32>()) else { return; };
+        if !x.is_finite() || !y.is_finite() { return; }
+        let ppp = ctx.pixels_per_point().max(0.5);
+        let point = pos2(x/ppp,y/ppp);
+        if ctx.content_rect().contains(point) {
+            self.contact_point = Some(point);
+            self.contact_updated = Some(Instant::now());
+            ctx.request_repaint();
+        }
+    }
+
     pub fn menu(&mut self, ctx: &Context) -> bool {
         let action_id = Id::new("gridcraft.android.wheel.menu");
         let action = ctx.data(|d| d.get_temp::<String>(action_id)).unwrap_or_default();
@@ -348,6 +374,8 @@ impl Wheel {
                 self.open = false;
                 self.single_wait = None;
                 self.last_stylus_hover = None;
+                self.contact_point = None;
+                self.contact_updated = None;
                 self.persist();
                 true
             }
@@ -532,35 +560,29 @@ impl Wheel {
             });
         ctx.request_repaint_after(Duration::from_millis(100));
     }
-    /// Native HONOR pen-hover pointer: visual only, never an egui pointer
-    /// event. The cursor stays visible over the canvas and wheel independently
-    /// of mouse/trackpad position. No events are synthesised.
+    /// A small round pen-tip cursor, shown ONLY during stylus contact.
+    /// Hovering above the screen can still highlight a wheel slot without
+    /// displaying a second mouse-shaped pointer over the worksheet.
     fn paint_stylus_pointer(&self, ctx: &Context) {
         if !self.enabled { return; }
-        let Some(last) = self.last_stylus_hover else { return };
-        if last.elapsed() > Duration::from_secs(4) { return; }
-        let Some(at) = self.hover else { return };
+        let Some(at) = self.contact_point else { return };
+        let Some(last) = self.contact_updated else { return };
+        // Fail-safe for lost Android ACTION_UP, e.g. background transition.
+        if last.elapsed() > Duration::from_secs(20) { return; }
         if !ctx.content_rect().contains(at) { return; }
-        let pointer_size = 28.0;
-        egui::Area::new(Id::new("gc-visible-stylus-cursor"))
+        egui::Area::new(Id::new("gc-contact-only-round-cursor"))
             .order(Order::Tooltip).interactable(false)
-            .fixed_pos(at-vec2(3.0,3.0))
+            .fixed_pos(at-vec2(10.0,10.0))
             .show(ctx, |ui| {
-                let (rect, _) = ui.allocate_exact_size(
-                    vec2(pointer_size,pointer_size),Sense::hover());
-                let painter = ui.painter_at(rect);
-                let base = rect.min;
-                let tip = base + vec2(3.0,3.0);
-                painter.add(Shape::convex_polygon(vec![
-                    tip,tip+vec2(2.0,19.0),tip+vec2(7.0,14.0),
-                    tip+vec2(11.0,23.0),tip+vec2(14.0,21.0),
-                    tip+vec2(10.0,12.0),tip+vec2(17.0,12.0),
-                ],Color32::from_rgb(250,252,248),
-                    Stroke::new(1.3,DARK)));
-                painter.circle_stroke(tip+vec2(1.0,1.0),5.0,
-                    Stroke::new(1.1,LIME));
+                let (rect,_) = ui.allocate_exact_size(
+                    vec2(20.0,20.0),Sense::hover());
+                let painter=ui.painter_at(rect);
+                let c=rect.center();
+                painter.circle_filled(c,5.0,Color32::from_rgba_unmultiplied(
+                    171,232,128,150));
+                painter.circle_stroke(c,6.5,Stroke::new(1.4,DARK));
             });
-        ctx.request_repaint_after(Duration::from_millis(70));
+        ctx.request_repaint_after(Duration::from_millis(80));
     }
 
     fn gc_icon(ctx: &Context) -> egui::TextureHandle {

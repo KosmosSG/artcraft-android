@@ -41,7 +41,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     if workspace.is_file():
         import tomllib
         upstream_version = tomllib.loads(workspace.read_text())["workspace"]["package"]["version"]
-        if upstream_version in ("0.15.0", "0.16.1", "0.18.0"):
+        if upstream_version in ("0.15.0", "0.16.1", "0.18.0", "0.19.1"):
             cargo = replace_exact(cargo, 'egui-winit = "0.36"',
                                   'egui-winit = "0.37"')
             # GridCraft v0.15's official egui-winit 0.37 fork removed the
@@ -66,7 +66,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     if MODULE in rust or JAVA_MARKER in java:
         raise RuntimeError("GridCraft enhancements are already installed; refusing duplicate overlay")
 
-    rust = replace_exact(rust, "mod ime_bridge;", "mod ime_bridge;\nmod gridcraft_tools;")
+    rust = replace_exact(rust, "mod ime_bridge;", "mod ime_bridge;\nmod gridcraft_tools;\nmod gridcraft_stylus_wheel;")
     rust = replace_exact(rust, "probe: InputProbe,", "probe: InputProbe,\n    tools: gridcraft_tools::GridCraftTools,")
     rust = replace_exact(rust, "let ime = ime_bridge::ime::ImeBridge::new(&app);",
                          "let tools = gridcraft_tools::GridCraftTools::new(&app);" + chr(10) + "        let ime = ime_bridge::ime::ImeBridge::new(&app);")
@@ -76,6 +76,11 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     rust = replace_exact(rust, "system_fonts::install_system_fonts(ui.ctx());",
                          "system_fonts::install_system_fonts(ui.ctx());\n        self.tools.ui(ui, &mut self.inner);")
 
+    # Suppress only wheel-owned raw pointer events BEFORE the workbook
+    # consumes them, avoiding selection/highlighting behind the stylus wheel.
+    rust = replace_exact(rust,
+        '        self.inner.raw_input_hook(ctx, raw);',
+        '        self.tools.filter_raw_input(ctx, raw);\\n        self.inner.raw_input_hook(ctx, raw);'.replace('\\n','\\n'))
     rust = replace_exact(rust, "self.inner.logic(ctx);", "self.tools.close_shortcut(&mut self.inner,ctx);\n        self.tools.editor_escape(&mut self.inner,ctx);\n        self.inner.android_capture_unsaved_dcs(ctx);\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\n        self.inner.logic(ctx);")
     rust = replace_exact(rust, "self.inner.ui(ui);", "self.inner.ui(ui);\n        self.tools.editor_escape(&mut self.inner,ui.ctx());\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());")
 
@@ -89,7 +94,8 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     ):
         java = replace_exact(java, signature,
                              signature + "\n                    if (gcHandleQuitShortcut(event)) return true;" +
-                             "\n                    if (gcHandleSaveAsShortcut(event)) return true;")
+                             "\n                    if (gcHandleSaveAsShortcut(event)) return true;" +
+                             "\n                    if (gcStylusWheelIntercept(event)) return true;")
 
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",
                          "super.onActivityResult(requestCode, resultCode, data);\n        if (gcHandleActivityResult(requestCode, resultCode, data)) return;")
@@ -113,10 +119,12 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
         cargo += '\n[[package.metadata.android.uses_permission]]\nname = "android.permission.REQUEST_INSTALL_PACKAGES"\n'
 
     # Validate every source transformation before writing any files.
-    if workspace.is_file() and upstream_version in ("0.15.0", "0.16.1", "0.18.0"):
+    if workspace.is_file() and upstream_version in ("0.15.0", "0.16.1", "0.18.0", "0.19.1"):
         assert 'egui_winit::android_activity::set_activity(' not in rust
         assert rust.count("self.inner.raw_input_hook(ctx, raw);") == 1
     assert rust.count("mod gridcraft_tools;") == 1
+    assert rust.count("mod gridcraft_stylus_wheel;") == 1
+    assert rust.count("self.tools.filter_raw_input(ctx, raw);") == 1
     assert rust.count("self.tools.ui(ui, &mut self.inner);") == 1
     assert java.count(JAVA_MARKER) == 1
     assert java.count("gcHandleActivityResult(requestCode, resultCode, data)") == 1
@@ -125,6 +133,8 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     java_source.write_text(java)
     cargo_manifest.write_text(cargo)
     shutil.copyfile(addon_rust, staging_dir / "src/gridcraft_tools.rs")
+    shutil.copyfile(addon_dir / "gridcraft_stylus_wheel.rs",
+                    staging_dir / "src/gridcraft_stylus_wheel.rs")
     print("GridCraft-only Android overlay staged: fonts, shared SAF folder, updater, shortcut pad")
 
 # runpy.run_path passes precisely these values from the forked builder generator.

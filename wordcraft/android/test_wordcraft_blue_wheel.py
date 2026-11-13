@@ -44,7 +44,8 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("wc_wheel_input", BUILDER)
         self.assertIn("self.wc.isolate_wheel_input(ctx, raw)", BUILDER)
         # Inject before WordApp's own clipboard/shortcut/canvas event handling.
-        self.assertLess(BUILDER.index("{wc_wheel_input}"), BUILDER.index("self.handle_clipboard_shortcuts(raw)"))
+        injected = next(line for line in BUILDER.splitlines() if "{wc_wheel_input}" in line)
+        self.assertLess(injected.index("{wc_wheel_input}"), injected.index("self.handle_clipboard_shortcuts(raw)"))
 
     def test_settings_java_private_and_menu(self):
         for text in ("wcGetStylusWheelPrefs", "wcSetStylusWheelPrefs",

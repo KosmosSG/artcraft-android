@@ -1,0 +1,166 @@
+name: PDFCraft Android.8 publish EXACT original-signed tested artifact (approval gated)
+
+on:
+  push:
+    branches:
+      - release/pdfcraft-v0211-android8-exact-publish-20261113
+    paths:
+      - release-approvals/pdfcraft-v0211-android8.json
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: pdfcraft-v0211-android8-publish-exact-artifact
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release/pdfcraft-v0211-android8-exact-publish-20261113'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout owner approval manifest
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate owner approval, exact source SHA and successful signed test run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re,os
+          from pathlib import Path
+          file=Path('release-approvals/pdfcraft-v0211-android8.json')
+          data=json.loads(file.read_text())
+          assert data.get('approved_for_publication') is True, 'No owner approval; fail closed'
+          assert data.get('version')=='0.21.1-android.8'
+          assert data.get('package')=='com.artcraft.pdfcraft'
+          assert isinstance(data.get('signed_test_run_id'),int) and data['signed_test_run_id']>0
+          assert re.fullmatch(r'[a-f0-9]{40}',data.get('source_commit',''))
+          assert re.fullmatch(r'[a-f0-9]{64}',data.get('signed_apk_sha256',''))
+          assert data.get('signed_artifact_name')=='PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST'
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+              print(f"TEST_RUN_ID={data['signed_test_run_id']}",file=out)
+              print(f"SOURCE_SHA={data['source_commit']}",file=out)
+              print(f"EXPECTED_SHA256={data['signed_apk_sha256']}",file=out)
+          print('Owner authorized publication of exact signed artifact bytes')
+          PY
+
+      - name: Require completed original-certificate Android.8 workflow and fetch its artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN_ID" > checked-run.json
+          jq -e --arg sha "$SOURCE_SHA" '
+            .conclusion == "success"
+            and .head_sha == $sha
+            and .head_branch == "feature/pdfcraft-v0211-android8-wheel75-20261113"
+            and .path == ".github/workflows/pdfcraft-v0211-android8-wheel75-signed-test.yml"
+          ' checked-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN_ID/artifacts" > checked-artifacts.json
+          jq -e '.artifacts | any(
+            .name == "PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST" and .expired == false
+          )' checked-artifacts.json
+          mkdir -p signed
+          gh run download "$TEST_RUN_ID" -R "$GITHUB_REPOSITORY" \
+            -n PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST -D signed
+          test -s signed/PDFCraft-v0.21.1-arm64-release.apk
+          test -s signed/SOURCE-COMMIT.txt
+          test -s signed/signature.txt
+          test -s signed/package.txt
+          test "$(tr -d '\r\n' < signed/SOURCE-COMMIT.txt)" = "$SOURCE_SHA"
+          echo "$EXPECTED_SHA256  signed/PDFCraft-v0.21.1-arm64-release.apk" | sha256sum -c -
+          echo "PASS: identical signed APK bytes from verified successful run" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production package, original signer, Android API and ABI before publication
+        shell: bash
+        env:
+          ORIGINAL_CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          [[ "$ORIGINAL_CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::Original signer fingerprint secret missing"; exit 1; }
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BUILD_TOOLS="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/apksigner" && test -x "$BUILD_TOOLS/aapt2" && test -x "$BUILD_TOOLS/zipalign"
+          APK=signed/PDFCraft-v0.21.1-arm64-release.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > verified-signature.txt
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" > verified-package.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          ORIGINAL_CERT_SHA256="$ORIGINAL_CERT_SHA256" python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          signature=Path("verified-signature.txt").read_text()
+          data=Path("verified-package.txt").read_text()
+          fingerprint=re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})',signature,re.I)
+          assert fingerprint and fingerprint[0].lower()==os.environ['ORIGINAL_CERT_SHA256'].lower(),'Original signing certificate mismatch'
+          assert "package: name='com.artcraft.pdfcraft'" in data
+          assert "versionName='0.21.1-android.8'" in data
+          assert "versionCode='16782600'" in data
+          assert "application-debuggable" not in data
+          permissions=set(re.findall(r"uses-permission: name='([^']+)'",data))
+          expected={
+            'android.permission.READ_EXTERNAL_STORAGE',
+            'android.permission.WRITE_EXTERNAL_STORAGE',
+            'android.permission.MANAGE_EXTERNAL_STORAGE',
+            'android.permission.INTERNET',
+          }
+          assert permissions==expected, f'Unexpected permissions: {permissions ^ expected}'
+          with zipfile.ZipFile('signed/PDFCraft-v0.21.1-arm64-release.apk') as zipf:
+            names=zipf.namelist()
+            assert zipf.testzip() is None
+            assert len(names)==len(set(names))
+            assert all(not n.startswith('/') and '..' not in n.split('/') for n in names)
+            libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+            assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), 'ARM64-only required'
+          print('PASS: package, version, permanent signer, permission inventory, ZIP and ABI')
+          PY
+          printf '%s  %s\n' "$EXPECTED_SHA256" "PDFCraft-v0.21.1-arm64-release.apk" > signed/SHA256SUMS.txt
+
+      - name: Publish existing signed APK without rebuilding or re-signing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=pdfcraft-v0.21.1-android.8
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists; no overwrite allowed"; exit 1
+          fi
+          cat > signed/RELEASE_NOTES.md <<EOF
+          PDFCraft v0.21.1-android.8 — original permanently signed ARM64 production APK.
+
+          - Upstream PDFCraft v0.21.1 with the existing Android integration and approved Pc launcher branding.
+          - Stylus wheel size defaults to **75%** for new installations and **Reset defaults** (opacity defaults to 100%).
+          - Previously saved wheel sizes, opacities and eight action assignments are preserved.
+          - Stylus wheel slider accents and outer ring use launcher red (#FB0E00); Pc centre artwork enlarged 5%.
+          - Keeps stylus hover, OCR, fonts, PDF editing, SAF and direct-file access functionality.
+          - GitHub update checks and startup preference remain; in-app APK downloads/PackageInstaller removed. Open GitHub releases in a browser to update.
+          - Package com.artcraft.pdfcraft; versionCode 16782600; same permanent signing identity as prior PDFCraft releases.
+          - APK SHA-256: $EXPECTED_SHA256
+          - Source commit: $SOURCE_SHA; exact signed CI artifact from run $TEST_RUN_ID. The published APK is not rebuilt or re-signed.
+          - Security note: Play Protect previously blocked variants with REQUEST_INSTALL_PACKAGES. The restricted-installer Android.4 and Android.6 designs were device tested; an Android.8-specific Play Protect result is not independently established by CI. Keep Play Protect enabled and do not bypass a warning.
+          - Independently maintained Android port; not official Storytold distribution.
+          EOF
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "PDFCraft v0.21.1-android.8 — ARM64" --notes-file signed/RELEASE_NOTES.md --latest \
+            signed/PDFCraft-v0.21.1-arm64-release.apk signed/SHA256SUMS.txt \
+            signed/signature.txt signed/package.txt signed/ocr-models.txt signed/SOURCE-COMMIT.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > checked-release.json
+          EXPECTED_SHA256="$EXPECTED_SHA256" python3 - <<'PY'
+          import json,os
+          data=json.load(open('checked-release.json'))
+          assert data['tag_name']=='pdfcraft-v0.21.1-android.8'
+          names={a['name']:a for a in data['assets']}
+          apk=names['PDFCraft-v0.21.1-arm64-release.apk']
+          assert apk.get('digest')=='sha256:'+os.environ['EXPECTED_SHA256'], f"Release APK digest not verified: {apk.get('digest')}"
+          print('PASS: published GitHub asset SHA-256 matches owner-approved permanently signed bytes')
+          PY
+          echo "Published stable $TAG; exact signed hash $EXPECTED_SHA256; no rebuild/re-sign" >> "$GITHUB_STEP_SUMMARY"

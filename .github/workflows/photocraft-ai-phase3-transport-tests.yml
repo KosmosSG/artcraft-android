@@ -1,0 +1,20 @@
+name: PhotoCraft AI Phase 3 Rust transport tests
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - 'adapters/photocraft/src/ai_u2netp_transport.rs'
+      - '.github/workflows/photocraft-ai-phase3-transport-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust-transport:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test consent, loopback and bounded PNG response framing
+        run: |
+          rustc --edition=2021 --test adapters/photocraft/src/ai_u2netp_transport.rs -o /tmp/photocraft-ai-phase3-tests
+          /tmp/photocraft-ai-phase3-tests

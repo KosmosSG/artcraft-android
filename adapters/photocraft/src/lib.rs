@@ -30,6 +30,15 @@ mod system_fonts;
 // android-activity, which forwards show/hide to this Activity's imeShow/imeHide, in step.
 mod ime_bridge;
 
+// Preview UI and tool declarations live only in the Android adapter.
+mod ai_tools;
+mod ai_models;
+mod ai_menu;
+mod ai_u2netp_transport;
+mod ai_background_job;
+mod ai_output_validation;
+mod ai_background_editor;
+
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.
 const ANDROID_SHELL_MARKER: &str = "ARTCRAFT_PHOTOCRAFT_ANDROID_SHELL_V2_MODIFIERS_FULLSCREEN";
@@ -528,6 +537,7 @@ struct PhotoCraftAndroidApp {
     picker: Arc<PickerState>,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
+    ai_menu: ai_menu::AndroidAiMenu,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
     // finished its own start-up, and goes negative (stop polling) if the host has no intent bridge.
@@ -665,6 +675,10 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
+        // Native menu; unimplemented actions remain disabled until backend verification.
+        if self.ai_menu.show(ui, &mut self.inner.session) {
+            self.inner.sync_views();
+        }
         self.inner.ui(ui, _frame);
     }
 
@@ -776,6 +790,7 @@ fn android_main(android_app: AndroidApp) {
                 picker: app_picker.clone(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
+                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

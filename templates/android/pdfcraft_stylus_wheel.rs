@@ -9,7 +9,7 @@ const SIZE: f32 = 312.0;
 const PC_MARK_SCALE: f32 = 1.05; // make just the Pc lettermark 5% larger
 // Default wheel diameter on first use and when Reset defaults is selected.
 // Previously saved v2 preferences always take precedence.
-const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;
+const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 100.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
@@ -41,7 +41,7 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 100.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 85.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -51,7 +51,7 @@ impl Wheel {
     fn reset_defaults(&mut self) {
         self.layout = DEFAULT_LAYOUT;
         self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;
-        self.opacity_percent = 100.0;
+        self.opacity_percent = 85.0;
         self.layout_dirty = true;
     }
 
@@ -262,132 +262,75 @@ impl Wheel {
         if !self.enabled && !self.customize_open { return; }
         let ctx = ui.ctx().clone();
 
+        // Match PhotoCraft's compact Default-preset dialog. The wheel is
+        // rendered at its actual configured size BESIDE the dialog, never
+        // shrunk to fit inside a widget or left active over the PDF.
+        let mut preview_dialog: Option<egui::Rect> = None;
         if self.customize_open {
             let mut open = true;
             let mut done = false;
-            egui::Window::new("Customize Stylus Wheel")
+            let response = egui::Window::new("Stylus Wheel — Default")
                 .id(Id::new("pdf-wheel-settings"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width(450.0)
-                .min_width(450.0)
+                .default_width(340.0)
                 .show(&ctx, |ui| {
-                    ui.set_min_width(430.0);
-                    ui.label("Assign an action to each of the eight wheel segments.");
-                    ui.add_space(8.0);
-                    ui.heading("Wheel slots");
-                    ui.add_space(4.0);
-
-                    // Each assignment has a bordered row AND a framed
-                    // selector, so the setting reads as a control instead
-                    // of bare text on MagicPad's dark theme.
-                    egui::Grid::new("pdf-wheel-slot-grid")
-                        .num_columns(1)
-                        .spacing(vec2(0.0, 5.0))
-                        .show(ui, |ui| {
-                            for slot in 0..8 {
-                                egui::Frame::new()
-                                    .fill(ui.visuals().faint_bg_color)
-                                    .stroke(Stroke::new(0.8, ui.visuals().widgets.noninteractive.bg_stroke.color))
-                                    .corner_radius(egui::CornerRadius::same(7))
-                                    .inner_margin(egui::Margin::symmetric(10, 5))
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(395.0);
-                                        ui.horizontal(|ui| {
-                                            ui.add_sized([26.0, 25.0],
-                                                egui::Label::new(format!("{:02}", slot + 1)));
-                                            ui.add_sized([98.0, 25.0],
-                                                egui::Label::new(POSITIONS[slot]));
-                                            egui::Frame::new()
-                                                .fill(ui.visuals().extreme_bg_color)
-                                                .stroke(Stroke::new(1.0,
-                                                    ui.visuals().widgets.inactive.bg_stroke.color))
-                                                .corner_radius(egui::CornerRadius::same(6))
-                                                .inner_margin(egui::Margin::symmetric(7, 2))
-                                                .show(ui, |ui| {
-                                                    egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
-                                                        .selected_text(LABELS[self.layout[slot]])
-                                                        .width(163.0)
-                                                        .show_ui(ui, |ui| {
-                                                            for index in 0..LABELS.len() {
-                                                                if ui.selectable_value(
-                                                                    &mut self.layout[slot], index, LABELS[index]
-                                                                ).changed() {
-                                                                    self.layout_dirty = true;
-                                                                }
-                                                            }
-                                                        });
-                                                });
-                                        });
-                                    });
-                                ui.end_row();
+                    ui.label("Style: Default  •  8 segments");
+                    ui.label("Choose a tool for each position. Existing selections swap positions.");
+                    ui.separator();
+                    for slot in 0..8 {
+                        ui.horizontal(|ui| {
+                            ui.add_sized([57.0, 24.0], egui::Label::new(format!("Slot {}", slot + 1)));
+                            let mut selected = self.layout[slot];
+                            egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
+                                .selected_text(LABELS[selected])
+                                .width(185.0)
+                                .show_ui(ui, |ui| {
+                                    for index in 0..LABELS.len() {
+                                        ui.selectable_value(&mut selected, index, LABELS[index]);
+                                    }
+                                });
+                            if selected != self.layout[slot] {
+                                if let Some(previous) = self.layout.iter().position(|n| *n == selected) {
+                                    self.layout[previous] = self.layout[slot];
+                                }
+                                self.layout[slot] = selected;
+                                self.layout_dirty = true;
                             }
                         });
-
-                    ui.add_space(12.0);
+                    }
                     ui.separator();
-                    ui.add_space(7.0);
-                    ui.heading("Appearance");
-                    ui.add_space(5.0);
-                    // The app theme makes inactive weak fills transparent for
-                    // flat buttons. Sliders also use that fill for their rail.
-                    // Override only this appearance card so tracks stay visible.
-                    egui::Frame::new()
-                        .fill(ui.visuals().faint_bg_color)
-                        .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
-                        .corner_radius(egui::CornerRadius::same(7))
-                        .inner_margin(egui::Margin::same(10))
-                        .show(ui, |ui| {
-                            let dark = ui.visuals().dark_mode;
-                            let rail = if dark { Color32::from_rgb(100, 108, 122) }
-                                else { Color32::from_rgb(165, 175, 190) };
-                            // Match the approved Pc launcher background, not the app's blue accent.
-                            let accent = Self::launcher_red();
-                            let visuals = ui.visuals_mut();
-                            visuals.widgets.inactive.weak_bg_fill = rail;
-                            visuals.widgets.hovered.weak_bg_fill = rail;
-                            visuals.widgets.active.weak_bg_fill = rail;
-                            visuals.widgets.inactive.bg_fill = accent;
-                            visuals.widgets.hovered.bg_fill = accent;
-                            visuals.widgets.active.bg_fill = accent;
-                            visuals.selection.bg_fill = accent;
-                            ui.spacing_mut().slider_width = 215.0;
-                            egui::Grid::new("pdf-wheel-appearance-grid")
-                                .num_columns(3)
-                                .spacing(vec2(14.0, 14.0))
-                                .show(ui, |ui| {
-                                    ui.label("Wheel size");
-                                    if ui.add_sized([215.0, 28.0],
-                                        egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
-                                            .trailing_fill(true).show_value(false)
-                                    ).changed() { self.layout_dirty = true; }
-                                    ui.strong(format!("{:.1}%", self.size_percent));
-                                    ui.end_row();
-                                    ui.label("Opacity");
-                                    if ui.add_sized([215.0, 28.0],
-                                        egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
-                                            .trailing_fill(true).show_value(false)
-                                    ).changed() { self.layout_dirty = true; }
-                                    ui.strong(format!("{:.1}%", self.opacity_percent));
-                                    ui.end_row();
-                                });
-                            ui.add_space(6.0);
-                            ui.small("Size: 75–150%   •   Opacity: 40–100%");
-                        });
-
-                    ui.add_space(9.0);
-                    ui.small("Preview updates live. All changes save automatically.");
-                    ui.add_space(7.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Reset defaults").clicked() {
-                            self.reset_defaults();
+                    // Keep the PhotoCraft dual-slider layout with the PDFCraft
+                    // launcher-red control accents and existing broad valid ranges.
+                    let accent = Self::launcher_red();
+                    ui.scope(|ui| {
+                        let visuals = ui.visuals_mut();
+                        visuals.selection.bg_fill = accent;
+                        visuals.widgets.active.bg_fill = accent;
+                        visuals.widgets.hovered.bg_fill = accent;
+                        ui.spacing_mut().slider_width = 225.0;
+                        if ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
+                            .text("Wheel size").suffix("%").trailing_fill(true)).changed() {
+                            self.layout_dirty = true;
                         }
+                        if ui.add(egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
+                            .text("Opacity").suffix("%").trailing_fill(true)).changed() {
+                            self.layout_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Restore Default").clicked() { self.reset_defaults(); }
                         if ui.button("Done").clicked() { done = true; }
                     });
-                    ui.small("Double press keeps the Eraser shortcut.");
+                    ui.separator();
+                    ui.small("Actual-size preview appears beside this window.");
+                    ui.small("Pen button: single opens the wheel; double selects Eraser.");
                 });
             self.customize_open = open && !done;
+            self.open = false;
+            self.single_wait = None;
+            preview_dialog = response.map(|r| r.response.rect);
         }
         if !self.enabled && !self.customize_open { return; }
         let screen = ctx.content_rect();
@@ -420,13 +363,26 @@ impl Wheel {
         }
         if !self.open && !self.customize_open { return; }
         let scale = self.display_scale(screen);
-        let center = if self.customize_open { Self::clamped(pos2(screen.right() - SIZE * scale * 0.5 - 28.0, screen.center().y), screen, scale) }
-            else if let Some(c) = self.center { Self::clamped(c, screen, scale) } else { return };
+        let center = if self.customize_open {
+            let dialog = preview_dialog.unwrap_or(screen);
+            let size = SIZE * scale;
+            let margin = 16.0;
+            let right_room = screen.right() - dialog.right();
+            let left_room = dialog.left() - screen.left();
+            let x = if right_room >= size + margin * 2.0 {
+                (dialog.right() + screen.right()) * 0.5
+            } else if left_room >= size + margin * 2.0 {
+                (screen.left() + dialog.left()) * 0.5
+            } else { screen.center().x };
+            Self::clamped(pos2(x, dialog.center().y), screen, scale)
+        } else if let Some(c) = self.center {
+            Self::clamped(c, screen, scale)
+        } else { return };
         let t = (self.opened_at.elapsed().as_secs_f32() / 0.18).min(1.0);
         if t < 1.0 { ctx.request_repaint(); }
         // Geometry and hit targets always share the same configured scale.
         let size = SIZE * scale;
-        let highlighted = self.hover.and_then(|p| Self::hit(center, p, scale));
+        let highlighted = if self.customize_open { None } else { self.hover.and_then(|p| Self::hit(center, p, scale)) };
         let dark = ui.visuals().dark_mode;
         egui::Area::new(Id::new("pdf-wheel-plate"))
             .order(Order::Foreground)

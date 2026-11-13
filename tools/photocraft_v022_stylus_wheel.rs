@@ -104,7 +104,7 @@ impl Wheel {
         if !self.settings_open { return; }
         let mut open = self.settings_open;
         let mut changed = false;
-        egui::Window::new("Stylus Wheel — Default")
+        let customize_response = egui::Window::new("Stylus Wheel — Default")
             .id(Id::new("pc-wheel-customize"))
             .open(&mut open)
             .resizable(false)
@@ -147,18 +147,51 @@ impl Wheel {
                     changed = true;
                 }
                 ui.separator();
-                ui.label("Live wheel preview — size and opacity update instantly:");
-                ui.vertical_centered(|ui| {
-                    // Use exactly the wheel's normal painter, scaled to fit
-                    // inside the settings dialog, without dispatching commands.
-                    let (preview_rect, _) = ui.allocate_exact_size(
-                        vec2(248.0, 242.0), Sense::hover());
-                    self.paint_wheel(ui, preview_rect, self.scale() * 0.58, None);
-                });
+                ui.label("Actual-size preview appears beside this window.");
+                ui.label("75–125% size and opacity match the real Stylus Wheel.");
                 ui.label("Pen button: single opens wheel, double selects Eraser.");
             });
         self.settings_open = open;
         if changed { self.persist_settings(); ctx.request_repaint(); }
+        // The preview is visual only; never retain an interactive wheel while
+        // customization is open.  Keep the normal editor pointer path intact.
+        if self.settings_open {
+            self.open = false;
+            self.single_wait = None;
+            self.hover_blocked = false;
+            if let Some(response) = customize_response {
+                self.preview_actual_size(ctx, response.response.rect);
+            }
+        }
+    }
+
+    fn preview_actual_size(&self, ctx: &Context, dialog: egui::Rect) {
+        let screen = ctx.content_rect();
+        let size = SIZE * self.scale();
+        let margin = 16.0;
+        let right_room = screen.right() - dialog.right();
+        let left_room = dialog.left() - screen.left();
+        let x = if right_room >= size + margin * 2.0 {
+            (dialog.right() + screen.right()) * 0.5
+        } else if left_room >= size + margin * 2.0 {
+            (screen.left() + dialog.left()) * 0.5
+        } else {
+            screen.center().x
+        };
+        let center = pos2(
+            x.clamp(screen.left() + size * 0.5, (screen.right() - size * 0.5).max(screen.left() + size * 0.5)),
+            dialog.center().y.clamp(screen.top() + size * 0.5, (screen.bottom() - size * 0.5).max(screen.top() + size * 0.5)),
+        );
+        egui::Area::new(Id::new("pc-wheel-full-scale-preview"))
+            .order(Order::Foreground)
+            .fixed_pos(center - vec2(size * 0.5, size * 0.5))
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
+                // 1:1 painter, no 0.58 factor; the physical wheel size and
+                // alpha precisely match normal operation on this display.
+                self.paint_wheel(ui, rect, self.scale(), None);
+            });
     }
     /// Exact raster of the user-supplied Pc SVG. Build workflow generates
     /// the transparent RGBA file; no new runtime image decoder is needed.
@@ -243,6 +276,14 @@ impl Wheel {
             .rem_euclid(360.0) / 45.0).floor() as usize).min(7))
     }
     pub fn capture(&mut self, ctx: &Context, raw: &mut RawInput, blocked: bool) {
+        // A settings preview is never a live tool target.  Leave all
+        // pointer events untouched for the customization window itself.
+        if self.settings_open {
+            self.open = false;
+            self.single_wait = None;
+            self.hover_blocked = false;
+            return;
+        }
         if !self.enabled || blocked {
             self.open = false;
             self.single_wait = None;

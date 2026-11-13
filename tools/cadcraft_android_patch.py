@@ -107,7 +107,7 @@ def patch_cadcraft_ui(source: Path) -> None:
         }
         prefs.to_string()
 """)
-    src = replace_once(src, '        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\\n',
+    src = replace_once(src, '        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\n',
         """        #[cfg(target_os = "android")]
         {
             if let Some(actions) = v.get("cadWheelActions").and_then(Value::as_array) {

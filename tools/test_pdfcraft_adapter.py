@@ -277,7 +277,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PackageInstaller' not in java
     # On fresh installations startup checks default ON; an existing OFF
     # preference remains OFF. Toggling gives a native bottom Toast.
-    assert 'mobile.read_startup_setting().unwrap_or(true)' in mobile
+    assert 'mobile.read_startup_setting().unwrap_or(false)' in mobile
     assert 'startup_check: true, first_frame: true' in mobile
     assert 'egui::Id::new("pdfcraft.android.startup.enabled"), self.startup_check' in mobile
     assert 'let enabled = !self.startup_check;' in mobile

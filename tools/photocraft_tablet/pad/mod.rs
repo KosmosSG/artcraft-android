@@ -38,6 +38,9 @@ pub struct ShortcutPad {
     reserved: Option<egui::Rect>,
     layer: Option<egui::LayerId>,
     mouse: Option<Control>,
+    // Whether this pad or its expanded rotary ring currently owns hover.
+    // Trigger a single hover reset at entry, not one per raw input frame.
+    hover_blocked: bool,
     /// Where the pad was drawn last frame (`None`: hidden).
     layout: Option<Layout>,
     /// The wheel function in use (an index into the configured list).
@@ -123,6 +126,7 @@ impl ShortcutPad {
         Self {
             shared: Rc::new(RefCell::new(Shared { config, settings_open: false, path })),
             contacts: HashMap::new(), reserved: None, layer: None, mouse: None,
+            hover_blocked: false,
             layout: None,
             mode: 0,
             turn: wheel::Turn::default(),
@@ -166,6 +170,7 @@ impl ShortcutPad {
             self.release_all(&mut out);
             self.contacts.clear();
             self.mouse = None;
+            self.hover_blocked = false;
             out.append(&mut raw.events);
             raw.events = out;
             return;
@@ -173,6 +178,11 @@ impl ShortcutPad {
         let Some(l) = self.layout.clone() else { return };
         let layer = self.layer;
         let hit = |pos| l.panel.contains(pos) && ctx.layer_id_at(pos) == layer;
+        // Only the visible pad strip and the transient large rotary ring
+        // belong to this input router. Unlike Android.8, do not swallow
+        // arbitrary document motion, focus or canvas events.
+        let ring_hit = |pos: egui::Pos2, ring: Option<BigRing>| ring.is_some_and(|b|
+            (pos - b.center).length() <= b.radius + 6.0);
         let touch_frame = !self.contacts.is_empty() || raw.events.iter().any(|e|
             matches!(e, Event::Touch { pos, .. } if hit(*pos)));
         for event in raw.events.drain(..) {
@@ -183,6 +193,12 @@ impl ShortcutPad {
                         egui::TouchPhase::Start if hit(pos) => {
                             let c = l.hit(pos); self.contacts.insert(id, c); Some(PadTouch::Down(c, pos))
                         }
+                        egui::TouchPhase::Start if ring_hit(pos, self.big) => {
+                            // The expanded zoom/rotate ring extends onto editor
+                            // content. A contact on it must not select a layer.
+                            self.contacts.insert(id, Control::Ring);
+                            Some(PadTouch::Down(Control::Ring, pos))
+                        }
                         egui::TouchPhase::Move => self.contacts.get(&id).map(|&c| PadTouch::Move(c,pos)),
                         egui::TouchPhase::End | egui::TouchPhase::Cancel => self.contacts.remove(&id).map(PadTouch::Up),
                         _ => None,
@@ -190,14 +206,44 @@ impl ShortcutPad {
                     if let Some(t) = control { self.touch(t, &mut out); } else {out.push(event);}
                 }
                 Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, .. }
-                    if self.mouse.is_some() || hit(pos) => {
+                    if self.mouse.is_some() || hit(pos) || ring_hit(pos, self.big) => {
                     if !touch_frame {
-                        if pressed { let c=l.hit(pos); self.mouse=Some(c); self.touch(PadTouch::Down(c,pos), &mut out); }
-                        else if let Some(c)=self.mouse.take() { self.touch(PadTouch::Up(c), &mut out); }
+                        if pressed {
+                            let c = if hit(pos) { l.hit(pos) } else { Control::Ring };
+                            self.mouse=Some(c);
+                            self.touch(PadTouch::Down(c,pos), &mut out);
+                        } else if let Some(c)=self.mouse.take() {
+                            self.touch(PadTouch::Up(c), &mut out);
+                        }
                     }
                 }
-                Event::PointerMoved(pos) if self.mouse.is_some() => {
-                    if let Some(c)=self.mouse { self.touch(PadTouch::Move(c,pos), &mut out); }
+                Event::PointerMoved(pos) => {
+                    let owned = hit(pos) || ring_hit(pos, self.big);
+                    if owned {
+                        // A single PointerGone when entering the pad removes a
+                        // stale underlying toolbar/canvas highlight. Further
+                        // rotation stays within the pad instead of spamming
+                        // PointerGone every frame (the Android.8 regression).
+                        if !self.hover_blocked {
+                            out.push(Event::PointerGone);
+                            self.hover_blocked = true;
+                        }
+                    } else {
+                        self.hover_blocked = false;
+                        if self.mouse.is_none() { out.push(Event::PointerMoved(pos)); }
+                    }
+                    if let Some(c)=self.mouse {
+                        self.touch(PadTouch::Move(c,pos), &mut out);
+                    }
+                }
+                Event::PointerGone => {
+                    self.hover_blocked = false;
+                    out.push(Event::PointerGone);
+                }
+                Event::MouseWheel { .. } if ctx.pointer_hover_pos()
+                    .is_some_and(|pos| hit(pos) || ring_hit(pos, self.big)) => {
+                    // A physical trackpad wheel over the pad must not scroll
+                    // the canvas or select/hover elements behind the ring.
                 }
                 _ => out.push(event),
             }
@@ -399,6 +445,7 @@ impl ShortcutPad {
     /// bars (none while the pad is off).
     pub fn reserve(&mut self, ui: &mut egui::Ui) {
         self.reserved = None;
+        if !menus::artcraft_pad_visible() { self.hover_blocked = false; }
         android_activity::pc_pen::pad(None);
         let mut shared = self.shared.borrow_mut();
         android_activity::pc_pen::reject_palms(shared.config.palm_rejection);

@@ -7,6 +7,7 @@ use egui::{Color32, FontId, Pos2, Sense, Stroke, pos2, vec2};
 use jni::{JavaVM, jni_sig, jni_str, objects::{JObject, JValue}};
 use std::f32::consts::{PI, TAU};
 use std::path::PathBuf;
+use std::time::{Instant, Duration};
 
 const COMMANDS: [(&str, &str); 8] = [
     ("Razor", "tool.razor"),
@@ -18,12 +19,18 @@ const COMMANDS: [(&str, &str); 8] = [
     ("Zoom +", "view.zoomIn"),
     ("Zoom -", "view.zoomOut"),
 ];
-const DEFAULT_SLOTS: [usize; 8] = [3, 0, 1, 2, 6, 5, 7, 4];
+// FilmCraft command equivalents in the same eight-position PhotoCraft arrangement.
+const DEFAULT_SLOTS: [usize; 8] = [0, 1, 6, 2, 5, 7, 4, 3];
+const DEFAULT_SIZE: f32 = 1.0;
+const DEFAULT_OPACITY: f32 = 0.85;
+const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
+const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const NAVY: Color32 = Color32::from_rgb(0x00, 0x04, 0x7a);
 const LAVENDER: Color32 = Color32::from_rgb(0x9a, 0x9c, 0xd9);
 const ACCENT: Color32 = Color32::from_rgb(0x36, 0x4c, 0xd9);
 const HUB: f32 = 0.36;
-const DEFAULT_RADIUS: f32 = 143.0;
+const DEFAULT_RADIUS: f32 = 128.0;
+const PLATE_SIZE: f32 = 312.0;
 
 pub struct Wheel {
     app: AndroidApp,
@@ -40,22 +47,26 @@ pub struct Wheel {
     hovered_segment: Option<usize>,
     just_isolated: bool,
     pending: Option<&'static str>,
+    feedback_message: &'static str,
+    feedback_at: Instant,
 }
 impl Wheel {
     pub fn new(dir: Option<PathBuf>, app: &AndroidApp) -> Self {
         let path = dir.map(|d| d.join("filmcraft-stylus-wheel.json"));
         let mut out = Self {
-            app: app.clone(), path, enabled: true, size: 1.0, opacity: 0.90,
+            app: app.clone(), path, enabled: true, size: DEFAULT_SIZE, opacity: DEFAULT_OPACITY,
             slots: DEFAULT_SLOTS, last_slot: 1, settings_open: false,
             open: false, center: None, pen_hover: None,
             hovered_segment: None, just_isolated: false, pending: None,
+            feedback_message: "Hover + press stylus button to open wheel",
+            feedback_at: Instant::now(),
         };
         if let Some(path) = &out.path {
             if let Ok(raw) = std::fs::read_to_string(path) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
                     if let Some(b) = v["enabled"].as_bool() { out.enabled = b; }
-                    if let Some(f) = v["size"].as_f64() { out.size = (f as f32).clamp(0.75, 1.5); }
-                    if let Some(f) = v["opacity"].as_f64() { out.opacity = (f as f32).clamp(0.4, 1.0); }
+                    if let Some(f) = v["size"].as_f64() { out.size = (f as f32).clamp(0.75, 1.25); }
+                    if let Some(f) = v["opacity"].as_f64() { out.opacity = (f as f32).clamp(0.60, 1.0); }
                     if let Some(a) = v["slots"].as_array() {
                         if a.len() == 8 {
                             for (i, n) in a.iter().enumerate() {
@@ -83,6 +94,35 @@ impl Wheel {
             }
         }
     }
+    fn notify(&mut self, message: &'static str, ctx: &egui::Context) {
+        self.feedback_message = message;
+        self.feedback_at = Instant::now();
+        ctx.request_repaint();
+    }
+    /// Identical bottom-centred 350×31 notification timing and placement to
+    /// the approved PhotoCraft wheel; always noninteractive.
+    fn paint_feedback(&self, ctx: &egui::Context) {
+        let elapsed=self.feedback_at.elapsed();
+        if elapsed >= FEEDBACK_HOLD + FEEDBACK_FADE { return; }
+        let alpha=if elapsed <= FEEDBACK_HOLD {1.0}
+            else {1.0 - (elapsed-FEEDBACK_HOLD).as_secs_f32()/FEEDBACK_FADE.as_secs_f32()};
+        let alpha=alpha.clamp(0.0,1.0);
+        let screen=ctx.content_rect();
+        egui::Area::new(egui::Id::new("filmcraft-wheel-bottom-message"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos2((screen.center().x-175.0).max(screen.left()),screen.bottom()-43.0))
+            .interactable(false)
+            .show(ctx,|ui|{
+                let (rect,_)=ui.allocate_exact_size(vec2(350.0,31.0),Sense::hover());
+                let p=ui.painter_at(rect);
+                p.rect_filled(rect,13.0,Color32::from_rgba_unmultiplied(54,54,57,(238.0*alpha) as u8));
+                p.rect_stroke(rect,13.0,Stroke::new(1.0,
+                    Color32::from_gray(90).gamma_multiply(alpha)),egui::StrokeKind::Inside);
+                p.text(rect.center(),egui::Align2::CENTER_CENTER,self.feedback_message,
+                    FontId::proportional(11.0),Color32::from_gray(230).gamma_multiply(alpha));
+            });
+        ctx.request_repaint_after(Duration::from_millis(50));
+    }
     fn poll_java(&self) -> Option<(i32, i64)> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<(i32, i64)> {
@@ -100,7 +140,7 @@ impl Wheel {
     fn radial_index(center: Pos2, pointer: Pos2, radius: f32) -> Option<usize> {
         let v = pointer - center;
         if v.length() < radius * HUB || v.length() > radius { return None; }
-        let theta = (v.y.atan2(v.x) + PI / 2.0).rem_euclid(TAU);
+        let theta = (v.y.atan2(v.x) + PI / 2.0 + TAU / 16.0).rem_euclid(TAU);
         Some(((theta / (TAU / 8.0)).floor() as usize).min(7))
     }
     pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -134,6 +174,7 @@ impl Wheel {
                     ));
                     self.open = true;
                     self.just_isolated = false;
+                    self.notify("Hover to highlight • tap tip to select",ctx);
                 }
                 ctx.request_repaint();
             }
@@ -160,6 +201,7 @@ impl Wheel {
                     if let Some(slot) = Self::radial_index(center,pos,r) {
                         self.last_slot = slot;
                         self.pending = Some(COMMANDS[self.slots[slot]].1);
+                        self.notify(COMMANDS[self.slots[slot]].0,ctx);
                     }
                     self.open = false; self.center = None;
                     self.hovered_segment = None;
@@ -179,92 +221,75 @@ impl Wheel {
         }
         if self.open { ctx.request_repaint_after(std::time::Duration::from_millis(60)); }
     }
-    fn icon(p: &egui::Painter, id: usize, c: Pos2, s: f32, color: Color32) {
-        let stroke = Stroke::new(2.2*s, color);
-        let l = |x:f32,y:f32| c + vec2(x*s,y*s);
-        match id {
-            0 => { // Razor: slanted blade
-                p.line_segment([l(-10.0,-7.0),l(8.0,10.0)],stroke);
-                p.line_segment([l(-4.0,-12.0),l(12.0,4.0)],stroke);
-                p.line_segment([l(-8.0,7.0),l(7.0,-8.0)],stroke);
-            },
-            1 => { // Select cursor
-                p.add(egui::Shape::line(vec![
-                    l(-8.0,-13.0),l(-7.0,12.0),l(-1.0,5.0),l(5.0,14.0),
-                    l(10.0,11.0),l(4.0,3.0),l(13.0,1.0),l(-8.0,-13.0)
-                ],stroke));
-            },
-            2 => { // Hand
-                p.line_segment([l(-8.0,0.0),l(-6.0,11.0)],stroke);
-                p.line_segment([l(-6.0,11.0),l(3.0,15.0)],stroke);
-                p.line_segment([l(3.0,15.0),l(11.0,8.0)],stroke);
-                for x in [-3.0,2.0,7.0] {
-                    p.line_segment([l(x,-7.0),l(x,5.0)],stroke);
-                    p.circle_stroke(l(x,-7.0),1.8*s,stroke);
-                }
-            },
-            3 | 4 => { // White classic hook arrows, not Unicode glyphs
-                let dir = if id == 3 { -1.0 } else { 1.0 };
-                p.add(egui::Shape::line(vec![
-                    l(-dir*6.0,-7.0),l(dir*4.0,-7.0),
-                    l(dir*10.0,-2.0),l(dir*10.0,6.0),
-                    l(dir*5.0,11.0)
-                ],stroke));
-                p.line_segment([l(-dir*6.0,-7.0),l(0.0,-13.0)],stroke);
-                p.line_segment([l(-dir*6.0,-7.0),l(0.0,-1.0)],stroke);
-            },
-            5 => { // Play/Pause
-                p.add(egui::Shape::convex_polygon(vec![l(-11.0,-11.0),l(-11.0,11.0),l(0.0,0.0)],color,Stroke::NONE));
-                p.line_segment([l(5.0,-10.0),l(5.0,10.0)],Stroke::new(3.2*s,color));
-                p.line_segment([l(11.0,-10.0),l(11.0,10.0)],Stroke::new(3.2*s,color));
-            },
-            6 | 7 => { // Zoom glass
-                p.circle_stroke(l(-3.0,-4.0),8.0*s,stroke);
-                p.line_segment([l(3.0,2.0),l(12.0,12.0)],stroke);
-                p.line_segment([l(-8.0,-4.0),l(2.0,-4.0)],stroke);
-                if id == 6 { p.line_segment([l(-3.0,-9.0),l(-3.0,1.0)],stroke); }
-            },
-            _ => {}
-        }
-    }
     fn draw(&self, ui: &egui::Ui, center: Pos2, radius: f32, hover: Option<usize>) {
-        let p=ui.painter();
-        // Soft diffuse shadow, thin FilmCraft-lavender outer stroke.
-        for i in (1..=5).rev() {
-            p.circle_filled(center + vec2(0.0,4.0),radius+(i as f32)*2.8,
-                Color32::from_black_alpha(7).gamma_multiply(self.opacity));
+        let painter=ui.painter();
+        let scale=radius/DEFAULT_RADIUS;
+        // PhotoCraft: twelve close-spaced feathered layers; no hard halo.
+        for step in 0..12 {
+            let spread=(12.0-step as f32*0.82)*scale;
+            let softness=0.008+step as f32*0.0017;
+            painter.circle_filled(center+vec2(0.8,2.0)*scale,
+                radius+spread,Color32::BLACK.gamma_multiply(softness*self.opacity));
         }
-        let width=TAU/8.0;
+        painter.circle_filled(center,radius,
+            Color32::from_gray(53).gamma_multiply(self.opacity));
+        const ICONS:[filmcraft_ui_egui::icons::Icon;8]=[
+            filmcraft_ui_egui::icons::Icon::Razor,
+            filmcraft_ui_egui::icons::Icon::Selection,
+            filmcraft_ui_egui::icons::Icon::Hand,
+            filmcraft_ui_egui::icons::Icon::Undo,
+            filmcraft_ui_egui::icons::Icon::Redo,
+            filmcraft_ui_egui::icons::Icon::Play,
+            filmcraft_ui_egui::icons::Icon::Zoom,
+            filmcraft_ui_egui::icons::Icon::Zoom,
+        ];
         for slot in 0..8 {
-            let a=-PI/2.0 + width*slot as f32;
-            let mut pts=Vec::with_capacity(24);
-            for j in 0..=10 {
-                let t=a+width*(j as f32/10.0);
-                pts.push(center+vec2(t.cos(),t.sin())*radius);
+            let degrees=-90.0+slot as f32*45.0;
+            let first=(degrees-21.5).to_radians();
+            let last=(degrees+21.5).to_radians();
+            let mut pts=Vec::with_capacity(18);
+            pts.push(center);
+            for j in 0..=16 {
+                let a=first+(last-first)*j as f32/16.0;
+                pts.push(center+vec2(a.cos(),a.sin())*radius);
             }
-            for j in (0..=10).rev() {
-                let t=a+width*(j as f32/10.0);
-                pts.push(center+vec2(t.cos(),t.sin())*(radius*HUB));
-            }
-            let fill=if hover==Some(slot) { ACCENT } else { Color32::from_rgb(48,49,54) };
-            p.add(egui::Shape::convex_polygon(pts,
+            let active=hover==Some(slot);
+            let base=if slot%2==0 { Color32::from_rgb(51,52,56) }
+                else { Color32::from_rgb(65,66,70) };
+            let fill=if active { ACCENT } else { base };
+            painter.add(egui::Shape::convex_polygon(pts,
                 fill.gamma_multiply(self.opacity),
-                Stroke::new(0.85,Color32::from_gray(98).gamma_multiply(self.opacity))));
-            let angle=a+width*0.5;
-            let icon_center=center+vec2(angle.cos(),angle.sin())*(radius*0.66)-vec2(0.0,10.5);
-            Self::icon(p,self.slots[slot],icon_center,radius/145.0,Color32::WHITE.gamma_multiply(self.opacity));
-            let label_pos=icon_center+vec2(0.0,27.0);
-            p.text(label_pos,egui::Align2::CENTER_CENTER,COMMANDS[self.slots[slot]].0,
-                FontId::proportional((12.0*radius/143.0).max(10.0)),Color32::WHITE.gamma_multiply(self.opacity));
+                Stroke::new(if active {1.6}else{0.65},
+                    if active {LAVENDER} else {Color32::from_gray(87)}.gamma_multiply(self.opacity))));
+            let a=degrees.to_radians();
+            let icon_pos=center+vec2(a.cos(),a.sin())*(87.0*scale);
+            let rect=egui::Rect::from_center_size(icon_pos-vec2(0.0,10.0)*scale,
+                vec2(24.0,24.0)*scale);
+            let cmd=self.slots[slot];
+            filmcraft_ui_egui::icons::paint(painter,rect,ICONS[cmd],
+                Color32::WHITE.gamma_multiply(self.opacity));
+            // Distinguish native Zoom In / Zoom Out while retaining the native
+            // toolbar magnifier path as the base icon.
+            if cmd==6 || cmd==7 {
+                painter.text(rect.center()+vec2(1.0,-1.5)*scale,
+                    egui::Align2::CENTER_CENTER,if cmd==6 {"+"}else{"−"},
+                    FontId::proportional(12.0*scale),Color32::WHITE);
+            }
+            painter.text(icon_pos+vec2(0.0,13.0)*scale,
+                egui::Align2::CENTER_CENTER,COMMANDS[cmd].0,
+                FontId::proportional(11.0*scale),
+                Color32::from_gray(220).gamma_multiply(self.opacity));
         }
-        p.circle_stroke(center,radius,Stroke::new(1.5,LAVENDER.gamma_multiply(self.opacity)));
-        p.circle_filled(center,radius*HUB,NAVY); // solid launcher roundel, never rectangular
-        p.circle_stroke(center,radius*HUB,Stroke::new(2.0,LAVENDER));
-        p.text(center+vec2(0.0,-radius*0.065),egui::Align2::CENTER_CENTER,"Fc",
-            FontId::proportional(radius*0.29),LAVENDER);
-        p.text(center+vec2(0.0,radius*0.19),egui::Align2::CENTER_CENTER,
-            if self.open { COMMANDS[self.slots[self.last_slot]].0 } else { "Default" },
-            FontId::proportional((radius*0.09).max(10.0)),Color32::WHITE);
+        painter.circle_stroke(center,radius,
+            Stroke::new(0.8,Color32::from_gray(103).gamma_multiply(self.opacity)));
+        // Exact FilmCraft navy/lavender launch colours, circular hub with logo.
+        painter.circle_filled(center,48.0*scale,NAVY);
+        painter.circle_stroke(center,48.0*scale,Stroke::new(1.4,LAVENDER));
+        painter.text(center-vec2(0.0,8.0)*scale,egui::Align2::CENTER_CENTER,"Fc",
+            FontId::proportional(35.0*scale),LAVENDER);
+        painter.text(center+vec2(0.0,22.0)*scale,egui::Align2::CENTER_CENTER,
+            if self.open { COMMANDS[self.slots[self.last_slot]].0 } else {"Default"},
+            FontId::proportional(11.0*scale),Color32::WHITE);
     }
     fn slider(ui: &mut egui::Ui, label: &str, value: &mut f32, min:f32, max:f32) -> bool {
         ui.horizontal(|ui| {

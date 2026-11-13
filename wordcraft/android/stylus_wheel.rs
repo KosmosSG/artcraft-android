@@ -244,14 +244,24 @@ impl Wheel {
         let p = |x: f32, y: f32| at + egui::vec2(x * unit, y * unit);
         match label {
             "Undo" | "Redo" => {
-                let mirror = if label == "Undo" { -1.0 } else { 1.0 };
-                let arc: Vec<Pos2> = (0..=18).map(|i| {
-                    let t = i as f32 / 18.0;
-                    p(mirror * (-9.0 + 18.0 * t), -2.0 - 9.0 * (PI * t).sin() + 5.0*t)
-                }).collect();
-                painter.add(egui::Shape::line(arc, st));
-                painter.line_segment([p(-9.0*mirror,-2.0),p(-3.5*mirror,-8.0)],st);
-                painter.line_segment([p(-9.0*mirror,-2.0),p(-3.0*mirror,3.0)],st);
+                // WC_ANDROID4_REFINED_HISTORY_ARROWS_V1:
+                // PhotoCraft-style U-turn with a real open arrow head.
+                // Undo turns left, Redo mirrors horizontally (not arch glyphs).
+                let dir = if label == "Undo" { 1.0 } else { -1.0 };
+                let x = |v: f32| dir * v;
+                let mut path = vec![p(x(-10.0), -3.5), p(x(1.0), -3.5)];
+                for i in 1..=20 {
+                    let t = i as f32 / 20.0;
+                    let v = 1.0 - t;
+                    let px = v*v*v*1.0 + 3.0*v*v*t*10.5
+                        + 3.0*v*t*t*10.0 + t*t*t*2.5;
+                    let py = v*v*v*(-3.5) + 3.0*v*v*t*(-3.5)
+                        + 3.0*v*t*t*10.0 + t*t*t*9.5;
+                    path.push(p(x(px), py));
+                }
+                painter.add(egui::Shape::line(path, st));
+                painter.line_segment([p(x(-10.0),-3.5), p(x(-4.5),-9.0)],st);
+                painter.line_segment([p(x(-10.0),-3.5), p(x(-4.5),2.0)],st);
             }
             "Pen" | "Pencil" | "Highlight" => {
                 painter.add(egui::Shape::line(vec![
@@ -299,6 +309,46 @@ impl Wheel {
             }
             _ => { painter.circle_stroke(at,6.0*unit,st); }
         }
+    }
+
+    // WC_ANDROID4_VISIBLE_SETTINGS_SLIDERS_V1: custom painted controls are
+    // guaranteed visible with both light and dark themes on MagicOS.
+    // The size/opacity values are the actual live wheel dimensions and alpha.
+    fn bar_slider(ui: &mut egui::Ui, value: &mut f32,
+                  min: f32, max: f32, width: f32) -> bool {
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(width, 24.0), egui::Sense::click_and_drag());
+        let mut changed = false;
+        if (response.clicked() || response.dragged())
+            && response.interact_pointer_pos().is_some()
+        {
+            if let Some(at) = response.interact_pointer_pos() {
+                let fraction = ((at.x - rect.left() - 9.0) / (rect.width() - 18.0))
+                    .clamp(0.0, 1.0);
+                let next = min + fraction * (max - min);
+                if (next - *value).abs() > 0.0001 {
+                    *value = next;
+                    changed = true;
+                }
+            }
+        }
+        let track = Rect::from_center_size(rect.center(),
+            egui::vec2((width - 18.0).max(8.0), 6.0));
+        let fraction = ((*value - min) / (max - min)).clamp(0.0, 1.0);
+        let x = track.left() + fraction * track.width();
+        ui.painter().rect_filled(track, 3.0,
+            Color32::from_rgb(171, 183, 198));
+        if x > track.left() {
+            let fill = Rect::from_min_max(track.left_top(),
+                egui::pos2(x, track.bottom()));
+            ui.painter().rect_filled(fill, 3.0,
+                Color32::from_rgb(29, 117, 222));
+        }
+        ui.painter().circle_filled(egui::pos2(x, rect.center().y),
+            7.0, CYAN);
+        ui.painter().circle_stroke(egui::pos2(x, rect.center().y),
+            7.0, Stroke::new(1.4, HUB));
+        changed
     }
 
     /// Render the same wheel function in the live canvas and settings preview.
@@ -369,7 +419,12 @@ impl Wheel {
                 .fixed_pos(at)
                 .show(ctx, |ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(self.size), egui::Sense::hover());
-                    self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity, self.hovered);
+                    // Android native stylus hover lives outside egui PointerMoved;
+                    // prefer its actual pen position for highlight selection.
+                    let highlighted = self.pen_hover.and_then(|p|
+                        self.sector(p, screen)).or(self.hovered);
+                    self.paint(ui.ctx(), ui.painter(), rect.center(),
+                        self.size, self.opacity, highlighted);
                 });
         }
         if let Some(at) = self.pen_hover {
@@ -391,12 +446,20 @@ impl Wheel {
                     ui.set_min_width(410.0);
                     ui.label("Default • WordCraft blue/cyan • PhotoCraft layout");
                     ui.separator();
-                    changed |= ui.add_sized([375.0, 24.0], egui::Slider::new(&mut self.size, 170.0..=380.0)
-                        .text("Wheel size").suffix(" pt")).changed();
-                    let percent = (self.opacity * 100.0).round();
-                    changed |= ui.add_sized([375.0, 24.0], egui::Slider::new(&mut self.opacity, 0.25..=1.0)
-                        .text("Wheel opacity")).changed();
-                    ui.small(format!("Opacity: {percent:.0}% • Full-size, live preview"));
+                    // Align both labels and values in matching columns.
+                    ui.horizontal(|ui| {
+                        ui.add_sized([112.0, 24.0], egui::Label::new("Wheel size"));
+                        changed |= Self::bar_slider(ui, &mut self.size, 170.0, 380.0, 190.0);
+                        ui.add_sized([70.0, 24.0], egui::Label::new(
+                            format!("{:.0} pt", self.size)));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add_sized([112.0, 24.0], egui::Label::new("Wheel opacity"));
+                        changed |= Self::bar_slider(ui, &mut self.opacity, 0.25, 1.0, 190.0);
+                        ui.add_sized([70.0, 24.0], egui::Label::new(
+                            format!("{:.0}%", self.opacity * 100.0)));
+                    });
+                    ui.small("Drag the cyan handle • the preview updates at actual size.");
                     ui.separator();
                     ui.label("Live preview (same geometry and opacity as on the canvas)");
                     egui::ScrollArea::horizontal().max_height(402.0).show(ui, |ui| {

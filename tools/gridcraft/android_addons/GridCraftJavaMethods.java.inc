@@ -385,9 +385,35 @@
     private final java.util.concurrent.ConcurrentLinkedQueue<String> gcStylusWheelKeys =
             new java.util.concurrent.ConcurrentLinkedQueue<>();
     private long gcWheelLastSingle, gcWheelLastDouble;
+    // Retain only the newest pen hover sample. No allocation queue growth,
+    // cursor takeover, or synthetic clicks in the underlying worksheet.
+    private final java.util.concurrent.atomic.AtomicReference<String> gcWheelHover =
+            new java.util.concurrent.atomic.AtomicReference<>();
+    public String gcStylusWheelPollHover() { return gcWheelHover.getAndSet(null); }
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (gcStylusWheelEnabled && event != null && event.getPointerCount() > 0) {
+            final int action = event.getActionMasked();
+            final int tool = event.getToolType(0);
+            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
+                if (action == android.view.MotionEvent.ACTION_HOVER_MOVE
+                        || action == android.view.MotionEvent.ACTION_HOVER_ENTER) {
+                    gcWheelHover.set("M:" + Float.toString(event.getX(0))
+                            + "," + Float.toString(event.getY(0)));
+                } else if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+                    gcWheelHover.set("E");
+                }
+            }
+        }
+        // Preserve NativeActivity/winit hover routing and all existing
+        // touch, trackpad and mouse generic-motion handling.
+        return super.dispatchGenericMotionEvent(event);
+    }
+
     public void gcStylusWheelSetEnabled(boolean value) {
         gcStylusWheelEnabled = value;
         gcStylusWheelKeys.clear();
+        gcWheelHover.set(null);
     }
     public String gcStylusWheelPoll() { return gcStylusWheelKeys.poll(); }
     public boolean gcStylusWheelIntercept(android.view.KeyEvent event) {

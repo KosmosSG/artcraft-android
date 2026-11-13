@@ -6,6 +6,7 @@ Fail closed on upstream code changes; never modify other Craft apps.
 """
 from pathlib import Path
 import argparse
+import shutil
 
 
 def apply(source: Path) -> None:
@@ -32,35 +33,37 @@ def apply(source: Path) -> None:
     print("PASS: native-Cc PhotoCraft-style compact CADCraft Android menu injected.")
 
 
-def disable_reference_updater(template: Path) -> None:
-    """Prevent the reference builder's global updater from advertising unrelated apps.
+def install_cadcraft_updater(reference: Path) -> None:
+    """Replace reference-builder updater with a CADCraft-only in-app downloader.
 
-    Its Java version comparator checks the MostafaXS1 *builder* release rather than
-    the installed CADCraft APK. It must not run automatically in this isolated test.
-    The upstream manual CADCraft check remains available in the Cc menu.
+    This affects solely the disposable CADCraft Actions checkout. The reference
+    builder's unrelated versions must never be promoted to CADCraft users.
     """
-    text = template.read_text(encoding="utf-8")
-    anchor = "    public static void start(final Activity activity) {"
-    i = text.find(anchor)
-    if i < 0:
-        raise SystemExit("Reference Java updater changed: inspect before enabling a test build")
-    first_brace = text.index("{", i)
-    depth = 0
-    end = None
-    for j in range(first_brace, len(text)):
-        if text[j] == "{":
-            depth += 1
-        elif text[j] == "}":
-            depth -= 1
-            if depth == 0:
-                end = j + 1
-                break
-    if end is None:
-        raise SystemExit("Unbalanced reference Java updater start()")
-    replacement = anchor + '\n        // CADCraft TEST ONLY: globally scoped builder updater disabled.\n    }'
-    text = text[:i] + replacement + text[end:]
-    template.write_text(text, encoding="utf-8")
-    print("PASS: disabled unrelated builder-wide automatic update notifications in test APK.")
+    root = Path(__file__).resolve().parent
+    java_source = root / "CadCraftUpdateCheck.java"
+    if not java_source.is_file():
+        raise SystemExit("Missing reviewed CADCraft Android updater")
+    target = reference / "templates/android/UpdateCheck.java"
+    original = target.read_text(encoding="utf-8")
+    if 'private static final String BUILDER_VERSION = "__BUILDER_VERSION__"' not in original:
+        raise SystemExit("Pinned Android builder updater changed; refusing unsafe replacement")
+    reviewed = java_source.read_text(encoding="utf-8")
+    if ("public static void checkNow(final Activity activity)" not in reviewed
+            or "KosmosSG/artcraft-android/releases?" not in reviewed):
+        raise SystemExit("CADCraft-only updater code validation failed")
+    target.write_text(reviewed, encoding="utf-8")
+    builder = reference / "lib/build-common.sh"
+    source = builder.read_text(encoding="utf-8")
+    needle = 'name = "android.permission.INTERNET"\n'
+    if source.count(needle) != 1:
+        raise SystemExit("Builder Android permission manifest anchor changed")
+    source = source.replace(needle, needle + """
+# Allow explicit user-approved APK installation from CADCraft's in-app downloader.
+[[package.metadata.android.uses_permission]]
+name = "android.permission.REQUEST_INSTALL_PACKAGES"
+""", 1)
+    builder.write_text(source, encoding="utf-8")
+    print("PASS: CADCraft-only GitHub release checker and in-app APK download/installer staged.")
 
 
 
@@ -82,6 +85,8 @@ def patch_cadcraft_ui(source: Path) -> None:
     pub cad_wheel_open: bool,
     pub cad_wheel_customize: bool,
     pub cad_wheel_actions: Vec<String>,
+    pub cad_wheel_size: f32,
+    pub cad_wheel_opacity: f32,
 """)
     src = replace_once(src, "            last_pgp_dir: None,\n",
         """            last_pgp_dir: None,
@@ -90,15 +95,28 @@ def patch_cadcraft_ui(source: Path) -> None:
             cad_wheel_actions: vec![
                 "select", "line", "circle", "ui.panel.layers", "pan", "trim", "redo", "undo",
             ].into_iter().map(str::to_string).collect(),
+            cad_wheel_size: 1.0,
+            cad_wheel_opacity: 1.0,
 """)
     src = replace_once(src, "        prefs.to_string()\n",
         """        #[cfg(target_os = "android")]
         {
             prefs["cadWheelActions"] = json!(self.ui.cad_wheel_actions);
+            prefs["cadWheelSize"] = json!(self.ui.cad_wheel_size);
+            prefs["cadWheelOpacity"] = json!(self.ui.cad_wheel_opacity);
         }
         prefs.to_string()
 """)
-    src = replace_once(src, '        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\n',
+    src = replace_once(src, '        #[cfg(target_os = "android")]
+        {
+            if let Some(size) = v.get("cadWheelSize").and_then(Value::as_f64) {
+                if size.is_finite() { self.ui.cad_wheel_size = (size as f32).clamp(0.65, 1.45); }
+            }
+            if let Some(opacity) = v.get("cadWheelOpacity").and_then(Value::as_f64) {
+                if opacity.is_finite() { self.ui.cad_wheel_opacity = (opacity as f32).clamp(0.35, 1.0); }
+            }
+        }
+        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\n',
         """        #[cfg(target_os = "android")]
         if let Some(actions) = v.get("cadWheelActions").and_then(Value::as_array) {
             if actions.len() == 8
@@ -124,7 +142,14 @@ def patch_cadcraft_ui(source: Path) -> None:
     if dest.exists():
         raise SystemExit("CADCraft wheel module exists upstream; refusing overwrite")
     dest.write_bytes(template.read_bytes())
-    print("PASS: 8-segment wheel, native CAD actions, menu customization and saved preferences staged.")
+    # JNI bridge is compiled only for the Android UI target; no desktop graph changes.
+    cargo = source / "crates/ui-egui/Cargo.toml"
+    manifest = cargo.read_text(encoding="utf-8")
+    dep_section = """\n[target.'cfg(target_os = "android")'.dependencies]\njni = "0.22"\nndk-context = "0.1"\n"""
+    if "ndk-context" in manifest or "[target.'cfg(target_os = \"android\")'.dependencies]" in manifest:
+        raise SystemExit("CADCraft Android JNI dependencies changed; inspect manifest")
+    cargo.write_text(manifest + dep_section, encoding="utf-8")
+    print("PASS: 8 CAD actions, live size/opacity preview, native updater entry and saved prefs staged.")
 
 
 def prepare_exact_icon(reference: Path, source: Path) -> None:
@@ -147,6 +172,26 @@ def prepare_exact_icon(reference: Path, source: Path) -> None:
     if len(raw) != 64 * 64 * 4:
         raise SystemExit("Invalid CADCraft native menu icon")
     (source / "crates/ui-egui/src/cadcraft_cc_icon.rgba").write_bytes(raw)
+    # Transparent cream glyph for the circular solid-pink center hub, preserving
+    # the exact Cc letterforms (never place a rounded square inside the hub).
+    work = icon.resize((256, 256), Image.Resampling.LANCZOS)
+    pixels = work.load()
+    glyph = Image.new("RGBA", work.size, (0, 0, 0, 0))
+    gp = glyph.load()
+    for y in range(256):
+        for x in range(256):
+            r, g, b, a = pixels[x, y]
+            coverage = max(0, min(255, round((g - 49) * 255 / (228 - 49))))
+            if coverage > 1 and a > 0:
+                gp[x, y] = (243, 228, 231, round(a * coverage / 255))
+    bbox = glyph.getbbox()
+    if bbox is None:
+        raise SystemExit("Cc center glyph extraction failed")
+    glyph = glyph.crop(bbox)
+    glyph.thumbnail((52, 39), Image.Resampling.LANCZOS)
+    center = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    center.alpha_composite(glyph, ((64 - glyph.width) // 2, (64 - glyph.height) // 2))
+    (source / "crates/ui-egui/src/cadcraft_cc_glyph.rgba").write_bytes(center.tobytes())
     from cadcraft_icon_fix import patch_reference
     patch_reference(reference)
     print("PASS: Cc menu/wheel artwork uses exact supplied red #D13153 and cream #F3E4E7.")
@@ -160,7 +205,7 @@ def main() -> None:
     apply(args.source)
     patch_cadcraft_ui(args.source)
     prepare_exact_icon(args.reference, args.source)
-    disable_reference_updater(args.reference / "templates/android/UpdateCheck.java")
+    install_cadcraft_updater(args.reference)
 
 
 if __name__ == "__main__":

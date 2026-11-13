@@ -15,9 +15,35 @@ class BlueWheelTests(unittest.TestCase):
     def test_isolated_and_user_approved_style(self):
         for text in ("WC_BLUE_STYLUS_WHEEL_V1", "Wc", "CYAN", "HUB",
                      "Color32::from_rgb(14, 82, 165)", "Color32::from_rgb(122, 216, 252)",
-                     "Color32::from_rgba_unmultiplied(65, 68, 73", "Color32::from_black_alpha",
+                     "SEGMENT_GREY_LIGHT", "SEGMENT_GREY_DARK", "Color32::from_black_alpha",
                      "egui::Shape::convex_polygon"):
             self.assertIn(text, SRC)
+
+    def test_android9_defaults_greys_and_launcher_logo(self):
+        # New installs and Reset must be 200pt / 100% opacity, without
+        # changing previously saved customization preferences.
+        self.assertIn("WC_ANDROID9_APPROVED_DEFAULTS_AND_GREY_SEGMENTS_V1", SRC)
+        self.assertIn("const DEFAULT_WHEEL_SIZE: f32 = 200.0;", SRC)
+        self.assertIn("const DEFAULT_WHEEL_OPACITY: f32 = 1.0;", SRC)
+        self.assertIn("size: DEFAULT_WHEEL_SIZE,", SRC)
+        self.assertIn("opacity: DEFAULT_WHEEL_OPACITY,", SRC)
+        self.assertIn("self.size = DEFAULT_WHEEL_SIZE;", SRC)
+        self.assertIn("self.opacity = DEFAULT_WHEEL_OPACITY;", SRC)
+        self.assertIn('value["size"].as_f64()', SRC)
+        self.assertIn('value["opacity"].as_f64()', SRC)
+        # As in PhotoCraft, alternating slot tones should be subtle.
+        self.assertIn("SEGMENT_GREY_LIGHT: Color32 = Color32::from_rgb(68, 70, 75)", SRC)
+        self.assertIn("SEGMENT_GREY_DARK: Color32 = Color32::from_rgb(51, 54, 59)", SRC)
+        self.assertIn("if i % 2 == 0 { SEGMENT_GREY_LIGHT } else { SEGMENT_GREY_DARK }", SRC)
+        self.assertIn("normal.r(), normal.g(), normal.b()", SRC)
+        self.assertIn("Color32::from_rgba_unmultiplied(9, 113, 212", SRC)
+        # Preserve exact Wc launcher glyph bitmap; reduce both dimensions
+        # by ten percent, move logo lower, leave label and hub alone.
+        self.assertIn("WC_ANDROID9_APPROVED_WC_LOGO_V1", SRC)
+        self.assertIn("let logo = Self::wc_mark(ctx);", SRC)
+        self.assertIn("size * 0.018", SRC)
+        self.assertIn("size * 0.1908, size * 0.0882", SRC)
+        self.assertNotIn("size * 0.212, size * 0.098", SRC)
 
     def test_outer_circle_only_uses_approved_wc_cyan(self):
         # Match the launcher Wc cyan exactly; outer rim alone is recolored.

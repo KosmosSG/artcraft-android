@@ -69,6 +69,7 @@ class WheelIntegration(unittest.TestCase):
   self.assertIn('if self.pen_hover.is_none() { self.hover = Some(pos); }',wheel)
   self.assertIn('self.hover.and_then(|p| Self::hit(center, p, scale))',wheel)
   self.assertIn('action == 7 || action == 9',native)
+  self.assertGreater(mobile.index('self.wheel.capture(ctx, raw, blocked);'), mobile.index('raw.events.push(egui::Event::PointerMoved(pos))'))
   # Hover must never synthesize a button press or touch selection.
   passive=mobile.split('// NativeActivity receives stylus HOVER_MOVE')[1].split('pub fn take_wheel_action')[0]
   self.assertNotIn('raw.events.push(egui::Event::PointerButton',passive)

@@ -60,6 +60,9 @@ replace = """            cv.gesture = Some(Gesture::Draw { page: cx.page, tool, 
             }
             cv.selected = None;
 """
+if "cv.select(None);" in original:
+    start = start.replace("cv.selected = None;", "cv.select(None);")
+    replace = replace.replace("cv.selected = None;", "cv.select(None);")
 if original.count(start) != 1:
     raise SystemExit("PDFCraft draw-start anchor changed")
 original = original.replace(start, replace, 1)

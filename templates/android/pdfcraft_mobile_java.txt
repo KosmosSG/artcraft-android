@@ -651,3 +651,27 @@ protected void onDestroy() {
     super.onDestroy();
     pdfLifecycleTrace("onDestroy:after");
 }
+
+// Incoming intents are untrusted even when this Activity has broad file access.
+// Canonical paths cover .. and symlink aliases into credential/device-private data.
+private boolean pdfIncomingUriAllowed(Uri uri) {
+    if (uri == null) return false;
+    if ("content".equals(uri.getScheme())) return true; // provider enforces URI grants
+    if (!"file".equals(uri.getScheme()) || uri.getPath() == null) return false;
+    try {
+        File requested = new File(uri.getPath()).getCanonicalFile();
+        File data = new File(getApplicationInfo().dataDir).getCanonicalFile();
+        File deviceData = createDeviceProtectedStorageContext().getDataDir().getCanonicalFile();
+        if (pdfPathWithin(requested, data) || pdfPathWithin(requested, deviceData)) {
+            Log.w(TAG, "Rejected incoming reference to private application data");
+            return false;
+        }
+        return true;
+    } catch (Exception error) {
+        Log.w(TAG, "Cannot validate incoming document path");
+        return false;
+    }
+}
+private static boolean pdfPathWithin(File path, File directory) {
+    return path.equals(directory) || path.getPath().startsWith(directory.getPath() + File.separator);
+}

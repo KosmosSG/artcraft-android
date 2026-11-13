@@ -108,8 +108,8 @@ jobs:
           assert "fn deck_style_curved_arrow" in wheel_source
           assert "7 => deck_style_curved_arrow(p, rect, true)" in wheel_source
           assert "Stylus hover: signal detected" in wheel_source
-          assert "Stroke::new(0.95*scale,BRIGHT)" in wheel_source
-          assert "visuals.selection.bg_fill = DARK" in wheel_source
+          assert "Stroke::new(0.95*scale,LIME)" in wheel_source
+          assert "Self::green_slider" in wheel_source
           assert "fn green_slider" in wheel_source
           assert "PhotoCraft reference: alternating graphite greys" in wheel_source
           assert "Color32::from_rgb(62, 63, 65)" in wheel_source

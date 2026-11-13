@@ -620,9 +620,13 @@ jobs:
           assert 'consume_android_undo_chord(raw);' in host
           assert 'pub fn has_android_undo_chord(' in input
           assert 'pub fn consume_android_undo_chord(' in input
-          assert 'fn ctrl_z_undo_chord_is_scoped_to_open_document_and_single_command()' in input
-          assert 'fn ctrl_z_never_swallow_shift_redo_alt_plain_or_repeat()' in input
-          print("PASS: Android.3 Ctrl+Z document Undo and guards are present")
+          # The generated adapter is patched by earlier upstream overlays,
+          # which omit #[cfg(test)] modules. Source tests live in the owner
+          # module and are compiled explicitly by the behavioral-gates step.
+          owner_input=Path("android-port/adapters/vectorcraft/src/android_modifiers.rs").read_text()
+          assert 'fn ctrl_z_undo_chord_is_scoped_to_open_document_and_single_command()' in owner_input
+          assert 'fn ctrl_z_never_swallow_shift_redo_alt_plain_or_repeat()' in owner_input
+          print("PASS: Android.3 Ctrl+Z generated runtime handlers and owner tests")
           PY
           python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
           # Android.3: the real Vc mark is the clickable top-left menu,
@@ -699,6 +703,8 @@ jobs:
           cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib android_wheel_tests --no-default-features
           cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib android_stability --no-default-features
           python3 android-port/tools/vectorcraft/run_staged_input_tests.py builder
+          # Owner regression tests cover Ctrl+Z before staging strips test modules.
+          python3 android-port/tools/vectorcraft/run_staged_input_tests.py android-port
           # Exercise engine text operations and UI typing/IME regression suites.
           cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-engine --lib text --no-default-features
           cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib typing --no-default-features

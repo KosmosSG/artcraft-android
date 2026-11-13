@@ -136,8 +136,8 @@ new='''        let mut done=false;
                     .corner_radius(egui::CornerRadius::same(9))
                     .inner_margin(egui::Margin::symmetric(10,7))
                     .show(ui,|ui| {
-                        changed |= deckcraft_slider(ui,"Wheel size",&mut w.size,75.0,125.0);
-                        changed |= deckcraft_slider(ui,"Opacity",&mut w.opacity,60.0,100.0);
+                        changed |= deckcraft_slider(ui, "Wheel size", &mut w.size, 75.0, 125.0);
+                        changed |= deckcraft_slider(ui, "Opacity", &mut w.opacity, 60.0, 100.0);
                         ui.add_space(3.0);
                         ui.label(egui::RichText::new(
                             "Size: 75–125%  ·  Opacity: 60–100%"
@@ -177,8 +177,8 @@ for required in (
     'w.size = n.clamp(75.0, 125.0)',
     'w.opacity = n.clamp(60.0, 100.0)',
     'slot in 0..8',
-    'changed |= deckcraft_slider(ui,"Wheel size"',
-    'changed |= deckcraft_slider(ui,"Opacity"',
+    'changed |= deckcraft_slider(ui, "Wheel size"',
+    'changed |= deckcraft_slider(ui, "Opacity"',
     'if ui.button("Reset defaults").clicked()',
     'w.size=DEFAULT_SIZE;',
     'w.opacity=DEFAULT_OPACITY;',

@@ -359,6 +359,18 @@ impl Wheel {
     fn apply(&mut self, app: &mut SheetApp) {
         let Some(index) = self.pending_action.take() else { return };
         match index {
+            6 | 7 => {
+                // Same quiet history semantics as hardware Ctrl+Z/Ctrl+Y.
+                // Commit the active cell before asking the engine to undo.
+                if !app.commit_edit(0, 0, false, false) { return; }
+                let command = if index == 6 { "edit.undo" } else { "edit.redo" };
+                if let Err(e) = app.run(command, serde_json::json!({})) {
+                    if !e.contains("nothing to undo") && !e.contains("nothing to redo")
+                        && !e.contains("is not available right now") {
+                        log::warn!("GridCraft stylus wheel {command}: {e}");
+                    }
+                }
+            }
             1 => app.open_dialog("formatCells", serde_json::json!({})),
             2 => app.open_dialog("insertFunction", serde_json::json!({})),
             10 | 11 => {

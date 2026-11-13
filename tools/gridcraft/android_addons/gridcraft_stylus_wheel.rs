@@ -313,6 +313,19 @@ impl Wheel {
             });
         ctx.request_repaint_after(Duration::from_millis(100));
     }
+    fn gc_icon(ctx: &Context) -> egui::TextureHandle {
+        let id = Id::new("gridcraft-wheel-approved-user-gc");
+        if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+            return texture;
+        }
+        // Same protected Gc launcher asset as the Android title bar, rendered
+        // into a round transparent 128px RGBA by the isolated build overlay.
+        const PIXELS: &[u8] = include_bytes!("gridcraft-wheel-gc.rgba");
+        let image = egui::ColorImage::from_rgba_unmultiplied([128, 128], PIXELS);
+        let texture = ctx.load_texture("gridcraft-wheel-gc-mark", image, egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+        texture
+    }
     fn paint(&self, ui: &mut Ui, rect: egui::Rect, scale: f32, highlighted: Option<usize>) {
         let c = rect.center();
         let painter = ui.painter_at(rect);
@@ -355,8 +368,10 @@ impl Wheel {
         painter.circle_stroke(c,(INNER+2.0)*scale,Stroke::new(1.3,LIME));
         // Exact artwork-inspired round centre: deep-green solid, lime Gc letters.
         // No imported square icon or duplicate Android adaptive mask.
-        painter.text(c-vec2(0.0,8.0)*scale,egui::Align2::CENTER_CENTER,"Gc",
-            FontId::proportional(31.0*scale),LIME);
+        let gc_mark = Self::gc_icon(ui.ctx());
+        painter.image(gc_mark.id(), egui::Rect::from_center_size(
+            c-vec2(0.0,8.0)*scale, vec2(50.0,50.0)*scale),
+            egui::Rect::from_min_max(pos2(0.0,0.0),pos2(1.0,1.0)), Color32::WHITE);
         painter.text(c+vec2(0.0,23.0)*scale,egui::Align2::CENTER_CENTER,
             highlighted.map(|i| LABELS[self.slots[i]]).unwrap_or("Default"),
             FontId::proportional(10.0*scale),Color32::WHITE);

@@ -94,7 +94,7 @@ public String pdfTrackpadStatus() {
 public String pdfFontPoll() { return pdfFontResults.poll(); }
 public String pdfUpdatePoll() { String queued = pdfUpdateResults.poll(); return queued != null ? queued : pdfDownloadStatus(); }
 public boolean pdfStartupUpdateEnabled() {
-    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, true);
+    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PDF_STARTUP_UPDATE_PREF, false);
 }
 public void pdfSetStartupUpdateEnabled(boolean enabled) {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit()

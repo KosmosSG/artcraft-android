@@ -23,11 +23,14 @@ pub const CHOICES: [(&str, &str); 13] = [
     ("Lasso", "draw.lasso"),
 ];
 const DEFAULT: [usize; 8] = [0, 1, 4, 5, 3, 2, 6, 7];
-const CYAN: Color32 = Color32::from_rgb(62, 195, 255);
-const HUB: Color32 = Color32::from_rgb(10, 54, 116);
+const CYAN: Color32 = Color32::from_rgb(122, 216, 252);
+const HUB: Color32 = Color32::from_rgb(14, 82, 165);
 
 pub struct Wheel {
+    pub enabled: bool,
     pub visible: bool,
+    pen_hover: Option<Pos2>,
+    center_override: Option<Pos2>,
     pub settings_open: bool,
     pub size: f32,
     pub opacity: f32,
@@ -44,7 +47,10 @@ pub struct Wheel {
 impl Wheel {
     pub fn load(saved: Option<&str>) -> Self {
         let mut wheel = Self {
-            visible: true,
+            enabled: true,
+            visible: false,
+            pen_hover: None,
+            center_override: None,
             settings_open: false,
             size: 284.0,
             opacity: 0.82,
@@ -58,7 +64,10 @@ impl Wheel {
             last_command_at: None,
         };
         if let Some(value) = saved.and_then(|s| serde_json::from_str::<Value>(s).ok()) {
-            if let Some(v) = value["visible"].as_bool() { wheel.visible = v; }
+            // Android.2 stored visible=true as its only ON switch.
+            // Migrate it to enabled, never leave an always-on overlay open.
+            wheel.enabled = value["enabled"].as_bool()
+                .or_else(|| value["visible"].as_bool()).unwrap_or(true);
             if let Some(v) = value["size"].as_f64().filter(|v| v.is_finite()) {
                 wheel.size = (v as f32).clamp(170.0, 380.0);
             }
@@ -77,7 +86,7 @@ impl Wheel {
     }
 
     pub fn config_json(&self) -> String {
-        json!({"visible":self.visible, "size":self.size, "opacity":self.opacity,
+        json!({"enabled":self.enabled, "size":self.size, "opacity":self.opacity,
                "slots":self.slots}).to_string()
     }
 
@@ -85,16 +94,47 @@ impl Wheel {
         self.size = 284.0;
         self.opacity = 0.82;
         self.slots = DEFAULT;
+        self.visible = false;
+    }
+
+    pub fn toggle_enabled(&mut self) {
+        self.enabled = !self.enabled;
+        self.visible = false;
+        self.hovered = None;
+        self.pending = None;
+    }
+
+    pub fn set_pen_hover(&mut self, at: Option<Pos2>) {
+        self.pen_hover = at.filter(|p| p.x.is_finite() && p.y.is_finite());
+    }
+
+    pub fn open_at_hover(&mut self, ctx: &egui::Context) {
+        if !self.enabled || self.settings_open { return; }
+        let fallback = ctx.content_rect().center();
+        self.center_override = self.pen_hover
+            .or_else(|| ctx.input(|i| i.pointer.hover_pos()))
+            .or(Some(fallback));
         self.visible = true;
+        self.hovered = None;
+        ctx.request_repaint();
+    }
+
+    pub fn pen_button(&mut self, ctx: &egui::Context) {
+        if !self.enabled || self.settings_open { return; }
+        if self.visible { self.visible = false; self.hovered = None; }
+        else { self.open_at_hover(ctx); }
+        ctx.request_repaint();
     }
 
     pub fn center(&self, screen: Rect) -> Pos2 {
         let radius = self.size * 0.5;
-        let x = screen.right() - radius - 92.0;
-        let y = screen.bottom() - radius - 92.0;
+        let preferred = self.center_override.unwrap_or_else(||
+            egui::pos2(screen.right() - radius - 92.0, screen.bottom() - radius - 92.0));
         egui::pos2(
-            x.clamp(screen.left() + radius + 8.0, (screen.right() - radius - 8.0).max(screen.left() + radius + 8.0)),
-            y.clamp(screen.top() + radius + 8.0, (screen.bottom() - radius - 8.0).max(screen.top() + radius + 8.0)),
+            preferred.x.clamp(screen.left() + radius + 8.0,
+                (screen.right() - radius - 8.0).max(screen.left() + radius + 8.0)),
+            preferred.y.clamp(screen.top() + radius + 8.0,
+                (screen.bottom() - radius - 8.0).max(screen.top() + radius + 8.0)),
         )
     }
 
@@ -105,7 +145,7 @@ impl Wheel {
     fn sector(&self, pos: Pos2, screen: Rect) -> Option<usize> {
         if !self.owns(pos, screen) { return None; }
         let c = self.center(screen);
-        if pos.distance(c) <= self.size * 0.235 { return None; }
+        if pos.distance(c) <= self.size * 0.185 { return None; }
         // Wedges start at the top and proceed clockwise.
         let angle = ((pos.y - c.y).atan2(pos.x - c.x) + PI * 0.5).rem_euclid(TAU);
         Some(((angle / (TAU / 8.0)).floor() as usize).min(7))
@@ -122,78 +162,64 @@ impl Wheel {
         self.last_command_at = Some(now);
     }
 
-    /// WC_WHEEL_HOVER_ISOLATION_V1: swallow only events belonging to the radial
-    /// overlay. Other touch contacts, trackpad pan/pinch and keyboard keys pass.
-    /// Ownership persists until lift, even when the contact drags off the ring.
+    /// WC_WHEEL_MODAL_ISOLATION_V2: while open, pen hover, tap, drag and scroll
+    /// are owned by the wheel. No document selection can occur underneath.
+    /// Keyboard/IME commands pass through unmodified.
     pub fn filter_input(&mut self, raw: &mut egui::RawInput, screen: Rect) {
-        if !self.visible {
-            self.owned_mouse = false;
-            self.mouse_down = None;
-            self.touch_down = None;
-            self.hovered = None;
-            return;
-        }
-        let mut events = Vec::with_capacity(raw.events.len() + 1);
+        if !self.visible { return; }
+        let mut safe_events = Vec::with_capacity(raw.events.len() + 1);
+        let mut saw_pointer = false;
         for event in raw.events.drain(..) {
             match event {
-                egui::Event::PointerMoved(pos) if self.owns(pos, screen) || self.owned_mouse => {
+                egui::Event::PointerMoved(pos) => {
+                    saw_pointer = true;
                     self.hovered = self.sector(pos, screen);
-                    // Clear the previous document hover once before the wheel
-                    // receives subsequent movements; the editor must never see it.
-                    events.push(egui::Event::PointerGone);
                 }
-                egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, .. }
-                    if self.owns(pos, screen) || self.owned_mouse =>
-                {
-                    if pressed {
-                        self.owned_mouse = true;
-                        self.mouse_down = self.sector(pos, screen);
-                        self.hovered = self.mouse_down;
-                    } else {
-                        let release = self.sector(pos, screen);
-                        if let (Some(start), Some(end)) = (self.mouse_down.take(), release) {
-                            if start == end { self.queue(start); }
+                egui::Event::PointerButton { pos, pressed, button, .. } => {
+                    saw_pointer = true;
+                    if button == egui::PointerButton::Primary {
+                        if pressed {
+                            self.owned_mouse = true;
+                            self.mouse_down = self.sector(pos, screen);
+                            if self.mouse_down.is_none() { self.visible = false; }
+                        } else if self.owned_mouse {
+                            if let (Some(a), Some(b)) = (self.mouse_down.take(), self.sector(pos, screen)) {
+                                if a == b { self.queue(a); self.visible = false; }
+                            }
+                            self.owned_mouse = false;
                         }
-                        self.owned_mouse = false;
-                    }
-                    events.push(egui::Event::PointerGone);
+                    } else if pressed { self.visible = false; }
                 }
-                egui::Event::Touch { device_id, id, phase, pos, .. }
-                    if self.owns(pos, screen) ||
-                       self.touch_down.is_some_and(|(d, t, _)| d == device_id.0 && t == id.0) =>
-                {
+                egui::Event::Touch { device_id, id, phase, pos, .. } => {
+                    saw_pointer = true;
                     match phase {
                         egui::TouchPhase::Start => {
                             if let Some(slot) = self.sector(pos, screen) {
                                 self.touch_down = Some((device_id.0, id.0, slot));
-                            }
+                            } else { self.visible = false; }
                         }
                         egui::TouchPhase::End => {
-                            if let Some((d, t, start)) = self.touch_down {
-                                if d == device_id.0 && t == id.0 {
-                                    if self.sector(pos, screen) == Some(start) { self.queue(start); }
+                            if let Some((dev, tid, start)) = self.touch_down {
+                                if dev == device_id.0 && tid == id.0 {
+                                    if self.sector(pos, screen) == Some(start) {
+                                        self.queue(start);
+                                        self.visible = false;
+                                    }
                                     self.touch_down = None;
                                 }
                             }
                         }
                         egui::TouchPhase::Cancel => { self.touch_down = None; }
-                        egui::TouchPhase::Move => {
-                            self.hovered = self.sector(pos, screen);
-                        }
+                        egui::TouchPhase::Move => { self.hovered = self.sector(pos, screen); }
                     }
-                    events.push(egui::Event::PointerGone);
                 }
-                egui::Event::MouseWheel { .. } if self.hovered.is_some() => {
-                    // Never scroll/select the document through the wheel.
-                }
-                egui::Event::Zoom(_) if self.hovered.is_some() => {}
-                e => {
-                    if matches!(&e, egui::Event::PointerMoved(_)) { self.hovered = None; }
-                    events.push(e);
-                }
+                egui::Event::MouseWheel { .. } | egui::Event::Zoom(_) => {}
+                egui::Event::PointerGone => { self.hovered = None; }
+                other => safe_events.push(other),
             }
         }
-        raw.events = events;
+        if saw_pointer { safe_events.push(egui::Event::PointerGone); }
+        raw.events = safe_events;
     }
 
     /// Render the same wheel function in the live canvas and settings preview.

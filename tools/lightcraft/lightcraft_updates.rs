@@ -184,9 +184,21 @@ impl Updater {
         // Poll only pen-origin motion, never reinterpret touchpad or keyboard.
         if let Ok((button, position)) = Self::poll_stylus(app) {
             let pixels_per_point = ctx.pixels_per_point();
-            crate::android_stylus_wheel::set_pen_hover(ctx,
-                position.map(|(x, y)| egui::pos2(x / pixels_per_point, y / pixels_per_point)));
-            if button { crate::android_stylus_wheel::request_stylus_toggle(ctx); }
+            // The Android host and LightCraft UI are separate Rust crates:
+            // exchange pen state via the shared egui Context instead of a
+            // nonexistent host-crate module. Match the wheel's exact Ids.
+            let hover = position.map(|(x, y)| egui::pos2(x / pixels_per_point, y / pixels_per_point));
+            let hover_id = egui::Id::new("lightcraft.android.wheel.pen-hover");
+            let existing = ctx.data(|d| d.get_temp::<Option<egui::Pos2>>(hover_id)).flatten();
+            if existing != hover {
+                ctx.data_mut(|d| d.insert_temp(hover_id, hover));
+                ctx.request_repaint();
+            }
+            if button {
+                ctx.data_mut(|d| d.insert_temp(
+                    egui::Id::new("lightcraft.android.wheel.toggle-request"), true));
+                ctx.request_repaint();
+            }
         }
         let download_request_id = egui::Id::new("artcraft.lightcraft.download_update_requested");
         let download_requested = ctx.data_mut(|d| {

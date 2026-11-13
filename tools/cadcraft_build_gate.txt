@@ -13,3 +13,5 @@ CADCraft v0.19.0-android.4 ARM64 TEST ONLY / reviewer gates
 - Preserve native DXF/DWG SAF open/save; package com.artcraft.cadcraft.test
 - Disposable signing; ZIP integrity, ARM64 .so, apksigner verification and SHA-256
 - No merge, production signing, GitHub Release, or app baseline changes
+
+Android.4 focused CI retry #1: fix JNI 0.22 EnvUnowned mismatch by using JNI 0.21 attach guard in isolated updater bridge. Original run 43467985455 failed at native Rust compilation; no unrelated source changes.

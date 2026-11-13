@@ -47,6 +47,14 @@ impl Wheel {
             message: "Hover + single-press: open wheel",
             message_at: Instant::now() }
     }
+    // Keep the on-screen reset and the first-use defaults in sync.
+    fn reset_defaults(&mut self) {
+        self.layout = DEFAULT_LAYOUT;
+        self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;
+        self.opacity_percent = 100.0;
+        self.layout_dirty = true;
+    }
+
     /// Exact raster of the approved Pc launcher artwork. Build workflow generates
     /// the transparent RGBA file; no new runtime image decoder is needed.
     fn pdf_logo(ctx: &Context) -> egui::TextureHandle {
@@ -373,10 +381,7 @@ impl Wheel {
                     ui.add_space(7.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset defaults").clicked() {
-                            self.layout = DEFAULT_LAYOUT;
-                            self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;
-                            self.opacity_percent = 100.0;
-                            self.layout_dirty = true;
+                            self.reset_defaults();
                         }
                         if ui.button("Done").clicked() { done = true; }
                     });
@@ -519,9 +524,15 @@ mod tests {
         // Saved preferences continue to override the first-use default.
         wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85");
         assert_eq!((wheel.size_percent, wheel.opacity_percent), (123.0, 85.0));
-        // The Reset defaults button assigns DEFAULT_WHEEL_SIZE_PERCENT,
-        // keeping the lowest supported slider value within the existing range.
-        assert_eq!(DEFAULT_WHEEL_SIZE_PERCENT, 75.0);
+        // Reset defaults restores the intended appearance and marks it for
+        // persistence without changing the layout serialization format.
+        wheel.reset_defaults();
+        assert_eq!(wheel.layout, DEFAULT_LAYOUT);
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (75.0, 100.0));
+        assert!(wheel.layout_dirty);
+        let saved = wheel.take_layout_change().unwrap();
+        assert!(saved.ends_with(";75;100"));
+        assert!(!wheel.layout_dirty);
     }
     #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {
         assert_eq!(Wheel::launcher_red(), Color32::from_rgb(251, 14, 0));

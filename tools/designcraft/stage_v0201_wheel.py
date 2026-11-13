@@ -92,6 +92,19 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
             }).map_err(|e| e.to_string())
         }
 
+        pub fn dc_wheel_device_ids(&self) -> Result<Vec<i32>, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<Vec<i32>> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                let result = env.call_method(&*activity, jni_str!("dcStylusDeviceIds"),
+                    jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+                if result.is_null() { return Ok(Vec::new()); }
+                let value = JString::cast_local(env, result)?;
+                let ids: String = value.try_to_string(env)?;
+                Ok(ids.split(',').filter_map(|id| id.parse::<i32>().ok()).collect())
+            }).map_err(|e| e.to_string())
+        }
+
         pub fn dc_dialog_action(&self, active: bool) -> Result<i32, String> {""",
         "DesignCraft stylus wheel JNI bridge")
 

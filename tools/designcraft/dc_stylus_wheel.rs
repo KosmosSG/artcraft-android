@@ -128,8 +128,13 @@ impl Wheel {
         };
         match icon {
             "tool-selection" => {
-                // Reuse the native cursor silhouette; it is deliberately concave.
-                designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
+                // Image 1: clear monoline pointer, not an uneven filled cursor.
+                p.add(Shape::closed_line(vec![
+                    at(-0.60, -0.92), at(-0.51, 0.73),
+                    at(-0.14, 0.34), at(0.22, 0.89),
+                    at(0.53, 0.68), at(0.18, 0.15),
+                    at(0.76, 0.06),
+                ], stroke));
             }
             "tool-pen" => {
                 // Symmetric fountain pen nib with a distinct ink breather.
@@ -163,23 +168,24 @@ impl Wheel {
                 line(&[(-0.82, 0.32), (0.0, 0.76), (0.82, 0.32)]);
             }
             "wheel-undo" | "wheel-redo" => {
-                // Mirrored, smoothly sampled return arrows: left=Undo, right=Redo.
-                let dir = if icon == "wheel-undo" { 1.0 } else { -1.0 };
-                let mut curve = Vec::with_capacity(19);
-                for step in 0..=18 {
-                    let t = step as f32 / 18.0;
+                // Mirrored monoline return arrows. Undo points LEFT; Redo points RIGHT.
+                // A single cubic arc and three-point arrowhead stay legible at 75% size.
+                let direction = if icon == "wheel-undo" { 1.0 } else { -1.0 };
+                let mut arc = Vec::with_capacity(25);
+                for step in 0..=24 {
+                    let t = step as f32 / 24.0;
                     let u = 1.0 - t;
-                    let x = u*u*u*(-0.68) + 3.0*u*u*t*(-0.10)
-                        + 3.0*u*t*t*0.76 + t*t*t*0.66;
-                    let y = u*u*u*(-0.20) + 3.0*u*u*t*(-0.80)
-                        + 3.0*u*t*t*(-0.50) + t*t*t*0.53;
-                    curve.push(at(dir * x, y));
+                    let x = u*u*u*(-0.72) + 3.0*u*u*t*(-0.16)
+                        + 3.0*u*t*t*0.78 + t*t*t*0.68;
+                    let y = u*u*u*(-0.16) + 3.0*u*u*t*(-0.86)
+                        + 3.0*u*t*t*(-0.70) + t*t*t*0.52;
+                    arc.push(at(direction * x, y));
                 }
-                p.add(Shape::line(curve, stroke));
+                p.add(Shape::line(arc, stroke));
                 line(&[
-                    (dir * -0.27, -0.57),
-                    (dir * -0.68, -0.20),
-                    (dir * -0.28, 0.15),
+                    (direction * -0.35, -0.52),
+                    (direction * -0.72, -0.16),
+                    (direction * -0.34, 0.18),
                 ]);
             }
             _ => {
@@ -247,7 +253,10 @@ impl Wheel {
             p.line_segment([inner, end], Stroke::new(0.75,
                 Color32::from_rgba_unmultiplied(176, 176, 179, 88)));
         }
-        p.circle_stroke(center, radius - 1.0, Stroke::new(1.3, Color32::from_gray(120)));
+        // Image 1: a consistent thin pink circular rim in the exact Dc accent.
+        // Thickness scales smoothly with the 75–125% wheel size slider.
+        p.circle_stroke(center, radius - 1.5,
+            Stroke::new((radius * 0.019).clamp(2.0, 3.3), ACCENT));
         p.circle_filled(center, radius * 0.32, BG);
         p.circle_stroke(center, radius * 0.32, Stroke::new(2.0, ACCENT));
         let logo = Self::original_dc_logo(ui.ctx());
@@ -270,12 +279,27 @@ impl Wheel {
         let response = egui::Window::new("Stylus Wheel Customization")
             .id(Id::new("dc-wheel-customize-dialog"))
             .open(&mut open).resizable(false).collapsible(false)
+            // Image 2: dark charcoal panel; leave the application's global theme alone.
+            .frame(egui::Frame::window(&ctx.style())
+                .fill(Color32::from_rgb(31, 31, 34))
+                .stroke(Stroke::new(0.8, Color32::from_rgb(76, 76, 82))))
             .default_width(360.0).show(ctx, |ui| {
                 ui.label("DesignCraft · Default (8 customizable segments)");
                 ui.label("Adjust tools, size and opacity. Preview uses the actual wheel scale.");
                 ui.separator();
-                changed |= ui.add(egui::Slider::new(&mut self.size, 75.0..=125.0).text("Wheel size").suffix("%")).changed();
-                changed |= ui.add(egui::Slider::new(&mut self.opacity, 60.0..=100.0).text("Opacity").suffix("%")).changed();
+                // Image 2: vivid Dc-accent slider tracks and a neatly spaced pair
+                // of controls, without recolouring unrelated application widgets.
+                ui.scope(|ui| {
+                    let visuals = &mut ui.style_mut().visuals;
+                    visuals.selection.bg_fill = ACCENT;
+                    visuals.widgets.active.bg_fill = ACCENT;
+                    visuals.widgets.hovered.bg_fill = Color32::from_rgb(174, 43, 76);
+                    ui.spacing_mut().slider_width = 125.0;
+                    changed |= ui.add(egui::Slider::new(&mut self.size, 75.0..=125.0)
+                        .text("Wheel size").suffix("%")).changed();
+                    changed |= ui.add(egui::Slider::new(&mut self.opacity, 60.0..=100.0)
+                        .text("Opacity").suffix("%")).changed();
+                });
                 ui.separator();
                 for i in 0..8 {
                     ui.horizontal(|ui| {

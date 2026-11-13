@@ -41,6 +41,7 @@ class Android9WheelPreferences(unittest.TestCase):
             'vec2(width, 38.0)',
             'Restore Default',
             'Changes saved automatically.',
+            'highlighted.map(|i| LABELS[self.layout[i]]).unwrap_or("Default")',
         ):
             self.assertIn(expected, s)
         self.assertEqual(s.count('self.paint_wheel(ui, rect, scale, highlighted);'), 2)

@@ -1,17 +1,15 @@
-CADCraft v0.19.0-android.4 ARM64 TEST ONLY / reviewer gates
-- Preserve draft PR #158 and isolated feature branch, main untouched
-- Cc exact #D13153 / #F3E4E7 user glyph and launcher mask padding
-- Wheel: PhotoCraft-style 8 grey dual-tone sectors, official CADCraft toolbar icons,
-  centered pink circle/cream Cc, feathered 12-layer shadow
-- Default wheel 100% size, 85% opacity; customizable 75-125% and 60-100%
-- Actual-size, noninteractive preview outside customization dialog, Restore Default
-- Bottom-center status bar with PhotoCraft's 1.9s hold / 0.5s fade
-- Only validated HONOR Magic-Pencil button (device-specific native queue) opens wheel;
-  no bottom-right icon, no physical keyboard arrow interception
-- CADCraft-specific in-app GitHub published APK check/download with Android install confirmation;
-  safe Activity-owned JNI classloader boundary and clear failure messages
-- Preserve native DXF/DWG SAF open/save; package com.artcraft.cadcraft.test
-- Disposable signing; ZIP integrity, ARM64 .so, apksigner verification and SHA-256
-- No merge, production signing, GitHub Release, or app baseline changes
-
-Android.4 focused CI retry #1: fix JNI 0.22 EnvUnowned mismatch by using JNI 0.21 attach guard in isolated updater bridge. Original run 43467985455 failed at native Rust compilation; no unrelated source changes.
+CADCraft v0.19.0-android.5 ARM64 TEST ONLY / HONOR Magic-Pencil regression
+Keep original Storytold v0.19.0 + pinned reference builder; isolated branch + draft PR #158.
+Changes:
+- Fix pen button not opening wheel: PhotoCraft 100ms enabled-only queue polling
+  + Java Activity / IME fallback on verified Magic-Pencil key release DPAD_DOWN/UP
+  + retain native AInputQueue capture with Java-provided physical pen IDs
+  + suppress duplicate native/Java delivery; never intercept keyboard arrows
+- Default wheel size 75%, opacity 85%; migrate legacy untouched 100% default
+  without resetting manually customized values
+- Retain PhotoCraft two-tone grey slots, soft feathered shadow, exact Cc glyph,
+  outside-dialog actual-size preview, bottom-center fading notice
+- Retain in-app updater, CAD-specific GitHub release download and Android install prompt
+- Preserve SAF DXF/DWG, package com.artcraft.cadcraft.test and disposable signer
+- Require APK ZIP, ARM64 .so, aapt appId, signer/certificate SHA and SHA-256 checks.
+NEVER merge, publish or alter production keys, main, or other app baselines.

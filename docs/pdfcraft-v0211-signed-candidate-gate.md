@@ -24,7 +24,7 @@ The signed Android.2 candidate enforces this known inventory and refuses unrevie
 Workflow: `.github/workflows/pdfcraft-v0211-android2-signed-test.yml`
 Branch: `fix/pdfcraft-v0211-android2-signed-candidate-20261113`
 
-CI uses the tested source and upstream pin, rebuilds Android.2 with the **real production package `com.artcraft.pdfcraft`**, versionCode `16782594`, and the **existing PDFCraft permanent signer**. It validates the installed certificate fingerprint against Android.1; verifies source, ZIP, ABI, package, permission inventory, OCR and signing invariants; and uploads a **private-to-the-run Actions test artifact**, without creating a GitHub Release.
+CI uses the tested source and upstream pin, rebuilds Android.2 with the **real production package `com.artcraft.pdfcraft`**, versionCode `16782594`, and the **existing PDFCraft permanent signer**. It validates the installed certificate fingerprint against Android.1; verifies source, ZIP, ABI, package, permission inventory, OCR and signing invariants; and uploads a **GitHub Actions test artifact (not a public GitHub Release)**, without creating a GitHub Release.
 
 Artifact name: `PDFCraft-v0.21.1-android.2-PERMANENT-SIGNED-TEST-ONLY`
 APK file inside: `PDFCraft-v0.21.1-arm64-release.apk` (same filename required by the existing in-app updater's release pattern).

@@ -14,14 +14,14 @@ MENU = (ROOT / "ribbon_android.rs.inc").read_text()
 class BlueWheelTests(unittest.TestCase):
     def test_isolated_and_user_approved_style(self):
         for text in ("WC_BLUE_STYLUS_WHEEL_V1", "Wc", "CYAN", "HUB",
-                     "Color32::from_rgb(10, 54, 116)", "Color32::from_rgb(62, 195, 255)",
+                     "Color32::from_rgb(14, 82, 165)", "Color32::from_rgb(122, 216, 252)",
                      "Color32::from_rgba_unmultiplied(65, 68, 73", "Color32::from_black_alpha",
                      "egui::Shape::convex_polygon"):
             self.assertIn(text, SRC)
 
     def test_full_size_preview_and_customization(self):
         for text in ("170.0..=380.0", "0.25..=1.0", "Live preview", "Reset to default",
-                     "Edit shortcuts", "self.paint(ui.painter(), rect.center(), self.size, self.opacity",
+                     "Edit shortcuts", "self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity",
                      "Wheel size", "Wheel opacity", "config_json"):
             self.assertIn(text, SRC)
 
@@ -36,8 +36,8 @@ class BlueWheelTests(unittest.TestCase):
 
     def test_raw_hover_and_ink_never_reach_canvas(self):
         for text in ("filter_input", "TouchPhase::Start", "TouchPhase::End",
-                     "Event::PointerGone", "self.owns", "raw.events = events",
-                     "MouseWheel", "WC_WHEEL_HOVER_ISOLATION_V1"):
+                     "Event::PointerGone", "self.owns", "raw.events = safe_events",
+                     "MouseWheel", "WC_WHEEL_MODAL_ISOLATION_V2"):
             self.assertIn(text, SRC)
         self.assertIn("self.wheel.owns(egui::pos2(p[0], p[1]), screen)", NATIVE)
         self.assertIn("self.wheel.filter_input(raw, screen);", NATIVE)
@@ -54,11 +54,25 @@ class BlueWheelTests(unittest.TestCase):
         for text in ("wheel_customize", "wheel_on", "wheel_off", "save_wheel",
                      "self.wheel.show(ctx)", "stylus_wheel::CHOICES"):
             self.assertIn(text, NATIVE)
-        self.assertIn("Show Stylus Wheel", MENU)
+        self.assertIn("✓ Stylus Wheel ON", MENU)
+        self.assertIn("Open Stylus Wheel", MENU)
         self.assertIn("Customize Stylus Wheel", MENU)
         self.assertIn("wc_menu_wheel_visible", MENU)
         self.assertIn("mod stylus_wheel;", NATIVE)
         self.assertIn("stylus_wheel.rs", BUILDER)
+        self.assertIn("stylus_wheel_wc.rgba", BUILDER)
+        self.assertIn("WC_EXACT_LAUNCHER_WC_GLYPH_V1", BUILDER)
+        self.assertIn("WC_APPROVED_WC_LAUNCHER_GLYPH_V1", SRC)
+        self.assertIn("radius * 0.37", SRC)
+        self.assertIn("PhotoCraft hub ratio", SRC)
+        self.assertIn("wcWheelHandlePenKey", JAVA)
+        self.assertIn("wcWheelButtonMotion", JAVA)
+        self.assertIn("KEYCODE_DPAD_DOWN", JAVA)
+        self.assertIn("wcWheelPoll", JAVA)
+        self.assertIn("wcWheelSetEnabled", JAVA)
+        self.assertIn("wcWheelPoll", NATIVE)
+        self.assertIn("self.poll_wheel(ctx);", NATIVE)
+        self.assertIn("WC_EFFECTCRAFT_STYLE_WHEEL_MENU_V1", MENU)
 
     def test_no_production_or_cross_app_mutation(self):
         self.assertNotIn("MANAGE_EXTERNAL_STORAGE", SRC)

@@ -405,7 +405,11 @@ impl Wheel {
         painter.text(center + egui::vec2(0.0, size * 0.106), egui::Align2::CENTER_CENTER,
             if self.visible { CHOICES[self.slots[self.active]].0 } else { "Default" },
             FontId::proportional((size * 0.039).clamp(10.0, 13.0)), Color32::WHITE);
-        painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::from_gray(124)));
+        // WC_ANDROID6_APPROVED_CYAN_OUTER_RING_V1: outline the *outer circle*
+        // only in the exact launcher Wc glyph cyan (#7AD8FC). Keep the
+        // PhotoCraft-style soft shadow, eight dark segments, their fine
+        // neutral dividers, and the central hub unchanged.
+        painter.circle_stroke(center, radius, Stroke::new(1.5, CYAN));
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> bool {

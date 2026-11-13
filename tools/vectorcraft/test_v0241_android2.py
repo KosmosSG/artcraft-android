@@ -11,7 +11,7 @@ def verify(root):
     assert 'version = "0.24.1"' in (root/'source/vectorcraft/Cargo.toml').read_text()
     assert wheel.count('fn paint_wheel(')==1
     assert wheel.count('self.paint_wheel(ui, rect, scale, highlighted);')==2
-    assert 'num_columns(2)' in wheel and '.width(156.0)' in wheel
+    assert 'num_columns(2)' in wheel and '.width(206.0)' in wheel
     assert 'if !isolated { retained.push(egui::Event::PointerMoved(pos)); }' in wheel
     assert 'vc-wheel-input-owned' in canvas and 'tool_frame_moves(ui, app, false)' in canvas
     assert canvas.index('vc-wheel-input-owned') < canvas.index('wheel_view(app, ui, resp, rect)')

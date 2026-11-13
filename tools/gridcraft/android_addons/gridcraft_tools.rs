@@ -39,7 +39,19 @@ impl GridCraftTools {
             result?.z()
         }).unwrap_or(false);
         if undo && inner.session.active().is_some() {
-            inner.run_or_alert("edit.undo", serde_json::json!({}));
+            // Undo must see the most recent committed worksheet operation.
+            // Ctrl+Z from a focused cell first commits its pending edit;
+            // no-history is a harmless no-op, not a scary error toast.
+            if !inner.commit_edit(0, 0, false, false) {
+                ctx.request_repaint();
+                return;
+            }
+            match inner.run("edit.undo", serde_json::json!({})) {
+                Ok(_) => {}
+                Err(e) if e.contains("nothing to undo") ||
+                    e.contains("is not available right now") => {}
+                Err(e) => log::warn!("GridCraft Ctrl+Z Undo: {e}"),
+            }
             ctx.request_repaint();
             return;
         }

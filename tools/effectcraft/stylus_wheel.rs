@@ -52,6 +52,7 @@ pub(crate) struct Wheel {
     open: bool,
     center: Pos2,
     hover: Option<Pos2>,
+    pen_hover: Option<Pos2>,
     slots: [usize; 8],
     size_percent: f32,
     opacity_percent: f32,
@@ -64,7 +65,7 @@ impl Default for Wheel {
     fn default() -> Self {
         Self {
             enabled: false, settings_open: false, open: false,
-            center: pos2(0.0, 0.0), hover: None, slots: DEFAULT_SLOTS,
+            center: pos2(0.0, 0.0), hover: None, pen_hover: None, slots: DEFAULT_SLOTS,
             size_percent: 100.0, opacity_percent: 85.0,
             storage: None, pending: None, last_press: None,
         }
@@ -144,6 +145,87 @@ impl Wheel {
             self.open_at_hover(ctx);
         }
         ctx.request_repaint();
+    }
+
+    /// Only verified physical pen input updates this cursor; never use the mouse.
+    pub(crate) fn set_pen_hover(&mut self, point: Option<Pos2>, ctx: &Context) {
+        if self.pen_hover != point {
+            self.pen_hover = point;
+            if let Some(point) = point { self.hover = Some(point); }
+            ctx.request_repaint();
+        }
+    }
+
+    /// Exact glyph pixels from the approved launcher tile, no font substitution.
+    fn ec_mark(ctx: &Context) -> egui::TextureHandle {
+        let id = Id::new("ec-stylus-wheel-approved-mark-v1");
+        if let Some(existing) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+            return existing;
+        }
+        const PIXELS: &[u8] = include_bytes!("stylus_wheel_ec.rgba");
+        let image = egui::ColorImage::from_rgba_unmultiplied([192, 126], PIXELS);
+        let mark = ctx.load_texture("effectcraft-wheel-launcher-Ec",
+            image, egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d| d.insert_temp(id, mark.clone()));
+        mark
+    }
+
+    /// Custom curved Undo/Redo arrows and accurate, crisp Layers/Crop/Adjust.
+    fn paint_slot_icon(painter: &egui::Painter, center: Pos2,
+        choice: usize, scale: f32, color: Color32) {
+        let stroke = Stroke::new(2.1 * scale, color);
+        match choice {
+            6 | 7 => {
+                let mirror = if choice == 6 { 1.0 } else { -1.0 };
+                let curve: Vec<Pos2> = (0..=24).map(|i| {
+                    let t = i as f32 / 24.0;
+                    center + vec2(
+                        mirror * (-10.0 + 20.0 * t) * scale,
+                        (-1.0 - 10.0 * 4.0 * t * (1.0 - t) + 7.0 * t) * scale)
+                }).collect();
+                painter.add(Shape::line(curve, stroke));
+                let tip = center + vec2(-10.0 * mirror, -1.0) * scale;
+                painter.line_segment([tip, center + vec2(-3.3 * mirror, -7.0) * scale], stroke);
+                painter.line_segment([tip, center + vec2(-3.0 * mirror, 5.0) * scale], stroke);
+            }
+            2 => {
+                // Three stacked diamond outlines, not the previous star icon.
+                for row in 0..3 {
+                    let y = (-8.0 + row as f32 * 5.5) * scale;
+                    painter.add(Shape::line(vec![
+                        center + vec2(-9.0 * scale, y),
+                        center + vec2(0.0, y + 4.2 * scale),
+                        center + vec2(9.0 * scale, y)], stroke));
+                }
+                painter.line_segment([center + vec2(-9.0, -8.0) * scale,
+                    center + vec2(0.0, -12.0) * scale], stroke);
+                painter.line_segment([center + vec2(0.0, -12.0) * scale,
+                    center + vec2(9.0, -8.0) * scale], stroke);
+            }
+            3 => {
+                for (a, b) in [
+                    ((-7.0, -11.0), (-7.0, 6.0)),
+                    ((-11.0, -7.0), (6.0, -7.0)),
+                    ((7.0, -6.0), (7.0, 11.0)),
+                    ((-6.0, 7.0), (11.0, 7.0))
+                ] {
+                    painter.line_segment([center + vec2(a.0, a.1) * scale,
+                        center + vec2(b.0, b.1) * scale], stroke);
+                }
+            }
+            5 => {
+                for (y, knob) in [(-7.0, -3.0), (0.0, 5.0), (7.0, -4.0)] {
+                    let y = y * scale;
+                    painter.line_segment([center + vec2(-11.0 * scale, y),
+                        center + vec2(11.0 * scale, y)], stroke);
+                    painter.circle_filled(center + vec2(knob * scale, y),
+                        2.7 * scale, color);
+                }
+            }
+            _ => icons::paint(painter,
+                egui::Rect::from_center_size(center, vec2(24.0, 24.0) * scale),
+                ICONS[choice], color),
+        }
     }
 
     pub(crate) fn take_action(&mut self) -> Option<WheelAction> { self.pending.take() }
@@ -332,11 +414,8 @@ impl Wheel {
             painter.add(Shape::convex_polygon(points, shade, stroke));
             let at = center + vec2(a.cos(), a.sin()) * 88.0 * scale;
             let color = Color32::from_rgb(232, 232, 243);
-            let icon = ICONS[self.slots[slot]];
-            icons::paint(painter,
-                egui::Rect::from_center_size(at - vec2(0.0, 12.0 * scale),
-                    vec2(24.0, 24.0) * scale),
-                icon, color);
+            Self::paint_slot_icon(painter, at - vec2(0.0, 12.0 * scale),
+                self.slots[slot], scale, color);
             painter.text(at + vec2(0.0, 14.0 * scale),
                 egui::Align2::CENTER_CENTER, LABELS[self.slots[slot]],
                 FontId::proportional(11.0 * scale), color);
@@ -344,9 +423,12 @@ impl Wheel {
         painter.circle_stroke(center, R * scale, Stroke::new(0.8, Color32::from_gray(112)));
         painter.circle_filled(center, INNER * scale, BLUE);
         painter.circle_stroke(center, INNER * scale, Stroke::new(1.3, LAVENDER));
-        painter.text(center - vec2(0.0, 7.0 * scale),
-            egui::Align2::CENTER_CENTER, "Ec",
-            FontId::proportional(39.0 * scale), LAVENDER);
+        let mark = Self::ec_mark(ui.ctx());
+        painter.image(mark.id(),
+            egui::Rect::from_center_size(center - vec2(0.0, 8.0) * scale,
+                vec2(50.0, 33.0) * scale),
+            egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE);
         painter.text(center + vec2(0.0, 24.0 * scale),
             egui::Align2::CENTER_CENTER,
             selected.map(|slot| LABELS[self.slots[slot]]).unwrap_or("EffectCraft"),

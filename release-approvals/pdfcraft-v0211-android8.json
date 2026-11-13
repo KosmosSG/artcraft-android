@@ -1,0 +1,17 @@
+{
+  "version": "0.21.1-android.8",
+  "package": "com.artcraft.pdfcraft",
+  "signed_test_run_id": 43406337238,
+  "source_commit": "48396328801b856d4afd346ec1d823885472e136",
+  "signed_artifact_name": "PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST",
+  "signed_apk_sha256": "CALCULATE_FROM_SIGNED_ARTIFACT",
+  "approved_for_publication": true,
+  "requested_changes": [
+    "Stylus wheel default 75 percent for first-use and reset",
+    "Retain original red wheel styling, 5 percent larger Pc artwork",
+    "Preserve all saved wheel preferences and working PDFCraft features"
+  ],
+  "owner_request_context": "Owner previously tested Android.7, explicitly requested public release, then instructed changing wheel default to 75 percent before release. Android.8 itself has not been independently device Play-Protect-tested.",
+  "play_protect_android8_confirmed": false,
+  "policy": "Publish only after exact original-signed Android.8 CI success; never rebuild or re-sign; keep Play Protect enabled and do not bypass any warning."
+}

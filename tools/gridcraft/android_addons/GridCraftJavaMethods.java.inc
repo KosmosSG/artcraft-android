@@ -334,7 +334,7 @@
                     result.put("latest", bestVersion);
                     result.put("url", bestUrl);
                     boolean newer = gcCompareVersion(bestVersion, installed) > 0;
-                    boolean compatiblePackage = !getPackageName().endsWith(".candidate");
+                    boolean compatiblePackage = getPackageName().equals("com.artcraft.gridcraft");
                     if (newer && compatiblePackage) {
                         gcEligibleUpdateApkUrl = bestApk;
                         gcEligibleUpdateDigest = bestDigest;

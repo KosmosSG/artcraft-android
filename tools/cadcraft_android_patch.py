@@ -95,6 +95,53 @@ def install_pen_button(reference: Path) -> None:
             }
         });
     }
+    // PhotoCraft parity: Java Activity + NativeActivity can receive different
+    // routes for the SAME HONOR pen key, depending on IME focus on MagicOS.
+    // Only a physically named Magic-Pencil device may enter this queue.
+    private volatile boolean cadWheelEnabled = true;
+    private final java.util.concurrent.ConcurrentLinkedQueue<Integer> cadWheelKeys =
+        new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private long cadWheelLastDown = 0L, cadWheelLastUp = 0L;
+    public void cadStylusSetEnabled(boolean enabled) {
+        cadWheelEnabled = enabled;
+        if (!enabled) cadWheelKeys.clear();
+    }
+    public int cadStylusPoll() {
+        Integer code = cadWheelKeys.poll();
+        return code == null ? 0 : code;
+    }
+    private boolean cadStylusIntercept(KeyEvent event) {
+        if (!cadWheelEnabled || event == null) return false;
+        final int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
+        final InputDevice device = InputDevice.getDevice(event.getDeviceId());
+        if (device == null || device.getName() == null) return false;
+        final String name = device.getName().toLowerCase(java.util.Locale.ROOT);
+        if (!name.contains("magic-pencil") && !name.contains("magic pencil")) return false;
+        // Do not trigger on ACTION_DOWN or repeat. The pen's key release is
+        // the one-shot event matching the existing PhotoCraft wheel behavior.
+        if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0) {
+            long now = android.os.SystemClock.uptimeMillis();
+            long prior = code == KeyEvent.KEYCODE_DPAD_DOWN ? cadWheelLastDown : cadWheelLastUp;
+            if (now - prior >= 650L && cadWheelKeys.size() < 12) {
+                cadWheelKeys.offer(code);
+                if (code == KeyEvent.KEYCODE_DPAD_DOWN) cadWheelLastDown = now;
+                else cadWheelLastUp = now;
+                Log.d(TAG, "CADCraft validated Magic-Pencil button " + code);
+            }
+        }
+        return true;
+    }
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (cadStylusIntercept(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+    @Override
+    public boolean dispatchKeyShortcutEvent(KeyEvent event) {
+        if (cadStylusIntercept(event)) return true;
+        return super.dispatchKeyShortcutEvent(event);
+    }
     // Match real HONOR Magic-Pencil hardware IDs before consuming DPAD events.
     public String cadStylusDeviceIds() {
         StringBuilder names = new StringBuilder();
@@ -110,7 +157,18 @@ def install_pen_button(reference: Path) -> None:
         return names.toString();
     }
 """
-    java.write_text(source.replace(anchor, inject, 1), encoding="utf-8")
+    source = source.replace(anchor, inject, 1)
+    # The hidden IME's InputConnection may see a key without Activity dispatch;
+    # mirror the same verified-pen guard before the inherited editor route.
+    ime_anchor = """                public boolean sendKeyEvent(KeyEvent event) {
+                    if (event != null && !isFromSoftKeyboard(event)) {"""
+    if source.count(ime_anchor) != 1:
+        raise SystemExit("CADCraft IME key routing changed; refusing unsafe fallback")
+    source = source.replace(ime_anchor,
+        """                public boolean sendKeyEvent(KeyEvent event) {
+                    if (cadStylusIntercept(event)) return true;
+                    if (event != null && !isFromSoftKeyboard(event)) {""", 1)
+    java.write_text(source, encoding="utf-8")
 
     # Vendor crate is copied into the CADCraft source during the builder step.
     vendor = reference / "vendor/android-activity"
@@ -226,12 +284,13 @@ def patch_cadcraft_ui(source: Path) -> None:
             cad_wheel_actions: vec![
                 "select", "line", "circle", "ui.panel.layers", "pan", "trim", "redo", "undo",
             ].into_iter().map(str::to_string).collect(),
-            cad_wheel_size: 1.0,
+            cad_wheel_size: 0.75,
             cad_wheel_opacity: 0.85,
 """)
     src = replace_once(src, "        prefs.to_string()\n",
         """        #[cfg(target_os = "android")]
         {
+            prefs["cadWheelPresetVersion"] = json!(2);
             prefs["cadWheelEnabled"] = json!(self.ui.cad_wheel_enabled);
             prefs["cadWheelActions"] = json!(self.ui.cad_wheel_actions);
             prefs["cadWheelSize"] = json!(self.ui.cad_wheel_size);
@@ -254,7 +313,15 @@ def patch_cadcraft_ui(source: Path) -> None:
                 }
             }
             if let Some(size) = v.get("cadWheelSize").and_then(Value::as_f64) {
-                if size.is_finite() { self.ui.cad_wheel_size = (size as f32).clamp(0.75, 1.25); }
+                if size.is_finite() {
+                    // Previous Android.4 stored 100% as the untouched default.
+                    // Upgrade that default to 75%, preserve other user choices.
+                    let old_preset = v.get("cadWheelPresetVersion").and_then(Value::as_u64)
+                        .unwrap_or(1) < 2;
+                    self.ui.cad_wheel_size =
+                        if old_preset && (size - 1.0).abs() < 0.0001 { 0.75 }
+                        else { (size as f32).clamp(0.75, 1.25) };
+                }
             }
             if let Some(opacity) = v.get("cadWheelOpacity").and_then(Value::as_f64) {
                 if opacity.is_finite() { self.ui.cad_wheel_opacity = (opacity as f32).clamp(0.60, 1.0); }

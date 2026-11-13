@@ -144,10 +144,21 @@ def patch_cadcraft_ui(source: Path) -> None:
     # JNI bridge is compiled only for the Android UI target; no desktop graph changes.
     cargo = source / "crates/ui-egui/Cargo.toml"
     manifest = cargo.read_text(encoding="utf-8")
-    dep_section = """\n[target.'cfg(target_os = "android")'.dependencies]\njni = "0.22"\nndk-context = "0.1"\n"""
-    if "ndk-context" in manifest or "[target.'cfg(target_os = \"android\")'.dependencies]" in manifest:
+    dep_section = """\n[target.'cfg(target_os = "android")'.dependencies]\ncadcraft-android-updater-bridge = { path = "../cadcraft-android-updater-bridge" }\n"""
+    if "cadcraft-android-updater-bridge" in manifest or "[target.'cfg(target_os = \"android\")'.dependencies]" in manifest:
         raise SystemExit("CADCraft Android JNI dependencies changed; inspect manifest")
     cargo.write_text(manifest + dep_section, encoding="utf-8")
+    # JNI unsafe boundary is in a tiny Android-only crate, outside the
+    # upstream UI crate which forbids unsafe code.
+    bridge = source / "crates/cadcraft-android-updater-bridge"
+    bridge_src = bridge / "src"
+    bridge_src.mkdir(parents=True, exist_ok=True)
+    (bridge / "Cargo.toml").write_text(
+        '[package]\nname = "cadcraft-android-updater-bridge"\nversion = "0.1.0"\nedition = "2021"\n'
+        '[dependencies]\njni = "0.22"\nndk-context = "0.1"\n', encoding="utf-8")
+    (bridge_src / "lib.rs").write_text(
+        Path(__file__).with_name("cadcraft_android_updater_bridge.rs").read_text(encoding="utf-8"),
+        encoding="utf-8")
     print("PASS: 8 CAD actions, live size/opacity preview, native updater entry and saved prefs staged.")
 
 

@@ -49,6 +49,11 @@ def main(root):
     pub fn stylus_wheel_enabled(&self) -> bool { self.stylus_wheel.enabled }
 
     #[cfg(target_os = "android")]
+    pub fn stylus_hover(&mut self, point: Option<egui::Pos2>, ctx: &egui::Context) {
+        self.stylus_wheel.set_pen_hover(point, ctx);
+    }
+
+    #[cfg(target_os = "android")]
     pub fn stylus_button(&mut self, code: i32, ctx: &egui::Context) {
         if self.dialog.is_none() && self.session.state.text_edit.is_none()
             && !egui::Popup::is_any_open(ctx) {
@@ -145,6 +150,27 @@ def main(root):
     // Only the HONOR Magic-Pencil 4s is an allowed stylus source. Never
     // consume a physical keyboard arrow, touchpad or ordinary IME input.
     private volatile boolean ecWheelEnabled;
+    private volatile String ecWheelHoverPosition = "";
+    /** Java fallback for native stylus hover; no event is consumed. */
+    public String ecWheelHoverPos() { return ecWheelHoverPosition; }
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
+        if (event != null && event.getPointerCount() > 0) {
+            int tool = event.getToolType(0);
+            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
+                int act = event.getActionMasked();
+                if (act == android.view.MotionEvent.ACTION_HOVER_ENTER
+                    || act == android.view.MotionEvent.ACTION_HOVER_MOVE) {
+                    ecWheelHoverPosition = event.getX(0) + "," + event.getY(0);
+                } else if (act == android.view.MotionEvent.ACTION_HOVER_EXIT
+                    || act == android.view.MotionEvent.ACTION_DOWN
+                    || act == android.view.MotionEvent.ACTION_CANCEL) {
+                    ecWheelHoverPosition = "";
+                }
+            }
+        }
+        return super.onGenericMotionEvent(event);
+    }
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> ecWheelButtons =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final java.util.HashSet<Integer> ecWheelHeld = new java.util.HashSet<>();
@@ -211,7 +237,7 @@ def main(root):
     pub fn stylus_shortcuts(&mut self, inner: &mut EffectcraftApp, ctx: &egui::Context) {
         let enabled = inner.stylus_wheel_enabled();
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
-        let outcome = vm.attach_current_thread(|env| -> jni::errors::Result<(Vec<i32>, Vec<i32>)> {
+        let outcome = vm.attach_current_thread(|env| -> jni::errors::Result<(Vec<i32>, Vec<i32>, Option<(f32, f32)>)> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("ecWheelSetEnabled"),
@@ -228,13 +254,28 @@ def main(root):
                 if n == 0 { break; }
                 buttons.push(n);
             }
-            Ok((ids, buttons))
+            let hovered = env.call_method(&*activity, jni_str!("ecWheelHoverPos"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            let hover = if hovered.is_null() { String::new() }
+                else { JString::cast_local(env, hovered)?.try_to_string(env)? };
+            let hover = hover.split_once(',').and_then(|(x, y)|
+                Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)));
+            Ok((ids, buttons, hover))
         });
-        if let Ok((ids, buttons)) = outcome {
+        if let Ok((ids, buttons, java_hover)) = outcome {
             android_activity::ec_stylus_configure(enabled, &ids);
             // Both NativeActivity's input queue and the hidden IME Java bridge
             // can deliver the pen. They never consume generic keyboard arrows.
             let native = android_activity::ec_stylus_native_take();
+            // Prefer native AInputQueue data; Java hover is a nonconsuming
+            // fallback on MagicOS devices that deliver generic-motion only.
+            let px = android_activity::ec_stylus_native_hover_point().or(java_hover);
+            let point = px.and_then(|(x, y)| {
+                if !(x.is_finite() && y.is_finite()) { return None; }
+                let pos = egui::pos2(x / ctx.pixels_per_point(), y / ctx.pixels_per_point());
+                ctx.content_rect().contains(pos).then_some(pos)
+            });
+            inner.stylus_hover(point, ctx);
             if !enabled { return; }
             for code in native.into_iter().chain(buttons) {
                 inner.stylus_button(code, ctx);

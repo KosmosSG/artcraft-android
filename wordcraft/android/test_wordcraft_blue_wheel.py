@@ -68,6 +68,16 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn('ui.menu_button("Stylus Wheel", |ui| {', MENU)
         self.assertIn('ui.checkbox(&mut pad, "Show Shortcut Pad")', MENU)
         self.assertEqual(MENU.count('ui.checkbox(&mut pad, "Show Shortcut Pad")'), 1)
+        # Regression: wheel menu does not own the generic Shortcut Pad.
+        wc_wheel_menu_start = MENU.index('ui.menu_button("Stylus Wheel", |ui| {')
+        keyboard_menu_start = MENU.index('ui.menu_button("Keyboard & Shortcuts", |ui| {')
+        pad_toggle_pos = MENU.index('ui.checkbox(&mut pad, "Show Shortcut Pad")')
+        about_menu_start = MENU.index('ui.menu_button("About WordCraft", |ui| {')
+        self.assertLess(wc_wheel_menu_start, keyboard_menu_start)
+        self.assertLess(keyboard_menu_start, pad_toggle_pos)
+        self.assertLess(pad_toggle_pos, about_menu_start)
+        self.assertIn("WC_ANDROID5_SHORTCUT_PAD_MENU_MOVE_V1", MENU)
+
         self.assertIn("mod stylus_wheel;", NATIVE)
         self.assertIn("stylus_wheel.rs", BUILDER)
         self.assertIn("stylus_wheel_wc.rgba", BUILDER)

@@ -208,7 +208,7 @@ def source_changes(source: Path) -> dict[Path, str]:
     # Expose an actual in-app Download & Install action in the native
     # About > Updates tab. The resulting install is always confirmed by Android.
     updates_block = approved_updates_branch()
-    download_anchor = '                             ui.small("LightCraft-only GitHub Releases; updates must use the original app signature.");'
+    download_anchor = 'ui.small("LightCraft-only GitHub Releases; updates must use the original app signature.");'
     download_controls = '''                             let available = ctx.data(|d| d.get_temp::<bool>(
                                  egui::Id::new("artcraft.lightcraft.download_available"))).unwrap_or(false);
                              if available && ui.button("Download & Install in App").clicked() {

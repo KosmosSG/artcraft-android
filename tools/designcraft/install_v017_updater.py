@@ -30,6 +30,15 @@ def apply(root: Path, src: Path, android: Path) -> None:
     if package not in ("com.artcraft.designcraft.test", "com.artcraft.designcraft"):
         raise ValueError("Unexpected DesignCraft Android application identity")
 
+    # Android 8+ requires an explicit install-source permission before the
+    # user can approve the verified APK in the system package installer.
+    manifest_file = android / "Cargo.toml"
+    manifest_source = manifest_file.read_text()
+    if 'name = "android.permission.REQUEST_INSTALL_PACKAGES"' not in manifest_source:
+        manifest_file.write_text(manifest_source +
+            '\n[[package.metadata.android.uses_permission]]\n'
+            'name = "android.permission.REQUEST_INSTALL_PACKAGES"\n')
+
     ui_root = src / "crates/ui-egui/src"
     command_file = ui_root / "menus/ui_commands.rs"
     edit(command_file,

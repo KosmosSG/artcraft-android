@@ -3,12 +3,13 @@
 //! Wheel pointers are captured in raw_input_hook BEFORE the workbook sees them.
 //! The preview is deliberately non-interactive and is rendered at exact size.
 use eframe::egui::{self, Color32, Context, FontId, Id, Order, Pos2, RawInput, Sense, Shape, Stroke, StrokeKind, Ui, pos2, vec2};
-use gridcraft_ui_egui::{SheetApp, icons::{self, Icon}};
+use gridcraft_ui_egui::SheetApp;
 use std::{path::PathBuf, time::{Duration, Instant}};
 
 const R: f32 = 128.0;
 const INNER: f32 = 47.0;
 const SIZE: f32 = 312.0;
+const WHEEL_ENLARGEMENT: f32 = 1.12; // ~12% larger than Android.1 at every saved slider setting.
 const WAIT: Duration = Duration::from_millis(400);
 const LABELS: [&str; 16] = [
     "Select", "Format", "Function", "Fill Down",
@@ -17,12 +18,101 @@ const LABELS: [&str; 16] = [
     "Save", "Clear", "Go To", "New Sheet",
 ];
 const DEFAULT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
-fn icon_for(i: usize) -> Icon {
-    match i {
-        0 => Icon::Button, 1 => Icon::Format, 2 => Icon::Fx, 3 => Icon::FillDown,
-        4 => Icon::Copy, 5 => Icon::Paste, 6 => Icon::Undo, 7 => Icon::Redo,
-        8 => Icon::Left, 9 => Icon::Right, 10 => Icon::Plus, 11 => Icon::Minus,
-        12 => Icon::Save, 13 => Icon::Eraser, 14 => Icon::Search, _ => Icon::Sheet,
+/// One stroke language for every slot, including the extra assignable actions.
+/// No multicolour filled toolbar art or platform-dependent Unicode glyph icons.
+fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
+    let centre = rect.center();
+    let scale = rect.width() / 24.0;
+    let pt = |x: f32, y: f32| centre + vec2(x, y) * scale;
+    let stroke = Stroke::new(1.65 * scale, Color32::WHITE);
+    let line = |coords: &[(f32, f32)]| {
+        p.add(Shape::line(
+            coords.iter().map(|&(x,y)| pt(x,y)).collect::<Vec<_>>(), stroke));
+    };
+    let seg = |a: (f32,f32), b: (f32,f32)| {
+        p.line_segment([pt(a.0,a.1),pt(b.0,b.1)],stroke);
+    };
+    let box_at = |x1:f32,y1:f32,x2:f32,y2:f32| {
+        p.rect_stroke(egui::Rect::from_min_max(pt(x1,y1),pt(x2,y2)),
+            2.0*scale,stroke,StrokeKind::Inside);
+    };
+    match action {
+        0 => { // Select: arrow/cursor; same outline weight as other slots.
+            line(&[(-7.0,-10.0),(-7.0,7.0),(-2.0,3.0),(2.0,11.0),
+                (5.0,9.0),(1.0,1.0),(8.0,1.0),(-7.0,-10.0)]);
+        }
+        1 => { // Format cells: bordered 2x2 worksheet.
+            box_at(-9.0,-9.0,9.0,9.0);
+            seg((-9.0,-1.0),(9.0,-1.0));
+            seg((0.0,-9.0),(0.0,9.0));
+        }
+        2 => { // Function: outlined formula cue; typography shares icon width.
+            p.text(centre,egui::Align2::CENTER_CENTER,"ƒx",
+                FontId::proportional(17.0*scale),Color32::WHITE);
+        }
+        3 => { // Fill Down: two outlined cells and down arrow.
+            box_at(-9.0,-9.0,3.0,9.0);
+            seg((-9.0,0.0),(3.0,0.0));
+            seg((8.0,-7.0),(8.0,7.0));
+            line(&[(4.0,3.0),(8.0,7.0),(12.0,3.0)]);
+        }
+        4 => { // Copy.
+            box_at(-8.0,-9.0,4.0,4.0);
+            box_at(-3.0,-4.0,9.0,9.0);
+        }
+        5 => { // Paste: clipboard.
+            box_at(-8.0,-7.0,8.0,10.0);
+            box_at(-4.0,-10.0,4.0,-5.0);
+            seg((-4.0,0.0),(4.0,0.0));
+            seg((-4.0,5.0),(3.0,5.0));
+        }
+        6 => { // Undo: single outlined curved direction.
+            line(&[(1.0,-7.0),(-3.0,-7.0),(-7.0,-4.0),(-8.0,0.0),
+                (-5.0,5.0),(0.0,7.0),(6.0,5.0),(8.0,1.0)]);
+            line(&[(-1.0,-11.0),(-6.0,-7.0),(-1.0,-3.0)]);
+        }
+        7 => { // Redo: exact horizontal mirror of Undo.
+            line(&[(-1.0,-7.0),(3.0,-7.0),(7.0,-4.0),(8.0,0.0),
+                (5.0,5.0),(0.0,7.0),(-6.0,5.0),(-8.0,1.0)]);
+            line(&[(1.0,-11.0),(6.0,-7.0),(1.0,-3.0)]);
+        }
+        8 => { // Previous sheet.
+            box_at(-2.0,-9.0,9.0,9.0);
+            line(&[(-3.0,-5.0),(-9.0,0.0),(-3.0,5.0)]);
+        }
+        9 => { // Next sheet.
+            box_at(-9.0,-9.0,2.0,9.0);
+            line(&[(3.0,-5.0),(9.0,0.0),(3.0,5.0)]);
+        }
+        10 | 11 => { // Zoom +/-.
+            p.circle_stroke(pt(-2.0,-2.0),6.5*scale,stroke);
+            seg((3.0,3.0),(10.0,10.0));
+            seg((-5.5,-2.0),(1.5,-2.0));
+            if action==10 { seg((-2.0,-5.5),(-2.0,1.5)); }
+        }
+        12 => { // Save.
+            box_at(-9.0,-10.0,9.0,10.0);
+            box_at(-5.0,2.0,5.0,10.0);
+            seg((-4.0,-6.0),(3.0,-6.0));
+        }
+        13 => { // Clear contents: eraser outline.
+            line(&[(-9.0,2.0),(-1.0,-8.0),(9.0,0.0),(2.0,9.0),
+                (-4.0,9.0),(-9.0,2.0)]);
+            seg((-3.0,-4.0),(5.0,3.0));
+        }
+        14 => { // Go To: crosshair.
+            p.circle_stroke(centre,7.0*scale,stroke);
+            p.circle_stroke(centre,2.0*scale,stroke);
+            for (a,b) in [((-11.0,0.0),(-7.0,0.0)),((7.0,0.0),(11.0,0.0)),
+                ((0.0,-11.0),(0.0,-7.0)),((0.0,7.0),(0.0,11.0))] { seg(a,b); }
+        }
+        _ => { // New sheet.
+            box_at(-9.0,-9.0,5.0,9.0);
+            seg((-9.0,-2.0),(5.0,-2.0));
+            seg((-2.0,-9.0),(-2.0,9.0));
+            seg((5.0,5.0),(12.0,5.0));
+            seg((8.5,1.5),(8.5,8.5));
+        }
     }
 }
 const DARK: Color32 = Color32::from_rgb(0, 104, 24);
@@ -89,7 +179,7 @@ impl Wheel {
             log::warn!("GridCraft wheel settings: {e}");
         }
     }
-    fn scale(&self) -> f32 { self.size_percent / 100.0 }
+    fn scale(&self) -> f32 { self.size_percent / 100.0 * WHEEL_ENLARGEMENT }
     fn hit(&self, at: Pos2) -> Option<usize> {
         let delta = at - self.center?;
         let r = delta.length();
@@ -180,6 +270,28 @@ impl Wheel {
             self.hover_blocked = true;
         }
     }
+    /// MotionEvent HOVER_ENTER/MOVE/EXIT from the real Android stylus.
+    /// Java reports pixel coordinates; egui works in logical points.
+    /// Updates only the floating wheel and NEVER injects a workbook click.
+    pub fn stylus_hover(&mut self, report: &str, ctx: &Context) {
+        if !self.enabled { return; }
+        if report == "E" {
+            self.hover = None;
+            if self.open { ctx.request_repaint(); }
+            return;
+        }
+        let Some(data) = report.strip_prefix("M:") else { return; };
+        let Some((x,y)) = data.split_once(',') else { return; };
+        let Ok(x) = x.parse::<f32>() else { return; };
+        let Ok(y) = y.parse::<f32>() else { return; };
+        if !x.is_finite() || !y.is_finite() { return; }
+        let ppp = ctx.pixels_per_point().max(0.5);
+        let point = pos2(x / ppp, y / ppp);
+        if !ctx.content_rect().expand(24.0).contains(point) { return; }
+        self.hover = Some(point);
+        if self.open { ctx.request_repaint(); }
+    }
+
     pub fn menu(&mut self, ctx: &Context) -> bool {
         let action_id = Id::new("gridcraft.android.wheel.menu");
         let action = ctx.data(|d| d.get_temp::<String>(action_id)).unwrap_or_default();
@@ -232,14 +344,14 @@ impl Wheel {
             .id(Id::new("gc-wheel-settings"))
             .open(&mut window_open).resizable(false).collapsible(false)
             .default_width(322.0).show(ctx, |ui| {
-                ui.label("PhotoCraft Default • 8 configurable segments");
+                ui.label("GridCraft Default • 8 configurable segments");
                 ui.separator();
                 dirty |= ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=125.0)
                     .text("Wheel size").suffix("%")).changed();
                 dirty |= ui.add(egui::Slider::new(&mut self.opacity_percent, 60.0..=100.0)
                     .text("Wheel opacity").suffix("%")).changed();
                 ui.separator();
-                ui.label("Live preview at actual wheel size and opacity.");
+                ui.label("Live preview reflects the enlarged wheel size and opacity.");
                 ui.separator();
                 for slot in 0..8 {
                     ui.horizontal(|ui| {
@@ -359,7 +471,7 @@ impl Wheel {
             let point = c+vec2(deg.to_radians().cos(),deg.to_radians().sin())*87.0*scale;
             let icon_box = egui::Rect::from_center_size(point-vec2(0.0,10.0)*scale,
                 vec2(24.0,24.0)*scale);
-            icons::paint(&painter,icon_box,icon_for(self.slots[i]),Color32::WHITE);
+            draw_icon(&painter,icon_box,self.slots[i]);
             painter.text(point+vec2(0.0,13.0)*scale,egui::Align2::CENTER_CENTER,
                 LABELS[self.slots[i]],FontId::proportional(11.0*scale),Color32::WHITE);
         }

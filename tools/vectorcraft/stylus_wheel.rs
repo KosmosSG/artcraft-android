@@ -257,6 +257,10 @@ impl Wheel {
             self.consumed_events += event_count.saturating_sub(raw.events.len()) as u64;
             raw.events.push(egui::Event::PointerGone);
         }
+        let previously_owned = ctx.data(|d| d.get_temp::<bool>(Id::new("vc-wheel-input-owned")).unwrap_or(false));
+        if previously_owned && !isolated && raw.events.is_empty() {
+            if let Some(pos) = self.hover { raw.events.push(egui::Event::PointerMoved(pos)); }
+        }
         ctx.data_mut(|d| d.insert_temp(Id::new("vc-wheel-input-owned"), isolated));
     }
     pub fn diagnostic_counts(&self) -> u64 { self.consumed_events }
@@ -569,7 +573,7 @@ mod tests {
                 w.set_layout_string(settings);
                 let mut raw=RawInput::default();
                 raw.screen_rect=Some(egui::Rect::from_min_size(Pos2::ZERO,vec2(width,800.0)));
-                let out=ctx.run(raw, |ctx| { egui::CentralPanel::default().show(ctx, |ui| w.render(ui)); });
+                let out=ctx.run_ui(raw, |ui| w.render(ui));
                 assert!(!out.shapes.is_empty()); assert_eq!(w.take_action(),None);
             }
         }

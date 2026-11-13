@@ -7,6 +7,8 @@ def patch(root):
     host = root/'adapters/vectorcraft/src/lib.rs'
     java = root/'adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java'
     ui = root/'source/vectorcraft/crates/ui-egui/src'
+    once(host, '        self.stylus_wheel.capture(ctx, raw, wheel_blocked);\n        self.inner.raw_input_hook(ctx, raw);',
+         '        self.inner.raw_input_hook(ctx, raw);\n        self.stylus_wheel.capture(ctx, raw, wheel_blocked);')
     # Canvas input must not see native samples or cached pointer state either.
     # This frame-local flag is overwritten on EVERY raw input hook, never a lock.
     once(ui/'canvas/input.rs',

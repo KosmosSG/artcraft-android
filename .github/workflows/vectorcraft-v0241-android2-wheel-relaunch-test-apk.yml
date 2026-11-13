@@ -15,10 +15,30 @@ permissions:
   contents: read
 
 concurrency:
-  group: vectorcraft-stability-test-apk
-  cancel-in-progress: false
+  group: vectorcraft-v0241-wheel-relaunch-test
+  cancel-in-progress: true
 
 jobs:
+  cancel-superseded-preflight:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Cancel only this task's superseded initial preflight, never another app/run.
+            const run_id = 43333235834;
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id});
+            if (run.head_sha !== 'eebaf7681dbdb8ba925acb408fe7427cabc2510b' ||
+                run.head_branch !== 'fix/vectorcraft-v0241-android2-wheel-relaunch-20261113') {
+              throw new Error('Superseded-run identity mismatch');
+            }
+            if (run.status !== 'completed') {
+              try { await github.rest.actions.cancelWorkflowRun({...context.repo, run_id}); }
+              catch (error) { if (error.status !== 409) throw error; }
+            }
   disposable-test-apk:
     if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android2-wheel-relaunch-20261113'
     runs-on: ubuntu-24.04

@@ -9,7 +9,7 @@ const SIZE: f32 = 312.0;
 const PC_MARK_SCALE: f32 = 1.05; // make just the Pc lettermark 5% larger
 // Default wheel diameter on first use and when Reset defaults is selected.
 // Previously saved v2 preferences always take precedence.
-const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 100.0;
+const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
@@ -279,27 +279,50 @@ impl Wheel {
                     ui.label("Style: Default  •  8 segments");
                     ui.label("Choose a tool for each position. Existing selections swap positions.");
                     ui.separator();
-                    for slot in 0..8 {
-                        ui.horizontal(|ui| {
-                            ui.add_sized([57.0, 24.0], egui::Label::new(format!("Slot {}", slot + 1)));
-                            let mut selected = self.layout[slot];
-                            egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
-                                .selected_text(LABELS[selected])
-                                .width(185.0)
-                                .show_ui(ui, |ui| {
-                                    for index in 0..LABELS.len() {
-                                        ui.selectable_value(&mut selected, index, LABELS[index]);
-                                    }
-                                });
-                            if selected != self.layout[slot] {
-                                if let Some(previous) = self.layout.iter().position(|n| *n == selected) {
-                                    self.layout[previous] = self.layout[slot];
-                                }
-                                self.layout[slot] = selected;
-                                self.layout_dirty = true;
+                    // Frame the whole assignment section and give each slot its
+                    // own quiet border. No heavy accent outlines: the launcher's
+                    // red remains exclusive to the controls and the wheel.
+                    let slot_stroke = if ui.visuals().dark_mode {
+                        Color32::from_gray(94)
+                    } else {
+                        Color32::from_gray(184)
+                    };
+                    egui::Frame::new()
+                        .fill(ui.visuals().faint_bg_color)
+                        .stroke(Stroke::new(0.9, slot_stroke))
+                        .corner_radius(egui::CornerRadius::same(9))
+                        .inner_margin(egui::Margin::same(7))
+                        .show(ui, |ui| {
+                            for slot in 0..8 {
+                                egui::Frame::new()
+                                    .fill(ui.visuals().extreme_bg_color)
+                                    .stroke(Stroke::new(0.6, slot_stroke))
+                                    .corner_radius(egui::CornerRadius::same(6))
+                                    .inner_margin(egui::Margin::symmetric(8, 2))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.add_sized([57.0, 24.0], egui::Label::new(format!("Slot {}", slot + 1)));
+                                            let mut selected = self.layout[slot];
+                                            egui::ComboBox::from_id_salt(("pdf-wheel-slot", slot))
+                                                .selected_text(LABELS[selected])
+                                                .width(185.0)
+                                                .show_ui(ui, |ui| {
+                                                    for index in 0..LABELS.len() {
+                                                        ui.selectable_value(&mut selected, index, LABELS[index]);
+                                                    }
+                                                });
+                                            if selected != self.layout[slot] {
+                                                if let Some(previous) = self.layout.iter().position(|n| *n == selected) {
+                                                    self.layout[previous] = self.layout[slot];
+                                                }
+                                                self.layout[slot] = selected;
+                                                self.layout_dirty = true;
+                                            }
+                                        });
+                                    });
+                                if slot < 7 { ui.add_space(3.0); }
                             }
                         });
-                    }
                     ui.separator();
                     // Keep the PhotoCraft dual-slider layout with the PDFCraft
                     // launcher-red control accents and existing broad valid ranges.
@@ -484,10 +507,10 @@ mod tests {
         // persistence without changing the layout serialization format.
         wheel.reset_defaults();
         assert_eq!(wheel.layout, DEFAULT_LAYOUT);
-        assert_eq!((wheel.size_percent, wheel.opacity_percent), (100.0, 85.0));
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (75.0, 85.0));
         assert!(wheel.layout_dirty);
         let saved = wheel.take_layout_change().unwrap();
-        assert!(saved.ends_with(";100;85"));
+        assert!(saved.ends_with(";75;85"));
         assert!(!wheel.layout_dirty);
     }
     #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {

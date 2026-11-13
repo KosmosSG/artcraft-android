@@ -240,7 +240,7 @@ impl ShortcutPad {
                     self.hover_blocked = false;
                     out.push(Event::PointerGone);
                 }
-                Event::MouseWheel { .. } if ctx.pointer_hover_pos()
+                Event::MouseWheel { .. } if self.hover_blocked || ctx.pointer_hover_pos()
                     .is_some_and(|pos| hit(pos) || ring_hit(pos, self.big)) => {
                     // A physical trackpad wheel over the pad must not scroll
                     // the canvas or select/hover elements behind the ring.

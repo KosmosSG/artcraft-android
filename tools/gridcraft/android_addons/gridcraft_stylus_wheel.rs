@@ -144,6 +144,7 @@ pub struct Wheel {
     settings_path: Option<PathBuf>,
     open: bool,
     center: Option<Pos2>,
+    preview_center: Option<Pos2>,
     hover: Option<Pos2>,
     last_stylus_hover: Option<Instant>,
     hover_blocked: bool,
@@ -161,7 +162,8 @@ impl Wheel {
         let mut result = Self {
             enabled: false, settings_open: false, slots: DEFAULT,
             size_percent: 100.0, opacity_percent: 85.0, settings_path,
-            open: false, center: None, hover: None, last_stylus_hover: None,
+            open: false, center: None, preview_center: None, hover: None,
+            last_stylus_hover: None,
             hover_blocked: false,
             suppress_release: false, single_wait: None, pending_action: None,
             opened_at: Instant::now(),
@@ -198,12 +200,26 @@ impl Wheel {
         }
     }
     fn scale(&self) -> f32 { self.size_percent / 100.0 * WHEEL_ENLARGEMENT }
+    fn hit_at(&self, at: Pos2, center: Pos2) -> Option<usize> {
+        let delta = at - center;
+        let distance = delta.length();
+        if distance < INNER*self.scale() || distance > (R+8.0)*self.scale() {
+            return None;
+        }
+        Some((((delta.y.atan2(delta.x).to_degrees()+112.5)
+            .rem_euclid(360.0)/45.0).floor() as usize).min(7))
+    }
     fn hit(&self, at: Pos2) -> Option<usize> {
-        let delta = at - self.center?;
-        let r = delta.length();
-        if r < INNER * self.scale() || r > (R + 12.0) * self.scale() { return None; }
-        Some((((delta.y.atan2(delta.x).to_degrees() + 112.5)
-            .rem_euclid(360.0) / 45.0).floor() as usize).min(7))
+        self.hit_at(at, self.center?)
+    }
+    fn input_center(&self) -> Option<Pos2> {
+        if self.settings_open { self.preview_center }
+        else if self.open { self.center }
+        else { None }
+    }
+    fn pointer_inside(&self, at: Pos2) -> bool {
+        self.input_center().is_some_and(|c|
+            (at-c).length() <= (R+8.0)*self.scale())
     }
     fn position(&mut self, ctx: &Context, at: Option<Pos2>) {
         let content = ctx.content_rect();
@@ -236,25 +252,18 @@ impl Wheel {
         ctx.request_repaint_after(WAIT);
     }
     pub fn capture(&mut self, ctx: &Context, raw: &mut RawInput) {
-        if !self.enabled || self.settings_open { return; }
-        // Never mutate the global pointer path unless the actual wheel owns it.
-        let mut keep = Vec::with_capacity(raw.events.len() + 1);
+        if !self.enabled { return; }
+        // Guard only the actual wheel area (or canvas-side live preview).
+        // GridCraft still receives input outside it, including the dialog.
+        let mut keep = Vec::with_capacity(raw.events.len()+1);
         for event in raw.events.drain(..) {
             match event {
                 egui::Event::PointerMoved(p) => {
-                    // Native egui may also deliver a mouse/trackpad position
-                    // during stylus hover. Keep the genuine pen coordinate
-                    // authoritative for a short interval, so the wrong slot
-                    // cannot be highlighted when another pointer is active.
                     if !self.last_stylus_hover.is_some_and(|t|
-                            t.elapsed() < Duration::from_millis(220)) {
+                        t.elapsed() < Duration::from_millis(300)) {
                         self.hover = Some(p);
                     }
-                    let inside = self.open && self.center.is_some_and(|c|
-                        (p - c).length() <= (R + 12.0) * self.scale());
-                    if inside {
-                        // Exactly one PointerGone on entry: prevents selecting
-                        // workbook objects beneath the floating wheel.
+                    if self.pointer_inside(p) {
                         if !self.hover_blocked {
                             keep.push(egui::Event::PointerGone);
                             self.hover_blocked = true;
@@ -264,19 +273,25 @@ impl Wheel {
                         keep.push(egui::Event::PointerMoved(p));
                     }
                 }
-                egui::Event::Touch {pos, ..} if self.open
-                    && self.center.is_some_and(|c| (pos-c).length() <= (R+12.0)*self.scale()) => {}
-                egui::Event::PointerButton {pos, pressed: true, ..} if self.open => {
-                    self.pending_action = self.hit(pos).map(|i| self.slots[i]);
-                    self.open = false;
+                egui::Event::Touch {pos, ..} if self.pointer_inside(pos) => {
+                    // Pen/touch on the floating preview must never select a cell.
+                }
+                egui::Event::PointerButton {pos, pressed: true, ..}
+                    if self.pointer_inside(pos) => {
+                    if !self.settings_open && self.open {
+                        self.pending_action = self.hit(pos).map(|i| self.slots[i]);
+                        self.open = false;
+                    }
                     self.suppress_release = true;
                     self.hover_blocked = false;
                     ctx.request_repaint();
                 }
-                egui::Event::PointerButton {pressed: false, ..} if self.open || self.suppress_release => {
+                egui::Event::PointerButton {pressed: false, ..}
+                    if self.suppress_release => {
                     self.suppress_release = false;
                 }
-                egui::Event::Key {key: egui::Key::Escape, pressed: true, ..} if self.open => {
+                egui::Event::Key {key: egui::Key::Escape, pressed: true, ..}
+                    if self.open && !self.settings_open => {
                     self.open = false;
                 }
                 other => keep.push(other),
@@ -289,8 +304,9 @@ impl Wheel {
                 self.position(ctx, at.or(self.hover));
             } else { ctx.request_repaint_after(WAIT.saturating_sub(when.elapsed())); }
         }
-        if self.open && !self.hover_blocked && self.center.is_some_and(|c|
-            self.hover.is_some_and(|p| (p-c).length() <= (R+12.0)*self.scale())) {
+        // Wheel-owned hover is erased *from workbook input*, not from the
+        // stylus coordinate used to paint the highlight and cursor overlay.
+        if !self.hover_blocked && self.hover.is_some_and(|p| self.pointer_inside(p)) {
             raw.events.push(egui::Event::PointerGone);
             self.hover_blocked = true;
         }
@@ -457,6 +473,7 @@ impl Wheel {
                 ui.small("Pen side-button: single to open • double to open immediately.");
             });
         self.settings_open = window_open;
+        if !self.settings_open { self.preview_center = None; }
         if dirty { self.persist(); ctx.request_repaint(); }
         if let Some(response) = response {
             let rect = response.response.rect;
@@ -472,18 +489,21 @@ impl Wheel {
                 x.clamp(screen.left()+size/2.0, (screen.right()-size/2.0).max(screen.left()+size/2.0)),
                 rect.center().y.clamp(screen.top()+size/2.0, (screen.bottom()-size/2.0).max(screen.top()+size/2.0)),
             );
+            self.preview_center = Some(at);
+            let highlight = self.hover.and_then(|p| self.hit_at(p,at));
             egui::Area::new(Id::new("gc-wheel-actual-preview"))
                 .order(Order::Foreground).interactable(false)
                 .fixed_pos(at-vec2(size/2.0,size/2.0))
                 .show(ctx, |ui| {
                     let (rect, _) = ui.allocate_exact_size(vec2(size,size), Sense::hover());
-                    self.paint(ui, rect, self.scale(), None);
+                    self.paint(ui, rect, self.scale(), highlight);
                 });
         }
     }
     pub fn render(&mut self, ctx: &Context, app: &mut SheetApp) {
         self.apply(app);
         self.customise(ctx);
+        self.paint_stylus_pointer(ctx);
         if !self.enabled || !self.open || self.settings_open { return; }
         let Some(at) = self.center else { return; };
         let t = (self.opened_at.elapsed().as_secs_f32()/0.18).min(1.0);
@@ -500,6 +520,37 @@ impl Wheel {
             });
         ctx.request_repaint_after(Duration::from_millis(100));
     }
+    /// Native HONOR pen-hover pointer: visual only, never an egui pointer
+    /// event. The cursor stays visible over the canvas and wheel independently
+    /// of mouse/trackpad position. No events are synthesised.
+    fn paint_stylus_pointer(&self, ctx: &Context) {
+        if !self.enabled { return; }
+        let Some(last) = self.last_stylus_hover else { return };
+        if last.elapsed() > Duration::from_secs(4) { return; }
+        let Some(at) = self.hover else { return };
+        if !ctx.content_rect().contains(at) { return; }
+        let pointer_size = 28.0;
+        egui::Area::new(Id::new("gc-visible-stylus-cursor"))
+            .order(Order::Tooltip).interactable(false)
+            .fixed_pos(at-vec2(3.0,3.0))
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(
+                    vec2(pointer_size,pointer_size),Sense::hover());
+                let painter = ui.painter_at(rect);
+                let base = rect.min;
+                let tip = base + vec2(3.0,3.0);
+                painter.add(Shape::convex_polygon(vec![
+                    tip,tip+vec2(2.0,19.0),tip+vec2(7.0,14.0),
+                    tip+vec2(11.0,23.0),tip+vec2(14.0,21.0),
+                    tip+vec2(10.0,12.0),tip+vec2(17.0,12.0),
+                ],Color32::from_rgb(250,252,248),
+                    Stroke::new(1.3,DARK)));
+                painter.circle_stroke(tip+vec2(1.0,1.0),5.0,
+                    Stroke::new(1.1,LIME));
+            });
+        ctx.request_repaint_after(Duration::from_millis(70));
+    }
+
     fn gc_icon(ctx: &Context) -> egui::TextureHandle {
         let id = Id::new("gridcraft-wheel-approved-user-gc");
         if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {

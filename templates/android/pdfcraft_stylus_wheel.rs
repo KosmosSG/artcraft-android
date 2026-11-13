@@ -5,8 +5,6 @@ use std::time::{Duration, Instant};
 const R: f32 = 128.0;
 const INNER: f32 = 46.0;
 const SIZE: f32 = 312.0;
-// Approved PDFCraft launcher background red, used consistently for wheel accents.
-const PC_MARK_SCALE: f32 = 1.05; // make just the Pc lettermark 5% larger
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
@@ -63,8 +61,6 @@ impl Wheel {
         ctx.data_mut(|d| d.insert_temp(texture_id, texture.clone()));
         texture
     }
-
-    fn launcher_red() -> Color32 { Color32::from_rgb(251, 14, 0) }
 
     fn notify(&mut self, message: &'static str) {
         self.message = message;
@@ -331,8 +327,8 @@ impl Wheel {
                             let dark = ui.visuals().dark_mode;
                             let rail = if dark { Color32::from_rgb(100, 108, 122) }
                                 else { Color32::from_rgb(165, 175, 190) };
-                            // Match the approved Pc launcher background, not the app's blue accent.
-                            let accent = Self::launcher_red();
+                            let accent = if dark { Color32::from_rgb(110, 170, 255) }
+                                else { Color32::from_rgb(27, 99, 224) };
                             let visuals = ui.visuals_mut();
                             visuals.widgets.inactive.weak_bg_fill = rail;
                             visuals.widgets.hovered.weak_bg_fill = rail;
@@ -476,14 +472,12 @@ impl Wheel {
                         egui::Align2::CENTER_CENTER, LABELS[self.layout[i]],
                         FontId::proportional(11.0 * scale), theme.text_muted);
                 }
-                // Branded outer border, matching the Pc launcher and customization sliders.
-                // Scale line width with the wheel to keep the ring visually balanced.
                 painter.circle_stroke(c, R * scale,
-                    Stroke::new(2.0 * scale, Self::launcher_red()));
+                    Stroke::new(0.8, theme.border.gamma_multiply(0.58)));
                 // Full user-selected round hub, no square tile.
                 // The exact uploaded launcher artwork paths are shown here as a texture,
                 // retaining the approved pale-pink Pc letterforms.
-                let hub_red = Self::launcher_red();
+                let hub_red = Color32::from_rgb(251, 14, 0);
                 let hub_pink = Color32::from_rgb(251, 180, 176);
                 painter.circle_filled(c, (INNER + 2.0) * scale, hub_red);
                 painter.circle_stroke(c, (INNER + 2.0) * scale,
@@ -491,7 +485,7 @@ impl Wheel {
                 let pc = Self::pdf_logo(&ctx);
                 let mark_rect = egui::Rect::from_center_size(
                     c - vec2(0.0, 8.0) * scale,
-                    vec2(36.0, 22.5) * (PC_MARK_SCALE * scale),
+                    vec2(36.0, 22.5) * scale,
                 );
                 painter.image(
                     pc.id(), mark_rect,
@@ -509,13 +503,6 @@ impl Wheel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {
-        assert_eq!(Wheel::launcher_red(), Color32::from_rgb(251, 14, 0));
-        assert!((PC_MARK_SCALE - 1.05).abs() < f32::EPSILON);
-        // Rendering-only change: saved layout values and hit geometry remain unchanged.
-        assert_eq!(R, 128.0);
-        assert_eq!(INNER, 46.0);
-    }
     #[test] fn saved_preferences_round_trip_and_bounds() {
         let mut wheel=Wheel::new(true);
         wheel.set_layout_string("v2;7,6,5,4,3,2,1,0;120;65");

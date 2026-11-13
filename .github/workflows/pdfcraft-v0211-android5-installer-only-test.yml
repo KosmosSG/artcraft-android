@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-          fetch-depth: 10
+          fetch-depth: 0
 
       - name: Guard production release source and existing PDFCraft signing identity
         shell: bash

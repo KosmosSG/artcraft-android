@@ -15,13 +15,13 @@ INSERT = """    code = version_code(version)
         import os
         if version != "0.20.1":
             raise SystemExit("STOP: FilmCraft upstream checkout is not v0.20.1")
-        if os.environ.get("FILMCRAFT_ANDROID_VERSION_NAME") != "0.20.1-android.2-test":
+        if os.environ.get("FILMCRAFT_ANDROID_VERSION_NAME") != "0.20.1-android.3-test":
             raise SystemExit("STOP: incorrect FilmCraft temporary version name")
-        if os.environ.get("FILMCRAFT_EPHEMERAL_VERSION_CODE") != "2001002":
+        if os.environ.get("FILMCRAFT_EPHEMERAL_VERSION_CODE") != "2001003":
             raise SystemExit("STOP: incorrect FilmCraft temporary version code")
         if os.environ.get("FILMCRAFT_TEST_PACKAGE") != "com.artcraft.filmcraft.test":
             raise SystemExit("STOP: this variant requires a separate install package")
-        code = 2001002
+        code = 2001003
 """
 
 def patch_text(source: str) -> str:

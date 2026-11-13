@@ -36,7 +36,7 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: 100, opacity_percent: 100, swallow_contact: false, consumed_events: 0, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: 84, opacity_percent: 78, swallow_contact: false, consumed_events: 0, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -274,37 +274,45 @@ impl Wheel {
         if self.customize_open {
             let mut open = true;
             let mut done = false;
-            egui::Window::new("Customize Stylus Wheel")
+            let screen = ctx.content_rect();
+            // PhotoCraft-style compact floating editor. Do not allocate the
+            // entire screen height or add a preview pane to the Window.
+            egui::Window::new("Stylus Wheel — Default")
                 .id(Id::new("vc-wheel-settings"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width((ctx.content_rect().width() - 48.0).min(850.0))
-                .max_width((ctx.content_rect().width() - 32.0).max(240.0))
+                .default_pos(pos2(screen.min.x + 20.0, screen.min.y + 22.0))
+                .default_width(400.0)
+                .max_width((screen.width() - 32.0).min(420.0).max(272.0))
                 .constrain(true)
                 .show(&ctx, |ui| {
-                    let wide = ui.available_width() >= 650.0;
-                    let height = (ctx.content_rect().height() - 130.0).max(180.0);
-                    if wide {
-                        ui.horizontal_top(|ui| {
-                            ui.allocate_ui(vec2(360.0, height), |ui| {
-                                egui::ScrollArea::vertical().id_salt("vc-wheel-controls")
-                                    .max_height(height).show(ui, |ui| self.controls(ui, &mut done));
-                            });
-                            ui.separator();
-                            self.preview(ui, height);
-                        });
-                    } else {
-                        // Preview and sliders stay outside the scrolling assignments.
-                        self.preview(ui, (height * 0.34).min(240.0));
-                        ui.scope(|ui| self.sliders(ui));
-                        egui::ScrollArea::vertical().id_salt("vc-wheel-controls")
-                            .max_height((height * 0.42).max(80.0))
-                            .show(ui, |ui| self.assignments(ui));
-                        self.buttons(ui, &mut done);
-                    }
+                    ui.set_width((screen.width() - 70.0).min(368.0).max(245.0));
+                    ui.label("Style: Default  •  8 segments");
+                    ui.small("Choose a tool for each wheel position.");
+                    ui.add_space(5.0);
+                    ui.separator();
+                    // Shorter devices scroll ONLY the assignments, not the
+                    // window header, slider values, actions or help message.
+                    let max_list_height = (screen.height() - 310.0).clamp(175.0, 350.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("vc-wheel-compact-assignments")
+                        .max_height(max_list_height)
+                        .show(ui, |ui| self.assignments(ui));
+                    ui.add_space(5.0);
+                    ui.separator();
+                    ui.add_space(5.0);
+                    ui.scope(|ui| self.sliders(ui));
+                    ui.add_space(7.0);
+                    self.buttons(ui, &mut done);
+                    ui.separator();
+                    ui.small("Actual-size preview appears beside this window.");
+                    ui.small("Pen button: single opens wheel; double selects Eraser.");
                 });
             self.customize_open = open && !done;
+            if self.customize_open {
+                self.external_preview(&ctx);
+            }
         }
         if !self.enabled { return; }
         let screen = ctx.content_rect();
@@ -381,11 +389,11 @@ impl Wheel {
             .spacing(vec2(10.0, 8.0)).show(ui, |ui| {
                 ui.add_sized(vec2(84.0, 28.0), egui::Label::new("Wheel Size"));
                 self.layout_dirty |= ui.add(egui::Slider::new(&mut self.size_percent, 75..=140)
-                    .show_value(false).step_by(5.0)).changed();
+                    .show_value(false).step_by(1.0)).changed();
                 ui.label(format!("{}%", self.size_percent)); ui.end_row();
                 ui.add_sized(vec2(84.0, 28.0), egui::Label::new("Opacity"));
                 self.layout_dirty |= ui.add(egui::Slider::new(&mut self.opacity_percent, 30..=100)
-                    .show_value(false).step_by(5.0)).changed();
+                    .show_value(false).step_by(1.0)).changed();
                 ui.label(format!("{}%", self.opacity_percent)); ui.end_row();
             });
     }
@@ -393,32 +401,35 @@ impl Wheel {
         ui.horizontal(|ui| {
             if ui.button("Reset to Default").clicked() {
                 self.layout = DEFAULT_LAYOUT;
-                self.size_percent = 100;
-                self.opacity_percent = 100;
+                self.size_percent = 84;
+                self.opacity_percent = 78;
                 self.layout_dirty = true;
             }
             *done |= ui.button("Done").clicked();
         });
         ui.small("Saved automatically. Double press: Eraser.");
     }
-    fn controls(&mut self, ui: &mut Ui, done: &mut bool) {
-        self.assignments(ui);
-        ui.separator();
-        ui.scope(|ui| self.sliders(ui));
-        ui.add_space(8.0);
-        self.buttons(ui, done);
-    }
-    fn preview(&self, ui: &mut Ui, height: f32) {
-        ui.label("Live preview · no document actions");
-        let side = ui.available_width().min(height - 26.0).max(80.0);
-        let (rect, response) = ui.allocate_exact_size(vec2(side, side), Sense::click());
-        // Fit the maximum wheel, not the current size: slider changes remain visible.
-        let fit = (side / (SIZE * 1.4)).min(1.0);
-        let scale = fit * self.size_percent as f32 / 100.0;
-        let highlighted = response.hover_pos().and_then(|p| {
-            self.hit(rect.center(), rect.center() + (p - rect.center()) / fit)
-        });
-        self.paint_wheel(ui, rect, scale, highlighted);
+    /// The preview is a non-interactive foreground area on the canvas,
+    /// OUTSIDE the settings dialog. It uses the actual wheel scale/opacity,
+    /// rather than a fit-to-panel thumbnail, and cannot select a document.
+    fn external_preview(&self, ctx: &Context) {
+        let screen = ctx.content_rect();
+        let size = SIZE * self.size_percent as f32 / 100.0;
+        if screen.width() < 465.0 + size { return; }
+        let right_room = screen.width() - 442.0;
+        let x = screen.min.x + 442.0 + (right_room - size) * 0.50;
+        let y = screen.center().y - size * 0.5 - 12.0;
+        egui::Area::new(Id::new("vc-wheel-external-preview"))
+            .order(Order::Foreground)
+            .fixed_pos(pos2(x, y.max(screen.min.y + 36.0)))
+            .interactable(false)
+            .show(ctx, |ui| {
+                ui.label("Live wheel preview");
+                let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
+                let scale = self.size_percent as f32 / 100.0;
+                let highlighted = None;
+                self.paint_wheel(ui, rect, scale, highlighted);
+            });
     }
 
     /// The preview and live overlay deliberately share every painted element.
@@ -572,6 +583,20 @@ mod tests {
         w.layout_dirty=true; assert_eq!(w.take_layout_change().unwrap(),"7,6,5,4,3,2,1,0,140,30");
         w.set_layout_string("99,0,0,0,0,0,0,0,900,0"); assert_eq!(w.size_percent,140);
     }
+    #[test]
+    fn fresh_and_reset_defaults_match_approved_photocraft_reference() {
+        let mut w = Wheel::new(true);
+        assert_eq!((w.size_percent, w.opacity_percent), (84, 78));
+        w.set_layout_string("7,6,5,4,3,2,1,0,99,61");
+        assert_eq!((w.size_percent, w.opacity_percent), (99, 61));
+        // A pre-existing user's settings are retained until Reset is pressed.
+        assert_eq!(w.layout[0], 7);
+        w.layout = DEFAULT_LAYOUT;
+        w.size_percent = 84;
+        w.opacity_percent = 78;
+        assert_eq!((w.size_percent, w.opacity_percent), (84, 78));
+    }
+
     #[test]
     fn wheel_preview_uses_live_settings_without_document_actions() {
         let ctx=Context::default(); let mut w=wheel(); w.open_customizer(&ctx);

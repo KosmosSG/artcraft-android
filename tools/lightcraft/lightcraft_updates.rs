@@ -7,6 +7,8 @@ use jni::{JavaVM, jni_sig, jni_str, objects::{JObject, JString, JValue}};
 pub struct Updater {
     open: bool,
     checking: bool,
+    downloading: bool,
+    download_available: bool,
     message: String,
     release_page: Option<String>,
     initialized: bool,
@@ -99,11 +101,42 @@ impl Updater {
         }).map_err(|e| e.to_string())
     }
 
+
+    fn begin_download(app: &AndroidApp) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+        let raw = app.activity_as_ptr() as jni::sys::jobject;
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("lcBeginUpdateDownload"),
+                jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|e| e.to_string())
+    }
+
+    fn poll_stylus(app: &AndroidApp) -> Result<(bool, Option<(f32, f32)>), String> {
+        let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+        let raw = app.activity_as_ptr() as jni::sys::jobject;
+        vm.attach_current_thread(|env| -> jni::errors::Result<(bool, Option<(f32, f32)>)> {
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let button = env.call_method(&*activity, jni_str!("lcPollStylusButton"),
+                jni_sig!("()Z"), &[])?.z()?;
+            let value = env.call_method(&*activity, jni_str!("lcStylusHoverSnapshot"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok((button, None)); }
+            let value = JString::cast_local(env, value)?;
+            let snapshot: String = value.try_to_string(env)?;
+            let mut xy = snapshot.split(',');
+            let position = xy.next().and_then(|s| s.parse::<f32>().ok())
+                .zip(xy.next().and_then(|s| s.parse::<f32>().ok()));
+            Ok((button, position))
+        }).map_err(|e| e.to_string())
+    }
     fn begin_check(&mut self, app: &AndroidApp, background: bool) {
         self.background_check = background;
         self.checking = true;
         self.message = "Checking official LightCraft GitHub Releases…".into();
         self.release_page = None;
+        self.download_available = false;
         if let Err(e) = Self::check(app) {
             self.checking = false;
             self.background_check = false;

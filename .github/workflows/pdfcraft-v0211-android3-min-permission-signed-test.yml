@@ -281,8 +281,8 @@ jobs:
               'public synchronized void pdfInstallDownloadedUpdate() {\\n'
               '    pdfUpdateNotice("Diagnostic build: in-app APK installation disabled; use GitHub releases page.", false);\\n'
               '}'.replace('\\n','\n'))
-          assert 'android.permission.REQUEST_INSTALL_PACKAGES' not in builder
-          assert 'android.permission.MANAGE_EXTERNAL_STORAGE' not in builder
+          assert 'android.permission.REQUEST_INSTALL_PACKAGES' not in contents
+          assert 'android.permission.MANAGE_EXTERNAL_STORAGE' not in contents
           print('PASS: restricted-permission paths and in-app package installer disabled for diagnostic build only')
           PY_DIAG
           bash -n lib/build-common.sh

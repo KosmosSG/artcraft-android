@@ -149,21 +149,48 @@ impl Wheel {
     fn draw(&self, ui: &mut Ui, rectangle: Rect, selection: Option<usize>) {
         let radius = rectangle.width() / 2.0;
         let center = rectangle.center();
-        let p = ui.painter_at(rectangle);
+        // Paint beyond the plate's edge, but stay inside the padded Area.
+        let p = ui.painter_at(rectangle.expand(20.0));
+        // A short, feathered shadow. The low-alpha rings avoid the heavy
+        // hard-edged blur reported in other ArtCraft wheel implementations.
+        for step in (0..16).rev() {
+            let fade = 1.0 - step as f32 / 16.0;
+            let alpha = (10.0 * fade * fade).round() as u8;
+            if alpha > 0 {
+                p.circle_stroke(center + vec2(0.0, 3.0),
+                    radius + 1.5 + step as f32 * 1.1,
+                    Stroke::new(1.7, Color32::from_rgba_unmultiplied(0, 0, 0, alpha)));
+            }
+        }
+
         let dark = Color32::from_rgba_unmultiplied(51, 51, 54, self.alpha());
         let pink = Color32::from_rgba_unmultiplied(160, 35, 68, self.alpha());
+        // The previous painter submitted 12 separately antialiased quadrilaterals
+        // PER SLOT, creating ~96 visible spokes. A single connected indexed
+        // mesh uses shared edges and eliminates internal antialias seams.
+        let mut plate = egui::epaint::Mesh::default();
         for i in 0..8 {
             let start = -PI / 2.0 - PI / 8.0 + i as f32 * TAU / 8.0;
             let finish = start + TAU / 8.0;
             let fill = if selection == Some(i) { pink } else { dark };
-            for step in 0..12 {
-                let lo = start + (finish - start) * (step as f32 / 12.0);
-                let hi = start + (finish - start) * ((step + 1) as f32 / 12.0);
-                let at = |a: f32, r: f32| center + vec2(a.cos() * r, a.sin() * r);
-                p.add(Shape::convex_polygon(vec![
-                    at(lo, radius * 0.32), at(lo, radius), at(hi, radius), at(hi, radius * 0.32)
-                ], fill, Stroke::NONE));
+            for step in 0..24 {
+                let lo = start + (finish - start) * (step as f32 / 24.0);
+                let hi = start + (finish - start) * ((step + 1) as f32 / 24.0);
+                let at = |angle: f32, r: f32| center + vec2(angle.cos() * r, angle.sin() * r);
+                let base = plate.vertices.len() as u32;
+                plate.colored_vertex(at(lo, radius * 0.32), fill);
+                plate.colored_vertex(at(lo, radius), fill);
+                plate.colored_vertex(at(hi, radius), fill);
+                plate.colored_vertex(at(hi, radius * 0.32), fill);
+                plate.add_triangle(base, base + 1, base + 2);
+                plate.add_triangle(base, base + 2, base + 3);
             }
+        }
+        p.add(Shape::mesh(plate));
+
+        for i in 0..8 {
+            let start = -PI / 2.0 - PI / 8.0 + i as f32 * TAU / 8.0;
+            let finish = start + TAU / 8.0;
             let mark_angle = start + (finish - start) / 2.0;
             let mark = center + vec2(mark_angle.cos() * radius * 0.67, mark_angle.sin() * radius * 0.67);
             let icon = Rect::from_center_size(mark - vec2(0.0, 10.0), vec2(radius * 0.19, radius * 0.19));
@@ -173,7 +200,9 @@ impl Wheel {
                 ITEMS[self.slots[i]].0, FontId::proportional((radius * 0.088).max(10.0)), Color32::WHITE);
             let end = center + vec2(start.cos() * radius, start.sin() * radius);
             let inner = center + vec2(start.cos() * radius * 0.32, start.sin() * radius * 0.32);
-            p.line_segment([inner, end], Stroke::new(1.2, Color32::from_gray(95)));
+            // Exactly eight faint boundaries, never the former 96 spokes.
+            p.line_segment([inner, end], Stroke::new(0.75,
+                Color32::from_rgba_unmultiplied(176, 176, 179, 88)));
         }
         p.circle_stroke(center, radius - 1.0, Stroke::new(1.3, Color32::from_gray(120)));
         p.circle_filled(center, radius * 0.32, BG);

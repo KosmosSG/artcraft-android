@@ -316,25 +316,40 @@ pub(super) fn ui(
     let mut wheel = ctx.data(|d| d.get_temp::<Wheel>(state_id)).unwrap_or_else(|| Wheel::load(&ctx));
     if actions & 64 != 0 {
         wheel.enabled = !wheel.enabled;
+        wheel.last_device_scan = None;
         if !wheel.enabled { wheel.open = false; wheel.settings_open = false; }
         wheel.persist();
     }
     if actions & 128 != 0 { wheel.settings_open = true; }
-    if actions & 256 != 0 && wheel.enabled {
-        wheel.open = !wheel.open;
-        wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center()));
-    }
     let _ = bridge.dc_wheel_set_enabled(wheel.enabled);
-    if wheel.enabled && bridge.dc_wheel_action().unwrap_or(0) != 0
-        && app.ui.dialog.is_none() && !app.session.wants_text() && !ctx.text_edit_focused()
+    // Java sees only some MagicOS key events: the native AInputQueue captures
+    // the pen rocker before winit and the invisible IME can consume it.
+    if wheel.last_device_scan.is_none_or(|stamp| stamp.elapsed() >= Duration::from_secs(2)) {
+        match bridge.dc_wheel_device_ids() {
+            Ok(ids) => android_activity::dc_stylus_configure(wheel.enabled, &ids),
+            Err(error) => {
+                android_activity::dc_stylus_configure(false, &[]);
+                log::warn!("DesignCraft wheel: device discovery failed: {error}");
+            }
+        }
+        wheel.last_device_scan = Some(Instant::now());
+    }
+    let native_button = !android_activity::dc_stylus_native_take().is_empty();
+    let java_button = bridge.dc_wheel_action().unwrap_or(0) != 0;
+    if wheel.enabled && (native_button || java_button)
+        && app.ui.dialog.is_none() && !app.session.wants_text()
+        && !ctx.text_edit_focused() && !ctx.input(|i| i.pointer.any_down())
     {
         wheel.open = !wheel.open;
         if wheel.open { wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center())); }
     }
     wheel.settings(&ctx);
     let blocked = wheel.paint_live(&ctx, app);
+    let enabled = wheel.enabled;
     ctx.data_mut(|d| {
         d.insert_temp(Id::new("dc-wheel-hover-block"), blocked);
+        d.insert_temp(Id::new("dc-wheel-enabled"), enabled);
         d.insert_temp(state_id, wheel);
     });
+    if enabled { ctx.request_repaint_after(Duration::from_millis(100)); }
 }

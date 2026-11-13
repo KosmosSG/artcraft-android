@@ -80,7 +80,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     # consumes them, avoiding selection/highlighting behind the stylus wheel.
     rust = replace_exact(rust,
         '        self.inner.raw_input_hook(ctx, raw);',
-        '        self.tools.filter_raw_input(ctx, raw);\\n        self.inner.raw_input_hook(ctx, raw);'.replace('\\n','\\n'))
+        '        self.tools.filter_raw_input(ctx, raw);\n        self.inner.raw_input_hook(ctx, raw);')
     rust = replace_exact(rust, "self.inner.logic(ctx);", "self.tools.close_shortcut(&mut self.inner,ctx);\n        self.tools.editor_escape(&mut self.inner,ctx);\n        self.inner.android_capture_unsaved_dcs(ctx);\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ctx);\n        self.inner.logic(ctx);")
     rust = replace_exact(rust, "self.inner.ui(ui);", "self.inner.ui(ui);\n        self.tools.editor_escape(&mut self.inner,ui.ctx());\n        self.tools.unsaved_dialog(self.inner.android_unsaved_dcs_active(),ui.ctx());")
 

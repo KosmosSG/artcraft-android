@@ -1,5 +1,5 @@
 // PDFCraft Android GitHub release notifications only.
-// Deliberately no APK downloader or PackageInstaller integration.
+// Deliberately no APK downloader or app installation integration.
 // Keep the methods as harmless compatibility hooks for the Android Activity bridge.
 private void pdfUpdateNotice(String message, boolean ready) {
     try {

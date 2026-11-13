@@ -195,7 +195,6 @@ impl Mobile {
                 _ => break,
             }
         }
-        self.wheel.capture(ctx, raw, blocked);
 
         // NativeActivity receives stylus HOVER_MOVE even when winit does not
         // produce egui PointerMoved. egui menus must receive the same location
@@ -227,6 +226,9 @@ impl Mobile {
             }
             ctx.data_mut(|d| d.insert_temp(hover_id, false));
         }
+        // Capture after BOTH winit and native hover synthesis; otherwise the
+        // appended native move can bypass the wheel and highlight the PDF.
+        self.wheel.capture(ctx, raw, blocked);
     }
     pub fn take_wheel_action(&mut self) -> Option<&'static str> { self.wheel.take_action() }
     pub fn wheel_ui(&mut self, ui: &mut egui::Ui) {

@@ -233,6 +233,12 @@ impl Wheel {
                 ctx.request_repaint_after(WAIT.saturating_sub(when.elapsed()));
             }
         }
+        // Opening after the single-button delay must also clear this frame's
+        // earlier motion, not just subsequent frames.
+        if self.open || self.swallow_contact {
+            raw.events.retain(|e| !matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerGone));
+            raw.events.push(egui::Event::PointerGone);
+        }
     }
     pub fn take_action(&mut self) -> Option<&'static str> {
         self.action.take().map(|i| COMMANDS[if i == 8 { 8 } else { self.layout[i] }])

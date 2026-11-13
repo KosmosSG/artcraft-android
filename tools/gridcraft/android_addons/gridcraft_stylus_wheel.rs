@@ -459,85 +459,153 @@ impl Wheel {
         self.open = false;
         self.single_wait = None;
         let mut window_open = self.settings_open;
+        let mut close_requested = false;
         let mut dirty = false;
-        let response = egui::Window::new("Stylus Wheel — Default")
+        let response = egui::Window::new("Customize Stylus Wheel")
             .id(Id::new("gc-wheel-settings"))
-            .open(&mut window_open).resizable(false).collapsible(false)
-            .default_width(322.0).show(ctx, |ui| {
-                ui.label("GridCraft Default • 8 configurable segments");
-                ui.separator();
-                dirty |= Self::green_slider(ui,"Wheel size",
-                    &mut self.size_percent,75.0,125.0);
-                dirty |= Self::green_slider(ui,"Opacity",
-                    &mut self.opacity_percent,60.0,100.0);
-                ui.small("Changes update the live wheel on the canvas.");
-                ui.separator();
+            .open(&mut window_open)
+            .title_bar(false) // Replaces the unwanted redundant title strip.
+            .resizable(false).collapsible(false)
+            .default_width(396.0)
+            .frame(egui::Frame::new()
+                .fill(Color32::from_rgb(42,43,46))
+                .stroke(Stroke::new(1.0,Color32::from_rgb(94,98,93)))
+                .corner_radius(egui::CornerRadius::same(11))
+                .inner_margin(egui::Margin::same(13)))
+            .show(ctx, |ui| {
+                ui.set_min_width(375.0);
+                ui.spacing_mut().item_spacing.y = 5.0;
+                ui.visuals_mut().override_text_color = Some(Color32::from_rgb(239,242,240));
+                // DeckCraft-style single header, not a duplicate title bar
+                // with a stray blank area near the top-right close control.
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Gc")
+                        .color(LIME).strong().size(20.0));
+                    ui.label(egui::RichText::new("Customize Stylus Wheel")
+                        .strong().size(18.0));
+                    if ui.button(egui::RichText::new("✕").size(17.0))
+                        .on_hover_text("Close").clicked() {
+                        close_requested = true;
+                    }
+                });
+                ui.add_space(4.0);
+                egui::Frame::new()
+                    .fill(Color32::from_rgb(56,52,56))
+                    .stroke(Stroke::new(0.8,Color32::from_rgb(107,115,105)))
+                    .corner_radius(egui::CornerRadius::same(7))
+                    .inner_margin(egui::Margin::same(9))
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("Eight customizable shortcuts")
+                            .strong().size(14.0));
+                        ui.label(egui::RichText::new(
+                            "Choose an action for each segment. Assigned actions exchange positions.")
+                            .color(Color32::from_rgb(195,199,196)).size(11.0));
+                    });
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Wheel slots").strong().size(15.0));
+                const POSITIONS: [&str; 8] = [
+                    "Top", "Upper right", "Right", "Lower right",
+                    "Bottom", "Lower left", "Left", "Upper left",
+                ];
                 for slot in 0..8 {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Slot {}", slot + 1));
-                        let mut chosen = self.slots[slot];
-                        egui::ComboBox::from_id_salt(("gc-wheel-slot",slot))
-                            .width(175.0).selected_text(LABELS[chosen]).show_ui(ui, |ui| {
-                                for i in 0..LABELS.len() {
-                                    ui.selectable_value(&mut chosen, i, LABELS[i]);
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(49,48,52))
+                        .stroke(Stroke::new(0.75,Color32::from_rgb(96,111,98)))
+                        .corner_radius(egui::CornerRadius::same(6))
+                        .inner_margin(egui::Margin::symmetric(8,4))
+                        .show(ui, |ui| {
+                            ui.set_min_width(359.0);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("{:02}",slot+1))
+                                    .color(LIME).strong());
+                                ui.add_sized(vec2(94.0,22.0),egui::Label::new(
+                                    egui::RichText::new(POSITIONS[slot])
+                                        .color(Color32::from_rgb(210,213,211))));
+                                let mut chosen = self.slots[slot];
+                                egui::ComboBox::from_id_salt(("gc-wheel-slot",slot))
+                                    .width(166.0)
+                                    .selected_text(LABELS[chosen])
+                                    .show_ui(ui, |ui| {
+                                        for i in 0..LABELS.len() {
+                                            ui.selectable_value(&mut chosen,i,LABELS[i]);
+                                        }
+                                    });
+                                if chosen != self.slots[slot] {
+                                    if let Some(old) = self.slots.iter().position(|n| *n == chosen) {
+                                        self.slots[old] = self.slots[slot];
+                                    }
+                                    self.slots[slot] = chosen;
+                                    dirty = true;
                                 }
                             });
-                        if chosen != self.slots[slot] {
-                            if let Some(old) = self.slots.iter().position(|n| *n == chosen) {
-                                self.slots[old] = self.slots[slot];
-                            }
-                            self.slots[slot] = chosen;
-                            dirty = true;
-                        }
+                        });
+                }
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Appearance").strong().size(15.0));
+                egui::Frame::new()
+                    .fill(Color32::from_rgb(53,52,55))
+                    .stroke(Stroke::new(0.8,Color32::from_rgb(97,116,101)))
+                    .corner_radius(egui::CornerRadius::same(7))
+                    .inner_margin(egui::Margin::same(10))
+                    .show(ui, |ui| {
+                        dirty |= Self::green_slider(ui,"Wheel size",
+                            &mut self.size_percent,75.0,125.0);
+                        dirty |= Self::green_slider(ui,"Opacity",
+                            &mut self.opacity_percent,60.0,100.0);
+                        ui.label(egui::RichText::new(
+                            "Size 75–125%  ·  Opacity 60–100%")
+                            .color(Color32::from_rgb(195,202,196)).size(11.0));
                     });
-                }
-                ui.separator();
-                if ui.button("Reset to Default").clicked() {
-                    self.slots = DEFAULT;
-                    self.size_percent = 100.0;
-                    self.opacity_percent = 85.0;
-                    dirty = true;
-                }
-                // Temporary acceptance-check indicator: tells the tester
-                // whether real Java stylus-hover samples reach the native app.
-                let incoming = self.last_stylus_hover.is_some_and(
-                    |at| at.elapsed() < Duration::from_secs(3));
-                let message = if !self.enabled {
-                    "Stylus hover: enable wheel in Gc menu"
-                } else if incoming {
-                    "Stylus hover: signal detected"
-                } else {
-                    "Stylus hover: move Magic-Pencil above the screen"
-                };
-                ui.small(message);
-                ui.small("Pen side-button: single to open • double to open immediately.");
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(
+                    "The wheel updates live on the worksheet. Changes save automatically.")
+                    .color(Color32::from_rgb(205,212,205)).size(11.0));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Reset defaults").clicked() {
+                        self.slots = DEFAULT;
+                        self.size_percent = 100.0;
+                        self.opacity_percent = 85.0;
+                        dirty = true;
+                    }
+                    ui.add_space(122.0);
+                    if ui.button(egui::RichText::new("Done").color(LIME).strong())
+                        .clicked() {
+                        close_requested = true;
+                    }
+                });
             });
-        self.settings_open = window_open;
+        self.settings_open = window_open && !close_requested;
         if !self.settings_open { self.preview_center = None; }
         if dirty { self.persist(); ctx.request_repaint(); }
-        if let Some(response) = response {
-            let rect = response.response.rect;
-            let screen = ctx.content_rect();
-            let size = SIZE * self.scale();
-            let margin = 18.0;
-            let on_right = screen.right() - rect.right() >= size + margin * 2.0;
-            let on_left = rect.left() - screen.left() >= size + margin * 2.0;
-            let x = if on_right { (rect.right()+screen.right())/2.0 }
-                else if on_left { (rect.left()+screen.left())/2.0 }
-                else { screen.center().x };
-            let at = pos2(
-                x.clamp(screen.left()+size/2.0, (screen.right()-size/2.0).max(screen.left()+size/2.0)),
-                rect.center().y.clamp(screen.top()+size/2.0, (screen.bottom()-size/2.0).max(screen.top()+size/2.0)),
-            );
-            self.preview_center = Some(at);
-            let highlight = self.hover.and_then(|p| self.hit_at(p,at));
-            egui::Area::new(Id::new("gc-wheel-actual-preview"))
-                .order(Order::Foreground).interactable(false)
-                .fixed_pos(at-vec2(size/2.0,size/2.0))
-                .show(ctx, |ui| {
-                    let (rect, _) = ui.allocate_exact_size(vec2(size,size), Sense::hover());
-                    self.paint(ui, rect, self.scale(), highlight);
-                });
+        // Exactly one full-size preview, on the worksheet. Never in dialog.
+        if self.settings_open {
+            if let Some(response) = response {
+                let rect = response.response.rect;
+                let screen = ctx.content_rect();
+                let size = SIZE * self.scale();
+                let margin = 18.0;
+                let on_right = screen.right()-rect.right() >= size + margin*2.0;
+                let on_left = rect.left()-screen.left() >= size + margin*2.0;
+                let x = if on_right { (rect.right()+screen.right())/2.0 }
+                    else if on_left { (rect.left()+screen.left())/2.0 }
+                    else { screen.center().x };
+                let at = pos2(
+                    x.clamp(screen.left()+size/2.0,
+                        (screen.right()-size/2.0).max(screen.left()+size/2.0)),
+                    rect.center().y.clamp(screen.top()+size/2.0,
+                        (screen.bottom()-size/2.0).max(screen.top()+size/2.0)),
+                );
+                self.preview_center = Some(at);
+                let highlight = self.hover.and_then(|p| self.hit_at(p,at));
+                egui::Area::new(Id::new("gc-wheel-actual-preview"))
+                    .order(Order::Foreground).interactable(false)
+                    .fixed_pos(at-vec2(size/2.0,size/2.0))
+                    .show(ctx, |ui| {
+                        let (rect, _) = ui.allocate_exact_size(vec2(size,size),Sense::hover());
+                        self.paint(ui,rect,self.scale(),highlight);
+                    });
+            }
         }
     }
     pub fn render(&mut self, ctx: &Context, app: &mut SheetApp) {

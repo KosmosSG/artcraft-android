@@ -70,7 +70,7 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("radius * 0.37", SRC)
 
     def test_full_size_preview_and_customization(self):
-        for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Reset to default",
+        for text in ("170.0, 380.0, 215.0", "0.25, 1.0, 215.0", "Reset to default",
                      "Edit shortcuts", "wc_stylus_preview_popout",
                      "Wheel size", "Wheel opacity", "config_json"):
             self.assertIn(text, SRC)
@@ -98,12 +98,42 @@ class BlueWheelTests(unittest.TestCase):
         self.assertNotIn('ui.label("Live preview (same geometry', SRC)
         # The floating preview is rendered after the settings Window returns,
         # not inside the window callback that contains slider controls.
-        close_dialog = SRC.index("self.settings_open = open;")
+        close_dialog = SRC.index("self.settings_open = open && !done_clicked;")
         overlay = SRC.index('egui::Id::new("wc_stylus_preview_popout")')
         self.assertLess(close_dialog, overlay)
         # Wheel and settings still use the exact same painting implementation.
         self.assertIn("self.paint(ui.ctx(), ui.painter(), rect.center(),", SRC)
 
+
+    def test_android10_deckcraft_style_dialog_only(self):
+        # The old self-referential description was explicitly removed.
+        self.assertNotIn("Default • WordCraft blue/cyan • PhotoCraft layout", SRC)
+        self.assertIn("WC_ANDROID10_POLISHED_CUSTOMIZATION_DIALOG_V1", SRC)
+        self.assertIn('egui::Window::new("Customize Stylus Wheel")', SRC)
+        self.assertIn('egui::RichText::new("Appearance")', SRC)
+        self.assertIn('egui::RichText::new("Edit shortcuts")', SRC)
+        self.assertIn("egui::Frame::group(ui.style())", SRC)
+        self.assertIn("egui::Margin::same(12)", SRC)
+        self.assertIn("egui::Margin::symmetric(10, 5)", SRC)
+        self.assertIn("for slot in 0..8 {", SRC)
+        self.assertIn("ui.add_sized([90.0, 30.0]", SRC)
+        self.assertIn('egui::RichText::new("Done")', SRC)
+        self.assertIn("self.settings_open = open && !done_clicked;", SRC)
+        self.assertIn("if ui.button(\"Reset to default\").clicked()", SRC)
+        # Core 200pt / 100%, two greys, 90%-scale Wc, cyan rim,
+        # 16-step soft shadow, hover, and floating live preview are retained.
+        for anchor in (
+            "const DEFAULT_WHEEL_SIZE: f32 = 200.0;",
+            "const DEFAULT_WHEEL_OPACITY: f32 = 1.0;",
+            "SEGMENT_GREY_LIGHT",
+            "SEGMENT_GREY_DARK",
+            "size * 0.1908, size * 0.0882",
+            "painter.circle_stroke(center, radius, Stroke::new(1.5, CYAN));",
+            "WC_ANDROID7_SOFT_FEATHER_SHADOW_V1",
+            "WC_ANDROID8_POPOUT_LIVE_PREVIEW_V1",
+            "self.pen_hover.and_then(|p|",
+        ):
+            self.assertIn(anchor, SRC)
 
     def test_only_known_edit_and_draw_commands(self):
         expected = ("draw.pen", "draw.eraser", "draw.highlighter", "draw.select",
@@ -139,9 +169,9 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("Customize Stylus Wheel", MENU)
         self.assertIn("wc_menu_wheel_visible", MENU)
         self.assertIn("WC_ANDROID4_VISIBLE_SETTINGS_SLIDERS_V1", SRC)
-        self.assertIn("Self::bar_slider(ui, &mut self.size", SRC)
-        self.assertIn("Self::bar_slider(ui, &mut self.opacity", SRC)
-        self.assertIn("Adjust a slider to pop out the full-size preview", SRC)
+        self.assertIn("ui, &mut self.size, 170.0, 380.0, 215.0", SRC)
+        self.assertIn("ui, &mut self.opacity, 0.25, 1.0, 215.0", SRC)
+        self.assertIn("Adjust a slider or shortcut to see the wheel preview", SRC)
         self.assertIn("self.pen_hover.and_then(|p|", SRC)
         self.assertIn("self.sector(p, screen)", SRC)
         self.assertIn("WC_ANDROID4_REFINED_HISTORY_ARROWS_V1", SRC)

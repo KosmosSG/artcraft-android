@@ -177,8 +177,12 @@ impl Wheel {
         p.circle_stroke(center, radius - 1.0, Stroke::new(1.3, Color32::from_gray(120)));
         p.circle_filled(center, radius * 0.32, BG);
         p.circle_stroke(center, radius * 0.32, Stroke::new(2.0, ACCENT));
-        p.text(center - vec2(0.0, radius * 0.055), Align2::CENTER_CENTER,
-            "Dc", FontId::proportional(radius * 0.29), ACCENT);
+        let logo = Self::original_dc_logo(ui.ctx());
+        p.image(logo.id(),
+            Rect::from_center_size(center - vec2(0.0, radius * 0.065),
+                vec2(radius * 0.78, radius * 0.49)),
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE);
         let name = selection.map(|i| ITEMS[self.slots[i]].0).unwrap_or("DesignCraft");
         p.text(center + vec2(0.0, radius * 0.175), Align2::CENTER_CENTER,
             name, FontId::proportional(radius * 0.092), Color32::WHITE);

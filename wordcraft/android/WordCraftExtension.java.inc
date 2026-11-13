@@ -1169,3 +1169,16 @@
         if (wcHandleHardwareShortcut(event)) return true;
         return super.dispatchKeyEvent(event);
     }
+
+    // WC_BLUE_STYLUS_WHEEL_PREFS_V1: Wheel settings are app-private and
+    // unrelated to the signing identity or protected production install.
+    public String wcGetStylusWheelPrefs() {
+        return getSharedPreferences("wordcraft_android_wheel", MODE_PRIVATE)
+            .getString("wheel_v1", "");
+    }
+
+    public void wcSetStylusWheelPrefs(String value) {
+        if (value == null || value.length() > 4096) return;
+        getSharedPreferences("wordcraft_android_wheel", MODE_PRIVATE)
+            .edit().putString("wheel_v1", value).apply();
+    }

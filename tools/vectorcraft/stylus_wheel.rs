@@ -289,7 +289,10 @@ impl Wheel {
                 .show(&ctx, |ui| {
                     ui.set_width((screen.width() - 70.0).min(368.0).max(245.0));
                     ui.strong("Style: Default  •  8 segments");
-                    ui.small("Choose a tool for each position. Wheel slots are editable.");
+                    ui.add_space(5.0);
+                    ui.label("Choose a tool for each position. Existing");
+                    ui.label("selections swap positions.");
+                    ui.add_space(3.0);
                     ui.add_space(5.0);
                     ui.separator();
                     // Shorter devices scroll ONLY the assignments, not the
@@ -306,7 +309,10 @@ impl Wheel {
                     ui.add_space(7.0);
                     self.buttons(ui, &mut done);
                     ui.separator();
+                    ui.add_space(4.0);
                     ui.small("Actual-size preview appears beside this window.");
+                    ui.small("75–140% wheel size. Opacity 30–100%.");
+                    ui.add_space(2.0);
                     ui.small("Pen button: single opens wheel; double selects Eraser.");
                 });
             self.customize_open = open && !done;
@@ -317,7 +323,8 @@ impl Wheel {
         if !self.enabled { return; }
         let screen = ctx.content_rect();
         let theme = vectorcraft_ui_egui::theme::Tokens::get(&ctx);
-        // Brief toast: 1.9 seconds visible, then 0.5 seconds fading out.
+        // PhotoCraft reference: single centered, understated message bar
+        // above the bottom status dock. Wheel stays usable behind it.
         let elapsed = self.message_at.elapsed();
         if elapsed < FEEDBACK_HOLD + FEEDBACK_FADE {
             let alpha = if elapsed <= FEEDBACK_HOLD { 1.0 } else {
@@ -325,22 +332,24 @@ impl Wheel {
             };
             let alpha = alpha.clamp(0.0, 1.0);
             if alpha < 1.0 { ctx.request_repaint_after(Duration::from_millis(40)); }
+            let width = screen.width().min(450.0).max(120.0);
             egui::Area::new(Id::new("vc-wheel-bottom"))
                 .order(Order::Foreground)
-                .fixed_pos(pos2((screen.center().x - 175.0).max(screen.min.x),
-                    screen.max.y - 43.0))
+                .fixed_pos(pos2(screen.center().x - width * 0.5,
+                    screen.max.y - 57.0))
                 .interactable(false)
                 .show(&ctx, |ui| {
-                    let (rect, _) = ui.allocate_exact_size(vec2(350.0, 31.0), Sense::hover());
+                    let (rect, _) = ui.allocate_exact_size(vec2(width, 38.0), Sense::hover());
                     let painter = ui.painter_at(rect);
-                    painter.rect_filled(rect, 13.0, Color32::from_rgba_unmultiplied(
-                        theme.panel.r(), theme.panel.g(), theme.panel.b(),
-                        (244.0 * alpha) as u8));
-                    painter.rect_stroke(rect, 13.0,
-                        Stroke::new(1.0, theme.input_border.gamma_multiply(alpha)),
+                    painter.rect_filled(rect, 16.0, Color32::from_rgba_unmultiplied(
+                        52, 52, 54, (235.0 * alpha) as u8));
+                    painter.rect_stroke(rect, 16.0,
+                        Stroke::new(0.85, Color32::from_rgb(110, 111, 113)
+                            .gamma_multiply(0.55 * alpha)),
                         StrokeKind::Inside);
                     painter.text(rect.center(), egui::Align2::CENTER_CENTER, self.message,
-                        FontId::proportional(11.0), theme.text.gamma_multiply(alpha));
+                        FontId::proportional(12.0),
+                        Color32::from_rgb(231, 231, 232).gamma_multiply(alpha));
                 });
         }
         if !self.open { return; }
@@ -361,15 +370,28 @@ impl Wheel {
             });
     }
     fn assignments(&mut self, ui: &mut Ui) {
+        // PhotoCraft reference: short Slot 1–8 labels, consistent two-column
+        // dropdown rows and positions kept as hover hints.
         egui::Grid::new("vc-wheel-assignment-grid").num_columns(2)
-            .spacing(vec2(12.0, 6.0)).min_row_height(30.0).show(ui, |ui| {
+            .spacing(vec2(12.0, 7.0)).min_row_height(32.0).show(ui, |ui| {
                 for slot in 0..8 {
-                    ui.add_sized(vec2(115.0, 30.0), egui::Label::new(format!("{}. {}", slot + 1, POSITIONS[slot])).halign(egui::Align::Min));
+                    ui.add_sized(vec2(60.0, 30.0),
+                        egui::Label::new(format!("Slot {}", slot + 1)))
+                        .on_hover_text(POSITIONS[slot]);
+                    let previous = self.layout[slot];
                     egui::ComboBox::from_id_salt(("vc-wheel-slot", slot))
-                        .selected_text(LABELS[self.layout[slot]]).width(206.0).height(240.0)
+                        .selected_text(LABELS[previous]).width(236.0).height(260.0)
                         .show_ui(ui, |ui| {
                             for index in 0..LABELS.len() {
-                                if ui.selectable_value(&mut self.layout[slot], index, LABELS[index]).changed() {
+                                if ui.selectable_label(self.layout[slot] == index, LABELS[index]).clicked()
+                                    && index != self.layout[slot] {
+                                    // Match PhotoCraft: never show duplicate
+                                    // tools when swapping an occupied slot.
+                                    if let Some(existing) = (0..8)
+                                        .find(|&other| other != slot && self.layout[other] == index) {
+                                        self.layout[existing] = previous;
+                                    }
+                                    self.layout[slot] = index;
                                     self.layout_dirty = true;
                                 }
                             }
@@ -379,22 +401,26 @@ impl Wheel {
             });
     }
     fn sliders(&mut self, ui: &mut Ui) {
-        // Restrict launcher-orange slider styling to this section, not the
-        // document canvas, popup menus or other application controls.
+        // Same PhotoCraft order: horizontal slider, precise numeric percentage,
+        // then the field label. The native Vc accent replaces PhotoCraft blue.
         ui.visuals_mut().selection.bg_fill = Color32::from_rgb(255, 159, 0);
         ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(255, 159, 0);
-        ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(190, 105, 12);
-        ui.spacing_mut().slider_width = 130.0;
+        ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(173, 94, 14);
+        ui.spacing_mut().slider_width = 175.0;
         egui::Grid::new("vc-wheel-slider-grid").num_columns(3)
-            .spacing(vec2(10.0, 8.0)).show(ui, |ui| {
-                ui.add_sized(vec2(84.0, 28.0), egui::Label::new("Wheel Size"));
+            .spacing(vec2(9.0, 9.0)).min_row_height(31.0).show(ui, |ui| {
                 self.layout_dirty |= ui.add(egui::Slider::new(&mut self.size_percent, 75..=140)
                     .show_value(false).step_by(1.0)).changed();
-                ui.label(format!("{}%", self.size_percent)); ui.end_row();
-                ui.add_sized(vec2(84.0, 28.0), egui::Label::new("Opacity"));
+                self.layout_dirty |= ui.add_sized(vec2(66.0, 25.0),
+                    egui::DragValue::new(&mut self.size_percent).range(75..=140)
+                        .speed(1.0).suffix("%")).changed();
+                ui.label("Wheel size"); ui.end_row();
                 self.layout_dirty |= ui.add(egui::Slider::new(&mut self.opacity_percent, 30..=100)
                     .show_value(false).step_by(1.0)).changed();
-                ui.label(format!("{}%", self.opacity_percent)); ui.end_row();
+                self.layout_dirty |= ui.add_sized(vec2(66.0, 25.0),
+                    egui::DragValue::new(&mut self.opacity_percent).range(30..=100)
+                        .speed(1.0).suffix("%")).changed();
+                ui.label("Opacity"); ui.end_row();
             });
     }
     fn buttons(&mut self, ui: &mut Ui, done: &mut bool) {
@@ -405,8 +431,10 @@ impl Wheel {
                 self.opacity_percent = 78;
                 self.layout_dirty = true;
             }
-            *done |= ui.add(egui::Button::new("Done").fill(Color32::from_rgb(100, 42, 8))).clicked();
         });
+        // Keep the title-bar X as the single close action, like PhotoCraft.
+        // Changes persist automatically on each adjustment.
+        let _ = done;
         ui.small("Changes saved automatically.");
     }
     /// The preview is a non-interactive foreground area on the canvas,
@@ -466,31 +494,41 @@ impl Wheel {
                         vertices.push(c + vec2(angle.cos(), angle.sin()) * R * scale);
                     }
                     let active = highlighted == Some(i);
-                    let normal = if i % 2 == 0 {
-                        Self::mix(theme.panel, theme.input, if dark { 0.18 } else { 0.30 })
+                    // PhotoCraft dual-tone graphite: subtle alternating
+                    // greys, no high-contrast spokes or hard radial seams.
+                    let normal = if dark {
+                        if i % 2 == 0 { Color32::from_rgb(43, 43, 45) }
+                        else { Color32::from_rgb(49, 49, 51) }
+                    } else if i % 2 == 0 {
+                        Self::mix(theme.panel, theme.input, 0.17)
                     } else {
-                        Self::mix(theme.panel, theme.input, if dark { 0.68 } else { 0.72 })
+                        Self::mix(theme.panel, theme.input, 0.31)
                     };
                     let fill = if active {
-                        Self::mix(normal, Color32::from_rgb(255, 159, 0), if dark { 0.48 } else { 0.22 })
+                        Self::mix(normal, Color32::from_rgb(255, 159, 0), if dark { 0.27 } else { 0.16 })
                     } else { normal };
                     painter.add(Shape::convex_polygon(vertices, fill.gamma_multiply(opacity),
-                        Stroke::new(if active { 1.8 } else { 0.65 },
+                        Stroke::new(if active { 1.25 } else { 0.52 },
                             (if active { Color32::from_rgb(255, 159, 0) }
-                            else { theme.input_border.gamma_multiply(0.70) }).gamma_multiply(opacity))));
+                            else { theme.input_border.gamma_multiply(0.48) }).gamma_multiply(opacity))));
                     let a = degrees.to_radians();
                     let icon_pos = c + vec2(a.cos(), a.sin()) * 87.0 * scale;
                     vectorcraft_ui_egui::icons::paint(ui, ICONS[self.layout[i]],
                         egui::Rect::from_center_size(icon_pos - vec2(0.0, 10.0), vec2(24.0, 24.0) * scale),
-                        (if active { Color32::from_rgb(255,159,0) } else { theme.text }).gamma_multiply(opacity));
+                        (if active { Color32::from_rgb(255, 185, 79) }
+                          else if dark { Color32::from_rgb(234, 234, 234) }
+                          else { theme.text }).gamma_multiply(opacity));
                     painter.text(icon_pos + vec2(0.0, 13.0),
                         egui::Align2::CENTER_CENTER, LABELS[self.layout[i]],
-                        FontId::proportional(11.0 * scale), theme.text_dim.gamma_multiply(opacity));
+                        FontId::proportional(11.0 * scale),
+                         (if dark { Color32::from_rgb(190, 190, 191) }
+                          else { theme.text_dim }).gamma_multiply(opacity));
                 }
                 // The thin surrounding rim matches the orange Vc launcher mark.
                 // Match the same rim in the real overlay and live preview.
                 painter.circle_stroke(c, R * scale,
-                    Stroke::new(1.15 * scale, Color32::from_rgb(255, 159, 0).gamma_multiply(opacity)));
+                    Stroke::new(0.9 * scale, Color32::from_rgb(255, 159, 0)
+                         .gamma_multiply(0.66 * opacity)));
                 // Full user-selected round hub, no square tile.
                 // The exact uploaded SVG paths are shown here as a texture,
                 // retaining the approved orange Vc letterforms.

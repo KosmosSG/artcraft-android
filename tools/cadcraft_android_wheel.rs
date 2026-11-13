@@ -50,6 +50,32 @@ fn paint_cc(ui: &egui::Ui, rect: Rect) {
     );
 }
 
+fn tinted(color: Color32, opacity: f32) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(),
+        (color.a() as f32 * opacity.clamp(0.0, 1.0)).round() as u8)
+}
+
+// Transparent Cc glyph: center is a solid circular brand-colored hub, not an
+// inset rounded-square launcher icon. Generated from the same reviewed SVG.
+fn center_glyph_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = Id::new("cadcraft_android_cc_center_glyph_v3");
+    if let Some(found) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return found;
+    }
+    let image = egui::ColorImage::from_rgba_unmultiplied(
+        [64, 64], include_bytes!("cadcraft_cc_glyph.rgba"),
+    );
+    let handle = ctx.load_texture("cadcraft-cc-cream-glyph-v3", image, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, handle.clone()));
+    handle
+}
+fn paint_center_glyph(ui: &egui::Ui, rect: Rect, opacity: f32) {
+    let tex = center_glyph_texture(ui.ctx());
+    ui.painter().image(tex.id(), rect,
+        Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+        tinted(Color32::WHITE, opacity));
+}
+
 /// Compact PhotoCraft-style Cc menu; intentionally no "CADCraft Android" title,
 /// no global-upstream updater and no diagnostics menu.
 pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>) {
@@ -71,12 +97,12 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
             }
         });
         ui.separator();
-        // Upstream's update checker points at the official desktop app, not
-        // this test package. Never present it as a working Android APK updater.
-        ui.menu_button("App Updates", |ui| {
-            ui.set_min_width(238.0);
-            ui.add_enabled(false, egui::Button::new("No published CADCraft Android release"));
-        });
+        // Invoke the CADCraft-only Java updater from the native app, never
+        // the Android reference builder's unrelated global release feed.
+        if ui.button("Check for Updates...").clicked() {
+            crate::cadcraft_android_wheel::check_cadcraft_updates();
+            ui.close();
+        }
         ui.menu_button("Stylus Wheel", |ui| {
             if ui.checkbox(&mut app.ui.cad_wheel_open, "Show Stylus Wheel").clicked() {
                 ui.close();
@@ -87,6 +113,8 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
             }
             if ui.button("Reset to CAD Defaults").clicked() {
                 app.ui.cad_wheel_actions = default_actions();
+                app.ui.cad_wheel_size = 1.0;
+                app.ui.cad_wheel_opacity = 1.0;
                 ui.close();
             }
         });
@@ -106,20 +134,20 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
 fn wheel_index(pos: Pos2, center: Pos2, radius: f32) -> Option<usize> {
     let d = pos - center;
     let r = d.length();
-    if !(48.0..=radius).contains(&r) {
+    if !(48.0 * radius / 137.0..=radius).contains(&r) {
         return None;
     }
     let sector = FULL / SECTORS;
     let a = (d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 + sector / 2.0).rem_euclid(FULL);
     Some(((a / sector).floor() as usize).min(7))
 }
-fn draw_glyph(painter: &egui::Painter, action: &str, pos: Pos2, stroke: Stroke) {
+fn draw_glyph(painter: &egui::Painter, action: &str, pos: Pos2, stroke: Stroke, cream: Color32) {
     let line = |a: Vec2, b: Vec2| painter.line_segment([pos + a, pos + b], stroke);
     match action {
         "line" | "pline" => {
             line(Vec2::new(-11.0, 8.0), Vec2::new(11.0, -8.0));
-            painter.circle_filled(pos + Vec2::new(-11.0, 8.0), 2.5, CREAM);
-            painter.circle_filled(pos + Vec2::new(11.0, -8.0), 2.5, CREAM);
+            painter.circle_filled(pos + Vec2::new(-11.0, 8.0), 2.5, cream);
+            painter.circle_filled(pos + Vec2::new(11.0, -8.0), 2.5, cream);
         }
         "circle" => { painter.circle_stroke(pos, 11.0, stroke); }
         "ui.panel.layers" => {
@@ -133,23 +161,27 @@ fn draw_glyph(painter: &egui::Painter, action: &str, pos: Pos2, stroke: Stroke) 
             painter.line_segment([pos + Vec2::new(-7.0,-12.0), pos + Vec2::new(-7.0,12.0)], stroke);
             painter.line_segment([pos + Vec2::new(-7.0,12.0), pos + Vec2::new(0.0,6.0)], stroke);
         }
-        "pan" => { painter.text(pos, Align2::CENTER_CENTER, "✋", FontId::proportional(23.0), CREAM); }
-        "trim" => { painter.text(pos, Align2::CENTER_CENTER, "✂", FontId::proportional(23.0), CREAM); }
-        "undo" => { painter.text(pos, Align2::CENTER_CENTER, "↶", FontId::proportional(29.0), CREAM); }
-        "redo" => { painter.text(pos, Align2::CENTER_CENTER, "↷", FontId::proportional(29.0), CREAM); }
+        "pan" => { painter.text(pos, Align2::CENTER_CENTER, "✋", FontId::proportional(23.0), cream); }
+        "trim" => { painter.text(pos, Align2::CENTER_CENTER, "✂", FontId::proportional(23.0), cream); }
+        "undo" => { painter.text(pos, Align2::CENTER_CENTER, "↶", FontId::proportional(29.0), cream); }
+        "redo" => { painter.text(pos, Align2::CENTER_CENTER, "↷", FontId::proportional(29.0), cream); }
         "osnap" => {
             painter.circle_stroke(pos, 9.0, stroke);
             line(Vec2::new(-15.0,0.0),Vec2::new(15.0,0.0));
             line(Vec2::new(0.0,-15.0),Vec2::new(0.0,15.0));
         }
         _ => {
-            painter.text(pos, Align2::CENTER_CENTER, "⌘", FontId::proportional(21.0), CREAM);
+            painter.text(pos, Align2::CENTER_CENTER, "⌘", FontId::proportional(21.0), cream);
         }
     }
 }
-fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usize>, actions: &[String]) {
+fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usize>, actions: &[String], opacity: f32) {
     let painter = ui.painter();
-    painter.circle_filled(center + Vec2::new(0.0, 5.0), radius + 5.0, Color32::from_black_alpha(60));
+    let scale = radius / 137.0;
+    let cream = tinted(CREAM, opacity);
+    let brand = tinted(BRAND, opacity);
+    let shadow = Color32::from_black_alpha((38.0 * opacity) as u8);
+    painter.circle_filled(center + Vec2::new(0.0, 3.0 * scale), radius + 3.0 * scale, shadow);
     let sector = FULL / SECTORS;
     for k in 0..8 {
         let angle = -std::f32::consts::FRAC_PI_2 + (k as f32) * sector;
@@ -160,16 +192,43 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usiz
             points.push(center + Vec2::new(a.cos(), a.sin()) * radius);
         }
         let active = selected == Some(k);
-        let fill = if active { BRAND } else { Color32::from_rgb(49, 50, 57) };
-        painter.add(egui::Shape::convex_polygon(points, fill, Stroke::new(0.8, Color32::from_gray(100))));
-        let p = center + Vec2::new(angle.cos(), angle.sin()) * 96.0;
+        let fill = if active { brand } else { tinted(Color32::from_rgb(69, 67, 73), opacity) };
+        painter.add(egui::Shape::convex_polygon(points, fill,
+            Stroke::new(0.8, tinted(Color32::from_gray(110), opacity))));
+        let p = center + Vec2::new(angle.cos(), angle.sin()) * (96.0 * scale);
         let action = actions.get(k).map_or(DEFAULT_ACTIONS[k], String::as_str);
-        draw_glyph(painter, action, p + Vec2::new(0.0, -9.0), Stroke::new(2.0, CREAM));
-        painter.text(p + Vec2::new(0.0, 19.0), Align2::CENTER_CENTER, label(action), FontId::proportional(11.5), CREAM);
+        draw_glyph(painter, action, p + Vec2::new(0.0, -9.0 * scale),
+            Stroke::new(2.0 * scale, cream), cream);
+        painter.text(p + Vec2::new(0.0, 19.0 * scale), Align2::CENTER_CENTER,
+            label(action), FontId::proportional((11.5 * scale).max(8.5)), cream);
     }
-    painter.circle_filled(center, 48.0, Color32::from_rgb(35, 35, 41));
-    painter.circle_stroke(center, 49.0, Stroke::new(2.0, BRAND));
-    paint_cc(ui, Rect::from_center_size(center, Vec2::splat(63.0)));
+    // PhotoCraft-like continuous circle, customized to the exact Cc pink.
+    let hub = 48.0 * scale;
+    painter.circle_filled(center, hub, brand);
+    painter.circle_stroke(center, hub + 1.0 * scale, Stroke::new(2.0 * scale, cream));
+    paint_center_glyph(ui, Rect::from_center_size(center, Vec2::splat(58.0 * scale)), opacity);
+}
+
+#[cfg(target_os = "android")]
+pub fn check_cadcraft_updates() {
+    // The Android app supplies the VM/Activity context. Do not invoke a
+    // browser, download unsigned APKs, or query the reference builder feed.
+    let context = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(context.vm() as *mut _) };
+    let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+        let activity_raw = context.context() as jni::sys::jobject;
+        let activity = unsafe { env.as_cast_raw::<jni::objects::JObject>(&activity_raw)? };
+        env.call_static_method(
+            "com/artcraft/updater/UpdateCheck",
+            "checkNow",
+            jni::jni_sig!("(Landroid/app/Activity;)V"),
+            &[jni::objects::JValue::Object(&activity)],
+        )?;
+        Ok(())
+    });
+    if let Err(error) = result {
+        eprintln!("CADCraft update check not available: {error}");
+    }
 }
 
 /// Draw after the canvas and before modal prompts so the wheel gets foreground
@@ -183,76 +242,94 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, bounds: egui::Rect) {
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.label("Choose the native CAD command for each wheel segment.");
+                ui.label("Configure eight CAD commands and preview the wheel live.");
                 ui.separator();
-                for idx in 0..8 {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Slot {}", idx + 1));
-                        let current = app.ui.cad_wheel_actions.get(idx)
-                            .cloned().unwrap_or_else(|| DEFAULT_ACTIONS[idx].to_owned());
-                        egui::ComboBox::from_id_salt(("cadcraft_wheel_slot", idx))
-                            .selected_text(label(current.as_str()))
-                            .width(145.0)
-                            .show_ui(ui, |ui| {
-                                for (name, id) in ACTIONS {
-                                    if ui.selectable_label(current.as_str() == id, name).clicked() {
-                                        if let Some(slot) = app.ui.cad_wheel_actions.get_mut(idx) {
-                                            *slot = id.to_string();
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_min_width(228.0);
+                        for idx in 0..8 {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Slot {}", idx + 1));
+                                let current = app.ui.cad_wheel_actions.get(idx)
+                                    .cloned().unwrap_or_else(|| DEFAULT_ACTIONS[idx].to_owned());
+                                egui::ComboBox::from_id_salt(("cadcraft_wheel_slot", idx))
+                                    .selected_text(label(current.as_str()))
+                                    .width(145.0)
+                                    .show_ui(ui, |ui| {
+                                        for (name, id) in ACTIONS {
+                                            if ui.selectable_label(current.as_str() == id, name).clicked() {
+                                                if let Some(slot) = app.ui.cad_wheel_actions.get_mut(idx) {
+                                                    *slot = id.to_string();
+                                                }
+                                            }
                                         }
-                                    }
-                                }
+                                    });
                             });
+                        }
+                        ui.separator();
+                        ui.label("Wheel size");
+                        ui.add(egui::Slider::new(&mut app.ui.cad_wheel_size, 0.65..=1.45)
+                            .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)));
+                        ui.label("Wheel opacity");
+                        ui.add(egui::Slider::new(&mut app.ui.cad_wheel_opacity, 0.35..=1.0)
+                            .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)));
+                        ui.separator();
+                        if ui.button("Reset to CAD Defaults").clicked() {
+                            app.ui.cad_wheel_actions = default_actions();
+                            app.ui.cad_wheel_size = 1.0;
+                            app.ui.cad_wheel_opacity = 1.0;
+                        }
                     });
-                }
-                ui.separator();
-                if ui.button("Reset to CAD Defaults").clicked() {
-                    app.ui.cad_wheel_actions = default_actions();
-                }
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        ui.label("Live preview · actual wheel size");
+                        let radius = 137.0 * app.ui.cad_wheel_size.clamp(0.65, 1.45);
+                        let dim = radius * 2.0 + 16.0;
+                        let (preview_rect, _) = ui.allocate_exact_size(
+                            Vec2::splat(dim), Sense::hover());
+                        draw_ring(ui, preview_rect.center(), radius,
+                            None, &app.ui.cad_wheel_actions, app.ui.cad_wheel_opacity);
+                    });
+                });
             });
         app.ui.cad_wheel_customize = open;
     }
 
     // Screen bounds come from the host Ui because pinned egui 0.37 has no Context::screen_rect.
+    // No bottom-right Cc floating launcher. Wheel is opened from the top-left
+    // Cc menu, keeping the drawing workspace unobstructed.
     if !app.ui.cad_wheel_open {
-        // A small unobtrusive, accessible launcher remains on screen; users can
-        // also open the wheel via Cc ▸ Stylus Wheel. No CAD right-click hijack.
-        let pos = Pos2::new((bounds.max.x - 55.0).max(4.0), (bounds.max.y - 81.0).max(4.0));
-        egui::Area::new(Id::new("cadcraft_android_wheel_launcher"))
-            .order(egui::Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
-                let (rect, response) = ui.allocate_exact_size(Vec2::splat(42.0), Sense::click());
-                ui.painter().circle_filled(rect.center(), 22.0, Color32::from_black_alpha(75));
-                paint_cc(ui, rect.shrink(5.0));
-                if response.on_hover_text("Open CADCraft Stylus Wheel").clicked() {
-                    app.ui.cad_wheel_open = true;
-                }
-            });
         return;
     }
 
-    let pos = Pos2::new((bounds.max.x - 320.0).max(4.0), (bounds.max.y - 366.0).max(4.0));
+    let radius = 137.0 * app.ui.cad_wheel_size.clamp(0.65, 1.45);
+    let diameter = radius * 2.0;
+    let width = diameter + 24.0;
+    let pos = Pos2::new((bounds.max.x - width - 12.0).max(4.0),
+        (bounds.max.y - width - 12.0).max(4.0));
     let mut chosen: Option<String> = None;
     egui::Area::new(Id::new("cadcraft_android_stylus_wheel"))
         .order(egui::Order::Foreground)
         .fixed_pos(pos)
         .show(ctx, |ui| {
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(308.0, 342.0), Sense::click());
-            let center = rect.left_top() + Vec2::new(154.0, 150.0);
+            let (rect, response) = ui.allocate_exact_size(Vec2::splat(width), Sense::click());
+            let center = rect.center();
             let cursor = ctx.input(|i| i.pointer.hover_pos());
-            let hovered = cursor.and_then(|p| wheel_index(p, center, 137.0));
-            draw_ring(ui, center, 137.0, hovered, &app.ui.cad_wheel_actions);
+            let hovered = cursor.and_then(|p| wheel_index(p, center, radius));
+            draw_ring(ui, center, radius, hovered,
+                &app.ui.cad_wheel_actions, app.ui.cad_wheel_opacity);
+            let hub = 48.0 * radius / 137.0;
             if let Some(where_at) = cursor {
-                if (where_at - center).length() < 47.0 {
-                    ui.painter().circle_stroke(center, 46.0, Stroke::new(2.5, CREAM));
+                if (where_at - center).length() < hub {
+                    ui.painter().circle_stroke(center, hub,
+                        Stroke::new(2.5, tinted(CREAM, app.ui.cad_wheel_opacity)));
                 }
             }
-            let note = Rect::from_center_size(rect.left_top() + Vec2::new(154.0, 316.0), Vec2::new(298.0, 28.0));
-            ui.painter().rect_filled(note, 15.0, Color32::from_rgba_unmultiplied(73, 74, 80, 230));
-            ui.painter().text(note.center(), Align2::CENTER_CENTER, "Hover to highlight • tap tip to select", FontId::proportional(12.0), CREAM);
             if response.clicked() {
                 if let Some(at) = cursor {
-                    if (at - center).length() < 47.0 {
+                    if (at - center).length() < hub {
                         app.ui.cad_wheel_open = false;
-                    } else if let Some(idx) = wheel_index(at, center, 137.0) {
+                    } else if let Some(idx) = wheel_index(at, center, radius) {
                         chosen = app.ui.cad_wheel_actions.get(idx).cloned();
                         app.ui.cad_wheel_open = false;
                     }

@@ -20,7 +20,7 @@ class BlueWheelTests(unittest.TestCase):
             self.assertIn(text, SRC)
 
     def test_full_size_preview_and_customization(self):
-        for text in ("170.0..=380.0", "0.25..=1.0", "Live preview", "Reset to default",
+        for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Live preview", "Reset to default",
                      "Edit shortcuts", "self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity",
                      "Wheel size", "Wheel opacity", "config_json"):
             self.assertIn(text, SRC)

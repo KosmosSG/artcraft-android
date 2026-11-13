@@ -147,27 +147,34 @@ fn artcraft_android_menu(ui: &mut Ui) {
             }
             ui.small("Page colours are separate from the interface theme.");
         });
-        // WC_BLUE_STYLUS_WHEEL_MENU_V1: PhotoCraft-style wheel, WordCraft colour.
-        ui.menu_button("Stylus Wheel", |ui| {
-            ui.set_min_width(240.0);
-            let mut visible = ui.ctx().data(|d|
-                d.get_temp::<bool>(egui::Id::new("wc_menu_wheel_visible"))
-            ).unwrap_or(true);
-            if ui.checkbox(&mut visible, "Show Stylus Wheel").changed() {
-                let action = if visible { "wheel_on" } else { "wheel_off" };
-                ui.ctx().data_mut(|d| d.insert_temp(
-                    egui::Id::new("wc_menu_action"), action.to_owned()
-                ));
-                ui.ctx().request_repaint();
-            }
-            if ui.button("Customize Stylus Wheel…").clicked() {
-                ui.ctx().data_mut(|d| d.insert_temp(
-                    egui::Id::new("wc_menu_action"), "wheel_customize".to_owned()
-                ));
-                ui.ctx().request_repaint();
-                ui.close();
-            }
-        });
+        // WC_EFFECTCRAFT_STYLE_WHEEL_MENU_V1: direct touch-friendly rows
+        // match the approved EffectCraft Ec popup, not nested wheel submenu.
+        ui.separator();
+        let wheel_on = ui.ctx().data(|d|
+            d.get_temp::<bool>(egui::Id::new("wc_menu_wheel_visible"))
+        ).unwrap_or(true);
+        if ui.button(if wheel_on { "✓ Stylus Wheel ON" } else { "Stylus Wheel OFF" }).clicked() {
+            ui.ctx().data_mut(|d| d.insert_temp(
+                egui::Id::new("wc_menu_action"),
+                if wheel_on { "wheel_off" } else { "wheel_on" }.to_owned()
+            ));
+            ui.ctx().request_repaint();
+            ui.close();
+        }
+        if ui.add_enabled(wheel_on, egui::Button::new("Open Stylus Wheel")).clicked() {
+            ui.ctx().data_mut(|d| d.insert_temp(
+                egui::Id::new("wc_menu_action"), "wheel_open".to_owned()
+            ));
+            ui.ctx().request_repaint();
+            ui.close();
+        }
+        if ui.button("Customize Stylus Wheel…").clicked() {
+            ui.ctx().data_mut(|d| d.insert_temp(
+                egui::Id::new("wc_menu_action"), "wheel_customize".to_owned()
+            ));
+            ui.ctx().request_repaint();
+            ui.close();
+        }
         ui.menu_button("Keyboard & Shortcuts", |ui| {
             ui.set_min_width(230.0);
             let mut pad = ui.ctx().data(|d|

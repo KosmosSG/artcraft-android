@@ -476,7 +476,7 @@ mod tests {
     #[test] fn wheel_size_75_default_reset_and_preserved_saved_choice() {
         let mut wheel = Wheel::new(true);
         assert_eq!(wheel.size_percent, DEFAULT_WHEEL_SIZE_PERCENT);
-        assert_eq!(wheel.opacity_percent, 100.0);
+        assert_eq!(wheel.opacity_percent, 85.0);
         // Saved preferences continue to override the first-use default.
         wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85");
         assert_eq!((wheel.size_percent, wheel.opacity_percent), (123.0, 85.0));
@@ -484,10 +484,10 @@ mod tests {
         // persistence without changing the layout serialization format.
         wheel.reset_defaults();
         assert_eq!(wheel.layout, DEFAULT_LAYOUT);
-        assert_eq!((wheel.size_percent, wheel.opacity_percent), (75.0, 100.0));
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (100.0, 85.0));
         assert!(wheel.layout_dirty);
         let saved = wheel.take_layout_change().unwrap();
-        assert!(saved.ends_with(";75;100"));
+        assert!(saved.ends_with(";100;85"));
         assert!(!wheel.layout_dirty);
     }
     #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {

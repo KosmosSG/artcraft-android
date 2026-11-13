@@ -83,7 +83,7 @@ jobs:
             and .path == ".github/workflows/pdfcraft-v0211-android1-test.yml"
           ' "$RUNNER_TEMP/pdfcraft-tested-run.json"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/43372487644/artifacts" > "$RUNNER_TEMP/pdfcraft-tested-artifacts.json"
-          jq -e '.artifacts | any(.name == "PDFCraft-0.21.1-android.2-PROTECTED-ARM64-TEST" and .expired == false)' "$RUNNER_TEMP/pdfcraft-tested-artifacts.json"
+          jq -e '.artifacts | any(.name == "PDFCraft-0.21.1-android.1-PROTECTED-ARM64-TEST" and .expired == false)' "$RUNNER_TEMP/pdfcraft-tested-artifacts.json"
           echo "Verified exact owner-tested source and successful Android.1 CI build." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify the exact stable upstream release tag and commit

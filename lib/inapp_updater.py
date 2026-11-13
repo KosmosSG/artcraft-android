@@ -13,7 +13,7 @@ import tomllib
 
 TARGET_TAG = {
     "wordcraft": "wordcraft-v0.15.2-android.3",
-    "gridcraft": "gridcraft-v0.16.1-android.4",
+    "gridcraft": "gridcraft-v0.19.1-android.8",
 }
 ACTIVITY = {
     "wordcraft": "WordCraftActivity",

@@ -389,6 +389,54 @@
     // cursor takeover, or synthetic clicks in the underlying worksheet.
     private final java.util.concurrent.atomic.AtomicReference<String> gcWheelHover =
             new java.util.concurrent.atomic.AtomicReference<>();
+    // GC_STYLUS_CONTACT_CURSOR_V1. Hover is used only for wheel-slot
+    // highlighting. The visible circular cursor is enabled strictly while
+    // a real stylus tip touches the screen; ordinary fingers are excluded.
+    private final java.util.concurrent.atomic.AtomicReference<String> gcWheelContact =
+            new java.util.concurrent.atomic.AtomicReference<>();
+    public String gcStylusWheelPollContact() {
+        return gcWheelContact.getAndSet(null);
+    }
+    private void gcObserveStylusContact(android.view.MotionEvent event) {
+        if (!gcStylusWheelEnabled || event == null || event.getPointerCount() == 0)
+            return;
+        final int action = event.getActionMasked();
+        final int tool = event.getToolType(event.getActionIndex());
+        final boolean pen = tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                || tool == android.view.MotionEvent.TOOL_TYPE_ERASER
+                || (event.getSource() & android.view.InputDevice.SOURCE_STYLUS)
+                   == android.view.InputDevice.SOURCE_STYLUS;
+        if (!pen) return;
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_UP
+                || action == android.view.MotionEvent.ACTION_POINTER_UP) {
+            gcWheelContact.set("U");
+            return;
+        }
+        if (action == android.view.MotionEvent.ACTION_DOWN
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN
+                || action == android.view.MotionEvent.ACTION_MOVE) {
+            android.view.Window window = getWindow();
+            android.view.View decor = window != null ? window.getDecorView() : null;
+            int[] screenOrigin = {0, 0};
+            if (decor != null) decor.getLocationOnScreen(screenOrigin);
+            final float x = event.getRawX() - screenOrigin[0];
+            final float y = event.getRawY() - screenOrigin[1];
+            if (Float.isFinite(x) && Float.isFinite(y)) {
+                gcWheelContact.set("D:" + Float.toString(x) + "," + Float.toString(y));
+            }
+        }
+    }
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        gcObserveStylusContact(event);
+        // Always forward to GameActivity; never steal stylus drawing or
+        // touch / trackpad input from the spreadsheet.
+        return super.dispatchTouchEvent(event);
+    }
+    @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+        gcObserveStylusContact(event);
+        return super.onTouchEvent(event);
+    }
     private volatile long gcHoverLastScan = 0L;
     public String gcStylusWheelPollHover() {
         // GameActivity may replace/recreate the native SurfaceView. Refresh
@@ -491,6 +539,7 @@
         gcStylusWheelEnabled = value;
         gcStylusWheelKeys.clear();
         gcWheelHover.set(null);
+        gcWheelContact.set(null);
         if (value) {
             gcHoverLastScan = android.os.SystemClock.uptimeMillis();
             gcInstallPassiveHoverObservers();

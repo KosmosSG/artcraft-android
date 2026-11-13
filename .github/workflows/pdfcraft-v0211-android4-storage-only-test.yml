@@ -1,0 +1,431 @@
+name: PDFCraft v0.21.1 Android.4 STORAGE permission isolation SIGNED TEST ONLY
+
+on:
+  push:
+    branches:
+      - investigate/pdfcraft-v0211-android4-storage-only-20261113
+    paths:
+      - .github/workflows/pdfcraft-v0211-android4-storage-only-test.yml
+      - lib/build-common.sh
+      - assets/pdfcraft/**
+      - templates/android/pdfcraft_modifiers.rs
+      - templates/android/pdfcraft_mobile.rs
+      - templates/android/pdfcraft_adaptive_cursor.rs
+      - templates/android/pdfcraft_ocr.rs
+      - templates/android/pdfcraft_mobile_java.txt
+      - tools/test_pdfcraft_adapter.py
+      - tools/pdfcraft/**
+      - templates/android/pdfcraft_mobile_java.txt
+      - templates/android/pdfcraft_update_java.txt
+      - tools/font_scan_budget_regression.py
+      - tools/approved-branding/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdfcraft-v0211-android4-storage-signed-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/investigate/pdfcraft-v0211-android4-storage-only-20261113'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.21.1-android.4
+      PDFCRAFT_REF: v0.21.1
+      PDFCRAFT_SHA: b503b2e62dfeec5598f344e4e287d9c9cbdb34fa
+      PDFCRAFT_ICON_SHA256: 690439cf43b99f6d5e5f233f2cbb55877cfbe089e823ae2de600035884d5a3f8
+      # Expected cargo-apk2 code for pinned v0.21.1, NOT reserved for published updates.
+      EXPECTED_PRODUCTION_VERSION_CODE: '16782596'
+
+    steps:
+      - name: Checkout verified source tree
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Guard production release source and existing PDFCraft signing identity
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PDFCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PDFCRAFT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PDFCRAFT_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PDFCRAFT_KEY_ALIAS }}
+          CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          # This new release branch must begin at the exact successful CI-tested source.
+          git cat-file -e 'fcccda6a531202947d930e3643a872242d73d092^{commit}'
+          git diff --quiet fcccda6a531202947d930e3643a872242d73d092 HEAD -- . ':(exclude).github/workflows/pdfcraft-v0211-android1-original-cert-publish.yml' ':(exclude).github/workflows/pdfcraft-v0211-android2-signed-test.yml' ':(exclude)docs/pdfcraft-v0211-signed-candidate-gate.md' ':(exclude).github/workflows/pdfcraft-v0211-android3-min-permission-signed-test.yml' ':(exclude)docs/pdfcraft-v0211-android3-diagnostic.md' ':(exclude).github/workflows/pdfcraft-v0211-android4-storage-only-test.yml' || {
+            echo "::error::Production source differs from successful PDFCraft v0.21.1 CI candidate source"; exit 1;
+          }
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Original PDFCraft signing keystore is missing"; exit 1; }
+          test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" && test -n "$KEY_ALIAS" || { echo "::error::Original signing credentials missing"; exit 1; }
+          [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::Original certificate reference missing"; exit 1; }
+          echo "Existing production PDFCraft signing identity and tested source identified; review-only build." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify exact owner-tested Android.1 commit, CI run and artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/43372487644" > "$RUNNER_TEMP/pdfcraft-tested-run.json"
+          jq -e --arg sha "fcccda6a531202947d930e3643a872242d73d092" '
+            .conclusion == "success" and .head_sha == $sha
+            and .head_branch == "feature/pdfcraft-v0211-android1-security-hover-20261113"
+            and .path == ".github/workflows/pdfcraft-v0211-android1-test.yml"
+          ' "$RUNNER_TEMP/pdfcraft-tested-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/43372487644/artifacts" > "$RUNNER_TEMP/pdfcraft-tested-artifacts.json"
+          jq -e '.artifacts | any(.name == "PDFCraft-0.21.1-android.1-PROTECTED-ARM64-TEST" and .expired == false)' "$RUNNER_TEMP/pdfcraft-tested-artifacts.json"
+          echo "Verified exact owner-tested source and successful Android.1 CI build." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the exact stable upstream release tag and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE="https://github.com/storytold/pdfcraft.git"
+          ACTUAL="$(git ls-remote --tags "$REMOTE" "refs/tags/$PDFCRAFT_REF" | awk 'NR == 1 {print $1}')"
+          test "$ACTUAL" = "$PDFCRAFT_SHA" || { echo "::error::Official PDFCraft tag changed, missing, or not verified"; exit 1; }
+          git clone --depth 1 --branch "$PDFCRAFT_REF" "$REMOTE" source/pdfcraft
+          test "$(git -C source/pdfcraft rev-parse HEAD)" = "$PDFCRAFT_SHA"
+          test "$(git -C source/pdfcraft remote get-url origin)" = "$REMOTE"
+          python3 - <<'PY'
+          import pathlib, tomllib
+          cargo = tomllib.loads(pathlib.Path("source/pdfcraft/Cargo.toml").read_text())
+          assert cargo["workspace"]["package"]["version"] == "0.21.1", "Unexpected upstream workspace version"
+          PY
+          echo "Official PDFCraft $PDFCRAFT_REF resolves to $PDFCRAFT_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Test guarded Android adapter and pinned winit compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/test_pdfcraft_adapter.py source/pdfcraft
+          python3 tools/pdfcraft/test_android6_lifecycle_trace.py
+          python3 -m unittest discover -s tools/pdfcraft -p 'test_*.py' -v
+          python3 tools/font_scan_budget_regression.py
+
+      - name: Validate published approved PDFCraft branding assets and source patch syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install Pillow==11.3.0
+          python3 -m unittest discover -s tools/approved-branding -p 'test_*.py' -v
+          # Before any expensive Rust compile: stage the uploaded Pc image and validate
+          # the exact adaptive resources, generated manifests and updater preflight.
+          python3 tools/pdfcraft/pc_brand.py
+          python3 tools/approved-branding/approved_branding.py check
+          python3 -m py_compile tools/pdfcraft/*.py tools/test_pdfcraft_adapter.py tools/font_scan_budget_regression.py
+          bash -n lib/build-common.sh
+          echo "Pc icon and Android test overlays validated before compilation." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Rust (upstream requires 1.95 or newer)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Verify stylus wheel geometry, hover regressions and updater snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/pdfcraft/wheel_host_tests.py
+          python3 -m unittest discover -s tools/pdfcraft -p 'test_update_snapshot.py' -v
+
+      - name: Replay native precision-stream regressions
+        run: |
+          rustc --edition=2021 --test tools/pdfcraft/input_metrics.rs -o /tmp/pdfcraft-input-tests
+          /tmp/pdfcraft-input-tests
+
+      - name: Test PhotoCraft-derived keyboard fix and PDF object read/write code
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pdfcraft-input-tests/src"
+          cp templates/android/pdfcraft_modifiers.rs "$RUNNER_TEMP/pdfcraft-input-tests/src/lib.rs"
+          cat > "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml" <<'EOF'
+          [package]
+          name = "pdfcraft-input-tests"
+          version = "0.1.0"
+          edition = "2024"
+          [dependencies]
+          egui = "=0.37.0"
+          EOF
+          cargo test --manifest-path "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml"
+          cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-cos --lib -j 2
+
+      - name: Fetch verified OCR models and run recognition tests
+        run: |
+          set -euo pipefail
+          python3 tools/pdfcraft/ocr_models.py fetch source/pdfcraft
+          export PDFCRAFT_MODELS="$PWD/source/pdfcraft/assets/models"
+          cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-ocr --lib -- --nocapture 2>&1 | tee ocr-tests.log
+          if grep -q 'skipped: OCR models not installed' ocr-tests.log; then exit 1; fi
+
+      - name: Configure Android SDK/NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Rebuild verified PDFCraft source with production package (transient intermediate signature)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # WARNING: build-common.sh generates a transient builder keystore on this runner.
+          # This is never a PDFCraft permanent signing identity.
+          test ! -f keys/artcraft-builder.jks
+          # Install only on this disposable runner; preserve original published
+          # approved icon resources and native UI branding exactly.
+          python3 tools/approved-branding/install_packager.py
+          # Pc icon was staged and validated in the inexpensive preflight step.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("tools/approved-branding/assets/manifest.json")
+          data=json.loads(p.read_text())
+          assert data["app"] == "pdfcraft"
+          assert data["version_name"] == "0.12.1-android.3"
+          assert int(data["version_code"]) == 16780291
+          data["version_name"]="0.21.1-android.4"
+          data["version_code"]=16782596
+          data["package"]="com.artcraft.pdfcraft"
+          p.write_text(json.dumps(data, indent=2)+"\n")
+          PY
+          python3 tools/approved-branding/approved_branding.py install . pdfcraft
+          # The baseline launcher generator still requires its legacy input path.
+          # Stage *exact* published stable branding assets, never regenerate or
+          # replace owner-approved artwork with a reconstructed SVG.
+          python3 - <<'PY'
+          import hashlib, json, shutil
+          from pathlib import Path
+          root = Path("tools/approved-branding/assets")
+          manifest = json.loads((root / "manifest.json").read_text())
+          master = root / manifest["filename"]
+          foreground = root / "res/drawable-xxxhdpi/ic_launcher_foreground.png"
+          assert hashlib.sha256(master.read_bytes()).hexdigest() == manifest["source_sha256"]
+          rel = foreground.relative_to(root).as_posix()
+          assert hashlib.sha256(foreground.read_bytes()).hexdigest() == manifest["resources"][rel]
+          dest = Path("assets/pdfcraft")
+          dest.mkdir(exist_ok=True)
+          shutil.copyfile(master, dest / "approved-icon.png")
+          shutil.copyfile(foreground, dest / "approved-foreground.png")
+          assert (dest / "approved-foreground.png").read_bytes() == foreground.read_bytes()
+          PY
+          # Produce a distinct diagnostic source variant in the disposable build runner.
+          # No repository source is rewritten; no version is published.
+          python3 - <<'PY_DIAG'
+          from pathlib import Path
+          builder = Path('lib/build-common.sh')
+          contents = builder.read_text()
+          for permission in ('REQUEST_INSTALL_PACKAGES',):
+              marker = '[[package.metadata.android.uses_permission]]\\nname = "android.permission.'+permission+'"\\n'
+              marker = marker.replace('\\n', '\n')
+              if contents.count(marker) != 1:
+                  raise SystemExit(f"Unexpected builder permission clause {permission}: cannot proceed safely")
+              contents=contents.replace(marker, '',1)
+          builder.write_text(contents)
+          def replace_method(path, signature, replacement):
+              file=Path(path)
+              src=file.read_text()
+              assert src.count(signature)==1, f"Unexpected {signature} method count"
+              start=src.index(signature)
+              open_brace=src.index('{',start)
+              level=0
+              close=None
+              for k in range(open_brace,len(src)):
+                  if src[k]=='{':level+=1
+                  if src[k]=='}':
+                      level-=1
+                      if level==0:
+                          close=k
+                          break
+              assert close is not None
+              file.write_text(src[:start]+replacement+src[close+1:])
+          replace_method(
+              'templates/android/pdfcraft_update_java.txt',
+              'public synchronized void pdfDownloadUpdate(String url, String sha256Digest) {',
+              'public synchronized void pdfDownloadUpdate(String url, String sha256Digest) {\\n'
+              '    pdfUpdateNotice("Diagnostic build: in-app APK downloads disabled; use GitHub releases page.", false);\\n'
+              '}'.replace('\\n','\n'))
+          replace_method(
+              'templates/android/pdfcraft_update_java.txt',
+              'public synchronized void pdfInstallDownloadedUpdate() {',
+              'public synchronized void pdfInstallDownloadedUpdate() {\\n'
+              '    pdfUpdateNotice("Diagnostic build: in-app APK installation disabled; use GitHub releases page.", false);\\n'
+              '}'.replace('\\n','\n'))
+          assert 'android.permission.REQUEST_INSTALL_PACKAGES' not in contents
+          assert 'android.permission.MANAGE_EXTERNAL_STORAGE' in contents
+          print('PASS: STORAGE ONLY diagnostic: MANAGE_EXTERNAL_STORAGE present; REQUEST_INSTALL_PACKAGES absent; no release publication')
+          PY_DIAG
+          bash -n lib/build-common.sh
+          bash build.sh -pdfcraft -appname=PDFCraft -packagename=com.artcraft.pdfcraft -appicon=assets/pdfcraft/approved-icon.png
+          test -f output/pdfcraft-0.21.1.apk
+          mv output/pdfcraft-0.21.1.apk output/pdfcraft-0.21.1-android.4.apk
+          python3 tools/approved-branding/verify_apk.py . approved-icon-candidate
+          test -f approved-icon-candidate/verification.json
+          echo "User-supplied Pc launcher and native UI artwork staged in candidate only." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production package ABI, identity, version and content before signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="output/pdfcraft-0.21.1-android.4.apk"
+          SDK_ROOT="${ANDROID_HOME}"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
+          APKSIGNER="$SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner"
+          "$AAPT2" dump badging "$APK" | tee output/pdfcraft-badging.txt
+          grep -q "package: name='com.artcraft.pdfcraft'" output/pdfcraft-badging.txt
+          grep -q "versionName='0.21.1-android.4'" output/pdfcraft-badging.txt
+          grep -q "versionCode='$EXPECTED_PRODUCTION_VERSION_CODE'" output/pdfcraft-badging.txt
+          unzip -Z1 "$APK" | tee output/pdfcraft-archive.txt
+          grep -q '^lib/arm64-v8a/.*\.so$' output/pdfcraft-archive.txt
+          if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' output/pdfcraft-archive.txt; then
+            echo "::error::Unexpected non-ARM64 native library"; exit 1
+          fi
+          grep -q 'ic_launcher.png' output/pdfcraft-archive.txt
+          grep -q 'pdfcraft_foreground.png' output/pdfcraft-archive.txt
+          grep -q 'ic_launcher.xml' output/pdfcraft-archive.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee output/pdfcraft-ephemeral-certificate.txt
+          python3 tools/pdfcraft/ocr_models.py verify "$APK" | tee output/pdfcraft-ocr-models.txt
+          sha256sum "$APK" | tee output/SHA256SUMS.txt
+          echo "Source-controlled review candidate: same production identity, temporary builder signature will be replaced before download." >> "$GITHUB_STEP_SUMMARY"
+          echo "Source exactly matches owner-approved PDFCraft v0.21.1-android.4 disposable-key ARM64 candidate (SHA fcccda6a531202947d930e3643a872242d73d092)." >> "$GITHUB_STEP_SUMMARY"
+
+
+      - name: Sign with the existing original PDFCraft key, verify update compatibility and payload
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PDFCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PDFCRAFT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PDFCRAFT_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PDFCRAFT_KEY_ALIAS }}
+          CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p release "$RUNNER_TEMP/pdfcraft-previous"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/apksigner" && test -x "$BUILD_TOOLS/zipalign" && test -x "$BUILD_TOOLS/aapt2"
+          KEYSTORE="$RUNNER_TEMP/pdfcraft-production-keystore.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          trap 'rm -f "$KEYSTORE"' EXIT
+          OUTPUT="release/PDFCraft-v0.21.1-arm64-release.apk"
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 output/pdfcraft-0.21.1-android.4.apk aligned-production.apk
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$OUTPUT" aligned-production.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUTPUT" > release/signature.txt
+          "$BUILD_TOOLS/aapt2" dump badging "$OUTPUT" > release/package.txt
+          grep -q "package: name='com.artcraft.pdfcraft'" release/package.txt
+          grep -q "versionName='0.21.1-android.4'" release/package.txt
+          grep -q "versionCode='16782596'" release/package.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$OUTPUT"
+          # Compare the original publicly released APK, not only a self-reported secret.
+          # If certificate identity differs, STOP to prevent an un-updatable public APK.
+          gh release download pdfcraft-v0.21.1-android.1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "PDFCraft-v0.21.1-arm64-release.apk" \
+            --dir "$RUNNER_TEMP/pdfcraft-previous"
+          PRIOR="$RUNNER_TEMP/pdfcraft-previous/PDFCraft-v0.21.1-arm64-release.apk"
+          test -s "$PRIOR"
+          echo "e7c6af7b452c9270be648a01138cb5295ee156f4507aac067c8cbcb7a1092966  $PRIOR" | sha256sum -c -
+          "$BUILD_TOOLS/aapt2" dump badging "$PRIOR" > "$RUNNER_TEMP/pdfcraft-previous/package.txt"
+          grep -q "versionCode='16782593'" "$RUNNER_TEMP/pdfcraft-previous/package.txt"
+          test "$EXPECTED_PRODUCTION_VERSION_CODE" -gt 16782593
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$PRIOR" > "$RUNNER_TEMP/pdfcraft-previous/certificate.txt"
+          CERT_SHA256="$CERT_SHA256" python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          def digest(path):
+              for line in Path(path).read_text().splitlines():
+                  if "certificate sha-256 digest:" in line.lower():
+                      value=line.split("digest:", 1)[1].strip().lower()
+                      if re.fullmatch(r"[0-9a-f]{64}", value):
+                          return value
+              raise SystemExit("Missing signer certificate digest")
+          current=digest("release/signature.txt")
+          prior=digest(os.path.join(os.environ["RUNNER_TEMP"],"pdfcraft-previous","certificate.txt"))
+          reference=os.environ["CERT_SHA256"].lower()
+          assert current==reference, "Original-key fingerprint secret mismatch; refusing release"
+          assert current==prior, "Signing identity differs from PDFCraft v0.21.1-android.1; refusing release"
+          print("PASS: original PDFCraft signer matches published stable release")
+          PY
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          old="output/pdfcraft-0.21.1-android.4.apk"
+          new="release/PDFCraft-v0.21.1-arm64-release.apk"
+          with ZipFile(old) as before, ZipFile(new) as after:
+              old_names={n for n in before.namelist() if not n.startswith("META-INF/")}
+              new_names={n for n in after.namelist() if not n.startswith("META-INF/")}
+              assert old_names==new_names, "APK application payload file list changed during signing"
+              for name in old_names:
+                  assert before.read(name)==after.read(name), "APK payload changed: "+name
+              libs=[n for n in new_names if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs)
+              assert not any(n.lower().endswith((".jks",".p12",".keystore")) for n in new_names)
+          print("PASS: original payload unchanged and ARM64-only")
+          PY
+          python3 tools/pdfcraft/ocr_models.py verify "$OUTPUT" > release/ocr-models.txt
+          git rev-parse HEAD > release/SOURCE-COMMIT.txt
+          (cd release && sha256sum PDFCraft-v0.21.1-arm64-release.apk > SHA256SUMS.txt)
+          echo "PASS: production package and permanent PDFCraft certificate match previously published identity." >> "$GITHUB_STEP_SUMMARY"
+          echo "SIGNED TEST ONLY — not a published GitHub Release and not a Play Protect clearance." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Audit final manifest permissions and refuse sensitive expansion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          data=Path("release/package.txt").read_text()
+          granted=set(re.findall(r"uses-permission: name='([^']+)'",data))
+          reviewed={
+            "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.INTERNET",
+            "android.permission.MANAGE_EXTERNAL_STORAGE",
+          }
+          assert granted == reviewed, f"PDFCraft manifest permission drift: unexpected={granted-reviewed}, missing={reviewed-granted}"
+          assert "application-debuggable" not in data, "Release must not be debuggable"
+          print("PASS: exactly 4 permissions, including MANAGE_EXTERNAL_STORAGE, excluding REQUEST_INSTALL_PACKAGES; diagnostic only, NOT approved for release.")
+          PY
+
+      - name: Preserve original-certificate signed TEST artifact (NO PUBLIC RELEASE)
+        uses: actions/upload-artifact@v5
+        with:
+          name: PDFCraft-v0.21.1-android.4-STORAGE-ONLY-SIGNED-DIAGNOSTIC
+          path: |
+            release/PDFCraft-v0.21.1-arm64-release.apk
+            release/SHA256SUMS.txt
+            release/signature.txt
+            release/package.txt
+            release/ocr-models.txt
+            release/SOURCE-COMMIT.txt
+          retention-days: 90
+          if-no-files-found: error
+

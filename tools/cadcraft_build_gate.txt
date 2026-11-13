@@ -1,12 +1,15 @@
-CADCraft v0.19.0-android.3 ARM64 TEST ONLY build gate
-Changes to test:
-- Cc launcher foreground shrunk within MagicOS adaptive and legacy safe zone
-- eight-action stylus wheel with live size / opacity preview and saved settings
-- solid #D13153 circular center hub with exact cream Cc glyph
-- PhotoCraft-style diffuse low-alpha shadow (live preview and active wheel)
-- no bottom-right launcher icon
-- CADCraft-only published GitHub release check, in-app APK download and user-approved installation
-- com.artcraft.cadcraft.test disposable signer, native DXF/DWG SAF unchanged
-Do not merge, permanently sign or publish.
-
-Focused repair: isolate JNI updater calls into Android-only bridge crate because upstream cadcraft-ui-egui forbids unsafe code. Retry after native Rust compilation failure in run 43356555820.
+CADCraft v0.19.0-android.4 ARM64 TEST ONLY / reviewer gates
+- Preserve draft PR #158 and isolated feature branch, main untouched
+- Cc exact #D13153 / #F3E4E7 user glyph and launcher mask padding
+- Wheel: PhotoCraft-style 8 grey dual-tone sectors, official CADCraft toolbar icons,
+  centered pink circle/cream Cc, feathered 12-layer shadow
+- Default wheel 100% size, 85% opacity; customizable 75-125% and 60-100%
+- Actual-size, noninteractive preview outside customization dialog, Restore Default
+- Bottom-center status bar with PhotoCraft's 1.9s hold / 0.5s fade
+- Only validated HONOR Magic-Pencil button (device-specific native queue) opens wheel;
+  no bottom-right icon, no physical keyboard arrow interception
+- CADCraft-specific in-app GitHub published APK check/download with Android install confirmation;
+  safe Activity-owned JNI classloader boundary and clear failure messages
+- Preserve native DXF/DWG SAF open/save; package com.artcraft.cadcraft.test
+- Disposable signing; ZIP integrity, ARM64 .so, apksigner verification and SHA-256
+- No merge, production signing, GitHub Release, or app baseline changes

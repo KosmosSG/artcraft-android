@@ -27,6 +27,22 @@ pub struct GridCraftTools {
 }
 impl GridCraftTools {
     pub fn close_shortcut(&self, inner: &mut gridcraft_ui_egui::SheetApp, ctx: &eframe::egui::Context) {
+        // GC_ANDROID_CTRL_Z_V1: dispatch one official spreadsheet Undo for
+        // each hardware Ctrl+Z chord. Java consumes both key edges, preventing
+        // a second native egui Undo or a literal "z" in a focused cell.
+        let undo = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let result = env.call_method(&*activity, jni_str!("gcTakeUndoShortcut"),
+                jni_sig!("()Z"), &[]);
+            if result.is_err() { env.exception_clear(); }
+            result?.z()
+        }).unwrap_or(false);
+        if undo && inner.session.active().is_some() {
+            inner.run_or_alert("edit.undo", serde_json::json!({}));
+            ctx.request_repaint();
+            return;
+        }
         // GC_ANDROID_CTRL_Q_V1: request native, guarded quit — do not use
         // Activity.finish(), which would bypass unsaved changes and relaunch.
         let quit = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {

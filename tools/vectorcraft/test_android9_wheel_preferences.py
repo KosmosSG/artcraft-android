@@ -14,12 +14,12 @@ class Android9WheelPreferences(unittest.TestCase):
     def test_controls_and_defaults(self):
         s = WHEEL.read_text()
         for expected in (
-            "size_percent: 100, opacity_percent: 100",
+            "size_percent: 84, opacity_percent: 78",
             'egui::Label::new("Wheel Size")',
             'egui::Label::new("Opacity")',
             "75..=140", "30..=100",
-            "self.size_percent = 100;",
-            "self.opacity_percent = 100;",
+            "self.size_percent = 84;",
+            "self.opacity_percent = 78;",
         ):
             self.assertIn(expected, s)
 

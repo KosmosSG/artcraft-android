@@ -11,7 +11,7 @@ import argparse
 import json
 import tomllib
 
-SUPPORTED_VERSIONS = ("0.16.1", "0.18.0")
+SUPPORTED_VERSIONS = ("0.16.1", "0.18.0", "0.19.1")
 SHOW = "crates/ui-egui/src/grid/show.rs"
 INTERACT = "crates/ui-egui/src/grid/interact.rs"
 MARKER = "GRIDCRAFT_ANDROID_TOUCH_SELECT_V1"

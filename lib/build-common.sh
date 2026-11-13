@@ -2209,6 +2209,12 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
             .replace("__TAG__", saf["activity"])
         )
         if app == "pdfcraft":
+            # An exported Activity must not act as a deputy reading its private
+            # files on behalf of another application through file:// intents.
+            incoming = "        List<Uri> uris = collectIncomingUris(intent);"
+            if java_src.count(incoming) != 1:
+                raise SystemExit("PDFCraft incoming-file security anchor changed")
+            java_src = java_src.replace(incoming, incoming + "\n        uris.removeIf(uri -> !pdfIncomingUriAllowed(uri));", 1)
             extension = ((root / "templates" / "android" / "pdfcraft_mobile_java.txt").read_text()
                          + "\n" + (root / "templates" / "android" / "pdfcraft_update_java.txt").read_text()
                          + "\n" + (root / "templates/android/pdfcraft_stylus_java.txt").read_text()

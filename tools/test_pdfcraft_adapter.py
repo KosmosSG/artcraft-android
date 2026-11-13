@@ -65,6 +65,9 @@ with tempfile.TemporaryDirectory() as folder:
     java_sources = list((android / 'java').rglob('*.java'))
     assert len(java_sources) == 1, java_sources
     java = java_sources[0].read_text()
+    assert 'uris.removeIf(uri -> !pdfIncomingUriAllowed(uri));' in java
+    assert 'createDeviceProtectedStorageContext().getDataDir().getCanonicalFile()' in java
+    assert java.index('uris.removeIf') < java.index('for (Uri uri : uris) persistPermission(uri, intent)')
     # Android.6: validate the generated Activity, not only the extension template.
     assert 'PDFCRAFT_ANDROID6_LIFECYCLE_TRACE' in java
     for callback in ('onPause', 'onStop', 'onDestroy'):

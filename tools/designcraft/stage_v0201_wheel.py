@@ -23,7 +23,9 @@ def main(root: Path, source: Path, android: Path):
         raise SystemExit("Missing wheel source")
     if "designcraft-builder" not in str(root):
         raise SystemExit("Refusing a non-disposable Android checkout")
-    shutil.copyfile(root / "tools/designcraft/dc_stylus_wheel.rs", android / "src/dc_stylus_wheel.rs")
+    module_dir = android / "src/v016_android"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(root / "tools/designcraft/dc_stylus_wheel.rs", module_dir / "dc_stylus_wheel.rs")
 
     wrapper = android / "src/v016_android.rs"
     replace_once(wrapper, "use super::{saf, saf_next_id, ImportRequest, SafState};",

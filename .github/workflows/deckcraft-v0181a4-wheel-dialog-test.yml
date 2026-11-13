@@ -1,0 +1,595 @@
+name: DeckCraft v0.18.1 Android.4 CUSTOMIZATION DIALOG ARM64 TEST ONLY
+on:
+  push:
+    branches: [feature/deckcraft-v0181-android4-wheel-dialog-polish-20261113]
+    paths:
+      - '.github/workflows/deckcraft-v0181a4-wheel-dialog-test.yml'
+      - 'deckcraft/android/patch_v016_menu.py'
+      - 'deckcraft/android/patch_v017_photocraft_updates.py'
+      - 'deckcraft/android/patch_v017_checked_updates.py'
+      - 'deckcraft/android/patch_v018_stylus_wheel.py'
+      - 'deckcraft/android/patch_v0181_android2_polish.py'
+      - 'deckcraft/android/patch_v0181_android3_brand_hub_slider.py'
+      - 'deckcraft/android/patch_v0181_android4_wheel_dialog.py'
+      - 'deckcraft/android/stylus_wheel.rs'
+      - 'deckcraft/android/patch_v016_ctrlw.py'
+      - 'deckcraft/android/patch_v016_pptx_save.py'
+      - 'deckcraft/android/patch_v016_magicos_mime.py'
+permissions:
+  contents: read
+concurrency:
+  group: deckcraft-v0181a4-wheel-test-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compile-unsigned:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/deckcraft-v0181-android4-wheel-dialog-polish-20261113'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+      - name: Checkout protected published DeckCraft v0.17.0-android.3 source baseline
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify DeckCraft source and scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin 6aaa775a26c0380067f3044d547f84eedaebb2b7
+          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0181-stylus-wheel-test.yml .github/workflows/deckcraft-v0181a2-wheel-polish-test.yml .github/workflows/deckcraft-v0181a3-wheel-polish-test.yml .github/workflows/deckcraft-v0181a4-wheel-dialog-test.yml deckcraft/android/patch_v0181_android2_polish.py deckcraft/android/patch_v0181_android3_brand_hub_slider.py deckcraft/android/patch_v0181_android4_wheel_dialog.py deckcraft/android/patch_v018_stylus_wheel.py deckcraft/android/stylus_wheel.rs)"
+          ACTUAL="$(git diff --name-only 6aaa775a26c0380067f3044d547f84eedaebb2b7 HEAD)"
+          test "$ACTUAL" = "$EXPECTED" || { echo 'STOP: published baseline modifications detected'; exit 1; }
+          test -s deckcraft/android/patch_v016_menu.py
+          test -s deckcraft/android/patch_v017_photocraft_updates.py
+          test -s deckcraft/android/patch_v017_checked_updates.py
+          test -s deckcraft/android/patch_v0181_android2_polish.py
+          test -s deckcraft/android/patch_v0181_android3_brand_hub_slider.py
+          test -s deckcraft/android/patch_v0181_android4_wheel_dialog.py
+          test -s docs/ARTCRAFT_ANDROID_UPDATE_MENU_STANDARD.md
+          test -s deckcraft/android/patch_v016_ctrlw.py
+          test -s deckcraft/android/patch_v016_pptx_save.py
+          test -s deckcraft/android/patch_v016_magicos_mime.py
+          test -s deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
+          grep -Fx 'AUTHORIZED_PHASE2_PACKAGING_REPAIR_REBUILD_ONCE' deckcraft/android/PHASE2_REBUILD_ONCE_20261104.md
+          test -s deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
+          grep -Fx 'OWNER_APPROVES_V0150_ANDROID1_ONE_TEST_20261104' deckcraft/android/PHASE2_CORRECT_VERSION_ONCE_20261104.md
+          python3 -m py_compile deckcraft/android/patch_v0181_android4_wheel_dialog.py
+          python3 -m py_compile deckcraft/android/patch_v0181_android3_brand_hub_slider.py
+          python3 -m py_compile deckcraft/android/patch_v0181_android2_polish.py
+          python3 -m py_compile deckcraft/android/patch_v018_stylus_wheel.py
+          python3 -m py_compile deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_dcs_host.py deckcraft/android/patch_unsaved_dcs.py deckcraft/android/patch_deckcraft_fonts.py deckcraft/android/patch_deckcraft_tablet.py deckcraft/android/patch_deckcraft_host.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py
+          test -s deckcraft/android/dcs_bridge.rs
+          test -s deckcraft/android/dcs_java.inc
+          test -s deckcraft/android/dcs_tests.rs
+          test -s deckcraft/android/save_close.rs
+          test -s tools/approved-branding/assets/DeckCraft.png
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest=json.loads(Path('tools/approved-branding/assets/manifest.json').read_text())
+          assert manifest['app']=='deckcraft'
+          assert manifest['version_name']=='0.14.1-android.17'
+          assert manifest['version_code']==100000021
+          assert manifest['previous_version_code']==100000020
+          assert manifest['package']=='com.artcraft.deckcraft'
+          print('PASS: D/C/S sources and protected Android.17 branding metadata present')
+          PY
+      - name: Checkout pinned Android builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Checkout pinned official stable DeckCraft v0.18.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/deckcraft
+          ref: 7cc73ab1895ed2e30c8afbcada20c70b9ea0a440
+          path: builder/source/deckcraft
+          persist-credentials: false
+      - name: Checkout upstream UI dependency matched to DeckCraft
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/egui
+          ref: 6d518fc799681571963842f95b55a6b68431b15a
+          path: egui-source
+          persist-credentials: false
+      - name: Checkout upstream windowing dependency with ordered IME reset
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/winit
+          ref: a517b3846ee8457d84ee4975110bfda6797c44dc
+          path: winit-source
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify 4 GiB scan boundaries without allocating 4 GiB
+        run: |
+          mkdir -p /tmp/deck-font-tests
+          javac -d /tmp/deck-font-tests deckcraft/android/FontScanBudget.java deckcraft/tests/FontScanBudgetTest.java
+          java -cp /tmp/deck-font-tests FontScanBudgetTest
+      - name: Install patch-time Python dependencies
+        run: python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'
+      - name: Port current Android enhancements, D/C/S, fonts and recovery to official upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          test "$(git -C builder/source/deckcraft rev-parse HEAD)" = 7cc73ab1895ed2e30c8afbcada20c70b9ea0a440
+          # Guard upstream identity and representative v0.18.1 fixes before any Android patches.
+          python3 - <<'PY'
+          from pathlib import Path
+          base=Path('builder/source/deckcraft')
+          assert 'version = "0.18.1"' in (base/'Cargo.toml').read_text()
+          probes={
+              'crates/fonts/src/fontdb.rs': 'is_monospace_family',
+              'crates/engine/src/cmd/design/tests.rs': 'background_rejects_invalid_index',
+              'crates/model/src/tests.rs': 'colour_alpha_follows_alpha_mod_and_off',
+              'crates/ui-egui/src/backstage.rs': 'Page::About',
+          }
+          for file,marker in probes.items():
+              assert marker in (base/file).read_text(), f'Upstream v0.18.1 change missing: {file} / {marker}'
+          print('PASS: protected v0.18.1 source pin and representative upstream fixes')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('builder/source/deckcraft/Cargo.toml')
+          s=source.read_text()
+          old='version = "0.18.1"'
+          assert s.count(old)==1, 'Official v0.18.1 source changed; stop'
+          source.write_text(s.replace(old,'version = "0.18.1-android.4"',1))
+          project=Path('builder/lib/android_project.py')
+          s=project.read_text()
+          formula='return (1 << 24) | (major << 16) | (minor << 8) | patch'
+          assert s.count(formula)==1, 'Pinned version generator changed; stop'
+          project.write_text(s.replace(formula,'return 100000032',1))
+          PY
+          python3 deckcraft/android/patch_v013_host.py builder
+          python3 deckcraft/android/patch_shared_fonts.py builder
+          python3 deckcraft/android/patch_update_settings.py builder
+          python3 deckcraft/android/port_egui037.py builder egui-source winit-source
+          python3 deckcraft/android/patch_gpu_diagnostics.py builder
+          python3 deckcraft/android/patch_gpu_cache.py builder
+          python3 deckcraft/android/patch_app_menu_updater.py builder
+          python3 deckcraft/android/patch_v016_menu.py builder
+          python3 deckcraft/android/patch_v016_ctrlw.py builder
+          python3 deckcraft/android/patch_v016_pptx_save.py builder
+          python3 deckcraft/android/patch_v016_magicos_mime.py builder
+          python3 deckcraft/android/patch_v017_photocraft_updates.py builder
+          python3 deckcraft/android/patch_v017_checked_updates.py builder
+          python3 deckcraft/android/patch_v018_stylus_wheel.py builder
+          python3 deckcraft/android/patch_v0181_android2_polish.py builder tools/approved-branding/assets/DeckCraft.png
+          python3 deckcraft/android/patch_v0181_android3_brand_hub_slider.py builder tools/approved-branding/assets/DeckCraft.png
+          python3 deckcraft/android/patch_v0181_android4_wheel_dialog.py builder
+          python3 - <<'PY'
+          from pathlib import Path
+          ui=Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
+          for marker in ('App Updates', 'Appearance', 'Presentation Shortcuts', 'About DeckCraft',
+                         'app.checkUpdates', 'app.updateSettings'):
+              assert marker in ui, marker
+          associations=Path('builder/lib/file_associations.py').read_text()
+          for marker in ('"deckcraft": ["deckcraft", "pptx", "potx", "ppsx"]',
+                         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                         'android.intent.action.VIEW'):
+              assert marker in associations, marker
+          java=Path('builder/templates/android/SafActivity.java').read_text()
+          for marker in ('handleIncomingFiles(getIntent())', 'handleIncomingFiles(intent)', 'public String intentPoll()'):
+              assert marker in java, marker
+          kotlin=Path('builder/templates/android/SafActivity.java').read_text()
+          assert 'private boolean dkCaptureCtrlW(' in kotlin
+          assert 'public boolean onKeyShortcut(' in kotlin
+          assert 'Intent.ACTION_EDIT.equals(action)' in kotlin
+          files=Path('builder/source/deckcraft/crates/ui-egui/src/app/files.rs').read_text()
+          assert 'deckcraft_engine::cmd::file::save_bytes(&doc.doc, "pptx")' in files
+          assert 'setTitle("Startup Update Settings")' not in java
+          for marker in ('public void deckUpdateSettings()', 'public void deckPreviewSettings()',
+                         'Dk Update checks at startup: ', 'Dk Preview releases: '):
+              assert marker in java, marker
+          for marker in ('Toggle Update Check at Startup', 'Toggle Preview Releases'):
+              assert marker in ui, marker
+          assert java.count('deckWriteMenuFlags();') == 3
+          assert 'deckcraft-updates-flags.txt' in java
+          assert '✓  Toggle Update Check at Startup' in ui
+          assert '✓  Toggle Preview Releases' in ui
+          assert 'mod android_wheel' in ui
+          assert 'Stylus Wheel' in ui
+          assert 'android_wheel::overlay(self, &ctx)' in Path('builder/source/deckcraft/crates/ui-egui/src/app.rs').read_text()
+          wheel=Path('builder/source/deckcraft/crates/ui-egui/src/android_wheel.rs').read_text()
+          for s in ('Wheel size', 'Opacity', 'deckcraft-stylus-wheel.v1', 'PointerGone',
+                    'Dk', 'PINK', 'BURGUNDY'):
+              assert s in wheel, s
+          assert 'dkWheelTakeSignal' in java
+          assert 'dkWheelTakeHover' in java
+          assert 'dispatchGenericMotionEvent' in java
+          assert 'pub fn paint_monochrome' in Path('builder/source/deckcraft/crates/ui-egui/src/icons.rs').read_text()
+          assert 'deckcraft.wheel.hover.raw' in wheel
+          assert 'approved_dk_logo' in wheel
+          assert 'deckcraft_slider(ui, "Wheel size"' in wheel
+          assert 'deckcraft_slider(ui, "Opacity"' in wheel
+          assert 'const DEFAULT_SIZE: f32 = 75.0;' in wheel
+          assert 'const DEFAULT_OPACITY: f32 = 85.0;' in wheel
+          assert 'size: DEFAULT_SIZE, opacity: DEFAULT_OPACITY' in wheel
+          assert 'w.size=DEFAULT_SIZE;' in wheel and 'w.opacity=DEFAULT_OPACITY;' in wheel
+          assert 'Customize Stylus Wheel' in wheel
+          assert 'PhotoCraft-style wheel' not in wheel
+          assert 'const POSITIONS:[&str;8]' in wheel
+          assert '.stroke(Stroke::new(1.0,outline))' in wheel
+          assert 'if ui.button("Reset defaults").clicked()' in wheel
+          print('PASS: light/dark 8-slot bordered dialog, proper position labels, fresh/reset defaults 75%/85%')
+          assert 'painter.circle_filled(c,HUB*scale,BURGUNDY);' in wheel
+          from PIL import Image as WheelImage
+          rgba=WheelImage.frombytes('RGBA',(128,80),
+              Path('builder/source/deckcraft/crates/ui-egui/src/android_wheel_logo.rgba').read_bytes())
+          a=rgba.getchannel('A')
+          for xy in ((0,0),(127,0),(0,79),(127,79),(64,0),(0,40),(127,40)):
+              assert a.getpixel(xy)<9, ("square launcher tile leaked into wheel centre",xy)
+          assert a.getextrema()[1]>220, 'Dk logo letters not legible'
+          print('PASS: round launcher-colour hub, glyph-only Dk, coral size/opacity sliders')
+
+          assert Path('builder/source/deckcraft/crates/ui-egui/src/android_wheel_logo.rgba').stat().st_size == 128*80*4
+          assert 'self.wheel_input(ctx);' in Path('builder/templates/android/dcs_bridge.rs').read_text()
+          assert 'self.wheel_hover(ctx);' in Path('builder/templates/android/dcs_bridge.rs').read_text()
+          print('PASS: Android-only stylus hover, exactly branded Dk mark, white-only wheel icons staged')
+          assert 'flags.lines().any(|line| line == "startup=1")' in ui
+          assert 'flags.lines().any(|line| line == "preview=1")' in ui
+          print('PASS: saved startup/preview checkmarks mirrored from Android preferences, including relaunch')
+          print('PASS: PhotoCraft-style direct startup/preview toggles with bottom ON/OFF toasts; no modal')
+          print('PASS: grouped Dk menu, verified updater, PPTX ACTION_VIEW+EDIT, nonblocking PPTX Save As, IME Ctrl+W')
+          # Verify MagicOS experiment is isolated to an additional DeckCraft VIEW-only filter.
+          import importlib.util
+          import toml
+          spec=importlib.util.spec_from_file_location('associations_probe','builder/lib/file_associations.py')
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          legacy='application/vnd.ms-powerpoint'
+          def filters_for(app):
+              return toml.loads('intent_filter = '+module.intent_filter_toml(app))['intent_filter']
+          hits=[flt for flt in filters_for('deckcraft') if legacy in [d.get('mime_type') for d in flt.get('data',[])]]
+          assert len(hits)==1, hits
+          assert hits[0]['actions']==['android.intent.action.VIEW']
+          assert hits[0]['categories']==['android.intent.category.DEFAULT']
+          assert hits[0]['data']==[{'mime_type':legacy}]
+          assert 'ppt' not in module.ASSOCIATIONS['deckcraft'], 'Never claim unsupported legacy PPT import'
+          assert not any(legacy in str(flt) for flt in filters_for('wordcraft')), 'Do not change WordCraft'
+          assert any('application/vnd.openxmlformats-officedocument.presentationml.presentation' in str(flt) for flt in filters_for('deckcraft')), 'PPTX association lost'
+          print('PASS: DeckCraft-only VIEW+DEFAULT legacy MIME compatibility probe; .ppt not advertised by extension')
+          PY
+          git -C builder/source/deckcraft diff --check
+          python3 deckcraft/android/adaptive_safe.py builder deckcraft
+          python3 tools/approved-branding/approved_branding.py check
+          python3 tools/approved-branding/approved_branding.py install builder deckcraft
+          # Published Android.17 branding metadata stays protected, including
+          # the original owner-approved Dk icon and resource SHA256 entries.
+          # Override test APK metadata ONLY in this disposable builder checkout.
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          baseline=Path('tools/approved-branding/assets/manifest.json')
+          original=json.loads(baseline.read_text())
+          assert original['app']=='deckcraft'
+          assert original['version_name']=='0.14.1-android.17'
+          assert original['version_code']==100000021
+          staged=Path('builder/tools/approved-branding/assets/manifest.json')
+          cfg=json.loads(staged.read_text())
+          assert cfg==original, 'Branding copied manifest drifted; refuse build'
+          cfg['version_name']='0.18.1-android.4'
+          cfg['version_code']=100000032
+          cfg['package']='com.artcraft.deckcraft.candidate.v0181a4'
+          staged.write_text(json.dumps(cfg,indent=2)+'\n')
+          project=Path('builder/lib/android_project.py')
+          src=project.read_text()
+          old="    version = '0.14.1-android.17'\n    code = 100000021\n"
+          new="    version = '0.18.1-android.4'\n    code = 100000032\n"
+          assert src.count(old)==1, 'Approved-branding version override changed; stop'
+          project.write_text(src.replace(old,new,1))
+          assert json.loads(baseline.read_text())==original, 'Protected branding manifest was modified'
+          print('PASS: approved Dk artwork preserved; disposable Gradle and branding metadata use Android.20-test')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          dialogs=Path('builder/source/deckcraft/crates/ui-egui/src/dialogs/body.rs').read_text()
+          ui=Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
+          java=Path('builder/templates/android/SafActivity.java').read_text()
+          assert 'deckcraft.unsaved.dcs' in dialogs
+          assert 'android_pending_close' in ui
+          assert 'AndroidSaveFinished' in Path('builder/source/deckcraft/crates/ui-egui/src/services.rs').read_text()
+          assert 'dkUnsavedDialog' in java
+          shell=Path('builder/lib/build-common.sh').read_text()
+          assert 'self.inner.android_capture_unsaved_dcs_raw(ctx, raw);' in shell
+          assert 'if self.inner.session.active().is_some() {{' in shell
+          assert 'pub fn android_capture_unsaved_dcs_raw' in ui
+          dialog_shell=Path('builder/source/deckcraft/crates/ui-egui/src/dialogs.rs').read_text()
+          assert 'egui::Modal::new(egui::Id::new(("deckcraft.confirm.modal"' in dialog_shell
+          assert 'let java_action =' in Path('builder/source/deckcraft/crates/ui-egui/src/dialogs/body.rs').read_text()
+          assert 'ctx.memory_mut(|m| { if let Some(id)' in ui
+          assert 'modal_focus_requested' in java
+          assert 'egui::Button::new("").left_text(label)' in ui
+          assert 'view.dark' in Path('builder/source/deckcraft/crates/ui-egui/src/menus.rs').read_text()
+          # GPU instrumentation reports the actual adapter selected at startup.
+          assert 'app.gpuDiagnostics' in Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
+          assert 'GPU Diagnostics…' in Path('builder/source/deckcraft/crates/ui-egui/src/menus.rs').read_text()
+          assert '"app.gpuDiagnostics" => self.dialog' in Path('builder/source/deckcraft/crates/ui-egui/src/app/commands.rs').read_text()
+          assert '"gpuDiagnostics" => "GPU Diagnostics"' in Path('builder/source/deckcraft/crates/ui-egui/src/dialogs.rs').read_text()
+          assert 'Slide rasterizer: vello_cpu' in Path('builder/source/deckcraft/crates/ui-egui/src/dialogs/body.rs').read_text()
+          assert 'cc.wgpu_render_state.as_ref()' in shell
+          assert 'state.adapter.get_info()' in shell
+          assert 'deckcraft.android.gpu.adapter' in shell
+          # Reuse only the same slide/zoom/animation already covered by a GPU texture.
+          texture_src=Path('builder/source/deckcraft/crates/ui-egui/src/textures.rs').read_text()
+          assert 'android_gpu_can_reuse_canvas' in texture_src
+          assert 'covered.contains(&requested.want)' in texture_src
+          assert 'old.slide == requested.slide' in texture_src
+          assert 'old.extra == requested.extra' in texture_src
+          assert 'android_gpu_pan_reuses_only_unmodified_scene_inside_cached_coverage' in texture_src
+          assert 'android_gpu_reuse_hits += 1' in texture_src
+          body_src=Path('builder/source/deckcraft/crates/ui-egui/src/dialogs/body.rs').read_text()
+          assert 'GPU texture cache hits' in body_src
+          assert 'app-pass estimate, not the tablet refresh rate' in body_src
+          # The Dk icon must remain the original artwork, but be clickable.
+          assert 'let launcher = ui.menu_button(' in ui
+          assert 'dialogs::paint_logo(ui.painter(), launcher.response.rect.shrink(2.0))' in ui
+          # User-tested Android.15 menu refinement: all Dk popup labels are
+          # left-aligned and duplicate Help-only commands remain in Help.
+          popup=ui.split('let launcher = ui.menu_button(',1)[1].split('dialogs::paint_logo(ui.painter(), launcher.response.rect.shrink(2.0))',1)[0]
+          assert 'egui::Button::new("").left_text(label)' in popup
+          for section in ('App Updates', 'Appearance', 'Presentation Shortcuts'):
+              assert f'ui.menu_button("{section}",' in popup, section
+          assert '   ›' not in popup, 'Duplicated submenu arrows'
+          assert 'ui.menu_button("About DeckCraft' not in popup, 'About must be direct'
+          assert 'left_text("About DeckCraft")' in popup
+          assert 'serde_json::json!({"on": false})' in popup
+          assert 'serde_json::json!({"on": true})' in popup
+          assert '✓  Light Theme' in popup and '✓  Dark Theme' in popup
+          assert 'app.gpuDiagnostics' not in popup
+          assert popup.count('app.about') == 1  # owner requested About in Dk launcher
+          for command in ('app.importFont', 'app.fontFolder', 'app.refreshFonts',
+                          'app.checkUpdates', 'app.updateSettings'):
+              assert popup.count(command)==1, command
+          menu=Path('builder/source/deckcraft/crates/ui-egui/src/menus.rs').read_text()
+          assert '("Help", vec![' in menu
+          assert '("GPU Diagnostics…", "app.gpuDiagnostics")' in menu
+          assert '("About DeckCraft", "app.about")' in menu
+          for name in ('"app.importFont"', '"app.fontFolder"', '"app.refreshFonts"',
+                       '"app.checkUpdates"', '"app.updateSettings"',
+                       '"app.gpuDiagnostics"', '"app.about"'):
+              assert name in ui
+          assert 'getLong("last_startup_check", 0L)' in java
+          assert '24L * 60L * 60L * 1000L' in java
+          assert 'getBoolean("preview", false)' in java
+          assert 'Open Android installer' in java
+          assert 'Intent.ACTION_VIEW' in java
+          assert 'Intent.FLAG_GRANT_READ_URI_PERMISSION' in java
+          assert 'deckCertificates(installed).equals(deckCertificates(next))' in java
+          assert 'accepted < 5000' in java
+          assert 'DK_SCAN_LIMIT = 4L * 1024 * 1024 * 1024' in java
+
+
+          assert 'renderer: eframe::Renderer::Wgpu' in shell
+          assert 'Backends::VULKAN | eframe::wgpu::Backends::GL' in shell
+
+          canvas=Path('builder/source/deckcraft/crates/ui-egui/src/canvas.rs').read_text()
+          assert 'deckcraft_android_pinch_anchor' in canvas
+          assert 'egui::Event::Zoom(_)' in canvas
+          assert 'let zooming = (resp.hovered() || touch_zoom_anchor.is_some())' in canvas
+          assert 'zooming.then_some(touch_zoom_anchor.or(hover))' in canvas
+          assert 'let touch_pan = allowed && native_pan && anchor.is_some();' in canvas
+          assert '(resp.hovered() || on_bar || touch_pan_active) && !zooming' in canvas
+          assert 'else if !touch_pan_active' in canvas
+          assert 'let scroll_gain = if ui.input(' in canvas
+          assert 'offset -= frame_scroll;' in canvas
+          assert 'if touch_pan_active { 1.65_f32 } else { 1.7_f32 }' in canvas
+          assert 'egui native smoothing is enough' in canvas
+          assert 'let frame_scroll = wheel * scroll_gain;' in canvas
+          assert 'delta.x.clamp(-72.0, 72.0)' not in canvas
+          assert 'deckcraft_trackpad_smooth' not in canvas
+          assert 'now - last_input < 0.22' not in canvas
+          dialog_shell=Path('builder/source/deckcraft/crates/ui-egui/src/dialogs.rs').read_text()
+          assert 'egui::RichText::new("DeckCraft").size(20.0)' in dialog_shell
+          assert '.halign(egui::Align::Center)' in dialog_shell
+          assert 'ui.add_sized([24.0, 26.0]' in dialog_shell
+          keys=Path('builder/source/deckcraft/crates/ui-egui/src/app/keys.rs').read_text()
+          assert 'ctx.request_repaint_after(std::time::Duration::from_millis(24))' in keys
+          assert 'ctx.request_repaint();' in keys
+          assert 'Self::android_editing_ctrl_w(&events)' in keys
+          assert 'self.close_presentation();' in keys
+          assert 'self.route_ime_controls_only(ctx, &events);' in keys
+          assert 'deckcraft.android.ctrl_w' in keys
+          assert 'handled_clipboard' in keys
+          assert 'self.publish_clipboard(ctx, false);' in keys
+          assert 'self.publish_clipboard(ctx, true);' in keys
+          assert 'self.session.execute("edit.paste", &json!({"text": pasted}))' in keys
+          assert 'if touch_pan_active { 1.65_f32 } else { 1.7_f32 }' in canvas
+          assert 'android_capture_editor_close_raw' in ui
+          assert 'self.inner.android_capture_editor_close_raw(ctx, raw);' in shell
+          assert 'dkTakeEditorClose' in java
+          assert 'dkTakeEditorArrow' in java
+          assert 'dkTakeEditorDelete' in java
+          assert 'KEYCODE_DEL' in java
+          assert 'KEYCODE_FORWARD_DEL' in java
+          assert 'self.dk.editor_delete(ctx);' in shell
+          assert 'self.inner.android_capture_editor_delete_raw(ctx, raw);' in shell
+          assert 'pub fn android_capture_editor_delete_raw' in ui
+          assert 'deckcraft.android.editor_delete' in keys
+          assert 'android_selected_all_backspace_deletes_range_and_keeps_editor' in ui
+          assert 'KEYCODE_DPAD_LEFT' in java
+          assert 'self.inner.android_capture_editor_arrows_raw(ctx, raw);' in shell
+          assert 'self.dk.editor_arrow(ctx);' in shell
+          assert 'android_capture_editor_arrows_raw' in ui
+          assert 'deckcraft.android.editor_arrow' in keys
+          assert 'Mods { shift: action & 16 != 0' in keys
+          bridge=Path('builder/templates/android/dcs_bridge.rs').read_text()
+          assert 'pub fn editor_close(' in bridge
+          assert 'pub fn editor_clipboard(' in bridge
+          assert 'pub fn editor_arrow(' in bridge
+          assert 'pub fn editor_flush_clipboard(' in bridge
+          assert 'dkSetEditorClipboardText' in java
+          assert 'self.dk.editor_flush_clipboard(ctx);' in shell
+          assert 'deckcraft.android.clipboard.pending' in keys
+          assert 'android_queue_clipboard_sync(ctx)' in keys
+          assert 'dkTakeEditorClipboard' in java
+          assert 'dkEditorClipboardText' in java
+          assert 'self.inner.android_capture_editor_clipboard_raw(ctx, raw);' in shell
+          assert 'android_capture_editor_clipboard_raw' in ui
+          assert 'ctx.request_repaint();' in ui
+          assert 'deckcraft.android.clip_action' in keys
+          assert 'self.session.execute("text.selectAll", &json!({}))' in keys
+          assert 'if touch_pan_active { 1.65_f32 } else { 1.7_f32 }' in canvas
+          ribbon=Path('builder/source/deckcraft/crates/ui-egui/src/ribbon/home.rs').read_text()
+          assert 'Paste (Ctrl+V)' in ribbon
+          menu=Path('builder/source/deckcraft/crates/ui-egui/src/menus.rs').read_text()
+          assert 'app.importFont' in menu, 'Font import command missing from menu'
+          # Rust menu_tree regression test checks the actual Help/File split.
+          assert 'fn import_font_is_help_only_no_duplicate_file_menu()' in ui
+          print('PASS: Android.12 native egui trackpad smoothing only; no double-filter/inertia; arrows/clipboard stable')
+          print('PASS: Android two-finger pan reaches canvas after hover cancellation and does not navigate on fitted page')
+          print('PASS: Android canvas pinch fallback scoped by touch origin; existing wheel zoom retained')
+          print('PASS: Android.4 blocking modal and focus, eager D/C/S, selectable theme, left menus')
+          print('PASS: modal D/C/S captured before UI; Esc/Back cannot exit with open document')
+          print('PASS: Android.4 D/C/S and acknowledged SAF behavior staged')
+          PY
+          python3 -m py_compile builder/lib/android_project.py
+          bash -n builder/lib/build-common.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK, build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Test save acknowledgement and font rendering
+        working-directory: builder/source/deckcraft
+        run: cargo test -p deckcraft-ui-egui --lib android_
+      - name: Compile DeckCraft integration ARM64 (disposable packaging key only)
+        shell: bash
+        timeout-minutes: 120
+        run: |
+          set -euo pipefail
+          bash builder/build.sh -deckcraft -packagename=com.artcraft.deckcraft.candidate.v0181a4 -appname=DeckCraft -appicon="$GITHUB_WORKSPACE/tools/approved-branding/assets/DeckCraft.png"
+          test -s builder/output/deckcraft-0.18.1-android.4.apk
+          # Ensure candidate is separate, and that Android can offer PPTX 'Open with'.
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.18.1-android.4.apk | grep -F "name='com.artcraft.deckcraft.candidate.v0181a4'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree builder/output/deckcraft-0.18.1-android.4.apk AndroidManifest.xml > /tmp/deckcraft-v017-manifest.txt
+          grep -F 'android.intent.action.VIEW' /tmp/deckcraft-v017-manifest.txt
+          grep -F 'android.intent.action.EDIT' /tmp/deckcraft-v017-manifest.txt
+          grep -F 'application/vnd.openxmlformats-officedocument.presentationml.presentation' /tmp/deckcraft-v017-manifest.txt
+          grep -F 'application/vnd.ms-powerpoint' /tmp/deckcraft-v017-manifest.txt
+          # Confirm the final APK offers both view/edit; MagicOS Settings visibility is OEM-controlled.
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.18.1-android.4.apk | grep -F "application-label:'DeckCraft'"
+          # Abort if any later packaging step reverted to Android.17.
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.18.1-android.4.apk | grep -F "versionName='0.18.1-android.4'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging builder/output/deckcraft-0.18.1-android.4.apk | grep -F "versionCode='100000032'"
+      - name: Strip disposable signature, validate unsigned APK and record SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=builder/output/deckcraft-0.18.1-android.4.apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/deckcraft-android4-badging.txt
+          grep -F "name='com.artcraft.deckcraft.candidate.v0181a4'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionName='0.18.1-android.4'" /tmp/deckcraft-android4-badging.txt
+          grep -F "versionCode='100000032'" /tmp/deckcraft-android4-badging.txt
+          mkdir -p unsigned
+          # The builder generates a new disposable key on this ephemeral checkout.
+          test -s builder/keys/artcraft-builder.jks
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > unsigned/TEMP-SIGNATURE-VERIFICATION.txt
+          cp "$APK" unsigned/DeckCraft-v0.18.1-android.4-arm64-v8a-TEMP-SIGNED.apk
+          python3 - "$APK" <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          import os, subprocess, sys
+          src=Path(sys.argv[1])
+          native='lib/arm64-v8a/libdeckcraft_android.so'
+          strip=Path(os.environ['ANDROID_NDK_HOME'])/'toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          assert strip.is_file(),f'Android NDK LLVM strip unavailable: {strip}'
+          saw_native=False
+          with ZipFile(src) as original, ZipFile('unsigned/unsigned-before-align.apk','w') as unsigned:
+              for entry in original.infolist():
+                  upper=entry.filename.upper()
+                  if upper.startswith('META-INF/') and (upper.endswith(('.RSA','.DSA','.EC','.SF','.MF')) or upper.startswith('META-INF/SIG-')):
+                      continue
+                  contents=original.read(entry.filename)
+                  if entry.filename==native:
+                      saw_native=True
+                      assert contents[:4]==b'\x7fELF'
+                      temp=Path('/tmp/deckcraft-v0181-arm64-native.so')
+                      temp.write_bytes(contents)
+                      before=len(contents)
+                      subprocess.run([str(strip),'--strip-unneeded',str(temp)],check=True)
+                      contents=temp.read_bytes()
+                      assert contents[:4]==b'\x7fELF' and len(contents)<before, 'Native strip did not reduce ELF'
+                      print(f'Native ARM64 ELF stripped safely: {before:,} -> {len(contents):,} bytes ({(before-len(contents))/before:.1%} smaller)')
+                  unsigned.writestr(entry,contents)
+          assert saw_native,'Refusing APK without DeckCraft ARM64 native library'
+          PY
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned-before-align.apk unsigned/DeckCraft-v0.18.1-android.4-arm64-v8a-UNSIGNED.apk
+          rm unsigned/unsigned-before-align.apk
+          FINAL=unsigned/DeckCraft-v0.18.1-android.4-arm64-v8a-UNSIGNED.apk
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$FINAL"
+          if "$BUILD_TOOLS/apksigner" verify "$FINAL" >/dev/null 2>&1; then
+              echo "::error::Temporary signing certificate still valid; refusing unsigned artifact"
+              exit 1
+          fi
+          "$BUILD_TOOLS/aapt" dump badging "$FINAL" > /tmp/deckcraft-unsigned-badging.txt
+          grep -F "name='com.artcraft.deckcraft.candidate.v0181a4'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionName='0.18.1-android.4'" /tmp/deckcraft-unsigned-badging.txt
+          grep -F "versionCode='100000032'" /tmp/deckcraft-unsigned-badging.txt
+          python3 - "$FINAL" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              assert z.testzip() is None
+              assert len(names)==len(set(names))
+              libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
+              assert 'classes.dex' in names
+              assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in names)
+          print('PASS: 0.18.1-android.4, SEPARATE TEST package, ARM64, DEX, valid unsigned payload')
+          PY
+          (cd unsigned && sha256sum *.apk > SHA256SUMS.txt)
+          cat > unsigned/README.txt <<'TXT'
+          DeckCraft 0.18.1-android.4 ARM64 testing candidate.
+          Round launcher-red hub with transparent original Dk glyph, branded coral sliders.
+          All 8 wheel tool icons stay white; pen hover and underlay isolation retained.
+          The TEMP-SIGNED APK uses a fresh disposable builder key, NOT the original
+          production certificate. Back up documents before uninstalling existing DeckCraft.
+          The UNSIGNED APK is also provided for independent disposable-key signing.
+          Reserve the original key for owner-approved releases only.
+          Test candidate package installs separately from production DeckCraft.
+          Do not confuse this test certificate with an original-key release.
+          Preserves Android v0.17 published features while testing official upstream v0.18.1.
+          DeckCraft Android.4: eight bordered adjustable slot rows, accessible light/dark dialog,
+          Default new-install/reset wheel size 75%, opacity 85%, positions labelled accurately.
+          Preserves launcher-red round Dk hub, eight white native icons and live customization.
+          Shared font scanning: 4 GiB byte/cache budget; 20 MiB per font.
+          Source tests and compilation are not physical-device verification.
+          Android.4 retains the tested experimental filter that advertises the legacy PowerPoint MIME as VIEW-only
+          solely to test HONOR MagicOS default-app eligibility. This does NOT add
+          or certify legacy binary .ppt import. Do not set this candidate as
+          the persistent default for .ppt files; test with supported .pptx only.
+          Physical tablet testing and public release still require owner approval.
+          TXT
+          echo "### DeckCraft 0.18.1-android.4 unsigned ARM64" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Android.4 upstream 0.18.1 and retained MagicOS VIEW-only MIME test; previous working features and modern PPTX handlers preserved.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'EXPERIMENTAL: legacy .ppt import is NOT supported or advertised by extension; device-verify MagicOS defaults before any release.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
+          cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload temporary-signed and unsigned ARM64 testing APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-v0.18.1-android.4-ARM64-TEMP-SIGNED-and-UNSIGNED
+          path: unsigned/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Remove disposable builder signing key and build outputs
+        if: always()
+        shell: bash
+        run: rm -rf builder/keys builder/output

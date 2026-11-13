@@ -257,7 +257,7 @@ impl Wheel {
 
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         let mut changed = false;
-        let screen = ctx.input(|i| i.screen_rect());
+        let screen = ctx.content_rect();
         if self.visible {
             let at = self.center(screen) - Vec2::splat(self.size / 2.0);
             egui::Area::new(egui::Id::new("wc_stylus_wheel_area"))

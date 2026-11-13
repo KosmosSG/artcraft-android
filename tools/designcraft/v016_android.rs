@@ -73,6 +73,9 @@ pub fn handle_keys(
     // swallows the original KeyEvent. RawInput may contain the same event;
     // boolean coalescing guarantees each action runs at most once per frame.
     let mut escape = bridge.dc_escape_action().is_ok_and(|value| value != 0);
+    // Android's invisible IME can swallow Ctrl+Z before egui receives it.
+    // Consume the once-per-press Java fallback, or the raw egui Key, never both.
+    let mut undo = bridge.dc_undo_action().is_ok_and(|value| value != 0);
     let command = bridge.dc_close_action().unwrap_or(0);
     let mut close = command == 1;
     let mut quit = command == 2;
@@ -98,6 +101,18 @@ pub fn handle_keys(
                 }
                 if *key == egui::Key::Escape && !modifiers.any() {
                     escape = true;
+                }
+                // Preserve unmodified Z=Zoom and Ctrl+Z inside focused text
+                // editors; on the document canvas use the real undo command.
+                if *key == egui::Key::Z
+                    && (modifiers.ctrl || modifiers.command)
+                    && !modifiers.shift && !modifiers.alt
+                    && !dialog && app.ui.dialog.is_none()
+                    && app.ui.palette.is_none()
+                    && !app.session.wants_text() && !ctx.text_edit_focused()
+                {
+                    undo = true;
+                    return false;
                 }
                 if *key == egui::Key::Q && (modifiers.ctrl || modifiers.command) && !modifiers.shift && !modifiers.alt {
                     quit = true;
@@ -154,6 +169,16 @@ pub fn handle_keys(
         ctx.memory_mut(|memory| {
             if let Some(id) = memory.focused() { memory.surrender_focus(id); }
         });
+        ctx.request_repaint();
+    }
+    // Coalescing the Java and native/egui paths avoids duplicate undo steps.
+    if undo && !dialog && app.ui.dialog.is_none()
+        && app.ui.palette.is_none() && !app.session.wants_text()
+        && !ctx.text_edit_focused()
+    {
+        if let Err(error) = app.run("edit.undo", serde_json::json!({})) {
+            app.status(format!("Undo: {error}"));
+        }
         ctx.request_repaint();
     }
     if quit && app.ui.dialog.is_none() {

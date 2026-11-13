@@ -389,7 +389,17 @@
     // cursor takeover, or synthetic clicks in the underlying worksheet.
     private final java.util.concurrent.atomic.AtomicReference<String> gcWheelHover =
             new java.util.concurrent.atomic.AtomicReference<>();
-    public String gcStylusWheelPollHover() { return gcWheelHover.getAndSet(null); }
+    private volatile long gcHoverLastScan = 0L;
+    public String gcStylusWheelPollHover() {
+        // GameActivity may replace/recreate the native SurfaceView. Refresh
+        // its passive hover listener periodically, not once at start-up.
+        final long now = android.os.SystemClock.uptimeMillis();
+        if (gcStylusWheelEnabled && now-gcHoverLastScan > 2500L) {
+            gcHoverLastScan = now;
+            gcInstallPassiveHoverObservers();
+        }
+        return gcWheelHover.getAndSet(null);
+    }
     // GC_STYLUS_HOVER_V2: accept HONOR Magic-Pencil stylus tool OR stylus
     // input-source flags. Some hover frames arrive as TOOL_TYPE_UNKNOWN,
     // particularly near the digitizer's hover-distance boundary.
@@ -436,27 +446,32 @@
                 return false;
             };
     private void gcAttachPassiveHover(android.view.View view) {
-        if (view == null || gcHoverInstalled.contains(view)) return;
-        view.setOnHoverListener(gcWheelPassiveHoverListener);
-        gcHoverInstalled.add(view);
+        if (view == null) return;
+        if (!gcHoverInstalled.contains(view)) {
+            view.setOnHoverListener(gcWheelPassiveHoverListener);
+            gcHoverInstalled.add(view);
+        }
+        // GridCraft runs in GameActivity. Its native view is often nested
+        // beneath a FrameLayout/SurfaceView rather than attached to the root.
+        // Recurse into the actual visible descendants without stealing events.
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i=0; i<group.getChildCount(); i++) {
+                gcAttachPassiveHover(group.getChildAt(i));
+            }
+        }
     }
     private void gcInstallPassiveHoverObservers() {
-        // Called only when the user opts in to Stylus Wheel. UI-thread-only.
+        if (!gcStylusWheelEnabled) return;
         runOnUiThread(() -> {
             try {
                 android.view.Window window = getWindow();
                 if (window == null) return;
                 android.view.View decor = window.getDecorView();
                 gcAttachPassiveHover(decor);
-                android.view.View content = decor.findViewById(android.R.id.content);
-                gcAttachPassiveHover(content);
-                if (content instanceof android.view.ViewGroup) {
-                    android.view.ViewGroup children = (android.view.ViewGroup) content;
-                    for (int i=0; i<children.getChildCount(); i++)
-                        gcAttachPassiveHover(children.getChildAt(i));
-                }
             } catch (RuntimeException error) {
-                android.util.Log.w("GridCraftWheel", "Passive stylus-hover listener unavailable", error);
+                android.util.Log.w("GridCraftWheel",
+                    "Passive stylus-hover listener unavailable", error);
             }
         });
     }
@@ -476,7 +491,10 @@
         gcStylusWheelEnabled = value;
         gcStylusWheelKeys.clear();
         gcWheelHover.set(null);
-        if (value) gcInstallPassiveHoverObservers();
+        if (value) {
+            gcHoverLastScan = android.os.SystemClock.uptimeMillis();
+            gcInstallPassiveHoverObservers();
+        }
     }
     public String gcStylusWheelPoll() { return gcStylusWheelKeys.poll(); }
     public boolean gcStylusWheelIntercept(android.view.KeyEvent event) {

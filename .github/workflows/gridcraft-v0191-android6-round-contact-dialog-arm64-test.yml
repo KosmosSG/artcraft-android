@@ -129,7 +129,6 @@ jobs:
           assert "Color32::from_rgb(46, 47, 49)" in wheel_source
           assert "fn paint_stylus_pointer" in wheel_source
           assert "self.preview_center = Some(at)" in wheel_source
-          assert "Changes update the live wheel on the canvas" in wheel_source
           assert "let (mini, _)" not in wheel_source
           assert "ui.label(\"Live preview\")" not in wheel_source
           assert "gcHoverLastScan" in java

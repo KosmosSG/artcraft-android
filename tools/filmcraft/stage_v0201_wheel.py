@@ -136,7 +136,16 @@ FEATURE_ANCHOR = "impl FilmcraftFeatures {\n"
 FEATURE_ADD = FEATURE_ANCHOR + "    pub fn storage_dir(&self) -> Option<PathBuf> { self.app_dir.clone() }\n"
 HEADER_ANCHOR = '                ui.menu_button("FilmCraft Shortcuts", |ui| {'
 HEADER_ADD = '''                ui.menu_button("Stylus Wheel", |ui| {
-                    if ui.button("Customize Stylus Wheel…")
+                    let mut enabled = ui.ctx().data(|data| data.get_temp::<bool>(
+                        egui::Id::new("filmcraft.stylus.enabled")).unwrap_or(true));
+                    if ui.checkbox(&mut enabled, "Enable Stylus Wheel")
+                        .on_hover_cursor(egui::CursorIcon::PointingHand).changed() {
+                        ui.ctx().data_mut(|data| data.insert_temp(
+                            egui::Id::new("filmcraft.stylus.menu.enabled"), enabled));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    if ui.button("Customize Wheel…")
                         .on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         ui.ctx().data_mut(|data| data.insert_temp(
                             egui::Id::new("filmcraft.stylus.settings.open"), true));
@@ -145,6 +154,15 @@ HEADER_ADD = '''                ui.menu_button("Stylus Wheel", |ui| {
                     }
                 });
 ''' + HEADER_ANCHOR
+
+# The Android bridge already supports genuine in-app download/verify/install.
+# Expose it using explicit PhotoCraft-style naming; never remove the package
+# identity and certificate checks that forbid a test APK overwriting production.
+HEADER_DOWNLOAD_ANCHOR = 'action(ui, "Download Verified APK…", 8);'
+HEADER_DOWNLOAD_LABEL = 'action(ui, "Download & Verify APK in App…", 8);'
+HEADER_INSTALL_ANCHOR = 'action(ui, "Install Verified Download…", 10);'
+HEADER_INSTALL_LABEL = 'action(ui, "Install Verified APK (Android Approval)…", 10);'
+
 
 
 def replace_once(src: str, old: str, new: str, name: str) -> str:
@@ -174,6 +192,10 @@ def prepare(builder: Path, wheel: Path) -> None:
     compile(updated_runtime, str(runtime), "exec")
     feature_src = replace_once(feature.read_text(), FEATURE_ANCHOR, FEATURE_ADD, "settings path")
     header_src = replace_once(header.read_text(), HEADER_ANCHOR, HEADER_ADD, "Fc menu")
+    header_src = replace_once(header_src, HEADER_DOWNLOAD_ANCHOR,
+        HEADER_DOWNLOAD_LABEL, "in-app verified APK download menu")
+    header_src = replace_once(header_src, HEADER_INSTALL_ANCHOR,
+        HEADER_INSTALL_LABEL, "in-app Android installer menu")
     # Check all changes first; do not partially modify the builder on an anchor failure.
     runtime.write_text(updated_runtime)
     feature.write_text(feature_src)

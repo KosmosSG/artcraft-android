@@ -71,6 +71,7 @@ jobs:
           assert "GC_ANDROID_CTRL_Q_V1" in native
           assert "GC_ANDROID_SAVE_AS_SHORTCUT_V1" in native
           assert "GRIDCRAFT_PHOTO_WHEEL_V1" in native
+          assert "fonts::bind_faces(&mut definitions, family, &fonts::faces_of(family))" in native
           # Generated Android Activity/src files exist only AFTER build.sh runs.
           # Here verify copied/staged sources; compile is the next separate gate.
           staging = Path("builder/tools/gridcraft_android")

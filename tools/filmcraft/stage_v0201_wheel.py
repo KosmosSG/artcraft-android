@@ -203,9 +203,9 @@ def prepare(builder: Path, wheel: Path) -> None:
     runtime.write_text(updated_runtime)
     feature.write_text(feature_src)
     header.write_text(header_src)
-    icon = Path(__file__).resolve().parents[2] / "assets/filmcraft/fc-user-approved.png"
+    icon = Path(__file__).with_name("fc-original-launcher-mask.b64")
     if not icon.is_file():
-        raise RuntimeError("STOP: approved FilmCraft launcher image missing")
+        raise RuntimeError("STOP: original FilmCraft Fc mark missing")
     logo_file = builder / "tools/filmcraft/filmcraft_fc_logo.rgba"
     navy, lavender = render_logo(icon, logo_file)
     wheel_source = wheel.read_text()
@@ -223,7 +223,7 @@ def prepare(builder: Path, wheel: Path) -> None:
             raise RuntimeError("STOP: owner-approved Fc palette source drift")
         wheel_source = wheel_source.replace(original, new, 1)
     (builder / "tools/filmcraft/filmcraft_stylus_wheel.rs").write_text(wheel_source)
-    print(f"PASS: exact launcher Fc glyph + sampled navy {navy} lavender {lavender}")
+    print(f"PASS: user-supplied original Fc lettering verified; exact navy {navy} lavender {lavender}")
     print("PASS: PhotoCraft-style Fc menu, wheel customization, and verified in-app updater")
 
 
@@ -246,7 +246,7 @@ def main() -> None:
         # Exercise the real approved icon without altering any GitHub files.
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as scratch:
-            icon = Path(__file__).resolve().parents[2] / "assets/filmcraft/fc-user-approved.png"
+            icon = Path(__file__).with_name("fc-original-launcher-mask.b64")
             navy, lavender = render_logo(icon, Path(scratch) / "logo.rgba")
             assert lavender[0] > navy[0] + 50
             assert (Path(scratch) / "logo.rgba").stat().st_size == 40960

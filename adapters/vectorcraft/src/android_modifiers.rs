@@ -179,6 +179,34 @@ pub fn consume_type_close_chord(
     close
 }
 
+/// Identify a real physical Ctrl+Z press for the native document Undo command.
+/// Do not steal ordinary text-field undo, active IME composition, Save Changes
+/// shortcuts, or an empty canvas. The Type tool is a document editor, so its
+/// Ctrl+Z should use the same document undo history as the Shortcut Pad.
+pub fn has_android_undo_chord(
+    raw: &egui::RawInput, type_editing: bool, field_focused: bool,
+    composing: bool, modal_open: bool, has_document: bool,
+) -> bool {
+    if !has_document || modal_open || composing || (field_focused && !type_editing) {
+        return false;
+    }
+    raw.events.iter().any(|event| matches!(event,
+        egui::Event::Key {
+            key: egui::Key::Z, pressed: true, repeat: false, modifiers, ..
+        } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
+    ))
+}
+
+/// Remove only the Ctrl+Z key-downs after Undo was accepted. Preserve Ctrl+Shift+Z,
+/// key-up, text composition and unrelated keys for upstream and native IME.
+pub fn consume_android_undo_chord(raw: &mut egui::RawInput) {
+    raw.events.retain(|event| !matches!(event,
+        egui::Event::Key {
+            key: egui::Key::Z, pressed: true, modifiers, ..
+        } if (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift
+    ));
+}
+
 /// egui-winit 0.37 currently labels ALL Android winit mouse-wheel input
 /// "Unknown", including continuous pixel deltas from both trackpad fingers
 /// and the touchscreen's two-finger menu scroll. The official PhotoCraft
@@ -409,6 +437,62 @@ mod tests {
         assert!(matches!(raw.events[2], Event::MouseWheel { source: MouseWheelSource::Momentum, .. }));
         assert!(matches!(raw.events[3], Event::Key { key: Key::D, pressed: true, .. }));
         assert_eq!(classify_android_precision_scroll(&mut raw), 0);
+    }
+
+    #[test]
+    fn ctrl_z_undo_chord_is_scoped_to_open_document_and_single_command() {
+        let mods = Modifiers { ctrl: true, command: true, ..Modifiers::NONE };
+        let chord = Event::Key { key: Key::Z, physical_key: Some(Key::Z),
+            pressed: true, repeat: false, modifiers: mods };
+        let release = Event::Key { key: Key::Z, physical_key: Some(Key::Z),
+            pressed: false, repeat: false, modifiers: mods };
+        // Native + fallback duplicate key-down packets still cause one Undo:
+        // the host calls edit.undo once, then removes both matching presses.
+        let mut raw = RawInput { events: vec![
+            chord.clone(), chord.clone(), release.clone(),
+            Event::Ime(egui::ImeEvent::Commit("untouched".into())),
+        ], ..Default::default() };
+        assert!(has_android_undo_chord(&raw, false, false, false, false, true));
+        consume_android_undo_chord(&mut raw);
+        assert!(!has_android_undo_chord(&raw, false, false, false, false, true));
+        assert_eq!(raw.events.len(), 2);
+        assert!(matches!(&raw.events[0], Event::Key { key: Key::Z, pressed: false, .. }));
+        assert!(matches!(&raw.events[1], Event::Ime(_)));
+        for (editing, field, composing, dialog, doc) in [
+            (false, false, false, false, false),
+            (false, true, false, false, true),
+            (false, false, true, false, true),
+            (false, false, false, true, true),
+        ] {
+            let raw = RawInput { events: vec![chord.clone()], ..Default::default() };
+            assert!(!has_android_undo_chord(&raw, editing, field, composing, dialog, doc));
+        }
+        // A real Type tool may hold egui focus; editing the document still
+        // invokes document Undo rather than selecting another tool.
+        let raw = RawInput { events: vec![chord], ..Default::default() };
+        assert!(has_android_undo_chord(&raw, true, true, false, false, true));
+    }
+
+    #[test]
+    fn ctrl_z_never_swallow_shift_redo_alt_plain_or_repeat() {
+        for modifiers in [
+            Modifiers::NONE,
+            Modifiers { ctrl: true, command: true, shift: true, ..Modifiers::NONE },
+            Modifiers { ctrl: true, command: true, alt: true, ..Modifiers::NONE },
+        ] {
+            let mut raw = RawInput { events: vec![Event::Key {
+                key: Key::Z, physical_key: Some(Key::Z), pressed: true,
+                repeat: false, modifiers,
+            }], ..Default::default() };
+            assert!(!has_android_undo_chord(&raw, false, false, false, false, true));
+            consume_android_undo_chord(&mut raw);
+            assert_eq!(raw.events.len(), 1);
+        }
+        let raw = RawInput { events: vec![Event::Key {
+            key: Key::Z, physical_key: Some(Key::Z), pressed: true,
+            repeat: true, modifiers: Modifiers { ctrl: true, command: true, ..Modifiers::NONE },
+        }], ..Default::default() };
+        assert!(!has_android_undo_chord(&raw, false, false, false, false, true));
     }
 
     #[test]

@@ -167,7 +167,8 @@ def prepare(builder: Path, wheel: Path) -> None:
 
     runtime_src = runtime.read_text()
     updated_runtime = replace_once(runtime_src, RUNTIME_ANCHOR,
-        RUNTIME_EXTRA + RUNTIME_ANCHOR, "runtime wrapper hook")
+        RUNTIME_EXTRA.replace("JAVA_STYLUS_BRIDGE", repr(JAVA_STYLUS_BRIDGE))
+        + RUNTIME_ANCHOR, "runtime wrapper hook")
     updated_runtime = replace_once(updated_runtime, RUNTIME_WRITE_ANCHOR,
         RUNTIME_WRITE_REPLACE, "wheel Rust copy")
     compile(updated_runtime, str(runtime), "exec")

@@ -74,10 +74,12 @@ fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
                 (-5.0,5.0),(0.0,7.0),(6.0,5.0),(8.0,1.0)]);
             line(&[(-1.0,-11.0),(-6.0,-7.0),(-1.0,-3.0)]);
         }
-        7 => { // Redo: exact horizontal mirror of Undo.
-            line(&[(-1.0,-7.0),(3.0,-7.0),(7.0,-4.0),(8.0,0.0),
-                (5.0,5.0),(0.0,7.0),(-6.0,5.0),(-8.0,1.0)]);
-            line(&[(1.0,-11.0),(6.0,-7.0),(1.0,-3.0)]);
+        7 => { // Redo: unmistakeable clockwise, right-pointing curved arrow.
+            // A simple swept shaft with an outward arrowhead, NOT Undo mirrored.
+            // The arrowhead points to screen-right (positive X) at the upper edge.
+            line(&[(-9.0,8.0),(-9.0,2.0),(-7.0,-3.0),
+                (-3.0,-7.0),(2.0,-8.0),(9.0,-5.0)]);
+            line(&[(3.0,-10.0),(9.0,-5.0),(3.0,0.0)]);
         }
         8 => { // Previous sheet.
             box_at(-2.0,-9.0,9.0,9.0);
@@ -349,12 +351,38 @@ impl Wheel {
             .default_width(322.0).show(ctx, |ui| {
                 ui.label("GridCraft Default • 8 configurable segments");
                 ui.separator();
-                dirty |= ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=125.0)
-                    .text("Wheel size").suffix("%")).changed();
-                dirty |= ui.add(egui::Slider::new(&mut self.opacity_percent, 60.0..=100.0)
-                    .text("Wheel opacity").suffix("%")).changed();
+                // Option 2: limit GridCraft-green accent colours to the wheel
+                // customisation sliders, rather than changing workbook UI themes.
+                ui.scope(|ui| {
+                    let visuals = &mut ui.style_mut().visuals;
+                    visuals.selection.bg_fill = DARK;
+                    visuals.selection.stroke = Stroke::new(1.0, BRIGHT);
+                    visuals.widgets.active.bg_fill = DARK;
+                    visuals.widgets.active.bg_stroke = Stroke::new(1.2, LIME);
+                    visuals.widgets.hovered.bg_fill = DARK;
+                    visuals.widgets.hovered.bg_stroke = Stroke::new(1.2, LIME);
+                    ui.label("Wheel size");
+                    dirty |= ui.add(egui::Slider::new(&mut self.size_percent, 75.0..=125.0)
+                        .suffix("%")).changed();
+                    ui.label("Wheel opacity");
+                    dirty |= ui.add(egui::Slider::new(&mut self.opacity_percent, 60.0..=100.0)
+                        .suffix("%")).changed();
+                });
                 ui.separator();
-                ui.label("Live preview reflects the enlarged wheel size and opacity.");
+                ui.label("Live preview");
+                ui.horizontal(|ui| {
+                    // Thumbnail follows the very same renderer as the full-size
+                    // preview and wheel; 75–125% changes the visible thumbnail.
+                    let (mini, _) = ui.allocate_exact_size(
+                        vec2(184.0, 184.0), Sense::hover());
+                    self.paint(ui, mini, self.scale() * 0.48, None);
+                    ui.vertical(|ui| {
+                        ui.small("Same Gc colour and");
+                        ui.small("wheel icon style.");
+                        ui.small("Full-size preview also");
+                        ui.small("appears beside the menu.");
+                    });
+                });
                 ui.separator();
                 for slot in 0..8 {
                     ui.horizontal(|ui| {
@@ -478,7 +506,9 @@ impl Wheel {
             painter.text(point+vec2(0.0,13.0)*scale,egui::Align2::CENTER_CENTER,
                 LABELS[self.slots[i]],FontId::proportional(11.0*scale),Color32::WHITE);
         }
-        painter.circle_stroke(c,R*scale,Stroke::new(0.7,Color32::from_gray(84)));
+        // Option 2: a fine lime-green circular rim instead of a heavy neon band.
+        // The same paint_wheel path is used for the interactive and both previews.
+        painter.circle_stroke(c,R*scale,Stroke::new(0.95*scale,BRIGHT));
         painter.circle_filled(c,(INNER+2.0)*scale,DARK);
         painter.circle_stroke(c,(INNER+2.0)*scale,Stroke::new(1.3,LIME));
         // Exact artwork-inspired round centre: deep-green solid, lime Gc letters.

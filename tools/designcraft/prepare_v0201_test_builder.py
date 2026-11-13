@@ -10,7 +10,7 @@ import sys
 
 OLD_SHA = "16322ad54b3a20b4cd70666be7431086514d0a36"
 NEW_SHA = "33a467872268c98536231491865b4011b0275b17"
-NEW_VERSION = "0.20.1-android.2"
+NEW_VERSION = "0.20.1-android.3"
 
 def exactly(src, old, new, label, count=1):
     actual = src.count(old)

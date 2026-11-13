@@ -275,10 +275,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'jni_str!("pdfOpenReleasePage")' in mobile
     assert 'In-app APK installation is disabled.' in java
     assert 'PackageInstaller' not in java
-    # On fresh installations startup checks default ON; an existing OFF
-    # preference remains OFF. Toggling gives a native bottom Toast.
+    # On fresh installations startup checks default OFF; an existing ON
+    # preference remains ON. Toggling gives a native bottom Toast.
     assert 'mobile.read_startup_setting().unwrap_or(false)' in mobile
-    assert 'startup_check: true, first_frame: true' in mobile
+    assert 'startup_check: false, first_frame: true' in mobile
     assert 'egui::Id::new("pdfcraft.android.startup.enabled"), self.startup_check' in mobile
     assert 'let enabled = !self.startup_check;' in mobile
     assert 'match self.save_startup_setting(enabled)' in mobile

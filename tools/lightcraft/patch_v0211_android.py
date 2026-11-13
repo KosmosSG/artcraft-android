@@ -205,9 +205,22 @@ def source_changes(source: Path) -> dict[Path, str]:
         'let tab_id = egui::Id::unique("about_tab");',
         'let tab_id = egui::Id::new("about_tab");',
         "About tab shared selection ID")
+    # Expose an actual in-app Download & Install action in the native
+    # About > Updates tab. The resulting install is always confirmed by Android.
+    updates_block = approved_updates_branch()
+    download_anchor = '                             ui.small("LightCraft-only GitHub Releases; updates must use the original app signature.");'
+    download_controls = '''                             let available = ctx.data(|d| d.get_temp::<bool>(
+                                 egui::Id::new("artcraft.lightcraft.download_available"))).unwrap_or(false);
+                             if available && ui.button("Download & Install in App").clicked() {
+                                 ctx.data_mut(|d| d.insert_temp(
+                                     egui::Id::new("artcraft.lightcraft.download_update_requested"), true));
+                                 ctx.request_repaint();
+                             }
+''' + download_anchor
+    updates_block = once(updates_block, download_anchor, download_controls, "Updates download button")
     dlg = once(dlg,
         '        2 => crate::credits::models_ui(ui),\n        _ => {',
-        '        2 => crate::credits::models_ui(ui),\n' + approved_updates_branch() + '        _ => {',
+        '        2 => crate::credits::models_ui(ui),\n' + updates_block + '        _ => {',
         "About Updates UI")
     return {paths["commands"]: c, paths["menubar"]: m, paths["run"]: run, paths["dialogs"]: dlg, paths["cargo_ui"]: cargo_ui}
 
@@ -223,6 +236,15 @@ def builder_changes(builder: Path) -> dict[Path, str]:
     for name in ("Java Activity injection", "Rust updater host"):
         old, new = legacy_payload(name)
         script = once(script, old, new, name)
+    # The installer still needs Android's per-app unknown-sources consent.
+    # Insert the permission only in this disposable LightCraft manifest.
+    script = once(script,
+        '    (staging_dir / "Cargo.toml").write_text(manifest)',
+        '''    if app == "lightcraft":
+        manifest = manifest.replace("[package.metadata.android.application]",
+            '[[package.metadata.android.uses_permission]]\\nname = "android.permission.REQUEST_INSTALL_PACKAGES"\\n\\n[package.metadata.android.application]', 1)
+    (staging_dir / "Cargo.toml").write_text(manifest)''',
+        "Android package-installer permission")
     # New builder already declares INTERNET: old permission patch would duplicate it.
     if script.count('name = "android.permission.INTERNET"') != 1:
         raise ValueError("STOP: Android builder INTERNET permission missing/duplicated")

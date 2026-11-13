@@ -7,7 +7,7 @@ on:
       - feature/cadcraft-v0190-android1-test-20261111
     paths:
       # Explicit, focused completion gate. Interim edits do not burn Actions minutes.
-      - 'tools/cadcraft_android_patch.py'
+      - 'tools/cadcraft_build_gate.txt'
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,170 @@
+name: GridCraft v0.19.1 Android.3 Option 2 + Stylus Hover ARM64 TEST
+
+on:
+  push:
+    branches:
+      - fix/gridcraft-v0191-android3-option2-redo-thinring-20261113
+    paths:
+      - '.github/workflows/gridcraft-v0191-android3-option2-hover-arm64-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gridcraft-v0191-android3-option2-hover-temp
+  cancel-in-progress: false
+
+jobs:
+  preflight-and-build:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/gridcraft-v0191-android3-option2-redo-thinring-20261113'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+    steps:
+      - name: Checkout current protected-baseline-derived integration branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned Android reference builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - name: Checkout exact official Storytold GridCraft v0.19.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/gridcraft
+          ref: 476448d7d9f3a5f8e93fcf7d98b47fd52293fe7f
+          path: builder/source/gridcraft
+          persist-credentials: false
+      - name: Verify upstream source, Python syntax, and Android port contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          test "$(git -C builder/source/gridcraft rev-parse HEAD)" = 476448d7d9f3a5f8e93fcf7d98b47fd52293fe7f
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 tools/gridcraft/v0180_source_preflight.py builder/source/gridcraft
+          python3 -m py_compile tools/gridcraft/install_overlay.py tools/gridcraft/port_v0150_ui.py tools/gridcraft/port_v0150_save_dcs.py tools/gridcraft/port_v0150_touch_selection.py tools/gridcraft/port_v0150_builder_saf.py tools/gridcraft/android_addons/overlay.py tools/gridcraft/android_addons/font_catalog_patch.py
+          python3 tools/gridcraft/install_overlay.py builder
+          bash -n builder/lib/build-common.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("builder/source/gridcraft/crates/ui-egui/src")
+          title=(source/"ribbon/title_bar.rs").read_text()
+          show=(source/"grid/show.rs").read_text()
+          dialog=(source/"dialogs/show.rs").read_text()
+          fonts=(source/"fonts.rs").read_text()
+          native=(Path("builder/tools/gridcraft_android/gridcraft_tools.rs")).read_text()
+          assert "GRIDCRAFT_ANDROID_USER_ICON_V2" in title
+          assert "GRIDCRAFT_ANDROID_NATIVE_MENU_V1" in title
+          assert "GRIDCRAFT_ANDROID_TRACKPAD_DRAG_NO_SCROLL_V1" in show
+          assert "GC_TWO_FINGER_ONLY_PAN_V1" in show
+          assert "gridcraft_android_take_dcs" in dialog
+          assert "pub fn reload_catalog()" in fonts
+          assert "GC_ANDROID_CTRL_Q_V1" in native
+          assert "GC_ANDROID_SAVE_AS_SHORTCUT_V1" in native
+          assert "GRIDCRAFT_PHOTO_WHEEL_V1" in native
+          assert "fonts::bind_faces(&mut definitions, family, &fonts::faces_of(family))" in native
+          # Generated Android Activity/src files exist only AFTER build.sh runs.
+          # Here verify copied/staged sources; compile is the next separate gate.
+          staging = Path("builder/tools/gridcraft_android")
+          wheel = staging / "gridcraft_stylus_wheel.rs"
+          assert wheel.is_file() and "PhotoCraft Default radial layout" in wheel.read_text()
+          overlay = (staging/"overlay.py").read_text()
+          assert "mod gridcraft_stylus_wheel;" in overlay
+          assert "self.tools.filter_raw_input(ctx, raw);" in overlay
+          assert "gridcraft-wheel-gc.rgba" in overlay
+          java = (staging/"GridCraftJavaMethods.java.inc").read_text()
+          assert "gcStylusWheelIntercept" in java and "Magic-Pencil" in java
+          assert "dispatchGenericMotionEvent" in java and "ACTION_HOVER_MOVE" in java
+          assert "gcStylusWheelPollHover" in java
+          assert "gc_poll_wheel_hover" in native
+          wheel_source = wheel.read_text()
+          assert "WHEEL_ENLARGEMENT: f32 = 1.12" in wheel_source
+          assert "fn draw_icon(" in wheel_source and "fn stylus_hover(" in wheel_source
+          assert "icons::paint" not in wheel_source
+          # Option 2: verify thinner outline, rightward redo, Gc sliders and
+          # real pen hover before spending CI minutes compiling Android.
+          assert "GC_STYLUS_HOVER_V2" in java
+          assert "onGenericMotionEvent" in java
+          assert "SOURCE_STYLUS" in java
+          assert "last_stylus_hover: Option<Instant>" in wheel_source
+          assert '7 => { // Redo: unmistakeable clockwise, right-pointing curved arrow.' in wheel_source
+          assert "Stroke::new(0.95*scale,BRIGHT)" in wheel_source
+          assert "visuals.selection.bg_fill = DARK" in wheel_source
+          assert "ui.label(\"Live preview\")" in wheel_source
+          code = Path("builder/lib/android_project.py").read_text()
+          assert "0.19.1-android.3-test" in code
+          assert "com.artcraft.gridcraft.candidate3" in code
+          print("PASS: GridCraft v0.19.1 Android.3 Option 2 source preflight")
+          PY
+      - name: Set up Java 21, Rust stable (upstream requires Rust >= 1.95)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install NDK 27 and approved icon tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          if [ ! -d "$NDK" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
+            "$SDKMANAGER" --install 'ndk;27.2.12479018'
+          fi
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+      - name: Build a single size-optimized ARM64 release-mode APK with a fresh disposable key
+        shell: bash
+        timeout-minutes: 145
+        run: |
+          set -euo pipefail
+          test ! -e builder/keys/artcraft-builder.jks
+          ICON="$GITHUB_WORKSPACE/assets/gridcraft/launcher-user-20261103.png"
+          echo "e35af23c45ee75e1e026374c7b2458ac9f616cc82ffe39465f9c0ad3f3aeb7b2  $ICON" | sha256sum -c -
+          bash builder/build.sh -gridcraft -packagename=com.artcraft.gridcraft.candidate3 -appicon="$ICON"
+      - name: Verify temporary signing, isolated package, version, ARM64 ABI and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find builder/output -maxdepth 1 -type f -iname '*gridcraft*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > apk-signing.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > apk-badging.txt
+          grep -F "name='com.artcraft.gridcraft.candidate3'" apk-badging.txt
+          grep -F "versionName='0.19.1-android.3-test'" apk-badging.txt
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = z.namelist()
+              assert 'classes.dex' in names
+              assert any(x.startswith('lib/arm64-v8a/') and x.endswith('.so') for x in names)
+              assert all(not x.startswith('lib/') or x.startswith('lib/arm64-v8a/') for x in names)
+              assert not any(x.endswith(('.jks', '.keystore', '.p12')) for x in names)
+          print('PASS: temporary candidate is signed, isolated, and ARM64 only')
+          PY
+          mkdir -p candidate
+          cp "$APK" candidate/GridCraft-v0.19.1-android.3-OPTION2-HOVER-ARM64-TEMP.apk
+          (cd candidate && sha256sum *.apk > SHA256SUMS.txt)
+          cp apk-signing.txt apk-badging.txt candidate/
+      - name: Upload temporary candidate ONLY (never release or production sign)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridCraft-v0191-Android3-Option2-Hover-ARM64-TEMP-NOT-PRODUCTION
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Destroy disposable signing material
+        if: always()
+        run: rm -rf builder/keys builder/output

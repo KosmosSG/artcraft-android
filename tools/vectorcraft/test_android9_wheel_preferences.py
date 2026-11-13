@@ -15,13 +15,35 @@ class Android9WheelPreferences(unittest.TestCase):
         s = WHEEL.read_text()
         for expected in (
             "size_percent: 84, opacity_percent: 78",
-            'egui::Label::new("Wheel Size")',
-            'egui::Label::new("Opacity")',
+            'ui.label("Wheel size")',
+            'ui.label("Opacity")',
             "75..=140", "30..=100",
             "self.size_percent = 84;",
             "self.opacity_percent = 78;",
         ):
             self.assertIn(expected, s)
+
+    def test_photocraft_appearance_and_notifications(self):
+        s = WHEEL.read_text()
+        for expected in (
+            'Stylus Wheel — Default',
+            'Style: Default  •  8 segments',
+            'format!("Slot {}", slot + 1)',
+            '.width(236.0)',
+            'fn external_preview(&self, ctx: &Context)',
+            'self.external_preview(&ctx)',
+            'fn paint_wheel(',
+            'self.paint_wheel(ui, rect, scale, highlighted);',
+            'Color32::from_rgb(43, 43, 45)',
+            'Color32::from_rgb(49, 49, 51)',
+            'Color32::from_rgb(255, 159, 0)',
+            'let width = screen.width().min(450.0).max(120.0);',
+            'vec2(width, 38.0)',
+            'Restore Default',
+            'Changes saved automatically.',
+        ):
+            self.assertIn(expected, s)
+        self.assertEqual(s.count('self.paint_wheel(ui, rect, scale, highlighted);'), 2)
 
     def test_loads_legacy_and_new_persisted_values(self):
         s = WHEEL.read_text()

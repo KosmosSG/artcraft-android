@@ -22,6 +22,8 @@ pub struct GridCraftTools {
     font_request_started: Option<std::time::Instant>,
     feedback_message: Option<String>,
     feedback_until: Option<std::time::Instant>,
+    stylus_wheel: crate::gridcraft_stylus_wheel::Wheel,
+    wheel_android_ready: bool,
 }
 impl GridCraftTools {
     pub fn close_shortcut(&self, inner: &mut gridcraft_ui_egui::SheetApp, ctx: &eframe::egui::Context) {
@@ -119,6 +121,8 @@ impl GridCraftTools {
             startup_loaded: false, startup_check: false,
             font_request_pending: false, font_request_started: None,
             feedback_message: None, feedback_until: None,
+            stylus_wheel: crate::gridcraft_stylus_wheel::Wheel::new(),
+            wheel_android_ready: false,
         }
     }
     fn send(&self, action: Action) -> Result<(), String> {
@@ -319,8 +323,56 @@ impl GridCraftTools {
     /// The UI's own ribbon embeds that menu without adding a panel or window.
     /// This method is intentionally called before SheetApp::ui: it consumes
     /// menu commands from the prior frame and refreshes the shared menu status.
+
+    /// Capture wheel-owned pointer events before SheetApp::raw_input_hook.
+    /// Never suppress normal canvas input when the wheel is closed.
+    pub fn filter_raw_input(&mut self, ctx: &eframe::egui::Context, raw: &mut eframe::egui::RawInput) {
+        self.stylus_wheel.capture(ctx, raw);
+    }
+    fn gc_set_wheel_enabled(&self, enabled: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("gcStylusWheelSetEnabled"),
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
+            Ok(())
+        }).map_err(|e| format!("Wheel pen-button bridge: {e}"))
+    }
+    fn gc_poll_wheel_key(&self) -> Option<String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("gcStylusWheelPoll"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok(None); }
+            let str = JString::cast_local(env, value)?;
+            Ok(Some(str.try_to_string(env)?))
+        }).ok().flatten()
+    }
     pub fn ui(&mut self, ui: &mut egui::Ui, _sheet: &mut gridcraft_ui_egui::SheetApp) {
         let ctx = ui.ctx();
+        // GRIDCRAFT_PHOTO_WHEEL_V1 — switch pen routing only when the owner
+        // explicitly enables the wheel, and keep keyboard/IME routes untouched.
+        if !self.wheel_android_ready {
+            match self.gc_set_wheel_enabled(self.stylus_wheel.enabled) {
+                Ok(()) => self.wheel_android_ready = true,
+                Err(e) => log::warn!("{e}"),
+            }
+        }
+        if self.stylus_wheel.menu(ctx) {
+            if let Err(e) = self.gc_set_wheel_enabled(self.stylus_wheel.enabled) {
+                log::warn!("{e}");
+                self.wheel_android_ready = false;
+            }
+        }
+        for _ in 0..4 {
+            if let Some(key) = self.gc_poll_wheel_key() {
+                self.stylus_wheel.signal(&key, ctx);
+            } else { break; }
+        }
+        self.stylus_wheel.render(ctx, _sheet);
+        ctx.data_mut(|d| d.insert_temp(
+            egui::Id::new("gridcraft.android.wheel.enabled"), self.stylus_wheel.enabled));
         let command_id = egui::Id::new("gridcraft.android.menu.action");
         let command = ctx.data(|d| d.get_temp::<String>(command_id)).unwrap_or_default();
         if !command.is_empty() {

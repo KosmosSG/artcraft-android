@@ -56,7 +56,7 @@ class UpdateSecurity(unittest.TestCase):
         self.assertIn('"android.permission.REQUEST_INSTALL_PACKAGES"', s)
         self.assertIn('about = once(about,', s)
         self.assertIn('downloadable && !checking && !downloading', s)
-        self.assertIn('Test builds cannot replace the production app', JAVA.read_text())
+        self.assertIn('Test builds cannot replace the production VectorCraft app.', JAVA.read_text())
 
     def test_staged_code_contract(self):
         staged = os.environ.get("VC_ANDROID5_STAGED")

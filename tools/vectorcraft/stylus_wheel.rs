@@ -279,7 +279,7 @@ impl Wheel {
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width((ctx.content_rect().width() - 48.0).min(810.0))
+                .default_width((ctx.content_rect().width() - 48.0).min(850.0))
                 .max_width((ctx.content_rect().width() - 32.0).max(240.0))
                 .constrain(true)
                 .show(&ctx, |ui| {
@@ -287,7 +287,7 @@ impl Wheel {
                     let height = (ctx.content_rect().height() - 130.0).max(180.0);
                     if wide {
                         ui.horizontal_top(|ui| {
-                            ui.allocate_ui(vec2(320.0, height), |ui| {
+                            ui.allocate_ui(vec2(360.0, height), |ui| {
                                 egui::ScrollArea::vertical().id_salt("vc-wheel-controls")
                                     .max_height(height).show(ui, |ui| self.controls(ui, &mut done));
                             });
@@ -297,7 +297,7 @@ impl Wheel {
                     } else {
                         // Preview and sliders stay outside the scrolling assignments.
                         self.preview(ui, (height * 0.34).min(240.0));
-                        self.sliders(ui);
+                        ui.scope(|ui| self.sliders(ui));
                         egui::ScrollArea::vertical().id_salt("vc-wheel-controls")
                             .max_height((height * 0.42).max(80.0))
                             .show(ui, |ui| self.assignments(ui));
@@ -371,6 +371,11 @@ impl Wheel {
             });
     }
     fn sliders(&mut self, ui: &mut Ui) {
+        // Restrict launcher-orange slider styling to this section, not the
+        // document canvas, popup menus or other application controls.
+        ui.visuals_mut().selection.bg_fill = Color32::from_rgb(255, 159, 0);
+        ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(255, 159, 0);
+        ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(190, 105, 12);
         ui.spacing_mut().slider_width = 130.0;
         egui::Grid::new("vc-wheel-slider-grid").num_columns(3)
             .spacing(vec2(10.0, 8.0)).show(ui, |ui| {
@@ -399,7 +404,7 @@ impl Wheel {
     fn controls(&mut self, ui: &mut Ui, done: &mut bool) {
         self.assignments(ui);
         ui.separator();
-        self.sliders(ui);
+        ui.scope(|ui| self.sliders(ui));
         ui.add_space(8.0);
         self.buttons(ui, done);
     }
@@ -471,8 +476,10 @@ impl Wheel {
                         egui::Align2::CENTER_CENTER, LABELS[self.layout[i]],
                         FontId::proportional(11.0 * scale), theme.text_dim.gamma_multiply(opacity));
                 }
+                // The thin surrounding rim matches the orange Vc launcher mark.
+                // Match the same rim in the real overlay and live preview.
                 painter.circle_stroke(c, R * scale,
-                    Stroke::new(0.8, theme.input_border.gamma_multiply(0.58 * opacity)));
+                    Stroke::new(1.15 * scale, Color32::from_rgb(255, 159, 0).gamma_multiply(opacity)));
                 // Full user-selected round hub, no square tile.
                 // The exact uploaded SVG paths are shown here as a texture,
                 // retaining the approved orange Vc letterforms.

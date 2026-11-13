@@ -114,35 +114,86 @@ impl Wheel {
     }
 
     fn wheel_icon(p: &egui::Painter, rect: Rect, icon: &str) {
-        if icon == "wheel-shapes" {
-            let c = rect.center();
-            let d = rect.width() * 0.32;
-            p.rect_stroke(Rect::from_center_size(c + vec2(-d * 0.58, -d * 0.7), vec2(d * 1.1, d * 1.1)),
-                0.4, Stroke::new(1.8, Color32::WHITE), egui::StrokeKind::Middle);
-            p.circle_stroke(c + vec2(d * 0.8, -d * 0.40), d * 0.54, Stroke::new(1.8, Color32::WHITE));
-            let tip = c + vec2(0.0, d * 0.8);
-            p.add(Shape::closed_line(vec![
-                tip + vec2(0.0, -d*0.65), tip + vec2(-d*0.63, d*0.45),
-                tip + vec2(d*0.63, d*0.45),
-            ], Stroke::new(1.8, Color32::WHITE)));
-        } else if icon == "wheel-undo" || icon == "wheel-redo" {
-            // Familiar mirrored Undo / Redo: a clear left/right arrowhead
-            // followed by a rounded return stroke (rather than a rotate glyph).
-            let direction = if icon == "wheel-undo" { 1.0 } else { -1.0 };
-            let scale = rect.width().min(rect.height());
-            let at = |x: f32, y: f32| rect.center() + vec2(direction * x * scale, y * scale);
-            let stroke = Stroke::new(2.2, Color32::WHITE);
-            p.add(Shape::line(vec![
-                at(-0.33, -0.11), at(-0.13, -0.11), at(0.04, -0.11),
-                at(0.19, -0.05), at(0.29, 0.08), at(0.30, 0.20),
-                at(0.23, 0.32), at(0.08, 0.37),
-            ], stroke));
-            p.add(Shape::line(vec![
-                at(-0.11, -0.32), at(-0.33, -0.11), at(-0.11, 0.11),
-            ], stroke));
-        } else {
-            // Use the same real icons as DesignCraft's own toolbar/panels.
-            designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
+        // Unified 24-point pictograms. The wheel has the same icon geometry,
+        // line weight and white tint regardless of segment orientation.
+        let center = rect.center();
+        let half = rect.width().min(rect.height()) * 0.5;
+        let at = |x: f32, y: f32| center + vec2(x * half, y * half);
+        let stroke = Stroke::new((half * 0.15).clamp(1.8, 2.3), Color32::WHITE);
+        let line = |points: &[(f32, f32)]| {
+            p.add(Shape::line(
+                points.iter().map(|&(x, y)| at(x, y)).collect(),
+                stroke,
+            ));
+        };
+        match icon {
+            "tool-selection" => {
+                // Solid cursor arrow, without a fuzzy outline at wheel scale.
+                p.add(Shape::convex_polygon(
+                    vec![
+                        at(-0.68, -0.89), at(-0.52, 0.81),
+                        at(-0.14, 0.39), at(0.28, 0.91),
+                        at(0.62, 0.65), at(0.24, 0.16),
+                        at(0.78, 0.06),
+                    ],
+                    Color32::WHITE, Stroke::NONE,
+                ));
+            }
+            "tool-pen" => {
+                // Symmetric fountain pen nib with a distinct ink breather.
+                line(&[
+                    (0.0, -0.89), (0.60, -0.12), (0.25, 0.77),
+                    (-0.25, 0.77), (-0.60, -0.12), (0.0, -0.89),
+                ]);
+                line(&[(0.0, -0.89), (0.0, -0.21)]);
+                p.circle_stroke(at(0.0, 0.04), half * 0.12, stroke);
+            }
+            "wheel-shapes" => {
+                // Clean two-shape motif; remove the extraneous little triangle.
+                p.rect_stroke(
+                    Rect::from_min_max(at(-0.78, -0.72), at(0.17, 0.23)),
+                    0.4, stroke, egui::StrokeKind::Middle,
+                );
+                p.circle_stroke(at(0.34, 0.31), half * 0.43, stroke);
+            }
+            "tool-type" => {
+                line(&[(-0.76, -0.72), (0.76, -0.72)]);
+                line(&[(0.0, -0.72), (0.0, 0.77)]);
+                line(&[(-0.30, 0.77), (0.30, 0.77)]);
+            }
+            "panel-layers" => {
+                // Three evenly spaced stacked diamond outlines.
+                line(&[
+                    (-0.82, -0.39), (0.0, -0.83),
+                    (0.82, -0.39), (0.0, 0.06), (-0.82, -0.39),
+                ]);
+                line(&[(-0.82, -0.03), (0.0, 0.41), (0.82, -0.03)]);
+                line(&[(-0.82, 0.32), (0.0, 0.76), (0.82, 0.32)]);
+            }
+            "wheel-undo" | "wheel-redo" => {
+                // Mirrored, smoothly sampled return arrows: left=Undo, right=Redo.
+                let dir = if icon == "wheel-undo" { 1.0 } else { -1.0 };
+                let mut curve = Vec::with_capacity(19);
+                for step in 0..=18 {
+                    let t = step as f32 / 18.0;
+                    let u = 1.0 - t;
+                    let x = u*u*u*(-0.68) + 3.0*u*u*t*(-0.10)
+                        + 3.0*u*t*t*0.76 + t*t*t*0.66;
+                    let y = u*u*u*(-0.20) + 3.0*u*u*t*(-0.80)
+                        + 3.0*u*t*t*(-0.50) + t*t*t*0.53;
+                    curve.push(at(dir * x, y));
+                }
+                p.add(Shape::line(curve, stroke));
+                line(&[
+                    (dir * -0.27, -0.57),
+                    (dir * -0.68, -0.20),
+                    (dir * -0.28, 0.15),
+                ]);
+            }
+            _ => {
+                // Keep supported optional tools and hand exactly as upstream.
+                designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
+            }
         }
     }
 
@@ -209,9 +260,9 @@ impl Wheel {
         p.circle_stroke(center, radius * 0.32, Stroke::new(2.0, ACCENT));
         let logo = Self::original_dc_logo(ui.ctx());
         p.image(logo.id(),
-            // 60% of Android.2's Dc mark; preserve the exact launcher artwork.
-            Rect::from_center_size(center - vec2(0.0, radius * 0.070),
-                vec2(radius * 0.468, radius * 0.294)),
+            // 54% of Android.2's Dc mark (90% of Android.3); exact launcher artwork.
+            Rect::from_center_size(center - vec2(0.0, radius * 0.052),
+                vec2(radius * 0.4212, radius * 0.2646)),
             Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             Color32::WHITE);
         let name = selection.map(|i| ITEMS[self.slots[i]].0).unwrap_or("DesignCraft");

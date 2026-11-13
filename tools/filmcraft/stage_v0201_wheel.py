@@ -9,6 +9,77 @@ from pathlib import Path
 import argparse
 
 RUNTIME_ANCHOR = "    return rust, java, manifest\n"
+JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Never change GameActivity's
+    // normal finger, touchpad, pointer or physical keyboard forwarding.
+    private volatile boolean fcWheelEnabled = false;
+    private volatile boolean fcWheelHovering = false;
+    private volatile long fcWheelHoverAt = 0L;
+    private long fcWheelLastButton = 0L;
+    private final java.util.concurrent.atomic.AtomicInteger fcWheelSignal =
+        new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicLong fcWheelHover =
+        new java.util.concurrent.atomic.AtomicLong();
+    public void fcWheelSetEnabled(boolean enabled) {
+        fcWheelEnabled = enabled;
+        if (!enabled) fcWheelSignal.set(0);
+    }
+    public int fcWheelTakeSignal() { return fcWheelSignal.getAndSet(0); }
+    public long fcWheelTakeHover() { return fcWheelHover.getAndSet(0L); }
+    private void fcWheelButton() {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!fcWheelEnabled || !fcWheelHovering || now-fcWheelHoverAt > 1800L)
+            return;
+        if (now-fcWheelLastButton < 350L) return;
+        fcWheelLastButton = now;
+        fcWheelSignal.set(1);
+    }
+    private boolean fcWheelKey(android.view.KeyEvent event) {
+        if (!fcWheelEnabled || event == null
+            || !fcWheelHovering
+            || android.os.SystemClock.uptimeMillis()-fcWheelHoverAt > 1800L)
+            return false;
+        android.view.InputDevice device =
+            android.view.InputDevice.getDevice(event.getDeviceId());
+        if (device == null || device.getName() == null
+            || !device.getName().toLowerCase(java.util.Locale.ROOT).contains("pencil"))
+            return false;
+        int code = event.getKeyCode();
+        if (code != android.view.KeyEvent.KEYCODE_DPAD_DOWN
+            && code != android.view.KeyEvent.KEYCODE_DPAD_UP) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_UP
+            && event.getRepeatCount() == 0 && code == android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+            fcWheelButton();
+        return true; // Only the physically verified pen's side-button.
+    }
+    private boolean fcWheelMotion(android.view.MotionEvent e) {
+        if (e == null || e.getPointerCount() < 1) return false;
+        int tool = e.getToolType(0);
+        if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
+            && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) return false;
+        int action=e.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+            fcWheelHovering = false;
+            fcWheelHover.set(-1L);
+        } else if (action == android.view.MotionEvent.ACTION_HOVER_MOVE
+                || action == android.view.MotionEvent.ACTION_HOVER_ENTER) {
+            float x = e.getX(0), y = e.getY(0);
+            if (Float.isFinite(x) && Float.isFinite(y)) {
+                fcWheelHovering = true;
+                fcWheelHoverAt = android.os.SystemClock.uptimeMillis();
+                long packed = (((long)Float.floatToRawIntBits(x)) << 32)
+                    | (Float.floatToRawIntBits(y) & 0xffffffffL);
+                if (packed != 0L && packed != -1L) fcWheelHover.set(packed);
+            }
+        } else if (action == android.view.MotionEvent.ACTION_BUTTON_PRESS
+                && (e.getActionButton() & android.view.MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
+                && fcWheelEnabled && fcWheelHovering) {
+            fcWheelButton();
+            return true;
+        }
+        return false;
+    }
+'''
+
 RUNTIME_EXTRA = '''    rust = require_once(rust, "mod filmcraft_features;",
         "mod filmcraft_features;\\nmod filmcraft_stylus_wheel;", "Wheel module")
     rust = require_once(rust, "    features: filmcraft_features::FilmcraftFeatures,",
@@ -27,6 +98,35 @@ RUNTIME_EXTRA = '''    rust = require_once(rust, "mod filmcraft_features;",
         "            let _ = filmcraft_ui_egui::menus::invoke(\\n"
         "                &mut self.inner, ui.ctx(), command, serde_json::json!({}));\\n"
         "        }", "Wheel command routing")
+    rust = require_once(rust,
+        "Wheel::new(fc_features.storage_dir());",
+        "Wheel::new(fc_features.storage_dir(), &app);", "Hardware wheel Activity handle")
+    rust = require_once(rust, "        self.handle_clipboard_shortcuts(raw);",
+        "        self.wheel.capture(ctx, raw);\\n        self.handle_clipboard_shortcuts(raw);",
+        "Wheel input pre-editor interception")
+    java = require_once(java, "public final class FilmCraftActivity extends GameActivity {",
+        "public final class FilmCraftActivity extends GameActivity {\\n" + JAVA_STYLUS_BRIDGE,
+        "Android native pen button and real hover bridge")
+    java = require_once(java,
+        "    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {",
+        "    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {\\n"
+        "        if (fcWheelKey(event)) return true;", "Magic-Pencil side-key isolation")
+    import re
+    already = re.search(
+        r"public boolean dispatchGenericMotionEvent\\(android\\.view\\.MotionEvent\\s+(\\w+)\\)\\s*\\{",
+        java)
+    if already:
+        matched = already.group(0)
+        java = require_once(java, matched,
+            matched + "\\n        if (fcWheelMotion(" + already.group(1) + ")) return true;",
+            "Real stylus hover in existing generic-motion dispatch")
+    else:
+        java = require_once(java, "    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {",
+            "    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent e) {\\n"
+            "        if (fcWheelMotion(e)) return true;\\n"
+            "        return super.dispatchGenericMotionEvent(e);\\n    }\\n"
+            "    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {",
+            "Real stylus hover generic-motion dispatch")
 '''
 RUNTIME_WRITE_ANCHOR = '    print("FilmCraft native font/update integration overlaid on generated crate")'
 RUNTIME_WRITE_REPLACE = '''    (project / "src" / "filmcraft_stylus_wheel.rs").write_text(

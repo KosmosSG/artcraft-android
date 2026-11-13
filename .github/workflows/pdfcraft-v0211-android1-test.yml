@@ -38,6 +38,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
+      # Remove non-runtime symbol tables; preserve optimization, unwinding and features.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
       PDFCRAFT_ANDROID_VERSION_NAME: 0.21.1-android.1
       PDFCRAFT_REF: v0.21.1
       PDFCRAFT_SHA: b503b2e62dfeec5598f344e4e287d9c9cbdb34fa
@@ -233,6 +236,21 @@ jobs:
           python3 tools/pdfcraft/ocr_models.py verify "$APK" | tee output/pdfcraft-ocr-models.txt
           python3 tools/pdfcraft/apk_audit.py "$APK" > output/candidate-audit.json
           git rev-parse HEAD > output/SOURCE-COMMIT.txt
+          python3 - <<'PY_SIZE'
+          import json, pathlib, zipfile
+          apk = pathlib.Path("output/pdfcraft-0.21.1-android.1.apk")
+          baseline = 43325750
+          size = apk.stat().st_size
+          with zipfile.ZipFile(apk) as archive:
+              native = archive.getinfo("lib/arm64-v8a/libpdfcraft_android.so")
+              report = {"baseline_apk_bytes": baseline, "apk_bytes": size,
+                        "saved_bytes": baseline-size, "saved_percent": round(100*(baseline-size)/baseline, 2),
+                        "native_bytes": native.file_size, "native_compressed_bytes": native.compress_size,
+                        "features_removed": False}
+          assert size < baseline, "No measured APK size reduction"
+          pathlib.Path("output/SIZE-REPORT.json").write_text(json.dumps(report, indent=2)+"\n")
+          print(json.dumps(report, indent=2))
+          PY_SIZE
           sha256sum "$APK" | tee output/SHA256SUMS.txt
           echo "CAUTION: transient-key candidate only; not an update or a public release" >> "$GITHUB_STEP_SUMMARY"
           echo "Hardware / PDF fidelity / SAF round-trip remain untested." >> "$GITHUB_STEP_SUMMARY"
@@ -253,7 +271,8 @@ jobs:
             output/SOURCE-COMMIT.txt
             output/candidate-audit.json
             release-audit.json
-            approved-icon-candidate/**
+            approved-icon-candidate/verification.json
+            output/SIZE-REPORT.json
           if-no-files-found: error
           retention-days: 30
 

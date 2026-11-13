@@ -63,9 +63,9 @@ impl Mobile {
             font_status: "PDF text fonts: none imported this session".into(),
             update_status: "No update check has run yet".into(),
             update_url: None, update_asset_url: None, update_digest: String::new(),
-            downloading: false, download_ready: false, checking: false, startup_check: true, first_frame: true,
+            downloading: false, download_ready: false, checking: false, startup_check: false, first_frame: true,
         };
-        mobile.startup_check = mobile.read_startup_setting().unwrap_or(true);
+        mobile.startup_check = mobile.read_startup_setting().unwrap_or(false);
         mobile.toolbar_shown = mobile.read_toolbar_setting().unwrap_or(false);
         if let Ok((version, package)) = mobile.read_installed_build_info() {
             mobile.installed_version = version;
@@ -384,6 +384,37 @@ impl Mobile {
     }
 
 
+    // User-initiated download of one exact published PDFCraft APK. The Java
+    // activity verifies the release asset SHA-256 before enabling SAF export.
+    fn download_update(&self, url: &str, digest: &str) -> Result<(), String> {
+        if !url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v")
+            || !digest.starts_with("sha256:") || digest.len() != 71 {
+            return Err("An exact GitHub PDFCraft asset and SHA-256 are required".into());
+        }
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let url = JObject::from(env.new_string(url)?);
+            let digest = JObject::from(env.new_string(digest)?);
+            env.call_method(&*activity, jni_str!("pdfDownloadUpdate"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                &[JValue::Object(&url), JValue::Object(&digest)])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
+    fn save_verified_update(&self) -> Result<(), String> {
+        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("pdfExportDownloadedUpdate"),
+                jni_sig!("()V"), &[])?;
+            Ok(())
+        }).map_err(|err| err.to_string())
+    }
+
+
     pub fn do_update_check(&mut self) {
         self.check_updates(true);
     }
@@ -393,6 +424,7 @@ impl Mobile {
         self.update_asset_url = None;
         self.update_digest.clear();
         self.download_ready = false;
+        self.downloading = false;
         self.update_status = "Checking published PDFCraft Android releases…".into();
         // PhotoCraft-style feedback: Java owns native Android toasts.
         // The update dialog opens only when a compatible new APK exists.
@@ -449,7 +481,6 @@ impl Mobile {
                             self.downloading = !self.download_ready
                                 && !self.update_status.starts_with("Cannot ")
                                 && !self.update_status.starts_with("Download not ")
-                                && !self.update_status.starts_with("Android Download Manager")
                                 && !self.update_status.starts_with("Refused:");
                         } else {
                             self.checking = false;
@@ -463,7 +494,7 @@ impl Mobile {
                                 .map(str::to_owned);
                             self.update_digest = response.get("digest").and_then(Value::as_str)
                                 .unwrap_or("").into();
-                            // A production update needs download/install controls.
+                            // A production update offers verified download and Android SAF export.
                             // No-update, test-package and check errors remain
                             // bottom-center Android toasts, without a modal.
                             if self.update_asset_url.is_some() {
@@ -614,7 +645,7 @@ impl Mobile {
                         self.update_status = format!("Could not save startup preference: {error}");
                     }
                 }
-                ui.label(egui::RichText::new("Download updates from the GitHub release page in your browser; Android handles installation. No in-app APK installer.").small());
+                ui.label(egui::RichText::new("Use the PDFCraft updates dialog to download and SHA-256 verify an APK; save it via Android Files for manual installation.").small());
             }
         });
         hide_requested
@@ -705,8 +736,29 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
-                    
-                    
+                    if self.download_ready {
+                        if ui.button("Save verified APK…").clicked() {
+                            if let Err(error) = self.save_verified_update() {
+                                self.update_status = format!("Cannot save verified APK: {error}");
+                            }
+                        }
+                    } else if let Some(asset_url) = self.update_asset_url.clone() {
+                        let has_digest = self.update_digest.len() == 71
+                            && self.update_digest.starts_with("sha256:");
+                        if ui.add_enabled(has_digest && !self.checking && !self.downloading,
+                                egui::Button::new("Download APK")).clicked() {
+                            match self.download_update(&asset_url, &self.update_digest) {
+                                Ok(()) => {
+                                    self.downloading = true;
+                                    self.update_status = "Downloading and verifying PDFCraft APK…".into();
+                                }
+                                Err(error) => self.update_status = format!("Cannot download: {error}"),
+                            }
+                        }
+                        if !has_digest {
+                            ui.small("GitHub asset SHA-256 unavailable; use the release page.");
+                        }
+                    }
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for updates at startup").changed() {
                     if let Err(error) = self.save_startup_setting(self.startup_check) {
@@ -714,7 +766,7 @@ impl Mobile {
                     }
                 }
                 ui.label(egui::RichText::new(
-                    "Updates are checked against published GitHub releases. Open the release page to download; install through Android."
+                    "Download and SHA-256 verification happen inside PDFCraft. Save the verified APK using Android Files, then explicitly open it to request installation. No automatic installer."
                 ).small());
             });
         self.updates_open = open;

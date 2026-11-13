@@ -82,9 +82,10 @@ jobs:
           assert "gridcraft-wheel-gc.rgba" in overlay
           java = (staging/"GridCraftJavaMethods.java.inc").read_text()
           assert "gcStylusWheelIntercept" in java and "Magic-Pencil" in java
+          code = Path("builder/lib/android_project.py").read_text()
           assert "0.19.1-android.1-test" in code
           assert "com.artcraft.gridcraft.candidate" in code
-          print("PASS: full GridCraft v0.18 source overlay staged with guarded contracts")
+          print("PASS: GridCraft v0.19.1 source and wheel staging checks passed with guarded contracts")
           PY
       - name: Set up Java 21, Rust stable (upstream requires Rust >= 1.95)
         uses: actions/setup-java@v4

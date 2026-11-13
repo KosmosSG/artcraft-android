@@ -7,6 +7,9 @@ const INNER: f32 = 46.0;
 const SIZE: f32 = 312.0;
 // Approved PDFCraft launcher background red, used consistently for wheel accents.
 const PC_MARK_SCALE: f32 = 1.05; // make just the Pc lettermark 5% larger
+// Default wheel diameter on first use and when Reset defaults is selected.
+// Previously saved v2 preferences always take precedence.
+const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
@@ -38,12 +41,20 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: 100.0, opacity_percent: 100.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 100.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
             message_at: Instant::now() }
     }
+    // Keep the on-screen reset and the first-use defaults in sync.
+    fn reset_defaults(&mut self) {
+        self.layout = DEFAULT_LAYOUT;
+        self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;
+        self.opacity_percent = 100.0;
+        self.layout_dirty = true;
+    }
+
     /// Exact raster of the approved Pc launcher artwork. Build workflow generates
     /// the transparent RGBA file; no new runtime image decoder is needed.
     fn pdf_logo(ctx: &Context) -> egui::TextureHandle {
@@ -370,10 +381,7 @@ impl Wheel {
                     ui.add_space(7.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset defaults").clicked() {
-                            self.layout = DEFAULT_LAYOUT;
-                            self.size_percent = 100.0;
-                            self.opacity_percent = 100.0;
-                            self.layout_dirty = true;
+                            self.reset_defaults();
                         }
                         if ui.button("Done").clicked() { done = true; }
                     });
@@ -509,6 +517,23 @@ impl Wheel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn wheel_size_75_default_reset_and_preserved_saved_choice() {
+        let mut wheel = Wheel::new(true);
+        assert_eq!(wheel.size_percent, DEFAULT_WHEEL_SIZE_PERCENT);
+        assert_eq!(wheel.opacity_percent, 100.0);
+        // Saved preferences continue to override the first-use default.
+        wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85");
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (123.0, 85.0));
+        // Reset defaults restores the intended appearance and marks it for
+        // persistence without changing the layout serialization format.
+        wheel.reset_defaults();
+        assert_eq!(wheel.layout, DEFAULT_LAYOUT);
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (75.0, 100.0));
+        assert!(wheel.layout_dirty);
+        let saved = wheel.take_layout_change().unwrap();
+        assert!(saved.ends_with(";75;100"));
+        assert!(!wheel.layout_dirty);
+    }
     #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {
         assert_eq!(Wheel::launcher_red(), Color32::from_rgb(251, 14, 0));
         assert!((PC_MARK_SCALE - 1.05).abs() < f32::EPSILON);

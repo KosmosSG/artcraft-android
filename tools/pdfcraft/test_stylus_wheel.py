@@ -22,6 +22,18 @@ class WheelIntegration(unittest.TestCase):
   # Wheel touch hit targets and 8-sector geometry must remain unchanged.
   self.assertIn('const R: f32 = 128.0;',s)
   self.assertIn('const INNER: f32 = 46.0;',s)
+ def test_first_use_and_reset_default_to_75_percent(self):
+  wheel=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
+  self.assertIn('const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;',wheel)
+  self.assertIn('size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 100.0',wheel)
+  self.assertIn('fn reset_defaults(&mut self) {',wheel)
+  self.assertIn('self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;',wheel)
+  self.assertIn('self.reset_defaults();',wheel)
+  self.assertIn('wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85")',wheel)
+  self.assertIn('let saved = wheel.take_layout_change().unwrap();',wheel)
+  # No hardcoded 100% initial size or reset should remain.
+  self.assertNotIn('size_percent: 100.0, opacity_percent: 100.0',wheel)
+  self.assertNotIn('self.size_percent = 100.0;',wheel)
  def test_hover_and_button_paths_are_passive_and_device_scoped(self):
   java=(ROOT/'templates/android/pdfcraft_stylus_java.txt').read_text()
   for part in ['TOOL_TYPE_STYLUS','TOOL_TYPE_ERASER','ACTION_HOVER_MOVE','pdfPenHover = ""','Magic-Pencil 4s','return false;','layout.length() <= 128']:

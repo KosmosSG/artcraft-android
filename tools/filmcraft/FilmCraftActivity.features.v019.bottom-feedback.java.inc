@@ -18,7 +18,7 @@
     public String fcFeatureFilesDir() { return appStorageDir().getAbsolutePath(); }
     public String fcFeaturePoll() { return fcResults.poll(); }
     public boolean fcStartupUpdatesEnabled() {
-        return getSharedPreferences(FC_PREFS, MODE_PRIVATE).getBoolean("check_updates_startup", false);
+        return getSharedPreferences(FC_PREFS, MODE_PRIVATE).getBoolean("check_updates_startup", !"com.artcraft.filmcraft.test".equals(getPackageName()));
     }
     public void fcSetStartupUpdatesEnabled(boolean enabled) {
         getSharedPreferences(FC_PREFS, MODE_PRIVATE).edit()

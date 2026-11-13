@@ -7,6 +7,7 @@ All replacements are single-anchor and fail closed on upstream/builder drift.
 """
 from pathlib import Path
 import argparse
+from render_approved_fc_mark import render_logo
 
 RUNTIME_ANCHOR = "    return rust, java, manifest\n"
 JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Never change GameActivity's
@@ -131,6 +132,8 @@ RUNTIME_EXTRA = '''    rust = require_once(rust, "mod filmcraft_features;",
 RUNTIME_WRITE_ANCHOR = '    print("FilmCraft native font/update integration overlaid on generated crate")'
 RUNTIME_WRITE_REPLACE = '''    (project / "src" / "filmcraft_stylus_wheel.rs").write_text(
         Path(__file__).with_name("filmcraft_stylus_wheel.rs").read_text())
+    (project / "src" / "filmcraft_fc_logo.rgba").write_bytes(
+        Path(__file__).with_name("filmcraft_fc_logo.rgba").read_bytes())
 ''' + RUNTIME_WRITE_ANCHOR
 FEATURE_ANCHOR = "impl FilmcraftFeatures {\n"
 FEATURE_ADD = FEATURE_ANCHOR + "    pub fn storage_dir(&self) -> Option<PathBuf> { self.app_dir.clone() }\n"
@@ -200,8 +203,28 @@ def prepare(builder: Path, wheel: Path) -> None:
     runtime.write_text(updated_runtime)
     feature.write_text(feature_src)
     header.write_text(header_src)
-    (builder / "tools/filmcraft/filmcraft_stylus_wheel.rs").write_bytes(wheel.read_bytes())
-    print("PASS: separate FilmCraft stylus wheel wired to Fc menu, persisted prefs and commands")
+    icon = Path(__file__).resolve().parents[2] / "assets/filmcraft/fc-user-approved.png"
+    if not icon.is_file():
+        raise RuntimeError("STOP: approved FilmCraft launcher image missing")
+    logo_file = builder / "tools/filmcraft/filmcraft_fc_logo.rgba"
+    navy, lavender = render_logo(icon, logo_file)
+    wheel_source = wheel.read_text()
+    palette = {
+        "const NAVY: Color32 = Color32::from_rgb(0x00, 0x04, 0x7a);":
+            f"const NAVY: Color32 = Color32::from_rgb({navy[0]}, {navy[1]}, {navy[2]});",
+        "const LAVENDER: Color32 = Color32::from_rgb(0x9a, 0x9c, 0xd9);":
+            f"const LAVENDER: Color32 = Color32::from_rgb({lavender[0]}, {lavender[1]}, {lavender[2]});",
+        "const ACCENT: Color32 = Color32::from_rgb(0x36, 0x4c, 0xd9);":
+            "const ACCENT: Color32 = Color32::from_rgb(" +
+            ", ".join(str(round(navy[i]*0.58+lavender[i]*0.42)) for i in range(3)) + ");",
+    }
+    for original, new in palette.items():
+        if wheel_source.count(original) != 1:
+            raise RuntimeError("STOP: owner-approved Fc palette source drift")
+        wheel_source = wheel_source.replace(original, new, 1)
+    (builder / "tools/filmcraft/filmcraft_stylus_wheel.rs").write_text(wheel_source)
+    print(f"PASS: exact launcher Fc glyph + sampled navy {navy} lavender {lavender}")
+    print("PASS: PhotoCraft-style Fc menu, wheel customization, and verified in-app updater")
 
 
 def main() -> None:
@@ -220,7 +243,14 @@ def main() -> None:
             pass
         else:
             raise AssertionError("missing header must fail closed")
-        print("FilmCraft wheel staging guard self-test PASS")
+        # Exercise the real approved icon without altering any GitHub files.
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as scratch:
+            icon = Path(__file__).resolve().parents[2] / "assets/filmcraft/fc-user-approved.png"
+            navy, lavender = render_logo(icon, Path(scratch) / "logo.rgba")
+            assert lavender[0] > navy[0] + 50
+            assert (Path(scratch) / "logo.rgba").stat().st_size == 40960
+        print("FilmCraft wheel, icon and updater staging guard self-test PASS")
         return
     if args.builder is None:
         parser.error("disposable builder path required")

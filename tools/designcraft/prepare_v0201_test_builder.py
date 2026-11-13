@@ -10,7 +10,7 @@ import sys
 
 OLD_SHA = "16322ad54b3a20b4cd70666be7431086514d0a36"
 NEW_SHA = "33a467872268c98536231491865b4011b0275b17"
-NEW_VERSION = "0.20.1-android.1"
+NEW_VERSION = "0.20.1-android.2"
 
 def exactly(src, old, new, label, count=1):
     actual = src.count(old)
@@ -46,6 +46,15 @@ def main(root):
         + '    python3 "$ROOT/tools/designcraft/stage_v0201_wheel.py" "$ROOT" "$SRC" "$ANDROID_DIR" \\\n'
         + '        || fail "Could not stage DesignCraft v0.20.1 Stylus Wheel (test only)."')
     s = exactly(s, ending, extended, "wheel stage follows legacy Android preservation")
+
+    # Patch only the isolated DesignCraft native input vendor, after wheel
+    # Java/JNI source staging. PhotoCraft has validated the same AInputQueue fix.
+    native_anchor = '|| fail "Could not stage DesignCraft v0.20.1 Stylus Wheel (test only)."'
+    native_stage = (native_anchor + '\n'
+        + '    python3 "$ROOT/tools/designcraft/stage_v0201_native.py" "$ROOT" \\\n'
+        + '        || fail "Could not stage DesignCraft native Magic-Pencil input (test only)."')
+    s = exactly(s, native_anchor, native_stage, "native pen stage after Android wheel")
+
     builder.write_text(s)
     overlay = root / "tools/designcraft/patch_v017_android.py"
     o = overlay.read_text()

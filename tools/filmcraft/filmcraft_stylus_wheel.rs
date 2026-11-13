@@ -221,6 +221,20 @@ impl Wheel {
         }
         if self.open { ctx.request_repaint_after(std::time::Duration::from_millis(60)); }
     }
+    // Crop-only approved original Fc launcher letterforms. The transparent
+    // raster is generated from the user's approved icon by stage_v0201_wheel.py,
+    // with no substituted system font and no rectangular icon backing.
+    fn fc_logo(ctx:&egui::Context) -> egui::TextureHandle {
+        let key=egui::Id::new("filmcraft.approved.launcher.fc.glyph");
+        if let Some(tex)=ctx.data(|d|d.get_temp::<egui::TextureHandle>(key)) {
+            return tex;
+        }
+        const PIXELS:&[u8]=include_bytes!("filmcraft_fc_logo.rgba");
+        let img=egui::ColorImage::from_rgba_unmultiplied([128,80],PIXELS);
+        let tex=ctx.load_texture("filmcraft-original-Fc-mark",img,egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d|d.insert_temp(key,tex.clone()));
+        tex
+    }
     fn draw(&self, ui: &egui::Ui, center: Pos2, radius: f32, hover: Option<usize>) {
         let painter=ui.painter();
         let scale=radius/DEFAULT_RADIUS;
@@ -285,8 +299,12 @@ impl Wheel {
         // Exact FilmCraft navy/lavender launch colours, circular hub with logo.
         painter.circle_filled(center,48.0*scale,NAVY);
         painter.circle_stroke(center,48.0*scale,Stroke::new(1.4,LAVENDER));
-        painter.text(center-vec2(0.0,8.0)*scale,egui::Align2::CENTER_CENTER,"Fc",
-            FontId::proportional(35.0*scale),LAVENDER);
+        let mark=Self::fc_logo(ui.ctx());
+        painter.image(mark.id(),
+            egui::Rect::from_center_size(center-vec2(0.0,8.0)*scale,
+                vec2(61.0,38.0)*scale),
+            egui::Rect::from_min_max(pos2(0.0,0.0),pos2(1.0,1.0)),
+            Color32::WHITE);
         painter.text(center+vec2(0.0,22.0)*scale,egui::Align2::CENTER_CENTER,
             if self.open { COMMANDS[self.slots[self.last_slot]].0 } else {"Default"},
             FontId::proportional(11.0*scale),Color32::WHITE);

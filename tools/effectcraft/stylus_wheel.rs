@@ -238,72 +238,80 @@ impl Wheel {
         Some(((angle / (PI / 4.0)).floor() as usize) % 8)
     }
 
-    /// Runs BEFORE the editor's pointer_wrap and viewer handlers. An active wheel
-    /// is a modal pointer surface: no hover/click/touch events leak into the canvas.
+    /// Modal pointer isolation: while the wheel is open, ALL hover, pen,
+    /// touch, drag and scroll events stay off the underlying editor. A press
+    /// inside the wheel followed by a release outside cannot select a layer.
     pub(crate) fn capture(&mut self, ctx: &Context, raw: &mut RawInput, blocked: bool) {
         if !self.enabled || blocked || self.settings_open {
             self.open = false;
             return;
         }
-        let mut cancel = false;
-        let mut block_pointer = false;
+        if !self.open {
+            for event in &raw.events {
+                if let egui::Event::PointerMoved(at) = event { self.hover = Some(*at); }
+            }
+            return;
+        }
+        let mut close = false;
         let mut keep = Vec::with_capacity(raw.events.len());
         for event in std::mem::take(&mut raw.events) {
-            match &event {
-                egui::Event::PointerMoved(at) => {
-                    self.hover = Some(*at);
-                    if self.open && self.center.distance(*at) <= R * self.scale() {
-                        block_pointer = true;
-                    } else { keep.push(event); }
-                }
-                egui::Event::PointerButton { pos, pressed, .. } if self.open => {
-                    self.hover = Some(*pos);
-                    if self.center.distance(*pos) <= R * self.scale() {
-                        block_pointer = true;
-                        if !pressed {
-                            if let Some(slot) = self.selected(*pos) {
-                                self.pending = Some(action(self.slots[slot]));
-                                self.open = false;
-                            }
+            match event {
+                egui::Event::PointerMoved(pos) => self.hover = Some(pos),
+                egui::Event::PointerButton { pos, pressed, .. } => {
+                    self.hover = Some(pos);
+                    if !pressed {
+                        if let Some(slot) = self.selected(pos) {
+                            self.pending = Some(action(self.slots[slot]));
                         }
-                    } else {
-                        if *pressed { cancel = true; }
-                        keep.push(event);
+                        close = true;
+                    } else if self.center.distance(pos) > R * self.scale() {
+                        close = true;
                     }
                 }
-                egui::Event::Touch { pos, .. } if self.open && self.center.distance(*pos) <= R * self.scale() => {
-                    self.hover = Some(*pos);
-                    block_pointer = true;
+                egui::Event::Touch { pos, phase, .. } => {
+                    self.hover = Some(pos);
+                    if phase == egui::TouchPhase::End {
+                        if let Some(slot) = self.selected(pos) {
+                            self.pending = Some(action(self.slots[slot]));
+                        }
+                        close = true;
+                    }
                 }
-                egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } if self.open => {
-                    cancel = true;
-                }
-                _ => keep.push(event),
+                egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } => close = true,
+                egui::Event::PointerGone | egui::Event::Zoom(_) |
+                egui::Event::MouseWheel { .. } => {},
+                other => keep.push(other),
             }
         }
-        if cancel { self.open = false; }
-        if self.open && self.hover.is_some_and(|p| self.center.distance(p) <= R * self.scale()) {
-            block_pointer = true;
-        }
-        if block_pointer {
-            // Clear any stale hover under a visible wheel, including when the pen stops.
-            keep.push(egui::Event::PointerGone);
-            ctx.request_repaint();
-        }
+        if close { self.open = false; }
+        keep.push(egui::Event::PointerGone);
         raw.events = keep;
+        ctx.request_repaint();
     }
 
     pub(crate) fn render(&mut self, ctx: &Context) {
         self.customize(ctx);
-        if !self.open || !self.enabled || self.settings_open { return; }
-        let edge = SIZE * self.scale();
-        let left_top = self.center - vec2(edge * 0.5, edge * 0.5);
-        egui::Area::new(Id::new("effectcraft-stylus-wheel"))
-            .order(Order::Foreground).fixed_pos(left_top).interactable(false)
-            .show(ctx, |ui| {
-                let (rect, _) = ui.allocate_exact_size(vec2(edge, edge), Sense::hover());
-                self.paint(ui, rect.center(), self.scale(), self.hover.and_then(|p| self.selected(p)));
-            });
+        if self.open && self.enabled && !self.settings_open {
+            let edge = SIZE * self.scale();
+            let left_top = self.center - vec2(edge * 0.5, edge * 0.5);
+            egui::Area::new(Id::new("effectcraft-stylus-wheel"))
+                .order(Order::Foreground).fixed_pos(left_top).interactable(false)
+                .show(ctx, |ui| {
+                    let (rect, _) = ui.allocate_exact_size(vec2(edge, edge), Sense::hover());
+                    self.paint(ui, rect.center(), self.scale(), self.hover.and_then(|p| self.selected(p)));
+                });
+        }
+        if let Some(pos) = self.pen_hover {
+            if !self.settings_open {
+                // Purely visual stylus-hover marker, above the wheel and
+                // non-interactive. Never synthesize a click or canvas hover.
+                let painter = ctx.layer_painter(egui::LayerId::new(
+                    Order::Tooltip, Id::new("ec-stylus-hover-dot")));
+                painter.circle_filled(pos, 7.5, BLUE.gamma_multiply(0.28));
+                painter.circle_stroke(pos, 6.0, Stroke::new(1.4, LAVENDER));
+                painter.circle_filled(pos, 1.7, LAVENDER);
+            }
+        }
     }
 
     fn customize(&mut self, ctx: &Context) {

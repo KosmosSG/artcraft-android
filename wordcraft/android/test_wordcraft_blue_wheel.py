@@ -19,6 +19,17 @@ class BlueWheelTests(unittest.TestCase):
                      "egui::Shape::convex_polygon"):
             self.assertIn(text, SRC)
 
+    def test_outer_circle_only_uses_approved_wc_cyan(self):
+        # Match the launcher Wc cyan exactly; outer rim alone is recolored.
+        self.assertIn("Color32::from_rgb(122, 216, 252)", SRC)
+        self.assertIn("WC_ANDROID6_APPROVED_CYAN_OUTER_RING_V1", SRC)
+        self.assertIn("painter.circle_stroke(center, radius, Stroke::new(1.5, CYAN));", SRC)
+        # Inner hub and existing muted sector seams stay untouched.
+        self.assertIn("radius * 0.37, Stroke::new(1.6, CYAN)", SRC)
+        self.assertIn("Color32::from_gray(89)", SRC)
+        self.assertIn("Color32::from_black_alpha(alpha)", SRC)
+        self.assertNotIn("painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::from_gray(124)))", SRC)
+
     def test_full_size_preview_and_customization(self):
         for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Live preview", "Reset to default",
                      "Edit shortcuts", "self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity",

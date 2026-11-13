@@ -101,6 +101,50 @@ impl Wheel {
 
     fn alpha(&self) -> u8 { (self.opacity * 2.55).round().clamp(0.0, 255.0) as u8 }
 
+    fn original_dc_logo(ctx: &Context) -> egui::TextureHandle {
+        let id = Id::new("designcraft-wheel-exact-launcher-lettermark");
+        if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+            return texture;
+        }
+        let rgba = include_bytes!("dc_wheel_mark.rgba");
+        let pixels = egui::ColorImage::from_rgba_unmultiplied([192, 120], rgba);
+        let texture = ctx.load_texture("DesignCraft approved Dc lettering", pixels, egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+        texture
+    }
+
+    fn wheel_icon(p: &egui::Painter, rect: Rect, icon: &str) {
+        if icon == "wheel-shapes" {
+            let c = rect.center();
+            let d = rect.width() * 0.32;
+            p.rect_stroke(Rect::from_center_size(c + vec2(-d * 0.58, -d * 0.7), vec2(d * 1.1, d * 1.1)),
+                0.4, Stroke::new(1.8, Color32::WHITE), egui::StrokeKind::Middle);
+            p.circle_stroke(c + vec2(d * 0.8, -d * 0.40), d * 0.54, Stroke::new(1.8, Color32::WHITE));
+            let tip = c + vec2(0.0, d * 0.8);
+            p.add(Shape::closed_line(vec![
+                tip + vec2(0.0, -d*0.65), tip + vec2(-d*0.63, d*0.45),
+                tip + vec2(d*0.63, d*0.45),
+            ], Stroke::new(1.8, Color32::WHITE)));
+        } else if icon == "wheel-undo" || icon == "wheel-redo" {
+            let direction = if icon == "wheel-undo" { -1.0 } else { 1.0 };
+            let radius = rect.width() * 0.30;
+            let center = rect.center() + vec2(0.0, rect.height()*0.04);
+            let arc: Vec<Pos2> = (0..19).map(|i| {
+                let a = -2.2 + (i as f32)*3.8 / 18.0;
+                center + vec2(direction*a.cos()*radius, a.sin()*radius)
+            }).collect();
+            p.add(Shape::line(arc.clone(), Stroke::new(2.2, Color32::WHITE)));
+            let tip = arc[0];
+            p.line_segment([tip, tip + vec2(-direction*radius*0.22, -radius*0.70)],
+                Stroke::new(2.2, Color32::WHITE));
+            p.line_segment([tip, tip + vec2(-direction*radius*0.77, radius*0.10)],
+                Stroke::new(2.2, Color32::WHITE));
+        } else {
+            // Use the same real icons as DesignCraft's own toolbar/panels.
+            designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
+        }
+    }
+
     fn draw(&self, ui: &mut Ui, rectangle: Rect, selection: Option<usize>) {
         let radius = rectangle.width() / 2.0;
         let center = rectangle.center();
@@ -123,7 +167,7 @@ impl Wheel {
             let mark = center + vec2(mark_angle.cos() * radius * 0.67, mark_angle.sin() * radius * 0.67);
             let icon = Rect::from_center_size(mark - vec2(0.0, 10.0), vec2(radius * 0.19, radius * 0.19));
             // Exact vector icon renderer from the upstream DesignCraft toolbar.
-            designcraft_ui_egui::icons::paint(&p, icon, ITEMS[self.slots[i]].1, Color32::WHITE);
+            Self::wheel_icon(&p, icon, ITEMS[self.slots[i]].1);
             p.text(mark + vec2(0.0, 17.0), Align2::CENTER_CENTER,
                 ITEMS[self.slots[i]].0, FontId::proportional((radius * 0.088).max(10.0)), Color32::WHITE);
             let end = center + vec2(start.cos() * radius, start.sin() * radius);

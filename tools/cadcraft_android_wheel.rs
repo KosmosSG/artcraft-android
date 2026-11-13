@@ -218,24 +218,7 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usiz
 
 #[cfg(target_os = "android")]
 pub fn check_cadcraft_updates() {
-    // The Android app supplies the VM/Activity context. Do not invoke a
-    // browser, download unsigned APKs, or query the reference builder feed.
-    let context = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(context.vm() as *mut _) };
-    let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-        let activity_raw = context.context() as jni::sys::jobject;
-        let activity = unsafe { env.as_cast_raw::<jni::objects::JObject>(&activity_raw)? };
-        env.call_static_method(
-            jni::jni_str!("com/artcraft/updater/UpdateCheck"),
-            jni::jni_str!("checkNow"),
-            jni::jni_sig!("(Landroid/app/Activity;)V"),
-            &[jni::objects::JValue::Object(&activity)],
-        )?;
-        Ok(())
-    });
-    if let Err(error) = result {
-        eprintln!("CADCraft update check not available: {error}");
-    }
+    cadcraft_android_updater_bridge::check_updates();
 }
 
 /// Draw after the canvas and before modal prompts so the wheel gets foreground

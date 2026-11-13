@@ -1,0 +1,295 @@
+name: LightCraft v0.21.1 Android.1 STYLUS WHEEL ARM64 TEST ONLY (DISPOSABLE SIGNING)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/lightcraft-v0211-android1-stylus-wheel-20261113
+    paths:
+      - '.github/workflows/lightcraft-v0211-arm64-stylus-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightcraft-v0211-arm64-stylus-test
+  cancel-in-progress: true
+
+jobs:
+  lightcraft-only:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'integration/lightcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      RUSTFLAGS: '-C strip=debuginfo'
+    steps:
+      - name: Checkout protected ArtCraft Android baseline-derived branch
+        uses: actions/checkout@v4
+        with:
+          path: suite
+          fetch-depth: 0  # Needed for the protected baseline ancestry check.
+          persist-credentials: false
+      - name: Checkout immutable official LightCraft v0.21.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: 361e3bc0c838ffe5e5cea515b1fe5b71951989c6
+          path: source
+          persist-credentials: false
+      - name: Checkout reviewed Android reference builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Reconfirm source and feature protection before costly toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = '361e3bc0c838ffe5e5cea515b1fe5b71951989c6'
+          git -C suite merge-base --is-ancestor 1cf18815195c640b28dfd50410ae112a8975c8b4 HEAD
+          python3 -m unittest discover -s suite/tools/lightcraft -p 'test_patch_v017_builder.py' -v
+          # The pinned official source SHA and patch anchors are verified above and below.
+          python3 suite/tools/lightcraft/patch_v0211_android.py --source source --builder builder --suite suite
+          test -s suite/assets/lightcraft/lc-user-approved.png
+          test -s suite/assets/lightcraft/lc-user-20261109.png
+      - name: Preserve approved LightCraft source/UI, SAF and launcher icon in disposable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/patch_v0211_android.py --source source --builder builder --suite suite --apply
+          python3 suite/tools/lightcraft/patch_v0211_stylus.py --source source --suite suite --apply
+          test -s source/crates/ui-egui/src/android_stylus_wheel.rs
+          # Version is changed only inside the disposable upstream checkout; no released source is edited.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("source/Cargo.toml")
+          content = p.read_text()
+          old = 'version = "0.21.1"'
+          if content.count(old) != 1:
+              raise SystemExit("STOP: expected one upstream workspace version anchor")
+          p.write_text(content.replace(old, 'version = "0.21.1-android.1"', 1))
+          PY
+          grep -Fq 'version = "0.21.1-android.1"' source/Cargo.toml
+          grep -Fq 'LIGHTCRAFT_V017_WRITE_NEW_PRIVATE_ONLY' builder/lib/build-common.sh
+          grep -Fq 'artcraft.lightcraft.check_updates_requested' source/crates/ui-egui/src/menus/run.rs
+          grep -Fq 'artcraft.lightcraft.include_preview' source/crates/ui-egui/src/dialogs.rs
+          test -s source/crates/ui-egui/src/menus/lc-menu.png
+          grep -Fq 'bytes://lightcraft/lc-menu.png' source/crates/ui-egui/src/menus/menubar.rs
+          grep -Fq 'egui_extras::install_image_loaders' source/crates/ui-egui/src/menus/menubar.rs
+          grep -Fq 'Android menu row hover highlight' suite/tools/lightcraft/patch_v0211_android.py
+          grep -Fq 'egui_extras = { workspace = true, features = ["image"] }' source/crates/ui-egui/Cargo.toml
+          grep -Fq 'Stylus Wheel Customization' source/crates/ui-egui/src/menus/menubar.rs
+          grep -Fq 'crate::android_stylus_wheel::show(self, &ctx)' source/crates/ui-egui/src/app/frame.rs
+          grep -Fq 'stylus_wheel: crate::android_stylus_wheel::WheelPrefs::default()' source/crates/ui-egui/src/state/settings.rs
+          python3 -m py_compile suite/tools/lightcraft/patch_v0211_android.py suite/tools/lightcraft/patch_v0211_stylus.py
+      - name: Android release-style build toolchain (no permanent keystores)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Rust 1.95 ARM64
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - name: Install APK icon renderer
+        run: python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Cache Rust crates and compiled build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-ndk
+            builder/build/lightcraft/target
+          key: lightcraft-v0211-arm64-rust195-wheel-20261113
+          restore-keys: |
+            lightcraft-v020-arm64-rust195-20261110
+      - name: Android SDK ARM64 dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          MANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+          test -n "$MANAGER"
+          echo "$(dirname "$MANAGER")" >> "$GITHUB_PATH"
+          "$MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Install cargo-ndk if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v cargo-ndk || cargo install cargo-ndk --locked
+      - name: Build LightCraft only — isolated test ID and disposable key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builder/source
+          mv source builder/source/lightcraft
+          test "$(git -C builder/source/lightcraft rev-parse HEAD)" = '361e3bc0c838ffe5e5cea515b1fe5b71951989c6'
+          # LightCraft 0.18 uses an inseparable reviewed egui 0.37 + custom winit fork.
+          # The shared builder vendors egui-winit 0.36 and winit 0.30.13; replacing
+          # the fork caused Rust E0599 for ImeResetCompleted/reset_ime_with_request.
+          # Remove ONLY the two incompatible vendor blocks in this disposable builder,
+          # leaving every other Android integration (SAF, launcher, updates) intact.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/build-common.sh")
+          s = p.read_text()
+          blocks = (
+              ("echo \"Vendoring the Android-compatible egui-winit for $TITLE (system clipboard via JNI)...\"",
+               "# Some apps call `rfd` directly"),
+              ("echo \"Vendoring the mouse/scroll-aware winit for $TITLE...\"",
+               "# egui-wgpu's lost-surface recovery"),
+          )
+          for start, end in blocks:
+              if s.count(start) != 1 or s.count(end) != 1:
+                  raise SystemExit(f"STOP: LightCraft builder vendor anchor drift: {start}")
+              a = s.index(start)
+              b = s.index(end, a)
+              if b <= a:
+                  raise SystemExit("STOP: unexpected Android builder ordering")
+              block = s[a:b]
+              if "python3 - \"$SRC/Cargo.toml\" <<'PY'" not in block:
+                  raise SystemExit("STOP: missing expected vendor-patch block")
+              s = s[:a] + 'echo "LightCraft v0.21.1: retaining pinned egui/winit IME-compatible forks"\n' + s[b:]
+          # The reference builder's Android launcher hard-codes egui-winit 0.36,
+          # introducing a second IME-incompatible copy even when the workspace
+          # correctly keeps the pinned upstream egui-winit 0.37 fork.
+          # Change ONLY the LightCraft disposable launcher's generated version.
+          old_dependency = 'egui-winit = "0.36"'
+          if s.count(old_dependency) != 1:
+              raise SystemExit("STOP: LightCraft launcher egui-winit dependency anchor drift")
+          s = s.replace(old_dependency, 'egui-winit = "0.37"', 1)
+          p.write_text(s)
+          PY
+          # LightCraft v0.21.1's upstream UI requires Context in raw_input_hook.
+          # The reference builder generates the legacy 1-argument call for
+          # non-eframe App types and an egui-winit Android helper removed in 0.37.
+          # Adapt only this disposable builder's LightCraft launcher template.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/build-common.sh")
+          s = p.read_text()
+          old = 'inner_hook = "let _ = ctx;\\n        self.inner.raw_input_hook(raw);"'
+          new = 'inner_hook = ("self.inner.raw_input_hook(ctx, raw);" if app == "lightcraft" else "let _ = ctx;\\n        self.inner.raw_input_hook(raw);")'
+          if s.count(old) != 1:
+              raise SystemExit("STOP: raw_input_hook launcher template anchor drift")
+          s = s.replace(old, new, 1)
+          old_activity = '    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());'
+          # The reference builder has two launcher variants; both include
+          # the removed API. This builder copy is LightCraft-only.
+          if s.count(old_activity) != 2:
+              raise SystemExit("STOP: expected two reference launcher activity hooks")
+          s = s.replace(old_activity,
+              '    // LightCraft 0.18: egui-winit 0.37 does not expose android_activity.',
+              2)
+          p.write_text(s)
+          PY
+          # LightCraft-only GPU baseline instrumentation: keep Vulkan-first
+          # with GL fallback, and report the ACTUAL adapter and hardware limits.
+          # This does not force FPS, increase memory use or affect other apps.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("builder/lib/build-common.sh")
+          s = p.read_text()
+          anchor = '            let supported = adapter.limits();'
+          if s.count(anchor) != 2:
+              raise SystemExit("STOP: expected two LightCraft Android GPU launcher templates")
+          report = (
+              '            let info = adapter.get_info();\n'
+              '            log::info!("LIGHTCRAFT_GPU backend={{:?}} name={{}} device={{}} driver={{}} max_texture_2d={{}} max_buffer_size={{}}", '
+              'info.backend, info.name, info.device, info.driver, '
+              'adapter.limits().max_texture_dimension_2d, adapter.limits().max_buffer_size);\n'
+              + anchor
+          )
+          s = s.replace(anchor, report, 2)
+          p.write_text(s)
+          PY
+          # The removed vendor blocks also created this directory. Preserve it
+          # for the builder's separate egui-wgpu surface and Android rfd adapters.
+          mkdir -p builder/source/lightcraft/vendor
+          bash -n builder/lib/build-common.sh
+          # Preserve upstream's custom IME-enabled winit fork, adding only the
+          # missing Android hover event dispatch (not the reference's full backend).
+          git clone --filter=blob:none --no-checkout https://github.com/storytold/winit.git builder/source/lightcraft/vendor/winit
+          git -C builder/source/lightcraft/vendor/winit checkout --detach a517b3846ee8457d84ee4975110bfda6797c44dc
+          test "$(git -C builder/source/lightcraft/vendor/winit rev-parse HEAD)" = a517b3846ee8457d84ee4975110bfda6797c44dc
+          python3 suite/tools/lightcraft/patch_android_pointer_hover.py builder/source/lightcraft/vendor/winit/src/platform_impl/android/mod.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+          p = Path("builder/source/lightcraft/Cargo.toml")
+          s = p.read_text()
+          old = 'winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }'
+          if s.count(old) != 1:
+              raise SystemExit("STOP: LightCraft pinned custom winit Cargo patch drift")
+          s = s.replace(old, 'winit = { path = "vendor/winit" }', 1)
+          tomllib.loads(s)
+          p.write_text(s)
+          PY
+          # No permanent-signing secrets, no production certificate, no release publishing.
+          bash builder/build.sh -lightcraft \
+            -packagename=com.artcraft.lightcraft.test \
+            -appname='LightCraft TEST' \
+            "-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-20261109.png"
+      - name: Verify APK package, version, ARM64, signature and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='builder/output/lightcraft-0.21.1-android.1.apk'
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          "$SDK/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate-certificate.txt
+          "$SDK/build-tools/35.0.0/aapt" dump badging "$APK" > candidate-badging.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft.test' versionCode='[0-9]+' versionName='0.21.1-android.1'" candidate-badging.txt
+          grep -Fq 'launchable-activity:' candidate-badging.txt
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
+          python3 - "$APK" candidate-certificate.txt <<'PY'
+          import pathlib,re,sys,zipfile
+          apk,certificate=sys.argv[1:]
+          lines=pathlib.Path(certificate).read_text()
+          previous="b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4"
+          cert=re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", lines)
+          if not cert:
+              raise SystemExit("STOP: cannot independently verify temporary signer certificate")
+          fingerprint=cert.group(1).replace(":","").lower()
+          if fingerprint == previous:
+              raise SystemExit("STOP: unexpected production certificate")
+          with zipfile.ZipFile(apk) as z:
+              n=z.namelist()
+              if not any(x.startswith("lib/arm64-v8a/") and x.endswith(".so") for x in n):
+                  raise SystemExit("STOP: native ARM64 library missing")
+              if not any(x.endswith(".dex") for x in n):
+                  raise SystemExit("STOP: Android Java Activity missing")
+          PY
+          mkdir -p verified
+          cp "$APK" verified/LightCraft-v0.21.1-android.1-arm64-v8a-TEMP-SIGNED.apk
+          sha256sum verified/*.apk > verified/SHA256SUMS.txt
+          stat -c '%s' verified/*.apk > verified/APK_SIZE_BYTES.txt
+          cp candidate-certificate.txt candidate-badging.txt verified/
+          {
+            echo '### LightCraft v0.21.1-android.1 — disposable-signing test candidate'
+            echo 'Target: HONOR MagicPad 4, ARM64 only'
+            echo 'Package: com.artcraft.lightcraft.test (separate from production)'
+            echo 'Published protected baseline: lightcraft-v0.20.0-android.1; working branch descends from approved LightCraft Android source'
+            echo 'Source: storytold/lightcraft v0.21.1 SHA 361e3bc0c838ffe5e5cea515b1fe5b71951989c6'
+            echo 'Production signing: NEVER USED. Release publication: NOT AUTHORIZED.'
+            echo 'Device functional validation: PENDING.'
+            cat verified/SHA256SUMS.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload TEST APK only — never publish release
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-v0.21.1-android.1-TEMP-SIGNED-ARM64-TEST
+          path: verified/
+          retention-days: 14
+          if-no-files-found: error

@@ -57,6 +57,12 @@ fg_g=pink[1]
 coverage=green.point(lambda v: max(0,min(255,round(255*(v-bg_g)/(fg_g-bg_g)))))
 # Prevent transparent PNG corners and edges from leaking white into the glyph.
 coverage=ImageChops.multiply(coverage,image.getchannel("A"))
+# Keep only the central lettering region: the rounded PNG tile has a
+# light antialiased outer edge that must never enter the glyph bbox.
+region=(width//12,height//5,width*11//12,height*4//5)
+central=Image.new("L",image.size,0)
+central.paste(coverage.crop(region),region[:2])
+coverage=central
 bounds=coverage.point(lambda x: 255 if x>28 else 0).getbbox()
 if bounds is None:
     raise RuntimeError("No Dk glyph pixels isolated")

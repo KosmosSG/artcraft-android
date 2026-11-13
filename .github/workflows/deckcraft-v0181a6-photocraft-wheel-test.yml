@@ -223,7 +223,7 @@ jobs:
           assert 'const DEFAULT_OPACITY: f32 = 85.0;' in wheel
           assert 'size: DEFAULT_SIZE, opacity: DEFAULT_OPACITY' in wheel
           assert 'w.size=DEFAULT_SIZE;' in wheel and 'w.opacity=DEFAULT_OPACITY;' in wheel
-          assert 'Customize Stylus Wheel' in wheel
+          assert 'Stylus Wheel — Default' in wheel
           assert 'PhotoCraft-style wheel' not in wheel
           assert 'const POSITIONS:[&str;8]' in wheel
           assert '.stroke(Stroke::new(1.0,outline))' in wheel

@@ -549,7 +549,7 @@ impl Wheel {
                 );
                 painter.text(c + vec2(0.0, 22.0) * scale,
                     egui::Align2::CENTER_CENTER,
-                    highlighted.map(|i| LABELS[self.layout[i]]).unwrap_or("Tools"),
+                    highlighted.map(|i| LABELS[self.layout[i]]).unwrap_or("Default"),
                     FontId::proportional(11.0 * scale), Color32::WHITE.gamma_multiply(opacity));
     }
 

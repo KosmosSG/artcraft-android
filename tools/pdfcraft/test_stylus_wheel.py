@@ -2,14 +2,26 @@ from pathlib import Path
 import re, subprocess, tempfile, unittest
 ROOT=Path(__file__).resolve().parents[2]
 class WheelIntegration(unittest.TestCase):
- def test_exact_pc_source_and_ten_percent_reduction(self):
+ def test_exact_pc_source_and_approved_branded_styling(self):
   with tempfile.TemporaryDirectory() as d:
    out=Path(d)/'mark.rgba'
    subprocess.run(['python3',str(ROOT/'tools/pdfcraft/wheel_brand.py'),str(out)],check=True)
    self.assertEqual(out.stat().st_size,192*120*4)
   s=(ROOT/'templates/android/pdfcraft_stylus_wheel.rs').read_text()
-  self.assertIn('vec2(36.0, 22.5) * scale',s)
+  # The Pc mark is enlarged 5% compared with the previously approved Android.6.
+  # Preserve the original approved raster rather than substituting text.
+  self.assertIn('const PC_MARK_SCALE: f32 = 1.05;',s)
+  self.assertIn('vec2(36.0, 22.5) * (PC_MARK_SCALE * scale)',s)
+  self.assertIn('let hub_red = Self::launcher_red();',s)
+  # Both sliders and the outside rim use the exact Pc launcher red.
   self.assertIn('Color32::from_rgb(251, 14, 0)',s)
+  self.assertIn('let accent = Self::launcher_red();',s)
+  self.assertIn('Stroke::new(2.0 * scale, Self::launcher_red())',s)
+  # The blue accent was removed only from this wheel appearance card.
+  self.assertNotIn('Color32::from_rgb(110, 170, 255)',s)
+  # Wheel touch hit targets and 8-sector geometry must remain unchanged.
+  self.assertIn('const R: f32 = 128.0;',s)
+  self.assertIn('const INNER: f32 = 46.0;',s)
  def test_hover_and_button_paths_are_passive_and_device_scoped(self):
   java=(ROOT/'templates/android/pdfcraft_stylus_java.txt').read_text()
   for part in ['TOOL_TYPE_STYLUS','TOOL_TYPE_ERASER','ACTION_HOVER_MOVE','pdfPenHover = ""','Magic-Pencil 4s','return false;','layout.length() <= 128']:

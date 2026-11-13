@@ -233,7 +233,7 @@ def install(builder: Path, additions: Path):
         text = saf_patch["transform"](text)
     # Do not touch other source apps, keys, adapters or .github workflows.
     dest.mkdir(parents=True)
-    for item in ("overlay.py", "gridcraft_tools.rs", "GridCraftJavaMethods.java.inc", "GridCraftSafeUpdater.java.inc"):
+    for item in ("overlay.py", "gridcraft_tools.rs", "gridcraft_stylus_wheel.rs", "GridCraftJavaMethods.java.inc", "GridCraftSafeUpdater.java.inc"):
         shutil.copyfile(additions / item, dest / item)
     # All generated files (Cargo.toml, Java Activity, Rust lib.rs) must exist first.
     # Inject immediately AFTER the generator writes lib.rs, before its

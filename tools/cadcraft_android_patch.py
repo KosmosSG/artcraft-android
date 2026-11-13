@@ -67,6 +67,135 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"
 
 
 
+def install_pen_button(reference: Path) -> None:
+    """Native-only HONOR pen DPAD routing, guarded by Java-validated device IDs.
+
+    No physical keyboard arrow keys, touch gestures or unrelated Craft apps are
+    intercepted. This edits only the CI reference checkout.
+    """
+    java = reference / "templates/android/SafActivity.java"
+    source = java.read_text(encoding="utf-8")
+    anchor = "public final class __CLASS__ extends NativeActivity {"
+    if source.count(anchor) != 1:
+        raise SystemExit("CADCraft pen Activity anchor changed")
+    inject = """public final class __CLASS__ extends NativeActivity {
+    // Java Activity is the safe classloader boundary for the CAD updater.
+    public void cadCheckUpdates() {
+        runOnUiThread(() -> {
+            try {
+                com.artcraft.updater.UpdateCheck.checkNow(this);
+            } catch (Throwable failure) {
+                Log.e(TAG, "CADCraft updater error", failure);
+                try {
+                    new android.app.AlertDialog.Builder(this)
+                        .setTitle("CADCraft updates")
+                        .setMessage("Unable to check for updates. Please try again later.")
+                        .setPositiveButton("OK", null).show();
+                } catch (Throwable ignored) { }
+            }
+        });
+    }
+    // Match real HONOR Magic-Pencil hardware IDs before consuming DPAD events.
+    public String cadStylusDeviceIds() {
+        StringBuilder names = new StringBuilder();
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(id);
+            if (device == null || device.getName() == null) continue;
+            String name = device.getName().toLowerCase(java.util.Locale.ROOT);
+            if (name.contains("magic-pencil") || name.contains("magic pencil")) {
+                if (names.length() > 0) names.append(',');
+                names.append(id);
+            }
+        }
+        return names.toString();
+    }
+"""
+    java.write_text(source.replace(anchor, inject, 1), encoding="utf-8")
+
+    # Vendor crate is copied into the CADCraft source during the builder step.
+    vendor = reference / "vendor/android-activity"
+    root = vendor / "src/lib.rs"
+    original = root.read_text(encoding="utf-8")
+    if "cad_stylus_native_take" in original:
+        raise SystemExit("CADCraft pen queue already exists")
+    original += r'''
+// CADCRAFT_ISOLATED_PEN_KEY_QUEUE: only an explicit, verified Magic-Pencil ID.
+#[cfg(feature = "native-activity")]
+struct CadStylusKeys {
+    enabled: bool,
+    allowed_ids: Vec<i32>,
+    events: Vec<u8>,
+    last: Option<std::time::Instant>,
+}
+#[cfg(feature = "native-activity")]
+static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
+    std::sync::Mutex::new(CadStylusKeys {
+        enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None
+    });
+
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_configure(enabled: bool, ids: &[i32]) {
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        let new_ids: Vec<i32> = ids.iter().copied().take(16).filter(|id| *id > 0).collect();
+        if state.enabled != enabled || state.allowed_ids != new_ids {
+            state.events.clear();
+            state.last = None;
+        }
+        state.enabled = enabled;
+        state.allowed_ids = new_ids;
+    }
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> bool {
+    let Ok(mut state) = CAD_STYLUS_KEYS.lock() else { return false };
+    if !state.enabled || !state.allowed_ids.contains(&device) ||
+        (code != 19 && code != 20) { return false; }
+    // Swallow both DPAD_DOWN and DPAD_UP from the named pen; only release
+    // triggers a wheel toggle. Never swallow physical keyboard arrows.
+    if action == 1 && repeat == 0 {
+        let now = std::time::Instant::now();
+        if state.last.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(650))
+            && state.events.len() < 16 {
+            state.events.push(code as u8);
+            state.last = Some(now);
+        }
+    }
+    true
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_native_take() -> Vec<u8> {
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        std::mem::take(&mut state.events)
+    } else { Vec::new() }
+}
+'''
+    root.write_text(original, encoding="utf-8")
+
+    native = vendor / "src/native_activity/mod.rs"
+    original = native.read_text(encoding="utf-8")
+    anchor = "            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {"
+    if original.count(anchor) != 1:
+        raise SystemExit("NativeActivity input queue changed; refuse pen interception")
+    injected = """            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
+                // Capture named HONOR pen button before winit maps DPAD to
+                // physical keyboard shortcuts. Always finish native input.
+                if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
+                    let ptr = key.ptr().as_ptr();
+                    let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
+                    let code = unsafe { ndk_sys::AKeyEvent_getKeyCode(ptr) };
+                    let action = unsafe { ndk_sys::AKeyEvent_getAction(ptr) };
+                    let repeat = unsafe { ndk_sys::AKeyEvent_getRepeatCount(ptr) };
+                    if crate::cad_stylus_capture(device, code, action, repeat) {
+                        queue.finish_event(ndk_event, true);
+                        return true;
+                    }
+                }
+"""
+    native.write_text(original.replace(anchor, injected, 1), encoding="utf-8")
+    print("PASS: native stylus-only capture plus safe updater Activity method")
+
+
+
 def patch_cadcraft_ui(source: Path) -> None:
     """Persist wheel customization through native prefs without changing desktop behavior."""
     lib = source / "crates/ui-egui/src/lib.rs"
@@ -83,6 +212,7 @@ def patch_cadcraft_ui(source: Path) -> None:
         """    pub last_pgp_dir: Option<String>,
     /// Android-only PhotoCraft-style CAD stylus wheel controls.
     pub cad_wheel_open: bool,
+    pub cad_wheel_enabled: bool,
     pub cad_wheel_customize: bool,
     pub cad_wheel_actions: Vec<String>,
     pub cad_wheel_size: f32,
@@ -91,16 +221,18 @@ def patch_cadcraft_ui(source: Path) -> None:
     src = replace_once(src, "            last_pgp_dir: None,\n",
         """            last_pgp_dir: None,
             cad_wheel_open: false,
+            cad_wheel_enabled: true,
             cad_wheel_customize: false,
             cad_wheel_actions: vec![
                 "select", "line", "circle", "ui.panel.layers", "pan", "trim", "redo", "undo",
             ].into_iter().map(str::to_string).collect(),
             cad_wheel_size: 1.0,
-            cad_wheel_opacity: 1.0,
+            cad_wheel_opacity: 0.85,
 """)
     src = replace_once(src, "        prefs.to_string()\n",
         """        #[cfg(target_os = "android")]
         {
+            prefs["cadWheelEnabled"] = json!(self.ui.cad_wheel_enabled);
             prefs["cadWheelActions"] = json!(self.ui.cad_wheel_actions);
             prefs["cadWheelSize"] = json!(self.ui.cad_wheel_size);
             prefs["cadWheelOpacity"] = json!(self.ui.cad_wheel_opacity);
@@ -110,6 +242,9 @@ def patch_cadcraft_ui(source: Path) -> None:
     src = replace_once(src, '        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\n',
         """        #[cfg(target_os = "android")]
         {
+            if let Some(enabled) = v.get("cadWheelEnabled").and_then(Value::as_bool) {
+                self.ui.cad_wheel_enabled = enabled;
+            }
             if let Some(actions) = v.get("cadWheelActions").and_then(Value::as_array) {
                 if actions.len() == 8
                     && actions.iter().all(|v| v.as_str().is_some_and(crate::cadcraft_android_wheel::valid_action))
@@ -119,10 +254,10 @@ def patch_cadcraft_ui(source: Path) -> None:
                 }
             }
             if let Some(size) = v.get("cadWheelSize").and_then(Value::as_f64) {
-                if size.is_finite() { self.ui.cad_wheel_size = (size as f32).clamp(0.65, 1.45); }
+                if size.is_finite() { self.ui.cad_wheel_size = (size as f32).clamp(0.75, 1.25); }
             }
             if let Some(opacity) = v.get("cadWheelOpacity").and_then(Value::as_f64) {
-                if opacity.is_finite() { self.ui.cad_wheel_opacity = (opacity as f32).clamp(0.35, 1.0); }
+                if opacity.is_finite() { self.ui.cad_wheel_opacity = (opacity as f32).clamp(0.60, 1.0); }
             }
         }
         if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {
@@ -144,7 +279,8 @@ def patch_cadcraft_ui(source: Path) -> None:
     # JNI bridge is compiled only for the Android UI target; no desktop graph changes.
     cargo = source / "crates/ui-egui/Cargo.toml"
     manifest = cargo.read_text(encoding="utf-8")
-    dep_section = """\n[target.'cfg(target_os = "android")'.dependencies]\ncadcraft-android-updater-bridge = { path = "../cadcraft-android-updater-bridge" }\n"""
+    dep_section = """\n[target.'cfg(target_os = "android")'.dependencies]\ncadcraft-android-updater-bridge = { path = "../cadcraft-android-updater-bridge" }
+android-activity = { version = "0.6", default-features = false, features = ["native-activity"] }\n"""
     if "cadcraft-android-updater-bridge" in manifest or "[target.'cfg(target_os = \"android\")'.dependencies]" in manifest:
         raise SystemExit("CADCraft Android JNI dependencies changed; inspect manifest")
     cargo.write_text(manifest + dep_section, encoding="utf-8")
@@ -216,6 +352,7 @@ def main() -> None:
     patch_cadcraft_ui(args.source)
     prepare_exact_icon(args.reference, args.source)
     install_cadcraft_updater(args.reference)
+    install_pen_button(args.reference)
 
 
 if __name__ == "__main__":

@@ -129,7 +129,7 @@ impl Wheel {
             .id(egui::Id::new("filmcraft.stylus.settings"))
             .open(&mut open).collapsible(false).resizable(true)
             .default_width(360.0)
-            .default_pos(pos2((ctx.available_rect().right() - 420.0).max(20.0), 90.0))
+            .default_pos(pos2((ctx.content_rect().right() - 420.0).max(20.0), 90.0))
             .show(ctx, |ui| {
                 changed |= ui.checkbox(&mut self.enabled, "Enable stylus wheel").changed();
                 changed |= ui.add(egui::Slider::new(&mut self.size, 0.65..=1.55)
@@ -174,7 +174,7 @@ impl Wheel {
         }
         self.settings(ctx);
         if !self.enabled { return None; }
-        let screen = ctx.available_rect();
+        let screen = ctx.content_rect();
         let radius = 117.0 * self.size;
         let diameter = radius * 2.0;
         let where_at = pos2(

@@ -168,24 +168,28 @@ impl Wheel {
                 line(&[(-0.82, 0.32), (0.0, 0.76), (0.82, 0.32)]);
             }
             "wheel-undo" | "wheel-redo" => {
-                // Mirrored monoline return arrows. Undo points LEFT; Redo points RIGHT.
-                // A single cubic arc and three-point arrowhead stay legible at 75% size.
+                // DeckCraft-inspired return arrows with a recognizable arrowhead.
+                // Left-pointing Undo and mirrored right-pointing Redo share the
+                // same consistent white stroke; no distorted cubic hooks.
                 let direction = if icon == "wheel-undo" { 1.0 } else { -1.0 };
-                let mut arc = Vec::with_capacity(25);
-                for step in 0..=24 {
-                    let t = step as f32 / 24.0;
-                    let u = 1.0 - t;
-                    let x = u*u*u*(-0.72) + 3.0*u*u*t*(-0.16)
-                        + 3.0*u*t*t*0.78 + t*t*t*0.68;
-                    let y = u*u*u*(-0.16) + 3.0*u*u*t*(-0.86)
-                        + 3.0*u*t*t*(-0.70) + t*t*t*0.52;
-                    arc.push(at(direction * x, y));
+                let mut shaft = vec![
+                    at(direction * -0.66, -0.20),
+                    at(direction * 0.09, -0.20),
+                ];
+                // Smooth, clean quarter-circle turning into the return stem.
+                for step in 1..=16 {
+                    let angle = -PI / 2.0 + (step as f32 / 16.0) * PI / 2.0;
+                    shaft.push(at(
+                        direction * (0.09 + 0.44 * angle.cos()),
+                        0.24 + 0.44 * angle.sin(),
+                    ));
                 }
-                p.add(Shape::line(arc, stroke));
+                shaft.push(at(direction * 0.53, 0.47));
+                p.add(Shape::line(shaft, stroke));
                 line(&[
-                    (direction * -0.35, -0.52),
-                    (direction * -0.72, -0.16),
-                    (direction * -0.34, 0.18),
+                    (direction * -0.31, -0.52),
+                    (direction * -0.66, -0.20),
+                    (direction * -0.31, 0.12),
                 ]);
             }
             _ => {
@@ -275,62 +279,145 @@ impl Wheel {
         if !self.settings_open { return; }
         self.open = false;
         let mut open = self.settings_open;
+        let mut done_pressed = false;
         let mut changed = false;
-        let response = egui::Window::new("Stylus Wheel Customization")
+        let response = egui::Window::new("Customize Stylus Wheel")
             .id(Id::new("dc-wheel-customize-dialog"))
             .open(&mut open).resizable(false).collapsible(false)
-            // Image 2: dark charcoal panel; leave the application's global theme alone.
             .frame(egui::Frame::window(ctx.style_of(egui::Theme::Dark).as_ref())
-                .fill(Color32::from_rgb(31, 31, 34))
-                .stroke(Stroke::new(0.8, Color32::from_rgb(76, 76, 82))))
-            .default_width(360.0).show(ctx, |ui| {
-                ui.label("DesignCraft · Default (8 customizable segments)");
-                ui.label("Adjust tools, size and opacity. Preview uses the actual wheel scale.");
-                ui.separator();
-                // Image 2: vivid Dc-accent slider tracks and a neatly spaced pair
-                // of controls, without recolouring unrelated application widgets.
-                ui.scope(|ui| {
-                    let visuals = &mut ui.style_mut().visuals;
-                    visuals.selection.bg_fill = ACCENT;
-                    visuals.widgets.active.bg_fill = ACCENT;
-                    visuals.widgets.hovered.bg_fill = Color32::from_rgb(174, 43, 76);
-                    ui.spacing_mut().slider_width = 125.0;
-                    changed |= ui.add(egui::Slider::new(&mut self.size, 75.0..=125.0)
-                        .text("Wheel size").suffix("%")).changed();
-                    changed |= ui.add(egui::Slider::new(&mut self.opacity, 60.0..=100.0)
-                        .text("Opacity").suffix("%")).changed();
+                .fill(Color32::from_rgb(32, 27, 33))
+                .stroke(Stroke::new(1.0, Color32::from_rgb(99, 64, 75))))
+            .default_width(430.0).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Dc")
+                        .color(ACCENT).strong().size(24.0));
+                    ui.heading("Customize Stylus Wheel");
                 });
-                ui.separator();
-                for i in 0..8 {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Slot {}", i + 1));
-                        let mut selected = self.slots[i];
-                        egui::ComboBox::from_id_salt(("dc-wheel-slot", i))
-                            .selected_text(ITEMS[selected].0).width(185.0)
-                            .show_ui(ui, |ui| {
-                                for n in 0..ITEMS.len() {
-                                    ui.selectable_value(&mut selected, n, ITEMS[n].0);
-                                }
+                ui.label("Assign an action to each of the eight wheel segments.");
+                ui.add_space(7.0);
+                ui.heading("Wheel slots");
+
+                // The order below matches the actual wheel geometry:
+                // slot 1 is top, progressing clockwise through slot 8.
+                const POSITIONS: [&str; 8] = [
+                    "Top", "Upper right", "Right", "Lower right",
+                    "Bottom", "Lower left", "Left", "Upper left",
+                ];
+                for (i, position) in POSITIONS.iter().enumerate() {
+                    let background = if i == 0 {
+                        Color32::from_rgb(78, 43, 56)
+                    } else {
+                        Color32::from_rgb(49, 43, 49)
+                    };
+                    let border = if i == 0 { ACCENT } else {
+                        Color32::from_rgb(57, 53, 59)
+                    };
+                    egui::Frame::default()
+                        .fill(background)
+                        .stroke(Stroke::new(if i == 0 { 1.0 } else { 0.4 }, border))
+                        .show(ui, |ui| {
+                            ui.set_min_width(385.0);
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(format!("{:02}", i + 1))
+                                    .color(Color32::from_gray(210)));
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(*position)
+                                    .color(Color32::WHITE));
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.add_space(7.0);
+                                        let mut selected = self.slots[i];
+                                        egui::ComboBox::from_id_salt(("dc-wheel-slot", i))
+                                            .selected_text(ITEMS[selected].0)
+                                            .width(174.0)
+                                            .show_ui(ui, |ui| {
+                                                for n in 0..ITEMS.len() {
+                                                    ui.selectable_value(
+                                                        &mut selected, n, ITEMS[n].0);
+                                                }
+                                            });
+                                        if selected != self.slots[i] {
+                                            if let Some(previous) = self.slots.iter()
+                                                .position(|n| *n == selected) {
+                                                self.slots[previous] = self.slots[i];
+                                            }
+                                            self.slots[i] = selected;
+                                            changed = true;
+                                        }
+                                    }
+                                );
                             });
-                        if selected != self.slots[i] {
-                            if let Some(previous) = self.slots.iter().position(|n| *n == selected) {
-                                self.slots[previous] = self.slots[i];
-                            }
-                            self.slots[i] = selected;
-                            changed = true;
-                        }
-                    });
+                        });
+                    ui.add_space(3.0);
                 }
+                ui.add_space(4.0);
                 ui.separator();
-                if ui.button("Restore Default").clicked() {
-                    self.slots = DEFAULT;
-                    self.size = 100.0;
-                    self.opacity = 85.0;
-                    changed = true;
-                }
-                ui.label("Hovering on the wheel never edits the canvas underneath.");
+                ui.heading("Appearance");
+                egui::Frame::default()
+                    .fill(Color32::from_rgb(49, 43, 49))
+                    .stroke(Stroke::new(0.5, Color32::from_rgb(70, 59, 69)))
+                    .show(ui, |ui| {
+                        ui.set_min_width(385.0);
+                        ui.add_space(5.0);
+                        ui.scope(|ui| {
+                            let visuals = &mut ui.style_mut().visuals;
+                            visuals.selection.bg_fill = ACCENT;
+                            visuals.widgets.active.bg_fill = ACCENT;
+                            visuals.widgets.hovered.bg_fill =
+                                Color32::from_rgb(187, 56, 88);
+                            ui.spacing_mut().slider_width = 210.0;
+                            ui.horizontal(|ui| {
+                                ui.add_space(9.0);
+                                ui.label("Wheel size");
+                                changed |= ui.add(
+                                    egui::Slider::new(&mut self.size, 75.0..=125.0)
+                                        .suffix("%")
+                                ).changed();
+                            });
+                            ui.horizontal(|ui| {
+                                ui.add_space(9.0);
+                                ui.label("Opacity    ");
+                                changed |= ui.add(
+                                    egui::Slider::new(&mut self.opacity, 60.0..=100.0)
+                                        .suffix("%")
+                                ).changed();
+                            });
+                        });
+                        ui.label(egui::RichText::new(
+                            "Size: 75–125%   •   Opacity: 60–100%"
+                        ).small().color(Color32::from_gray(179)));
+                        ui.add_space(3.0);
+                    });
+                ui.add_space(5.0);
+                egui::Frame::default()
+                    .fill(Color32::from_rgb(49, 43, 49))
+                    .show(ui, |ui| {
+                        ui.label("Preview updates live. All changes save automatically.");
+                    });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Reset defaults").clicked() {
+                        self.slots = DEFAULT;
+                        self.size = 100.0;
+                        self.opacity = 85.0;
+                        changed = true;
+                    }
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(
+                                egui::Button::new(
+                                    egui::RichText::new("Done")
+                                        .color(Color32::WHITE).strong())
+                                    .fill(ACCENT)
+                            ).clicked() {
+                                done_pressed = true;
+                            }
+                        }
+                    );
+                });
             });
-        self.settings_open = open;
+        self.settings_open = open && !done_pressed;
         if changed { self.persist(); ctx.request_repaint(); }
         if self.settings_open {
             if let Some(result) = response {

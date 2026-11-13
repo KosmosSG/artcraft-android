@@ -1,0 +1,10 @@
+CADCraft v0.19.0-android.3 ARM64 TEST ONLY build gate
+Changes to test:
+- Cc launcher foreground shrunk within MagicOS adaptive and legacy safe zone
+- eight-action stylus wheel with live size / opacity preview and saved settings
+- solid #D13153 circular center hub with exact cream Cc glyph
+- PhotoCraft-style diffuse low-alpha shadow (live preview and active wheel)
+- no bottom-right launcher icon
+- CADCraft-only published GitHub release check, in-app APK download and user-approved installation
+- com.artcraft.cadcraft.test disposable signer, native DXF/DWG SAF unchanged
+Do not merge, permanently sign or publish.

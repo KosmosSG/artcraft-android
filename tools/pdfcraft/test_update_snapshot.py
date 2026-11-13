@@ -31,13 +31,17 @@ HELPER
             p=Path(td)/'SnapshotTest.java';p.write_text(harness)
             subprocess.run(['javac',str(p)],check=True)
             subprocess.run(['java','-cp',td,'SnapshotTest'],check=True)
-    def test_browser_only_updater_has_no_package_installer(self):
+    def test_verified_download_updater_has_no_package_installer(self):
         s=(ROOT/'templates/android/pdfcraft_update_java.txt').read_text()
         self.assertIn('pdfDownloadStatus()',s)
         self.assertIn('pdfDownloadUpdate(String url, String sha256Digest)',s)
         self.assertIn('pdfInstallDownloadedUpdate()',s)
         self.assertIn('pdfHandleInstallResult(Intent intent)',s)
         self.assertIn('In-app APK installation is disabled.',s)
+        self.assertIn('pdfApprovedAssetName',s)
+        self.assertIn('pdfExportDownloadedUpdate',s)
+        self.assertIn('pdfHandleExportResult',s)
+        self.assertIn('MessageDigest.getInstance("SHA-256")',s)
         for token in ('PackageInstaller','getPackageInstaller(', 'canRequestPackageInstalls()',
                       'ACTION_MANAGE_UNKNOWN_APP_SOURCES','DownloadManager',
                       'getUriForDownloadedFile', 'USER_ACTION_REQUIRED'):

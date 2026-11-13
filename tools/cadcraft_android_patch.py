@@ -107,23 +107,22 @@ def patch_cadcraft_ui(source: Path) -> None:
         }
         prefs.to_string()
 """)
-    src = replace_once(src, '        #[cfg(target_os = "android")]
+    src = replace_once(src, '        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\\n',
+        """        #[cfg(target_os = "android")]
         {
+            if let Some(actions) = v.get("cadWheelActions").and_then(Value::as_array) {
+                if actions.len() == 8
+                    && actions.iter().all(|v| v.as_str().is_some_and(crate::cadcraft_android_wheel::valid_action))
+                {
+                    self.ui.cad_wheel_actions = actions.iter()
+                        .filter_map(Value::as_str).map(str::to_string).collect();
+                }
+            }
             if let Some(size) = v.get("cadWheelSize").and_then(Value::as_f64) {
                 if size.is_finite() { self.ui.cad_wheel_size = (size as f32).clamp(0.65, 1.45); }
             }
             if let Some(opacity) = v.get("cadWheelOpacity").and_then(Value::as_f64) {
                 if opacity.is_finite() { self.ui.cad_wheel_opacity = (opacity as f32).clamp(0.35, 1.0); }
-            }
-        }
-        if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {\n',
-        """        #[cfg(target_os = "android")]
-        if let Some(actions) = v.get("cadWheelActions").and_then(Value::as_array) {
-            if actions.len() == 8
-                && actions.iter().all(|v| v.as_str().is_some_and(crate::cadcraft_android_wheel::valid_action))
-            {
-                self.ui.cad_wheel_actions = actions.iter()
-                    .filter_map(Value::as_str).map(str::to_string).collect();
             }
         }
         if let Some(keys) = v.get("shortcuts").filter(|k| k.is_object()) {

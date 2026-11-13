@@ -128,16 +128,8 @@ impl Wheel {
         };
         match icon {
             "tool-selection" => {
-                // Solid cursor arrow, without a fuzzy outline at wheel scale.
-                p.add(Shape::convex_polygon(
-                    vec![
-                        at(-0.68, -0.89), at(-0.52, 0.81),
-                        at(-0.14, 0.39), at(0.28, 0.91),
-                        at(0.62, 0.65), at(0.24, 0.16),
-                        at(0.78, 0.06),
-                    ],
-                    Color32::WHITE, Stroke::NONE,
-                ));
+                // Reuse the native cursor silhouette; it is deliberately concave.
+                designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
             }
             "tool-pen" => {
                 // Symmetric fountain pen nib with a distinct ink breather.

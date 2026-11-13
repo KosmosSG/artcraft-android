@@ -148,7 +148,7 @@ fn artcraft_android_menu(ui: &mut Ui) {
             ui.small("Page colours are separate from the interface theme.");
         });
         // WC_ANDROID4_STYLUS_CATEGORY_V1: one compact top-level entry.
-        // Keep all stylus-wheel and pen-shortcut controls inside this group.
+        // Keep stylus wheel controls only in this group; Shortcut Pad is separate.
         ui.menu_button("Stylus Wheel", |ui| {
             ui.set_min_width(255.0);
             let wheel_on = ui.ctx().data(|d|
@@ -176,7 +176,12 @@ fn artcraft_android_menu(ui: &mut Ui) {
                 ui.ctx().request_repaint();
                 ui.close();
             }
-            ui.separator();
+            ui.small("Stylus hover and palm rejection remain active.");
+        });
+        // WC_ANDROID5_SHORTCUT_PAD_MENU_MOVE_V1:
+        // Shortcut Pad is a general keyboard/editing overlay, not a stylus wheel setting.
+        ui.menu_button("Keyboard & Shortcuts", |ui| {
+            ui.set_min_width(230.0);
             let mut pad = ui.ctx().data(|d|
                 d.get_temp::<bool>(egui::Id::new("wc_menu_pad"))
             ).unwrap_or(false);
@@ -187,10 +192,7 @@ fn artcraft_android_menu(ui: &mut Ui) {
                 ));
                 ui.ctx().request_repaint();
             }
-            ui.small("Stylus hover and palm rejection remain active.");
-        });
-        ui.menu_button("Keyboard & Shortcuts", |ui| {
-            ui.set_min_width(230.0);
+            ui.separator();
             if ui.button("Customize physical keyboard…").clicked() {
                 ui.ctx().data_mut(|d| d.insert_temp(
                     egui::Id::new("wc_menu_action"), "keyboard".to_owned()

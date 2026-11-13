@@ -12,7 +12,7 @@ import shutil
 import runpy
 import tomllib
 
-SUPPORTED_VERSIONS = ("0.16.1", "0.18.0")
+SUPPORTED_VERSIONS = ("0.16.1", "0.18.0", "0.19.1")
 MARKER = "GRIDCRAFT_ANDROID_V0150_UI_PORT_V1"
 MENU_MARKER = "GRIDCRAFT_ANDROID_NATIVE_MENU_V1"
 ADDONS = Path(__file__).resolve().parent / "android_addons"

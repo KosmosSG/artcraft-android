@@ -31,6 +31,10 @@ pub struct Wheel {
     pub visible: bool,
     pen_hover: Option<Pos2>,
     center_override: Option<Pos2>,
+    // WC_ANDROID8_POPOUT_LIVE_PREVIEW_V1: transient UI-only preview state.
+    // Never serialized; closing the settings always closes this overlay.
+    preview_center: Option<Pos2>,
+    preview_last_adjust: Option<std::time::Instant>,
     pub settings_open: bool,
     pub size: f32,
     pub opacity: f32,
@@ -51,6 +55,8 @@ impl Wheel {
             visible: false,
             pen_hover: None,
             center_override: None,
+            preview_center: None,
+            preview_last_adjust: None,
             settings_open: false,
             size: 284.0,
             opacity: 0.82,
@@ -138,12 +144,23 @@ impl Wheel {
         )
     }
 
+    fn preview_active(&self) -> bool {
+        self.settings_open && self.preview_last_adjust.is_some_and(|when|
+            when.elapsed() < std::time::Duration::from_millis(3200))
+    }
+
+    fn preview_owns(&self, pos: Pos2) -> bool {
+        self.preview_active() && self.preview_center.is_some_and(|center|
+            pos.distance_sq(center) <= (self.size * 0.5 + 5.0).powi(2))
+    }
+
     pub fn owns(&self, pos: Pos2, screen: Rect) -> bool {
-        self.visible && pos.distance_sq(self.center(screen)) <= (self.size * 0.5 + 5.0).powi(2)
+        (self.visible && pos.distance_sq(self.center(screen)) <=
+            (self.size * 0.5 + 5.0).powi(2)) || self.preview_owns(pos)
     }
 
     fn sector(&self, pos: Pos2, screen: Rect) -> Option<usize> {
-        if !self.owns(pos, screen) { return None; }
+        if !self.visible || !self.owns(pos, screen) { return None; }
         let c = self.center(screen);
         if pos.distance(c) <= self.size * 0.185 { return None; }
         // Wedges start at the top and proceed clockwise.
@@ -166,7 +183,52 @@ impl Wheel {
     /// are owned by the wheel. No document selection can occur underneath.
     /// Keyboard/IME commands pass through unmodified.
     pub fn filter_input(&mut self, raw: &mut egui::RawInput, screen: Rect) {
-        if !self.visible { return; }
+        // The floating live preview is visual-only. Suppress ONLY contacts
+        // inside its transient disk, so dragging the settings sliders still
+        // behaves normally and cannot edit the document underneath.
+        if !self.visible {
+            if !self.preview_active() { return; }
+            let mut blocked_pointer = false;
+            let mut blocked_touch = false;
+            raw.events.retain(|event| match event {
+                egui::Event::PointerMoved(pos) => {
+                    let inside = self.preview_owns(*pos) || self.owned_mouse;
+                    blocked_pointer |= inside;
+                    !inside
+                }
+                egui::Event::PointerButton { pos, pressed, .. } => {
+                    let inside = self.preview_owns(*pos) || self.owned_mouse;
+                    if inside {
+                        blocked_pointer = true;
+                        self.owned_mouse = *pressed;
+                        false
+                    } else { true }
+                }
+                egui::Event::Touch { device_id, id, phase, pos, .. } => {
+                    let captured = self.touch_down.is_some_and(|(d, t, _)|
+                        d == device_id.0 && t == id.0);
+                    let inside = self.preview_owns(*pos) || captured;
+                    if inside {
+                        blocked_touch = true;
+                        match phase {
+                            egui::TouchPhase::Start => {
+                                self.touch_down = Some((device_id.0, id.0, usize::MAX));
+                            }
+                            egui::TouchPhase::End | egui::TouchPhase::Cancel => {
+                                self.touch_down = None;
+                            }
+                            egui::TouchPhase::Move => {}
+                        }
+                    }
+                    !inside
+                }
+                _ => true,
+            });
+            if blocked_pointer || blocked_touch {
+                raw.events.push(egui::Event::PointerGone);
+            }
+            return;
+        }
         let mut safe_events = Vec::with_capacity(raw.events.len() + 1);
         let mut saw_pointer = false;
         for event in raw.events.drain(..) {
@@ -447,7 +509,7 @@ impl Wheel {
         }
         if self.settings_open {
             let mut open = true;
-            egui::Window::new("WordCraft Stylus Wheel Customization")
+            let settings_window = egui::Window::new("WordCraft Stylus Wheel Customization")
                 .id(egui::Id::new("wc_stylus_wheel_settings"))
                 .open(&mut open)
                 .default_width(450.0)
@@ -469,14 +531,8 @@ impl Wheel {
                         ui.add_sized([70.0, 24.0], egui::Label::new(
                             format!("{:.0}%", self.opacity * 100.0)));
                     });
-                    ui.small("Drag the cyan handle • the preview updates at actual size.");
-                    ui.separator();
-                    ui.label("Live preview (same geometry and opacity as on the canvas)");
-                    egui::ScrollArea::horizontal().max_height(402.0).show(ui, |ui| {
-                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(self.size + 30.0),
-                            egui::Sense::hover());
-                        self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity, Some(self.active));
-                    });
+                    ui.small("Adjust a slider to pop out the full-size preview beside this dialog.");
+                    ui.small("The preview does not select or edit document text.");
                     ui.separator();
                     ui.label("Edit shortcuts • each slot can be assigned independently");
                     for row in 0..4 {
@@ -506,6 +562,58 @@ impl Wheel {
                     }
                 });
             self.settings_open = open;
+            // WC_ANDROID8_POPOUT_LIVE_PREVIEW_V1: wheel is rendered in a
+            // separate non-interactive top-level Area, NOT inside the dialog.
+            // Size, opacity, shortcuts and Reset all re-use the real painter.
+            if self.settings_open {
+                if changed {
+                    self.preview_last_adjust = Some(std::time::Instant::now());
+                }
+                if let Some(window) = settings_window {
+                    let bounds = window.response.rect;
+                    let radius = self.size * 0.5;
+                    let right = bounds.right() + radius + 26.0;
+                    let left = bounds.left() - radius - 26.0;
+                    let x = if right + radius + 15.0 <= screen.right() {
+                        right
+                    } else if left - radius - 15.0 >= screen.left() {
+                        left
+                    } else {
+                        screen.right() - radius - 15.0
+                    };
+                    let y = bounds.top() + radius + 46.0;
+                    self.preview_center = Some(egui::pos2(
+                        x.clamp(screen.left() + radius + 15.0,
+                            (screen.right() - radius - 15.0)
+                                .max(screen.left() + radius + 15.0)),
+                        y.clamp(screen.top() + radius + 15.0,
+                            (screen.bottom() - radius - 15.0)
+                                .max(screen.top() + radius + 15.0)),
+                    ));
+                }
+                if self.preview_active() {
+                    if let Some(center) = self.preview_center {
+                        let padded = self.size + 36.0; // Allow feathered shadow.
+                        egui::Area::new(egui::Id::new("wc_stylus_preview_popout"))
+                            .order(egui::Order::Tooltip)
+                            .interactable(false)
+                            .fixed_pos(center - Vec2::splat(padded * 0.5))
+                            .show(ctx, |ui| {
+                                let (rect, _) = ui.allocate_exact_size(
+                                    Vec2::splat(padded), egui::Sense::hover());
+                                self.paint(ui.ctx(), ui.painter(), rect.center(),
+                                    self.size, self.opacity, Some(self.active));
+                            });
+                    }
+                    ctx.request_repaint_after(
+                        std::time::Duration::from_millis(80));
+                }
+            } else {
+                self.preview_last_adjust = None;
+                self.preview_center = None;
+                self.owned_mouse = false;
+                self.touch_down = None;
+            }
         }
         changed
     }

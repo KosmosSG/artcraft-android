@@ -379,6 +379,38 @@
             catch (Exception error) { gcSend("update", "error", "Cannot open release page: " + error.getMessage()); }
         });
     }
+    // GRIDCRAFT_PHOTO_WHEEL_V1: only pen-owned keys are captured.
+    // Physical keyboard, touch, IME and normal trackpad keys stay untouched.
+    private volatile boolean gcStylusWheelEnabled;
+    private final java.util.concurrent.ConcurrentLinkedQueue<String> gcStylusWheelKeys =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private long gcWheelLastSingle, gcWheelLastDouble;
+    public void gcStylusWheelSetEnabled(boolean value) {
+        gcStylusWheelEnabled = value;
+        gcStylusWheelKeys.clear();
+    }
+    public String gcStylusWheelPoll() { return gcStylusWheelKeys.poll(); }
+    public boolean gcStylusWheelIntercept(android.view.KeyEvent event) {
+        if (!gcStylusWheelEnabled || event == null) return false;
+        final android.view.InputDevice source = android.view.InputDevice.getDevice(event.getDeviceId());
+        if (source == null || source.getName() == null
+                || !source.getName().contains("Magic-Pencil")) return false;
+        final int code = event.getKeyCode();
+        if (code != android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                && code != android.view.KeyEvent.KEYCODE_DPAD_UP) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_UP && event.getRepeatCount() == 0) {
+            final long now = android.os.SystemClock.uptimeMillis();
+            final boolean doublePress = code == android.view.KeyEvent.KEYCODE_DPAD_UP;
+            final long last = doublePress ? gcWheelLastDouble : gcWheelLastSingle;
+            if (now - last >= 650 && gcStylusWheelKeys.size() < 12) {
+                gcStylusWheelKeys.offer(doublePress ? "D" : "S");
+                if (doublePress) gcWheelLastDouble = now;
+                else gcWheelLastSingle = now;
+            }
+        }
+        return true;
+    }
+
     private final java.util.concurrent.atomic.AtomicInteger gcDialogAction = new java.util.concurrent.atomic.AtomicInteger();
     private volatile boolean gcDialogActive;
     private final java.util.HashSet<Integer> gcDialogKeys = new java.util.HashSet<>();
@@ -441,6 +473,7 @@
         return active && pending;
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (gcStylusWheelIntercept(event)) return true;
         if (gcHandleQuitShortcut(event)) return true;
         if (gcHandleSaveAsShortcut(event)) return true;
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {

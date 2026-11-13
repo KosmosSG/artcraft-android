@@ -115,7 +115,7 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("WC_ANDROID4_VISIBLE_SETTINGS_SLIDERS_V1", SRC)
         self.assertIn("Self::bar_slider(ui, &mut self.size", SRC)
         self.assertIn("Self::bar_slider(ui, &mut self.opacity", SRC)
-        self.assertIn("Drag the cyan handle", SRC)
+        self.assertIn("Adjust a slider to pop out the full-size preview", SRC)
         self.assertIn("self.pen_hover.and_then(|p|", SRC)
         self.assertIn("self.sector(p, screen)", SRC)
         self.assertIn("WC_ANDROID4_REFINED_HISTORY_ARROWS_V1", SRC)

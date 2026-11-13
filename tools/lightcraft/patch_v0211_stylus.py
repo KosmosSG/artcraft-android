@@ -35,6 +35,7 @@ def main() -> None:
         "lib": root / "lib.rs",
         "settings": root / "state/settings.rs",
         "frame": root / "app/frame.rs",
+        "input": root / "app/input.rs",
         "menu": root / "menus/menubar.rs",
     }
     old = {k: p.read_text(encoding="utf-8") for k, p in paths.items()}
@@ -58,7 +59,16 @@ def main() -> None:
         '            stylus_wheel: crate::android_stylus_wheel::WheelPrefs::default(),',
         "persistent preference default")
 
-    # Render last on a foreground egui Area in BOTH regular and fullscreen
+    # Wheel input is captured before egui's ordinary photo canvas hit-test;
+    # the visual ring is non-interactable to prevent selecting behind it.
+    new["input"] = once(new["input"],
+        'pub fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {\\n'.replace('\\\\n', '\\n'),
+        'pub fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {\\n'
+        '        #[cfg(target_os = "android")]\\n'
+        '        crate::android_stylus_wheel::capture(&self.ui.settings.stylus_wheel, ctx, raw);\\n'.replace('\\\\n', '\\n'),
+        "raw pointer shield")
+
+        # Render last on a foreground egui Area in BOTH regular and fullscreen
     # presentations. This must run after the photo/canvas panels.
     target = "            panels::toast(self, &ctx);\n"
     if new["frame"].count(target) != 1:

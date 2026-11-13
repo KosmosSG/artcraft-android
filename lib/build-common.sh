@@ -2267,6 +2267,7 @@ name = "android.permission.INTERNET"
             if java_src.count(callback) != 1:
                 raise SystemExit("Cannot install PDFCraft font picker callback")
             java_src = java_src.replace(callback, callback +
+                "\n        if (pdfHandleExportResult(requestCode, resultCode, data)) return;" +
                 "\n        if (pdfHandlePicker(requestCode, resultCode, data)) return;", 1)
         java_dir = staging_dir / "java" / Path(*pkg.split("."))
         java_dir.mkdir(parents=True, exist_ok=True)

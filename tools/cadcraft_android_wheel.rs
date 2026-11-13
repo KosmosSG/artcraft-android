@@ -180,8 +180,15 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usiz
     let scale = radius / 137.0;
     let cream = tinted(CREAM, opacity);
     let brand = tinted(BRAND, opacity);
-    let shadow = Color32::from_black_alpha((38.0 * opacity) as u8);
-    painter.circle_filled(center + Vec2::new(0.0, 3.0 * scale), radius + 3.0 * scale, shadow);
+    // PhotoCraft-like diffuse shadow. Low-alpha concentric halos blend into
+    // the canvas without the old hard black rim; preview uses this same renderer.
+    for (extra, alpha) in [(15.0, 3.0), (11.0, 4.0), (7.0, 5.0), (3.0, 5.0)] {
+        painter.circle_filled(
+            center + Vec2::new(0.0, 2.5 * scale),
+            radius + extra * scale,
+            Color32::from_black_alpha((alpha * opacity) as u8),
+        );
+    }
     let sector = FULL / SECTORS;
     for k in 0..8 {
         let angle = -std::f32::consts::FRAC_PI_2 + (k as f32) * sector;
@@ -194,7 +201,7 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, radius: f32, selected: Option<usiz
         let active = selected == Some(k);
         let fill = if active { brand } else { tinted(Color32::from_rgb(69, 67, 73), opacity) };
         painter.add(egui::Shape::convex_polygon(points, fill,
-            Stroke::new(0.8, tinted(Color32::from_gray(110), opacity))));
+            Stroke::new(0.55, tinted(Color32::from_rgba_unmultiplied(145, 138, 143, 95), opacity))));
         let p = center + Vec2::new(angle.cos(), angle.sin()) * (96.0 * scale);
         let action = actions.get(k).map_or(DEFAULT_ACTIONS[k], String::as_str);
         draw_glyph(painter, action, p + Vec2::new(0.0, -9.0 * scale),

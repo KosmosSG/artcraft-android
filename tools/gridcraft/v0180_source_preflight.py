@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only compatibility probe for pinned GridCraft 0.18.0 Android integration.
+"""Read-only compatibility probe for pinned GridCraft 0.19.1 Android integration.
 
 This is NOT a build approval or proof that an Android overlay compiles.
 """
@@ -9,7 +9,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-UPSTREAM_SHA = "17cb3c83d9e73df6a88ed174cec612f1de2e8244"
+UPSTREAM_SHA = "476448d7d9f3a5f8e93fcf7d98b47fd52293fe7f"
 ANCHORS = {
     "crates/ui-egui/src/ribbon/title_bar.rs": [
         "            ui.add_space(TITLE_LEFT_PAD);",
@@ -42,7 +42,7 @@ def audit(source: Path, check_commit: bool) -> dict:
     manifest = tomllib.loads((source / "Cargo.toml").read_text())
     pkg = manifest["workspace"]["package"]
     failures = []
-    if pkg["version"] != "0.18.0":
+    if pkg["version"] != "0.19.1":
         failures.append("Workspace version mismatch")
     if pkg.get("rust-version") != "1.95":
         failures.append("Rust version requirement mismatch")

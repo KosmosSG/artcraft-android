@@ -128,8 +128,8 @@ def main(root):
     # Android Java must be the input device identity authority.
     if "ecConsumePhysicalShortcut" not in java.read_text(encoding="utf-8"):
         raise RuntimeError("STOP: approved keyboard and IME bridge missing")
-    one(java, "        if (ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;",
-        "        if (ecWheelKey(event) || ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;")
+    one(java, "\n        if (ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;",
+        "\n        if (ecWheelKey(event) || ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;")
     one(java,
         "                            if (ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;",
         "                            if (ecWheelKey(event) || ecConsumeDialogKey(event) || ecConsumePhysicalShortcut(event)) return true;")

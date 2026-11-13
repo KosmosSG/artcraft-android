@@ -70,7 +70,7 @@ pub fn ec_stylus_native_take() -> Vec<i32> {
 }
 '''
 
-INJECT = r'''            if let Some(ndk_event) = next {
+INJECT = r'''            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
                 // Verified HONOR Magic-Pencil keys only. Intercept BEFORE
                 // winit converts stylus DPAD to generic keyboard arrows.
                 if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
@@ -89,7 +89,7 @@ INJECT = r'''            if let Some(ndk_event) = next {
 def patch(root: Path):
     lib = root / "src/lib.rs"
     activity = root / "src/native_activity/mod.rs"
-    old = "            if let Some(ndk_event) = next {"
+    old = "            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {"
     a, b = lib.read_text(), activity.read_text()
     if "ec_stylus_configure" in a or b.count(old) != 1:
         raise RuntimeError("STOP: Android native stylus queue already changed")

@@ -9,7 +9,9 @@ use std::{path::PathBuf, time::{Duration, Instant}};
 const R: f32 = 128.0;
 const INNER: f32 = 47.0;
 const SIZE: f32 = 312.0;
-const WHEEL_ENLARGEMENT: f32 = 1.12; // ~12% larger than Android.1 at every saved slider setting.
+// Match PhotoCraft's actual 312pt Default size, not GridCraft's earlier 12% over-scale.
+const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
+const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
 const LABELS: [&str; 16] = [
     "Select", "Format", "Function", "Fill Down",
@@ -154,6 +156,8 @@ pub struct Wheel {
     single_wait: Option<(Instant, Option<Pos2>)>,
     pending_action: Option<usize>,
     opened_at: Instant,
+    message: &'static str,
+    message_at: Instant,
 }
 impl Wheel {
     pub fn new() -> Self {
@@ -170,6 +174,8 @@ impl Wheel {
             hover_blocked: false,
             suppress_release: false, single_wait: None, pending_action: None,
             opened_at: Instant::now(),
+            message: "Hover to highlight • tap tip to select",
+            message_at: Instant::now(),
         };
         if let Some(raw) = result.settings_path.as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())
@@ -193,6 +199,10 @@ impl Wheel {
         }
         result
     }
+    fn notify(&mut self, message: &'static str) {
+        self.message = message;
+        self.message_at = Instant::now();
+    }
     fn persist(&self) {
         let Some(path) = &self.settings_path else { return; };
         let data = format!("v1|{}|{}|{:.0}|{:.0}", u8::from(self.enabled),
@@ -202,7 +212,7 @@ impl Wheel {
             log::warn!("GridCraft wheel settings: {e}");
         }
     }
-    fn scale(&self) -> f32 { self.size_percent / 100.0 * WHEEL_ENLARGEMENT }
+    fn scale(&self) -> f32 { self.size_percent / 100.0 }
     fn hit_at(&self, at: Pos2, center: Pos2) -> Option<usize> {
         let delta = at - center;
         let distance = delta.length();
@@ -235,6 +245,7 @@ impl Wheel {
         ));
         self.open = true;
         self.opened_at = Instant::now();
+        self.notify("Hover to highlight • tap tip to select");
         ctx.request_repaint();
     }
     pub fn show_at_pointer(&mut self, ctx: &Context) {
@@ -245,8 +256,13 @@ impl Wheel {
     pub fn signal(&mut self, code: &str, ctx: &Context) {
         if !self.enabled || self.settings_open { return; }
         if code == "S" {
-            if self.open { self.open = false; self.single_wait = None; }
-            else { self.single_wait = Some((Instant::now(), self.hover)); }
+            if self.open {
+                self.open = false;
+                self.single_wait = None;
+                self.notify("Wheel cancelled");
+            } else {
+                self.single_wait = Some((Instant::now(), self.hover));
+            }
         } else if code == "D" {
             // Double-press opens immediately; avoid destructive spreadsheet actions.
             self.single_wait = None;
@@ -284,6 +300,11 @@ impl Wheel {
                     if !self.settings_open && self.open {
                         self.pending_action = self.hit(pos).map(|i| self.slots[i]);
                         self.open = false;
+                        if self.pending_action.is_some() {
+                            self.notify("Wheel selection accepted");
+                        } else {
+                            self.notify("Wheel cancelled");
+                        }
                     }
                     self.suppress_release = true;
                     self.hover_blocked = false;
@@ -296,6 +317,7 @@ impl Wheel {
                 egui::Event::Key {key: egui::Key::Escape, pressed: true, ..}
                     if self.open && !self.settings_open => {
                     self.open = false;
+                    self.notify("Wheel cancelled");
                 }
                 other => keep.push(other),
             }
@@ -377,9 +399,16 @@ impl Wheel {
                 self.contact_point = None;
                 self.contact_updated = None;
                 self.persist();
+                self.notify(if self.enabled { "Wheel ON • hover + single press" }
+                    else { "Wheel OFF" });
                 true
             }
-            "settings" => { self.settings_open = true; self.open = false; false }
+            "settings" => {
+                self.settings_open = true;
+                self.open = false;
+                self.notify("Customize the Default wheel");
+                false
+            }
             "show" => { self.show_at_pointer(ctx); false }
             _ => false,
         }

@@ -9,6 +9,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 mod refresh_feedback;
+mod stylus_wheel;
 use refresh_feedback::FontRefresh;
 
 const ACTIONS: [(&str, &str); 9] = [
@@ -27,6 +28,7 @@ pub struct Tools {
     app: AndroidApp,
     vm: Arc<JavaVM>,
     show_pad: bool,
+    wheel: stylus_wheel::Wheel,
     startup_updates: bool,
     status: String,
     release_url: Option<String>,
@@ -250,6 +252,15 @@ impl Tools {
                 };
                 (x.is_finite() && y.is_finite()).then_some([x / scale, y / scale])
             });
+        // WC_WHEEL_HOVER_ISOLATION_V1: remove hover and sampled ink over
+        // the wheel before the document's cursor/ink renderer can see it.
+        let screen = ctx.input(|i| i.screen_rect());
+        let samples = samples.into_iter().filter(|p|
+            !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
+        ).collect::<Vec<_>>();
+        let hover = hover.filter(|p|
+            !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
+        );
         let got_samples = !samples.is_empty();
         ctx.data_mut(|d| {
             if got_samples {
@@ -323,6 +334,13 @@ impl Tools {
             });
             ctx.request_repaint();
         }
+    }
+
+    /// Route wheel input before WordApp sees it; keyboard and multitouch canvas
+    /// gestures outside the wheel are deliberately left untouched.
+    pub fn isolate_wheel_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let screen = raw.screen_rect.unwrap_or_else(|| ctx.input(|i| i.screen_rect()));
+        self.wheel.filter_input(raw, screen);
     }
 
     pub fn capture_unsaved_keys(&self, active: bool, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -432,6 +450,7 @@ impl Tools {
         let vm = Arc::new(unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) });
         let mut tools = Self {
             app: app.clone(), vm, show_pad: false,
+            wheel: stylus_wheel::Wheel::load(None),
             startup_updates: false, status: "Ready".to_owned(),
             release_url: None, update_checking: false, update_manual: false,
             update_visible: false, update_message: String::new(),
@@ -441,6 +460,8 @@ impl Tools {
             recent_paste: RefCell::new(None),
         };
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
+        let wheel_saved = tools.call_string("wcGetStylusWheelPrefs").ok().flatten();
+        tools.wheel = stylus_wheel::Wheel::load(wheel_saved.as_deref());
         if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {
             for (i, id) in saved.split(',').take(6).enumerate() {
                 if let Some(index) = ACTIONS.iter().position(|(_, command)| *command == id) {
@@ -513,6 +534,13 @@ impl Tools {
             )?;
             Ok(())
         }).map_err(|error| error.to_string())
+    }
+
+    fn save_wheel(&mut self) {
+        let settings = self.wheel.config_json();
+        if let Err(error) = self.call_string_arg("wcSetStylusWheelPrefs", &settings) {
+            self.status = format!("Could not save wheel settings: {error}");
+        }
     }
 
     fn save_pad(&mut self) {
@@ -749,6 +777,7 @@ impl Tools {
             d.insert_temp(egui::Id::new("wc_menu_font_busy"), self.fonts.busy);
             d.insert_temp(egui::Id::new("wc_menu_startup"), self.startup_updates);
             d.insert_temp(egui::Id::new("wc_menu_pad"), self.show_pad);
+            d.insert_temp(egui::Id::new("wc_menu_wheel_visible"), self.wheel.visible);
             d.insert_temp(egui::Id::new("wc_menu_status"), self.status.clone());
             d.insert_temp(egui::Id::new("wc_menu_release"), self.release_url.clone().unwrap_or_default());
             d.insert_temp(egui::Id::new("wc_menu_gpu"), gpu);
@@ -861,6 +890,11 @@ impl Tools {
                     Err(error) => self.status = format!("Cannot save pen pressure setting: {error}"),
                 }
             }
+            "wheel_customize" => self.wheel.settings_open = true,
+            "wheel_on" | "wheel_off" => {
+                self.wheel.visible = action == "wheel_on";
+                self.save_wheel();
+            }
             "pad_on" => self.show_pad = true,
             "pad_off" => self.show_pad = false,
             "keyboard" => self.status = match app.run("tools.customizeKeyboard", serde_json::json!({})) {
@@ -917,6 +951,17 @@ impl Tools {
                     ui.label(&self.status);
                 });
             self.show_pad = open;
+        }
+        // The drawn wheel and its real-size live settings preview share the
+        // same painter and update immediately. Persistence is Android-private.
+        if self.wheel.show(ctx) { self.save_wheel(); }
+        if let Some(choice) = self.wheel.pending.take() {
+            let (label, command) = stylus_wheel::CHOICES[choice];
+            match app.run(command, serde_json::json!({})) {
+                Ok(_) => self.status = format!("{label}"),
+                Err(error) => self.status = format!("{label}: {error}"),
+            }
+            ctx.request_repaint();
         }
     }
 }

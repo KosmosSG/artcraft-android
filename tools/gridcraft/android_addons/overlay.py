@@ -135,6 +135,21 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
     shutil.copyfile(addon_rust, staging_dir / "src/gridcraft_tools.rs")
     shutil.copyfile(addon_dir / "gridcraft_stylus_wheel.rs",
                     staging_dir / "src/gridcraft_stylus_wheel.rs")
+    # Same approved Gc PNG as the launcher/title-bar mark: crop into a
+    # transparent circle once in CI, never load an unbounded PNG on the UI thread.
+    # Pillow is installed in the isolated test job before this staging hook.
+    from PIL import Image, ImageDraw
+    source_mark = staging_dir.parent.parent / "crates/ui-egui/src/ribbon/gridcraft-approved-mark.png"
+    if not source_mark.is_file():
+        raise RuntimeError("Approved user Gc mark missing, refusing wheel build")
+    with Image.open(source_mark) as png:
+        gc_mark = png.convert("RGBA").resize((128, 128), Image.Resampling.LANCZOS)
+    alpha = Image.new("L", (128, 128), 0)
+    ImageDraw.Draw(alpha).ellipse((0, 0, 127, 127), fill=255)
+    gc_mark.putalpha(alpha)
+    (staging_dir / "src/gridcraft-wheel-gc.rgba").write_bytes(gc_mark.tobytes())
+    assert (staging_dir / "src/gridcraft-wheel-gc.rgba").stat().st_size == 128*128*4
+
     print("GridCraft-only Android overlay staged: fonts, shared SAF folder, updater, shortcut pad")
 
 # runpy.run_path passes precisely these values from the forked builder generator.

@@ -107,8 +107,7 @@ jobs:
               assert not any(n.lower().endswith((".jks",".p12",".keystore")) for n in names),"Keystore found in APK"
           print("PASS: existing PDFCraft permanent certificate, package/version, reviewed permissions, ARM64, ZIP integrity")
           PY
-          printf '%s  %s\n' "$EXPECTED_HASH" PDFCraft-v0.21.1-arm64-release.apk > signed/SHA256SUMS.txt
-          # In the release checksums file, use the public asset name (no signed/ directory prefix).
+          # Use the public asset filename in SHA256SUMS.txt, not the Actions directory prefix.
           printf '%s  %s\n' "$EXPECTED_HASH" PDFCraft-v0.21.1-arm64-release.apk > signed/SHA256SUMS.txt
 
       - name: Publish only the proven identical signed APK after approval

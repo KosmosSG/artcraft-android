@@ -167,7 +167,7 @@ impl Wheel {
             .map(PathBuf::from).map(|p| p.join("gridcraft-stylus-wheel-v1"));
         let mut result = Self {
             enabled: false, settings_open: false, slots: DEFAULT,
-            size_percent: 100.0, opacity_percent: 85.0, settings_path,
+            size_percent: 75.0, opacity_percent: 85.0, settings_path,
             open: false, center: None, preview_center: None, hover: None,
             last_stylus_hover: None, contact_point: None,
             contact_updated: None,
@@ -504,7 +504,7 @@ impl Wheel {
                 });
                 if ui.button("Restore Default").clicked() {
                     self.slots = DEFAULT;
-                    self.size_percent = 100.0;
+                    self.size_percent = 75.0;
                     self.opacity_percent = 85.0;
                     changed = true;
                     self.notify("Default wheel restored");

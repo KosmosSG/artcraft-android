@@ -280,7 +280,7 @@ impl Wheel {
             .id(Id::new("dc-wheel-customize-dialog"))
             .open(&mut open).resizable(false).collapsible(false)
             // Image 2: dark charcoal panel; leave the application's global theme alone.
-            .frame(egui::Frame::window(&ctx.style())
+            .frame(egui::Frame::window(ctx.style_of(egui::Theme::Dark).as_ref())
                 .fill(Color32::from_rgb(31, 31, 34))
                 .stroke(Stroke::new(0.8, Color32::from_rgb(76, 76, 82))))
             .default_width(360.0).show(ctx, |ui| {

@@ -399,6 +399,19 @@ impl Wheel {
         }
     }
     pub fn show(&mut self, ctx: &egui::Context) -> Option<&'static str> {
+        if let Some(enabled) = ctx.data_mut(|d| d.remove_temp::<bool>(
+            egui::Id::new("filmcraft.stylus.menu.enabled"))) {
+            if self.enabled != enabled {
+                self.enabled = enabled;
+                self.open = false;
+                self.center = None;
+                self.save();
+                self.notify(if enabled {"Stylus Wheel enabled"}
+                    else {"Stylus Wheel disabled"},ctx);
+            }
+        }
+        ctx.data_mut(|d| d.insert_temp(
+            egui::Id::new("filmcraft.stylus.enabled"),self.enabled));
         if ctx.data_mut(|d| d.remove_temp::<bool>(
             egui::Id::new("filmcraft.stylus.settings.open"))).unwrap_or(false) {
             self.settings_open = true;

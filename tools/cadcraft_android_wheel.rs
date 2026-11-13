@@ -226,8 +226,8 @@ pub fn check_cadcraft_updates() {
         let activity_raw = context.context() as jni::sys::jobject;
         let activity = unsafe { env.as_cast_raw::<jni::objects::JObject>(&activity_raw)? };
         env.call_static_method(
-            "com/artcraft/updater/UpdateCheck",
-            "checkNow",
+            jni::jni_str!("com/artcraft/updater/UpdateCheck"),
+            jni::jni_str!("checkNow"),
             jni::jni_sig!("(Landroid/app/Activity;)V"),
             &[jni::objects::JValue::Object(&activity)],
         )?;

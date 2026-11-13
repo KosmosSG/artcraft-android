@@ -181,6 +181,28 @@ impl Updater {
             }
         }
 
+        // Poll only pen-origin motion, never reinterpret touchpad or keyboard.
+        if let Ok((button, position)) = Self::poll_stylus(app) {
+            let pixels_per_point = ctx.pixels_per_point();
+            crate::android_stylus_wheel::set_pen_hover(ctx,
+                position.map(|(x, y)| egui::pos2(x / pixels_per_point, y / pixels_per_point)));
+            if button { crate::android_stylus_wheel::request_stylus_toggle(ctx); }
+        }
+        let download_request_id = egui::Id::new("artcraft.lightcraft.download_update_requested");
+        let download_requested = ctx.data_mut(|d| {
+            let request = d.get_temp::<bool>(download_request_id).unwrap_or(false);
+            d.insert_temp(download_request_id, false);
+            request
+        });
+        if download_requested && self.download_available {
+            self.downloading = true;
+            self.message = "Confirm download in Android…".to_owned();
+            if let Err(e) = Self::begin_download(app) {
+                self.downloading = false;
+                self.message = format!("Could not begin in-app download: {e}");
+            }
+            ctx.request_repaint();
+        }
         let trigger_id = egui::Id::new("artcraft.lightcraft.check_updates_requested");
         let changed_id = egui::Id::new("artcraft.lightcraft.startup_changed");
         let desired_id = egui::Id::new("artcraft.lightcraft.startup_desired");
@@ -224,18 +246,32 @@ impl Updater {
                 }
             }
         }
-        if self.checking {
+        if self.checking || self.downloading {
             match Self::poll(app) {
-                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(350)),
+                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(450)),
                 Err(e) => {
                     self.checking = false;
                     self.message = format!("Update check failed: {e}");
                 }
                 Ok(Some(json)) => {
-                    self.checking = false;
                     match serde_json::from_str::<serde_json::Value>(&json) {
-                        Err(e) => self.message = format!("Invalid GitHub reply: {e}"),
+                        Err(e) => {
+                            self.checking = false;
+                            self.downloading = false;
+                            self.message = format!("Invalid GitHub reply: {e}");
+                        },
+                        Ok(v) if v["status"].as_str() == Some("download") => {
+                            let state = v["state"].as_str().unwrap_or("");
+                            self.message = v["message"].as_str()
+                                .unwrap_or("Downloading LightCraft…").to_owned();
+                            self.downloading = !matches!(state, "download_cancelled" |
+                                "download_test_only" | "download_failed" |
+                                "install_success" | "install_failed");
+                            self.checking = false;
+                        }
                         Ok(v) => {
+                            self.checking = false;
+                            self.download_available = v["state"].as_str() == Some("update_available");
                             let installed = v["installed_version"].as_str().unwrap_or("unknown");
                             let latest = v["latest_version"].as_str().unwrap_or("unknown");
                             self.release_page = v["url"].as_str()
@@ -262,6 +298,7 @@ impl Updater {
             d.insert_temp(egui::Id::new("artcraft.lightcraft.startup_enabled"), self.startup_enabled);
             d.insert_temp(egui::Id::new("artcraft.lightcraft.include_preview"), self.include_preview);
             d.insert_temp(egui::Id::new("artcraft.lightcraft.installed_version"), self.installed_version.clone());
+            d.insert_temp(egui::Id::new("artcraft.lightcraft.download_available"), self.download_available);
             if let Some(url) = self.release_page.as_ref() {
                 d.insert_temp(egui::Id::new("artcraft.lightcraft.release_page"), url.clone());
             } else {

@@ -134,6 +134,7 @@ pub struct Wheel {
     open: bool,
     center: Option<Pos2>,
     hover: Option<Pos2>,
+    last_stylus_hover: Option<Instant>,
     hover_blocked: bool,
     suppress_release: bool,
     single_wait: Option<(Instant, Option<Pos2>)>,
@@ -149,7 +150,8 @@ impl Wheel {
         let mut result = Self {
             enabled: false, settings_open: false, slots: DEFAULT,
             size_percent: 100.0, opacity_percent: 85.0, settings_path,
-            open: false, center: None, hover: None, hover_blocked: false,
+            open: false, center: None, hover: None, last_stylus_hover: None,
+            hover_blocked: false,
             suppress_release: false, single_wait: None, pending_action: None,
             opened_at: Instant::now(),
         };
@@ -229,7 +231,14 @@ impl Wheel {
         for event in raw.events.drain(..) {
             match event {
                 egui::Event::PointerMoved(p) => {
-                    self.hover = Some(p);
+                    // Native egui may also deliver a mouse/trackpad position
+                    // during stylus hover. Keep the genuine pen coordinate
+                    // authoritative for a short interval, so the wrong slot
+                    // cannot be highlighted when another pointer is active.
+                    if !self.last_stylus_hover.is_some_and(|t|
+                            t.elapsed() < Duration::from_millis(220)) {
+                        self.hover = Some(p);
+                    }
                     let inside = self.open && self.center.is_some_and(|c|
                         (p - c).length() <= (R + 12.0) * self.scale());
                     if inside {
@@ -282,6 +291,7 @@ impl Wheel {
         if !self.enabled { return; }
         if report == "E" {
             self.hover = None;
+            self.last_stylus_hover = None;
             if self.open { ctx.request_repaint(); }
             return;
         }
@@ -294,6 +304,9 @@ impl Wheel {
         let point = pos2(x / ppp, y / ppp);
         if !ctx.content_rect().expand(24.0).contains(point) { return; }
         self.hover = Some(point);
+        self.last_stylus_hover = Some(Instant::now());
+        // This also updates wheel highlighting without a tap: stylus
+        // HOVER_ENTER / MOVE, unlike PointerButton, is never a selection.
         if self.open { ctx.request_repaint(); }
     }
 
@@ -307,6 +320,7 @@ impl Wheel {
                 self.enabled = !self.enabled;
                 self.open = false;
                 self.single_wait = None;
+                self.last_stylus_hover = None;
                 self.persist();
                 true
             }

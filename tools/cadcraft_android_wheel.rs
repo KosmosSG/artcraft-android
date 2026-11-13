@@ -19,7 +19,7 @@ const FULL: f32 = std::f32::consts::TAU;
 const SECTORS: f32 = 8.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
-const DEFAULT_SIZE: f32 = 1.0;
+const DEFAULT_SIZE: f32 = 0.75;
 const DEFAULT_OPACITY: f32 = 0.85;
 const WHEEL_SIZE: f32 = 312.0;
 const RADIUS: f32 = 128.0;
@@ -296,18 +296,35 @@ pub fn check_cadcraft_updates() {
 /// Drawn above the CAD canvas without an always-visible launcher. A validated
 /// HONOR Magic-Pencil button event is the only normal path to open the wheel.
 pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
+    // PhotoCraft parity: an AInputQueue pen key may be consumed without
+    // causing a winit redraw. Poll at 100ms only while this feature is enabled,
+    // never redraw a disabled or idle desktop app continuously.
+    if app.ui.cad_wheel_enabled {
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
     // NativeActivity consumes ONLY codes 19/20 from named Magic-Pencil devices.
-    // Never interpret physical keyboard arrows as pen buttons.
+    // Java's Activity/IME queue is an additional same-device verified route.
+    // Never infer pen signals from physical keyboard DPAD arrows.
     let device_scan_id = Id::new("cadcraft-wheel-device-last-scan");
     let refresh = ctx.data(|d| d.get_temp::<Instant>(device_scan_id))
         .is_none_or(|t| t.elapsed() >= Duration::from_secs(2));
     if refresh {
         let ids = cadcraft_android_updater_bridge::stylus_device_ids();
         android_activity::cad_stylus_configure(app.ui.cad_wheel_enabled, &ids);
+        cadcraft_android_updater_bridge::stylus_set_enabled(app.ui.cad_wheel_enabled);
         ctx.data_mut(|d| d.insert_temp(device_scan_id, Instant::now()));
     }
-    for code in android_activity::cad_stylus_native_take() {
+    let native_events = android_activity::cad_stylus_native_take();
+    let java_events = cadcraft_android_updater_bridge::stylus_poll();
+    for code in native_events.into_iter().map(i32::from).chain(java_events) {
         if app.ui.cad_wheel_enabled && !app.ui.cad_wheel_customize && (code == 20 || code == 19) {
+            // The same key release might reach native and Java dispatch paths.
+            // Deduplicate before toggling to avoid immediately closing the wheel.
+            let last_id = Id::new("cadcraft-wheel-last-button-event");
+            let duplicate = ctx.data(|d| d.get_temp::<Instant>(last_id))
+                .is_some_and(|then| then.elapsed() < Duration::from_millis(550));
+            if duplicate { continue; }
+            ctx.data_mut(|d| d.insert_temp(last_id, Instant::now()));
             app.ui.cad_wheel_open = !app.ui.cad_wheel_open;
             if app.ui.cad_wheel_open {
                 let p = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(ctx.content_rect().center());

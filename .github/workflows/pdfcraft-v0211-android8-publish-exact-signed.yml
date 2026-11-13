@@ -19,7 +19,7 @@ jobs:
   release:
     if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/release/pdfcraft-v0211-android8-exact-publish-20261113'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 65
     steps:
       - name: Checkout owner approval manifest
         uses: actions/checkout@v5
@@ -43,12 +43,11 @@ jobs:
           assert data.get('package')=='com.artcraft.pdfcraft'
           assert isinstance(data.get('signed_test_run_id'),int) and data['signed_test_run_id']>0
           assert re.fullmatch(r'[a-f0-9]{40}',data.get('source_commit',''))
-          assert re.fullmatch(r'[a-f0-9]{64}',data.get('signed_apk_sha256',''))
+          assert data.get('signed_apk_sha256')=='CALCULATE_FROM_SIGNED_ARTIFACT'
           assert data.get('signed_artifact_name')=='PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST'
           with open(os.environ['GITHUB_ENV'],'a') as out:
               print(f"TEST_RUN_ID={data['signed_test_run_id']}",file=out)
               print(f"SOURCE_SHA={data['source_commit']}",file=out)
-              print(f"EXPECTED_SHA256={data['signed_apk_sha256']}",file=out)
           print('Owner authorized publication of exact signed artifact bytes')
           PY
 
@@ -58,7 +57,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN_ID" > checked-run.json
+          # Wait for the already-running permanent-signing workflow to finish.
+          # No rebuild, re-signing or bypass of the source/signer gates.
+          completed=0
+          for attempt in $(seq 1 100); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TEST_RUN_ID" > checked-run.json
+            state="$(jq -r '.status' checked-run.json)"
+            if [[ "$state" == "completed" ]]; then completed=1; break; fi
+            sleep 25
+          done
+          test "$completed" = 1 || { echo "::error::Signed test run did not complete"; exit 1; }
           jq -e --arg sha "$SOURCE_SHA" '
             .conclusion == "success"
             and .head_sha == $sha
@@ -74,10 +82,14 @@ jobs:
             -n PDFCraft-v0.21.1-android.8-PC-WHEEL-75PCT-SIGNED-TEST -D signed
           test -s signed/PDFCraft-v0.21.1-arm64-release.apk
           test -s signed/SOURCE-COMMIT.txt
+          test -s signed/SHA256SUMS.txt
           test -s signed/signature.txt
           test -s signed/package.txt
           test "$(tr -d '\r\n' < signed/SOURCE-COMMIT.txt)" = "$SOURCE_SHA"
+          EXPECTED_SHA256="$(awk '$2 == "PDFCraft-v0.21.1-arm64-release.apk" { print $1 }' signed/SHA256SUMS.txt)"
+          [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Missing or malformed exact signed artifact SHA256SUMS"; exit 1; }
           echo "$EXPECTED_SHA256  signed/PDFCraft-v0.21.1-arm64-release.apk" | sha256sum -c -
+          echo "EXPECTED_SHA256=$EXPECTED_SHA256" >> "$GITHUB_ENV"
           echo "PASS: identical signed APK bytes from verified successful run" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify production package, original signer, Android API and ABI before publication

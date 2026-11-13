@@ -513,6 +513,26 @@ impl Wheel {
                         self.size, self.opacity, highlighted);
                 });
         }
+        // PhotoCraft parity: a passive, bottom-center instructional pill.
+        // No pointer ownership or document input routing is changed.
+        if self.visible && !self.settings_open {
+            egui::Area::new(egui::Id::new("wc_wheel_instruction_pill"))
+                .order(egui::Order::Foreground)
+                .interactable(false)
+                .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -24.0))
+                .show(ctx, |ui| {
+                    egui::Frame::new()
+                        .fill(Color32::from_rgba_unmultiplied(53, 53, 53, 235))
+                        .stroke(Stroke::new(1.0, Color32::from_gray(86)))
+                        .corner_radius(egui::CornerRadius::same(16))
+                        .inner_margin(egui::Margin::symmetric(24, 9))
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(
+                                "Hover to highlight • tap tip to select")
+                                .color(Color32::from_gray(224)));
+                        });
+                });
+        }
         if let Some(at) = self.pen_hover {
             // Genuine stylus-hover indicator; no synthetic pointer contact.
             let painter = ctx.layer_painter(egui::LayerId::new(
@@ -582,7 +602,7 @@ impl Wheel {
                     panel(ui).show(ui, |ui| {
                         ui.label(egui::RichText::new("Edit shortcuts")
                             .size(17.0).strong().color(heading));
-                        ui.label("Choose an action for each of the eight segments.");
+                        ui.label("Assign an action to each of the eight wheel segments.");
                         ui.add_space(8.0);
                         for slot in 0..8 {
                             egui::Frame::group(ui.style())
@@ -618,7 +638,7 @@ impl Wheel {
                         }
                     });
                     ui.add_space(10.0);
-                    ui.small("Adjust a slider or shortcut to see the wheel preview beside this dialog.");
+                    ui.small("Changes preview on the canvas while you adjust the wheel.");
                     ui.add_space(5.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset to default").clicked() {

@@ -44,10 +44,40 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("radius * 0.37", SRC)
 
     def test_full_size_preview_and_customization(self):
-        for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Live preview", "Reset to default",
-                     "Edit shortcuts", "self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity",
+        for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Reset to default",
+                     "Edit shortcuts", "wc_stylus_preview_popout",
                      "Wheel size", "Wheel opacity", "config_json"):
             self.assertIn(text, SRC)
+
+    def test_popout_preview_only_when_adjusting_no_dialog_wheel(self):
+        # The same full-size painter is used but in an independent top-level
+        # overlay. Its timer is neither persisted nor attached to the document.
+        for text in (
+            "WC_ANDROID8_POPOUT_LIVE_PREVIEW_V1",
+            "preview_last_adjust",
+            "when.elapsed() < std::time::Duration::from_millis(3200)",
+            "let settings_window = egui::Window::new",
+            "if changed {",
+            "self.preview_last_adjust = Some(std::time::Instant::now());",
+            'egui::Id::new("wc_stylus_preview_popout")',
+            ".order(egui::Order::Tooltip)",
+            ".interactable(false)",
+            "self.preview_owns(pos)",
+            "self.preview_last_adjust = None;",
+            "self.preview_center = None;",
+            "self.size, self.opacity, Some(self.active)",
+        ):
+            self.assertIn(text, SRC)
+        self.assertNotIn("egui::ScrollArea::horizontal().max_height(402.0)", SRC)
+        self.assertNotIn('ui.label("Live preview (same geometry', SRC)
+        # The floating preview is rendered after the settings Window returns,
+        # not inside the window callback that contains slider controls.
+        close_dialog = SRC.index("self.settings_open = open;")
+        overlay = SRC.index('egui::Id::new("wc_stylus_preview_popout")')
+        self.assertLess(close_dialog, overlay)
+        # Wheel and settings still use the exact same painting implementation.
+        self.assertIn("self.paint(ui.ctx(), ui.painter(), rect.center(),", SRC)
+
 
     def test_only_known_edit_and_draw_commands(self):
         expected = ("draw.pen", "draw.eraser", "draw.highlighter", "draw.select",

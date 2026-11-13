@@ -7,6 +7,9 @@ const INNER: f32 = 46.0;
 const SIZE: f32 = 312.0;
 // Approved PDFCraft launcher background red, used consistently for wheel accents.
 const PC_MARK_SCALE: f32 = 1.05; // make just the Pc lettermark 5% larger
+// Default wheel diameter on first use and when Reset defaults is selected.
+// Previously saved v2 preferences always take precedence.
+const DEFAULT_WHEEL_SIZE_PERCENT: f32 = 75.0;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const WAIT: Duration = Duration::from_millis(400);
@@ -38,7 +41,7 @@ pub(crate) struct Wheel {
 }
 impl Wheel {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: 100.0, opacity_percent: 100.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
+        Self { enabled, open: false, customize_open: false, layout: DEFAULT_LAYOUT, layout_dirty: false, size_percent: DEFAULT_WHEEL_SIZE_PERCENT, opacity_percent: 100.0, pen_hover: None, swallow_contact: false, center: None, hover: None,
             single_wait: None, action: None, opened_at: Instant::now(),
             last_button: [None, None],
             message: "Hover + single-press: open wheel",
@@ -371,7 +374,7 @@ impl Wheel {
                     ui.horizontal(|ui| {
                         if ui.button("Reset defaults").clicked() {
                             self.layout = DEFAULT_LAYOUT;
-                            self.size_percent = 100.0;
+                            self.size_percent = DEFAULT_WHEEL_SIZE_PERCENT;
                             self.opacity_percent = 100.0;
                             self.layout_dirty = true;
                         }
@@ -509,6 +512,17 @@ impl Wheel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn wheel_size_75_default_reset_and_preserved_saved_choice() {
+        let mut wheel = Wheel::new(true);
+        assert_eq!(wheel.size_percent, DEFAULT_WHEEL_SIZE_PERCENT);
+        assert_eq!(wheel.opacity_percent, 100.0);
+        // Saved preferences continue to override the first-use default.
+        wheel.set_layout_string("v2;0,1,2,3,4,5,6,7;123;85");
+        assert_eq!((wheel.size_percent, wheel.opacity_percent), (123.0, 85.0));
+        // The Reset defaults button assigns DEFAULT_WHEEL_SIZE_PERCENT,
+        // keeping the lowest supported slider value within the existing range.
+        assert_eq!(DEFAULT_WHEEL_SIZE_PERCENT, 75.0);
+    }
     #[test] fn approved_pc_brand_color_and_five_percent_lettermark() {
         assert_eq!(Wheel::launcher_red(), Color32::from_rgb(251, 14, 0));
         assert!((PC_MARK_SCALE - 1.05).abs() < f32::EPSILON);

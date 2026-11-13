@@ -42,6 +42,54 @@
     }
 
     /** Initiate a bounded, asynchronous LightCraft-only GitHub check. */
+    // Asynchronous download source selected by the last official release check.
+    private volatile String lcLatestApkUrl = null;
+    private volatile long lcLatestApkSize = 0L;
+    private volatile String lcLatestVersion = null;
+    private final java.util.concurrent.atomic.AtomicBoolean lcDownloading =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private volatile java.io.File lcPendingUpdateApk = null;
+
+    // Android's stylus hover is observed before being forwarded to winit.
+    private volatile boolean lcPenHovering = false;
+    private volatile float lcPenX = 0.0f, lcPenY = 0.0f;
+    private final java.util.concurrent.atomic.AtomicBoolean lcPenButton =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    public boolean lcRecordStylusMotion(android.view.MotionEvent e) {
+        if (e == null || !e.isFromSource(android.view.InputDevice.SOURCE_STYLUS)) return false;
+        int action = e.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_HOVER_ENTER ||
+            action == android.view.MotionEvent.ACTION_HOVER_MOVE) {
+            lcPenHovering = true;
+            lcPenX = e.getX();
+            lcPenY = e.getY();
+        } else if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+            lcPenHovering = false;
+        } else if (action == android.view.MotionEvent.ACTION_BUTTON_PRESS &&
+            (e.getActionButton() & android.view.MotionEvent.BUTTON_STYLUS_PRIMARY) != 0) {
+            lcPenButton.set(true);
+            return true;
+        }
+        return false;
+    }
+    public String lcStylusHoverSnapshot() {
+        return lcPenHovering ? lcPenX + "," + lcPenY : "";
+    }
+    public boolean lcPollStylusButton() { return lcPenButton.getAndSet(false); }
+
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        android.view.InputDevice device = e == null ? null : e.getDevice();
+        String name = device == null ? "" : device.getName();
+        if (name != null && name.contains("Magic-Pencil 4s") &&
+            (e.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_DOWN ||
+             e.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_UP)) {
+            if (e.getAction() == android.view.KeyEvent.ACTION_UP && e.getRepeatCount() == 0)
+                lcPenButton.set(true);
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
     public void lcCheckForUpdates() {
         lcUpdateIo.execute(() -> {
             java.net.HttpURLConnection connection = null;
@@ -76,7 +124,12 @@
                 long installedCode = android.os.Build.VERSION.SDK_INT >= 28
                     ? installed.getLongVersionCode() : installed.versionCode;
                 final boolean includePreview = lcGetIncludePreviewUpdates();
+                lcLatestApkUrl = null;
+                lcLatestApkSize = 0L;
+                lcLatestVersion = null;
                 long latestCode = -1L;
+                String selectedApk = null;
+                long selectedSize = 0L;
                 String latestName = null;
                 String latestPage = null;
                 for (int i = 0; i < releases.length(); i++) {
@@ -110,6 +163,8 @@
                     String canonical = "LightCraft-v" + version + "-arm64-v8a.apk";
                     String legacy = "LightCraft-" + version + "-arm64-v8a.apk";
                     boolean exactAsset = false;
+                    String foundUrl = null;
+                    long foundSize = 0L;
                     if (assets != null) for (int j = 0; j < assets.length(); j++) {
                         org.json.JSONObject asset = assets.optJSONObject(j);
                         if (asset == null) continue;
@@ -118,6 +173,8 @@
                         if ((canonical.equals(name) || legacy.equals(name))
                             && "uploaded".equals(state) && asset.optLong("size", 0L) > 0L) {
                             exactAsset = true;
+                            foundUrl = asset.optString("browser_download_url", "");
+                            foundSize = asset.optLong("size", 0L);
                             break;
                         }
                     }
@@ -128,8 +185,13 @@
                     latestCode = code;
                     latestName = tag.substring("lightcraft-v".length());
                     latestPage = url;
+                    selectedApk = foundUrl;
+                    selectedSize = foundSize;
                 }
                 org.json.JSONObject result = new org.json.JSONObject();
+                lcLatestApkUrl = selectedApk;
+                lcLatestApkSize = selectedSize;
+                lcLatestVersion = latestName;
                 result.put("installed_version", installedName);
                 result.put("installed_code", installedCode);
                 result.put("channel", includePreview ? "stable_and_preview" : "stable");
@@ -174,4 +236,168 @@
                 android.util.Log.w("LightCraftUpdate", "Could not open release page", error);
             }
         });
+    }
+
+    private void lcUpdateEvent(String state, String message, int percent) {
+        try {
+            org.json.JSONObject object = new org.json.JSONObject();
+            object.put("state", state);
+            object.put("status", "download");
+            object.put("message", message);
+            object.put("progress", percent);
+            lcUpdateResults.offer(object.toString());
+        } catch (Exception ignored) { }
+    }
+    // Explicit user permission is required; only exact owner LightCraft APK.
+    public void lcBeginUpdateDownload() {
+        String url = lcLatestApkUrl;
+        long bytes = lcLatestApkSize;
+        if (url == null ||
+            !url.startsWith("https://github.com/KosmosSG/artcraft-android/releases/download/lightcraft-v") ||
+            !url.endsWith("-arm64-v8a.apk") || bytes < 1 || bytes > 1073741824L) {
+            lcUpdateEvent("download_failed", "No approved LightCraft ARM64 APK is available.", 0);
+            return;
+        }
+        runOnUiThread(() -> new android.app.AlertDialog.Builder(this)
+            .setTitle("LightCraft " + lcLatestVersion)
+            .setMessage("Download the LightCraft update in the app? Save your work. " +
+                "Android will request confirmation before installing.")
+            .setNegativeButton("Cancel", (d,w) ->
+                lcUpdateEvent("download_cancelled", "Download cancelled.", 0))
+            .setPositiveButton("Download", (d,w) -> lcDownloadApk(url, bytes))
+            .show());
+    }
+    private void lcDownloadApk(String url, long expected) {
+        if (!lcDownloading.compareAndSet(false, true)) return;
+        lcUpdateEvent("download_started", "Downloading LightCraft…", 0);
+        lcUpdateIo.execute(() -> {
+            java.io.File partial = new java.io.File(getCacheDir(), "lc-update.part");
+            java.io.File apk = new java.io.File(getCacheDir(), "lc-update.apk");
+            java.net.HttpURLConnection conn = null;
+            try {
+                conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(20000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "LightCraft-Android-Updater");
+                if (conn.getResponseCode() != 200)
+                    throw new java.io.IOException("HTTP " + conn.getResponseCode());
+                String host = conn.getURL().getHost();
+                if (!("github.com".equals(host) ||
+                      "release-assets.githubusercontent.com".equals(host) ||
+                      "objects.githubusercontent.com".equals(host)))
+                    throw new java.io.IOException("Unexpected download host");
+                partial.delete();
+                long done = 0;
+                int last = -1;
+                try (java.io.InputStream in = conn.getInputStream();
+                     java.io.OutputStream out = new java.io.FileOutputStream(partial)) {
+                    byte[] buf = new byte[65536];
+                    int count;
+                    while ((count = in.read(buf)) != -1) {
+                        done += count;
+                        if (done > expected) throw new java.io.IOException("APK size mismatch");
+                        out.write(buf, 0, count);
+                        int progress = (int)(done * 100 / expected);
+                        if (progress / 5 != last / 5) {
+                            last = progress;
+                            lcUpdateEvent("downloading", "Downloading LightCraft… " + progress + "%", progress);
+                        }
+                    }
+                }
+                if (done != expected || !partial.renameTo(apk))
+                    throw new java.io.IOException("Incomplete APK download");
+                android.content.pm.PackageInfo info =
+                    getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+                if (info == null || !"com.artcraft.lightcraft".equals(info.packageName))
+                    throw new java.io.IOException("APK package identity mismatch");
+                lcPendingUpdateApk = apk;
+                if (!"com.artcraft.lightcraft".equals(getPackageName())) {
+                    lcUpdateEvent("download_test_only",
+                        "Verified APK downloaded; isolated TEST package cannot replace production LightCraft.", 100);
+                } else {
+                    lcUpdateEvent("download_complete", "APK downloaded; starting Android installer…", 100);
+                    runOnUiThread(this::lcInstallDownloadedUpdate);
+                }
+            } catch (Exception ex) {
+                partial.delete(); apk.delete(); lcPendingUpdateApk = null;
+                lcUpdateEvent("download_failed", "Download failed: " + ex.getMessage(), 0);
+            } finally {
+                if (conn != null) conn.disconnect();
+                lcDownloading.set(false);
+            }
+        });
+    }
+    public void lcResumeDownloadedUpdate() {
+        if (lcPendingUpdateApk != null && getPackageManager().canRequestPackageInstalls()) {
+            runOnUiThread(this::lcInstallDownloadedUpdate);
+        }
+    }
+    private android.content.BroadcastReceiver lcInstallReceiver;
+    private void lcInstallDownloadedUpdate() {
+        java.io.File apk = lcPendingUpdateApk;
+        if (!"com.artcraft.lightcraft".equals(getPackageName()) || apk == null || !apk.isFile()) return;
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            lcUpdateEvent("install_permission", "Allow app updates in Android settings, then return.", 100);
+            startActivity(new android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        try {
+            android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                new android.content.pm.PackageInstaller.SessionParams(
+                    android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName("com.artcraft.lightcraft");
+            int id = installer.createSession(params);
+            try (android.content.pm.PackageInstaller.Session session = installer.openSession(id);
+                 java.io.InputStream in = new java.io.FileInputStream(apk);
+                 java.io.OutputStream out = session.openWrite("lightcraft.apk", 0, apk.length())) {
+                byte[] buf = new byte[65536];
+                int count;
+                while ((count = in.read(buf)) != -1) out.write(buf, 0, count);
+                session.fsync(out);
+                lcRegisterInstallerReceiver();
+                android.content.Intent result = new android.content.Intent(
+                    "com.artcraft.lightcraft.UPDATE_INSTALLED").setPackage(getPackageName());
+                int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT |
+                    (android.os.Build.VERSION.SDK_INT >= 31 ? android.app.PendingIntent.FLAG_MUTABLE : 0);
+                session.commit(android.app.PendingIntent.getBroadcast(
+                    this, id, result, flags).getIntentSender());
+            }
+            lcUpdateEvent("install_submitted", "Waiting for Android installation confirmation…", 100);
+        } catch (Exception ex) {
+            lcUpdateEvent("install_failed", "Installer error: " + ex.getMessage(), 100);
+        }
+    }
+    private void lcRegisterInstallerReceiver() {
+        if (lcInstallReceiver != null) return;
+        lcInstallReceiver = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+                int status = intent.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS,
+                    android.content.pm.PackageInstaller.STATUS_FAILURE);
+                if (status == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                    android.content.Intent confirm = intent.getParcelableExtra(android.content.Intent.EXTRA_INTENT);
+                    if (confirm != null) {
+                        confirm.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(confirm);
+                    }
+                } else {
+                    lcUpdateEvent(status == android.content.pm.PackageInstaller.STATUS_SUCCESS
+                        ? "install_success" : "install_failed",
+                        status == android.content.pm.PackageInstaller.STATUS_SUCCESS
+                            ? "LightCraft updated." : "Update was cancelled or the APK signing key differs.", 100);
+                    lcPendingUpdateApk = null;
+                    try { getApplicationContext().unregisterReceiver(this); } catch (Exception ignored) {}
+                    lcInstallReceiver = null;
+                }
+            }
+        };
+        android.content.IntentFilter filter =
+            new android.content.IntentFilter("com.artcraft.lightcraft.UPDATE_INSTALLED");
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            getApplicationContext().registerReceiver(lcInstallReceiver, filter,
+                android.content.Context.RECEIVER_NOT_EXPORTED);
+        else getApplicationContext().registerReceiver(lcInstallReceiver, filter);
     }

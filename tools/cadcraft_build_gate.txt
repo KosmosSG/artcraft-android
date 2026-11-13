@@ -8,3 +8,5 @@ Changes to test:
 - CADCraft-only published GitHub release check, in-app APK download and user-approved installation
 - com.artcraft.cadcraft.test disposable signer, native DXF/DWG SAF unchanged
 Do not merge, permanently sign or publish.
+
+Focused repair: isolate JNI updater calls into Android-only bridge crate because upstream cadcraft-ui-egui forbids unsafe code. Retry after native Rust compilation failure in run 43356555820.

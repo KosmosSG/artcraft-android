@@ -268,10 +268,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()' in java
     # PDFCraft Android browser-only update path, tested after Play Protect permission isolation.
     assert 'View GitHub release' in mobile and 'View release' in mobile
-    assert 'Download APK' not in mobile
+    assert 'egui::Button::new("Download APK")' in mobile
     assert 'Install downloaded APK' not in mobile
     assert 'self.install_download()' not in mobile
-    assert 'self.download_update(' not in mobile
+    assert 'self.download_update(' in mobile
     assert 'jni_str!("pdfOpenReleasePage")' in mobile
     assert 'In-app APK installation is disabled.' in java
     assert 'PackageInstaller' not in java
@@ -282,7 +282,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'egui::Id::new("pdfcraft.android.startup.enabled"), self.startup_check' in mobile
     assert 'let enabled = !self.startup_check;' in mobile
     assert 'match self.save_startup_setting(enabled)' in mobile
-    assert 'getBoolean(PDF_STARTUP_UPDATE_PREF, true)' in bridge
+    assert 'getBoolean(PDF_STARTUP_UPDATE_PREF, false)' in bridge
     assert 'pdfUpdateToast("PDFCraft update checks at startup: " + (enabled ? "ON" : "OFF"))' in bridge
     assert 'if self.startup_check { self.check_updates(false); }' in mobile
 print('PASS: embedded Python syntax, guarded patches, idempotence, Android generator, identity/version and Help bridge')

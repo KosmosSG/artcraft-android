@@ -810,7 +810,7 @@
     }
 
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
-        if (wcHasStylus(event)) wcRecordStylus(event);
+        if (wcHasStylus(event)) { wcRecordStylus(event); wcWheelButtonMotion(event); }
         if (wcDispatchClassifiedTrackpad(event)) return true;
         if (event != null
                 && event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_MOVE
@@ -986,6 +986,7 @@
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
         if (wcHasStylus(event)) {
             wcRecordStylus(event);
+            wcWheelButtonMotion(event);
             wcCaptureStylusHistory(event);
             if (event != null
                     && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
@@ -1124,6 +1125,7 @@
     // intercept a normal letter unless the unsaved-changes dialog is open.
     public boolean wcHandleHardwareShortcut(android.view.KeyEvent event) {
         if (event == null) return false;
+        if (wcWheelHandlePenKey(event)) return true;
         int key = event.getKeyCode();
         if (wcDialogKeys.contains(key)) {
             if (event.getAction() == android.view.KeyEvent.ACTION_UP) wcDialogKeys.remove(key);
@@ -1181,4 +1183,78 @@
         if (value == null || value.length() > 4096) return;
         getSharedPreferences("wordcraft_android_wheel", MODE_PRIVATE)
             .edit().putString("wheel_v1", value).apply();
+    }
+
+    // WC_MAGIC_PENCIL_WHEEL_BUTTON_V2 — use the same verified Magic-Pencil key
+    // routing as EffectCraft, without stealing keyboard/IME D-pad events.
+    private volatile boolean wcWheelPenEnabled = true;
+    private final ConcurrentLinkedQueue<String> wcWheelPenEvents = new ConcurrentLinkedQueue<>();
+    private final java.util.HashSet<Integer> wcWheelHeldKeys = new java.util.HashSet<>();
+    private int wcWheelLastMotionButtons = 0;
+    private volatile long wcWheelLastTriggerAtMs = 0L;
+    private static final int WC_WHEEL_BUTTON_MASK =
+        android.view.MotionEvent.BUTTON_STYLUS_PRIMARY |
+        android.view.MotionEvent.BUTTON_STYLUS_SECONDARY;
+
+    public void wcWheelSetEnabled(boolean enabled) {
+        wcWheelPenEnabled = enabled;
+        if (!enabled) {
+            wcWheelPenEvents.clear();
+            synchronized (wcWheelHeldKeys) { wcWheelHeldKeys.clear(); }
+            wcWheelLastMotionButtons = 0;
+        }
+    }
+    public String wcWheelPoll() { return wcWheelPenEvents.poll(); }
+
+    private boolean wcIsMagicPencil(int deviceId) {
+        android.view.InputDevice device = android.view.InputDevice.getDevice(deviceId);
+        if (device == null || device.getName() == null) return false;
+        String name = device.getName().toLowerCase(java.util.Locale.ROOT);
+        return name.contains("magic-pencil") || name.contains("honor pencil")
+            || (name.contains("stylus") && device.supportsSource(android.view.InputDevice.SOURCE_STYLUS));
+    }
+    private void wcWheelQueuePenButton(String source) {
+        if (!wcWheelPenEnabled || wcDialogActive) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - wcWheelLastTriggerAtMs < 240L) return;
+        wcWheelLastTriggerAtMs = now;
+        if (wcWheelPenEvents.size() < 8) wcWheelPenEvents.offer(source);
+        android.view.Window window = getWindow();
+        if (window != null && window.getDecorView() != null) {
+            window.getDecorView().postInvalidateOnAnimation();
+        }
+    }
+    private boolean wcWheelHandlePenKey(android.view.KeyEvent event) {
+        if (!wcWheelPenEnabled || wcDialogActive ||
+            (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) != 0) return false;
+        int code = event.getKeyCode();
+        if (code != android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                && code != android.view.KeyEvent.KEYCODE_DPAD_UP) return false;
+        if (!wcIsMagicPencil(event.getDeviceId())) return false;
+        synchronized (wcWheelHeldKeys) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                if (wcWheelHeldKeys.add(code) && event.getRepeatCount() == 0) {
+                    wcWheelQueuePenButton("key");
+                }
+                return true;
+            }
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+                wcWheelHeldKeys.remove(code);
+                return true;
+            }
+        }
+        return false;
+    }
+    private void wcWheelButtonMotion(android.view.MotionEvent event) {
+        if (!wcWheelPenEnabled || !wcHasStylus(event)) return;
+        int buttons = event.getButtonState() & WC_WHEEL_BUTTON_MASK;
+        if (buttons != 0 && wcWheelLastMotionButtons == 0 && !wcPenContact) {
+            wcWheelQueuePenButton("motion");
+        }
+        wcWheelLastMotionButtons = buttons;
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL
+            || event.getActionMasked() == android.view.MotionEvent.ACTION_UP
+            || event.getActionMasked() == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+            wcWheelLastMotionButtons = 0;
+        }
     }

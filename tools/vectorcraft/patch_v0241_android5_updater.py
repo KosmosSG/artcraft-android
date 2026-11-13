@@ -33,15 +33,32 @@ def patch(root: Path, owner: Path) -> None:
     extras = once(extras,
         '    private final ConcurrentLinkedQueue<String> updates = new ConcurrentLinkedQueue<>();',
         '''    private final ConcurrentLinkedQueue<String> updates = new ConcurrentLinkedQueue<>();
-    private final VectorCraftUpdateInstaller verifiedUpdater =
-        new VectorCraftUpdateInstaller(activity, updates);''',
+    private final VectorCraftUpdateInstaller verifiedUpdater;''',
         "isolated verified downloader state")
+    extras = once(extras,
+        '''    VectorCraftExtras(VectorCraftActivity activity) {
+        this.activity = activity;
+    }''',
+        '''    VectorCraftExtras(VectorCraftActivity activity) {
+        this.activity = activity;
+        this.verifiedUpdater = new VectorCraftUpdateInstaller(activity, updates);
+    }''',
+        "updater constructed only after Activity reference is initialized")
     extras = once(extras,
         '    String pollUpdate() { return updates.poll(); }',
         '''    String pollUpdate() { return updates.poll(); }
     void downloadUpdate(String version) { verifiedUpdater.start(version, updateIo); }
     void updateInstallStatus(Intent intent) { verifiedUpdater.onInstallStatus(intent); }''',
         "download + installer hooks")
+    extras = once(extras,
+        '''    void checkForUpdates() {
+        updateIo.execute(() -> {''',
+        '''    void checkForUpdates() {
+        // Revoke any previously selected asset until the new GitHub check
+        // succeeds; stale/broken release metadata cannot start a download.
+        verifiedUpdater.remember(null, null, null, 0);
+        updateIo.execute(() -> {''',
+        "invalidate stale download metadata before check")
     extras = once(extras,
         '                String latest = null, releaseUrl = null;',
         '''                String latest = null, releaseUrl = null;

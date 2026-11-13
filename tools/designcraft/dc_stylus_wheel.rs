@@ -5,6 +5,8 @@ use std::{f32::consts::{PI, TAU}, fs, path::PathBuf, time::{Duration, Instant}};
 
 const BG: Color32 = Color32::from_rgb(67, 8, 31);   // Owner supplied Dc icon: #43081F.
 const ACCENT: Color32 = Color32::from_rgb(236, 72, 105); // #EC4869.
+const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
+const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const ITEMS: [(&str, &str, &str); 14] = [
     ("Select", "tool-selection", "selection"),
     ("Pen", "tool-pen", "pen"),
@@ -34,6 +36,8 @@ struct Wheel {
     opacity: f32,
     path: Option<PathBuf>,
     last_device_scan: Option<Instant>,
+    feedback_message: &'static str,
+    feedback_at: Option<Instant>,
 }
 
 impl Wheel {
@@ -42,7 +46,8 @@ impl Wheel {
         let mut wheel = Self {
             enabled: false, settings_open: false, open: false,
             center: ctx.content_rect().center(), slots: DEFAULT,
-            size: 75.0, opacity: 100.0, path, last_device_scan: None
+            size: 75.0, opacity: 100.0, path, last_device_scan: None,
+            feedback_message: "", feedback_at: None
         };
         if let Some(text) = wheel.path.as_ref().and_then(|p| fs::read_to_string(p).ok()) {
             let parts: Vec<&str> = text.trim().split('|').collect();
@@ -100,6 +105,48 @@ impl Wheel {
     }
 
     fn alpha(&self) -> u8 { (self.opacity * 2.55).round().clamp(0.0, 255.0) as u8 }
+
+    fn notify(&mut self, message: &'static str) {
+        self.feedback_message = message;
+        self.feedback_at = Some(Instant::now());
+    }
+
+    /// PhotoCraft-style bottom-centred status pill: 1.9s hold, 0.5s fade.
+    /// Visual-only overlay; it never steals stylus, touch or trackpad events.
+    fn paint_feedback(&self, ctx: &Context) {
+        let Some(started) = self.feedback_at else { return; };
+        let elapsed = started.elapsed();
+        if elapsed >= FEEDBACK_HOLD + FEEDBACK_FADE { return; }
+        let opacity = if elapsed <= FEEDBACK_HOLD { 1.0 } else {
+            1.0 - (elapsed - FEEDBACK_HOLD).as_secs_f32()
+                / FEEDBACK_FADE.as_secs_f32()
+        }.clamp(0.0, 1.0);
+        let screen = ctx.content_rect();
+        let width = 350.0f32.min((screen.width() - 24.0).max(80.0));
+        let height = 31.0;
+        let x = screen.center().x - width * 0.5;
+        let y = (screen.bottom() - height - 12.0).max(screen.top());
+        egui::Area::new(Id::new("dc-wheel-bottom-feedback"))
+            .order(Order::Foreground)
+            .fixed_pos(pos2(x, y))
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+                let painter = ui.painter_at(rect);
+                painter.rect_filled(rect, 13.0,
+                    Color32::from_rgba_unmultiplied(
+                        49, 49, 51, (244.0 * opacity) as u8));
+                painter.rect_stroke(rect, 13.0,
+                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(
+                        105, 105, 109, (135.0 * opacity) as u8)),
+                    egui::StrokeKind::Inside);
+                painter.text(rect.center(), Align2::CENTER_CENTER, self.feedback_message,
+                    FontId::proportional(11.0),
+                    Color32::WHITE.gamma_multiply(opacity));
+            });
+        // No redraws after the temporary notification disappears.
+        ctx.request_repaint_after(Duration::from_millis(50));
+    }
 
     fn original_dc_logo(ctx: &Context) -> egui::TextureHandle {
         let id = Id::new("designcraft-wheel-exact-launcher-lettermark");
@@ -206,20 +253,19 @@ impl Wheel {
         let p = ui.painter_at(rectangle.expand(20.0));
         // A short, feathered shadow. The low-alpha rings avoid the heavy
         // hard-edged blur reported in other ArtCraft wheel implementations.
-        for step in (0..16).rev() {
-            let fade = 1.0 - step as f32 / 16.0;
-            let alpha = (10.0 * fade * fade).round() as u8;
-            if alpha > 0 {
-                p.circle_stroke(center + vec2(0.0, 3.0),
-                    radius + 1.5 + step as f32 * 1.1,
-                    Stroke::new(1.7, Color32::from_rgba_unmultiplied(0, 0, 0, alpha)));
-            }
+        // PhotoCraft: compact 12-layer feathered shadow, softly offset down.
+        for step in 0..12 {
+            let spread = 12.0 - step as f32 * 0.82;
+            let alpha = (2.0 + step as f32 * 0.42).round() as u8;
+            p.circle_filled(center + vec2(0.8, 2.0), radius + spread,
+                Color32::from_rgba_unmultiplied(0, 0, 0, alpha));
         }
 
         // PhotoCraft's alternating two-tone grey wheel plate, tinted only
-        // on hovered slots. Preserve the approved DesignCraft pink outline.
-        let dark_a = Color32::from_rgba_unmultiplied(43, 43, 46, self.alpha());
-        let dark_b = Color32::from_rgba_unmultiplied(54, 54, 57, self.alpha());
+        // on hovered slots. Keep a clearer A/B contrast in all eight sectors
+        // while retaining the approved DesignCraft pink outer ring and hub.
+        let dark_a = Color32::from_rgba_unmultiplied(41, 41, 44, self.alpha());
+        let dark_b = Color32::from_rgba_unmultiplied(60, 60, 64, self.alpha());
         let pink = Color32::from_rgba_unmultiplied(160, 35, 68, self.alpha());
         // The previous painter submitted 12 separately antialiased quadrilaterals
         // PER SLOT, creating ~96 visible spokes. A single connected indexed
@@ -396,7 +442,13 @@ impl Wheel {
                 Ok(())
             }
         };
-        if let Err(error) = result { app.status(format!("Stylus Wheel: {error}")); }
+        match result {
+            Ok(()) => self.notify("Wheel selection accepted"),
+            Err(error) => {
+                app.status(format!("Stylus Wheel: {error}"));
+                self.notify("Wheel command unavailable");
+            }
+        }
         self.open = false;
     }
 
@@ -417,11 +469,15 @@ impl Wheel {
                 self.draw(ui, rect.shrink(margin), selected);
                 if response.clicked() {
                     if let Some(slot) = selected { self.invoke(app, slot); }
-                    else { self.open = false; }
+                    else {
+                        self.open = false;
+                        self.notify("Wheel cancelled");
+                    }
                 }
             });
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.open = false;
+            self.notify("Wheel cancelled");
         }
         ctx.request_repaint_after(Duration::from_millis(80));
         in_circle
@@ -445,9 +501,15 @@ pub(super) fn ui(
         wheel.enabled = !wheel.enabled;
         wheel.last_device_scan = None;
         if !wheel.enabled { wheel.open = false; wheel.settings_open = false; }
+        wheel.notify(if wheel.enabled {
+            "Wheel ON • hover + single press"
+        } else { "Wheel OFF" });
         wheel.persist();
     }
-    if actions & 128 != 0 { wheel.settings_open = true; }
+    if actions & 128 != 0 {
+        wheel.settings_open = true;
+        wheel.notify("Wheel settings • live preview");
+    }
     let _ = bridge.dc_wheel_set_enabled(wheel.enabled);
     // Java sees only some MagicOS key events: the native AInputQueue captures
     // the pen rocker before winit and the invisible IME can consume it.
@@ -468,10 +530,16 @@ pub(super) fn ui(
         && !ctx.text_edit_focused() && !ctx.input(|i| i.pointer.any_down())
     {
         wheel.open = !wheel.open;
-        if wheel.open { wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center())); }
+        if wheel.open {
+            wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center()));
+            wheel.notify("Hover to highlight • tap tip to select");
+        } else {
+            wheel.notify("Wheel cancelled");
+        }
     }
     wheel.settings(&ctx);
     let blocked = wheel.paint_live(&ctx, app);
+    wheel.paint_feedback(&ctx);
     let enabled = wheel.enabled;
     ctx.data_mut(|d| {
         d.insert_temp(Id::new("dc-wheel-hover-block"), blocked);

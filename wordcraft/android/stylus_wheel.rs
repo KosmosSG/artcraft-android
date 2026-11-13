@@ -222,9 +222,88 @@ impl Wheel {
         raw.events = safe_events;
     }
 
+
+    /// WC_APPROVED_WC_LAUNCHER_GLYPH_V1: actual approved art, not a font.
+    fn wc_mark(ctx: &egui::Context) -> egui::TextureHandle {
+        let id = egui::Id::new("wc-approved-launcher-glyph-v1");
+        if let Some(existing) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+            return existing;
+        }
+        const RGBA: &[u8] = include_bytes!("stylus_wheel_wc.rgba");
+        let image = egui::ColorImage::from_rgba_unmultiplied([192, 88], RGBA);
+        let texture = ctx.load_texture("wordcraft-wheel-approved-Wc", image,
+            egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+        texture
+    }
+
+    /// Draw supported vector strokes; avoid Unicode symbols that render as
+    /// boxes on Android/egui and share PhotoCraft's refined outline treatment.
+    fn paint_icon(painter: &egui::Painter, at: Pos2, label: &str, unit: f32) {
+        let st = Stroke::new(2.0 * unit, Color32::WHITE);
+        let p = |x: f32, y: f32| at + egui::vec2(x * unit, y * unit);
+        match label {
+            "Undo" | "Redo" => {
+                let mirror = if label == "Undo" { -1.0 } else { 1.0 };
+                let arc: Vec<Pos2> = (0..=18).map(|i| {
+                    let t = i as f32 / 18.0;
+                    p(mirror * (-9.0 + 18.0 * t), -2.0 - 9.0 * (PI * t).sin() + 5.0*t)
+                }).collect();
+                painter.add(egui::Shape::line(arc, st));
+                painter.line_segment([p(-9.0*mirror,-2.0),p(-3.5*mirror,-8.0)],st);
+                painter.line_segment([p(-9.0*mirror,-2.0),p(-3.0*mirror,3.0)],st);
+            }
+            "Pen" | "Pencil" | "Highlight" => {
+                painter.add(egui::Shape::line(vec![
+                    p(-9.0,9.0),p(-6.0,1.5),p(5.5,-10.0),p(10.0,-5.5),
+                    p(-1.5,6.0),p(-9.0,9.0)
+                ],st));
+                painter.line_segment([p(-5.5,1.0),p(-1.5,5.0)],st);
+                if label == "Highlight" {
+                    painter.line_segment([p(-11.0,11.0),p(11.0,11.0)],st);
+                }
+            }
+            "Eraser" => {
+                painter.add(egui::Shape::line(vec![
+                    p(-10.0,4.0),p(1.0,-9.0),p(10.0,-1.0),p(-1.0,11.0),p(-10.0,4.0)
+                ],st));
+                painter.line_segment([p(-5.0,-2.0),p(4.0,6.0)],st);
+            }
+            "Copy" | "Paste" => {
+                let back = egui::Rect::from_min_max(p(-9.0,-10.0),p(5.0,6.0));
+                let front = egui::Rect::from_min_max(p(-4.0,-5.0),p(10.0,11.0));
+                painter.rect_stroke(back,1.0*unit,st,egui::StrokeKind::Inside);
+                painter.rect_stroke(front,1.0*unit,st,egui::StrokeKind::Inside);
+            }
+            "Select" => {
+                painter.circle_stroke(at,8.0*unit,st);
+                painter.line_segment([p(-13.0,0.0),p(-5.0,0.0)],st);
+                painter.line_segment([p(5.0,0.0),p(13.0,0.0)],st);
+                painter.line_segment([p(0.0,-13.0),p(0.0,-5.0)],st);
+                painter.line_segment([p(0.0,5.0),p(0.0,13.0)],st);
+            }
+            "Save" => {
+                painter.rect_stroke(egui::Rect::from_min_max(p(-9.0,-10.0),p(9.0,10.0)),
+                    2.0*unit,st,egui::StrokeKind::Inside);
+                painter.line_segment([p(-5.0,-8.0),p(5.0,-8.0)],st);
+                painter.line_segment([p(-5.0,4.0),p(5.0,4.0)],st);
+            }
+            "Lasso" => {
+                painter.circle_stroke(p(-1.0,-2.0),8.0*unit,st);
+                painter.line_segment([p(4.0,5.0),p(10.0,11.0)],st);
+            }
+            "Bold" | "Italic" => {
+                painter.text(at,egui::Align2::CENTER_CENTER,
+                    if label=="Bold"{"B"}else{"I"},
+                    FontId::proportional(24.0*unit), Color32::WHITE);
+            }
+            _ => { painter.circle_stroke(at,6.0*unit,st); }
+        }
+    }
+
     /// Render the same wheel function in the live canvas and settings preview.
     /// No screenshot thumbnail scaling: size and opacity are both real values.
-    pub fn paint(&self, painter: &egui::Painter, center: Pos2, size: f32, opacity: f32,
+    pub fn paint(&self, ctx: &egui::Context, painter: &egui::Painter, center: Pos2, size: f32, opacity: f32,
                  selected: Option<usize>) {
         let radius = size * 0.5;
         // Layered low-alpha shadows rather than a hard black halo.
@@ -243,7 +322,7 @@ impl Wheel {
             }
             for j in (0..=8).rev() {
                 let a = begin + (end - begin) * (j as f32 / 8.0);
-                points.push(center + egui::vec2(a.cos(), a.sin()) * radius * 0.235);
+                points.push(center + egui::vec2(a.cos(), a.sin()) * radius * 0.37);
             }
             let highlighted = selected == Some(i);
             let background = if highlighted {
@@ -258,33 +337,31 @@ impl Wheel {
             let icon_pos = center + egui::vec2(angle.cos(), angle.sin()) * radius * 0.72
                 + egui::vec2(0.0, -size * 0.025);
             let label = CHOICES[self.slots[i]].0;
-            let icon = match label {
-                "Undo" => "↶", "Redo" => "↷", "Pen" | "Pencil" => "✎",
-                "Eraser" => "◇", "Highlight" => "▱", "Select" => "⌖",
-                "Copy" => "▣", "Paste" => "▤", "Bold" => "B",
-                "Italic" => "I", "Save" => "▣", "Lasso" => "⌁", _ => "•"
-            };
-            painter.text(icon_pos, egui::Align2::CENTER_CENTER, icon,
-                FontId::proportional((size * 0.088).clamp(15.0, 30.0)), Color32::WHITE);
+            Self::paint_icon(painter, icon_pos, label, (size / 284.0).clamp(0.75, 1.35));
             painter.text(icon_pos + egui::vec2(0.0, size * 0.086),
                 egui::Align2::CENTER_CENTER, label,
                 FontId::proportional((size * 0.047).clamp(9.0, 16.0)),
                 Color32::from_rgb(225, 231, 240));
         }
-        painter.circle_filled(center, radius * 0.235, HUB);
-        painter.circle_stroke(center, radius * 0.235, Stroke::new(1.8, CYAN));
-        painter.text(center + egui::vec2(0.0, -size * 0.032), egui::Align2::CENTER_CENTER,
-            "Wc", FontId::proportional(size * 0.15), CYAN);
-        painter.text(center + egui::vec2(0.0, size * 0.105), egui::Align2::CENTER_CENTER,
-            CHOICES[self.slots[self.active]].0,
-            FontId::proportional((size * 0.044).max(9.0)), Color32::WHITE);
+        // PhotoCraft hub ratio: inner radius 46 / outer radius 128 = 0.359.
+        // Use 0.37 here, rather than Android.2's visibly undersized 0.235.
+        painter.circle_filled(center, radius * 0.37, HUB);
+        painter.circle_stroke(center, radius * 0.37, Stroke::new(1.6, CYAN));
+        let logo = Self::wc_mark(ctx);
+        let logo_rect = Rect::from_center_size(center - egui::vec2(0.0, size * 0.034),
+            egui::vec2(size * 0.212, size * 0.098));
+        painter.image(logo.id(), logo_rect, Rect::from_min_max(
+            egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        painter.text(center + egui::vec2(0.0, size * 0.106), egui::Align2::CENTER_CENTER,
+            if self.visible { CHOICES[self.slots[self.active]].0 } else { "Default" },
+            FontId::proportional((size * 0.039).clamp(10.0, 13.0)), Color32::WHITE);
         painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::from_gray(124)));
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         let mut changed = false;
         let screen = ctx.content_rect();
-        if self.visible {
+        if self.visible && !self.settings_open {
             let at = self.center(screen) - Vec2::splat(self.size / 2.0);
             egui::Area::new(egui::Id::new("wc_stylus_wheel_area"))
                 .order(egui::Order::Foreground)
@@ -292,8 +369,16 @@ impl Wheel {
                 .fixed_pos(at)
                 .show(ctx, |ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(self.size), egui::Sense::hover());
-                    self.paint(ui.painter(), rect.center(), self.size, self.opacity, self.hovered);
+                    self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity, self.hovered);
                 });
+        }
+        if let Some(at) = self.pen_hover {
+            // Genuine stylus-hover indicator; no synthetic pointer contact.
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip, egui::Id::new("wc-pen-hover-indicator")));
+            painter.circle_stroke(at, 6.0, Stroke::new(1.7, CYAN));
+            painter.circle_filled(at, 1.7, CYAN);
+            ctx.request_repaint_after(std::time::Duration::from_millis(60));
         }
         if self.settings_open {
             let mut open = true;
@@ -303,12 +388,13 @@ impl Wheel {
                 .default_width(450.0)
                 .default_pos(egui::pos2(screen.left() + 28.0, screen.top() + 80.0))
                 .show(ctx, |ui| {
-                    ui.label("PhotoCraft-style wheel • WordCraft blue and cyan");
+                    ui.set_min_width(410.0);
+                    ui.label("Default • WordCraft blue/cyan • PhotoCraft layout");
                     ui.separator();
-                    changed |= ui.add(egui::Slider::new(&mut self.size, 170.0..=380.0)
+                    changed |= ui.add_sized([375.0, 24.0], egui::Slider::new(&mut self.size, 170.0..=380.0)
                         .text("Wheel size").suffix(" pt")).changed();
                     let percent = (self.opacity * 100.0).round();
-                    changed |= ui.add(egui::Slider::new(&mut self.opacity, 0.25..=1.0)
+                    changed |= ui.add_sized([375.0, 24.0], egui::Slider::new(&mut self.opacity, 0.25..=1.0)
                         .text("Wheel opacity")).changed();
                     ui.small(format!("Opacity: {percent:.0}% • Full-size, live preview"));
                     ui.separator();
@@ -316,7 +402,7 @@ impl Wheel {
                     egui::ScrollArea::horizontal().max_height(402.0).show(ui, |ui| {
                         let (rect, _) = ui.allocate_exact_size(Vec2::splat(self.size + 30.0),
                             egui::Sense::hover());
-                        self.paint(ui.painter(), rect.center(), self.size, self.opacity, Some(self.active));
+                        self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity, Some(self.active));
                     });
                     ui.separator();
                     ui.label("Edit shortcuts • each slot can be assigned independently");

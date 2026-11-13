@@ -286,8 +286,8 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"''',
         let mut download_update_requested = false;''',
         "download requested flag")
     host = once(host,
-        '''              tab_preview_changed, tab_preview_desired, tab_open_release) =''',
-        '''              tab_preview_changed, tab_preview_desired, tab_open_release, tab_download) =''',
+        '''tab_preview_changed, tab_preview_desired, tab_open_release) =''',
+        '''tab_preview_changed, tab_preview_desired, tab_open_release, tab_download) =''',
         "About action tuple")
     host = once(host,
         '''                let open = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.open_release_requested")).unwrap_or(false);''',
@@ -295,13 +295,13 @@ name = "android.permission.REQUEST_INSTALL_PACKAGES"''',
                 let download = d.get_temp::<bool>(egui::Id::new("artcraft.vectorcraft.download_update_requested")).unwrap_or(false);''',
         "pop download action")
     host = once(host,
-        '''                             "artcraft.vectorcraft.open_release_requested"] {''',
-        '''                             "artcraft.vectorcraft.open_release_requested",
+        '''"artcraft.vectorcraft.open_release_requested"] {''',
+        '''"artcraft.vectorcraft.open_release_requested",
                              "artcraft.vectorcraft.download_update_requested"] {''',
         "clear one-shot download command")
     host = once(host,
-        '''                 (check, startup_changed, startup, preview_changed, preview, open)''',
-        '''                 (check, startup_changed, startup, preview_changed, preview, open, download)''',
+        '''(check, startup_changed, startup, preview_changed, preview, open)''',
+        '''(check, startup_changed, startup, preview_changed, preview, open, download)''',
         "return one-shot action")
     host = once(host,
         '''        if tab_check { check_updates = true; }''',

@@ -2190,9 +2190,6 @@ icon = "@mipmap/ic_launcher"
         permission = '''[[package.metadata.android.uses_permission]]
 name = "android.permission.INTERNET"
 
-[[package.metadata.android.uses_permission]]
-name = "android.permission.REQUEST_INSTALL_PACKAGES"
-
 '''
         header = "[package.metadata.android.application]"
         if manifest.count(header) != 1:

@@ -382,32 +382,8 @@ impl Mobile {
             Ok(())
         }).map_err(|err| err.to_string())
     }
-    fn download_update(&self, asset: &str) -> Result<(), String> {
-        if !asset.starts_with("https://github.com/KosmosSG/artcraft-android/releases/download/pdfcraft-v") {
-            return Err("Unapproved PDFCraft APK download address".into());
-        }
-        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
-        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            let address = JObject::from(env.new_string(asset)?);
-            let digest = JObject::from(env.new_string(&self.update_digest)?);
-            env.call_method(&*activity, jni_str!("pdfDownloadUpdate"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
-                &[JValue::Object(&address), JValue::Object(&digest)])?;
-            Ok(())
-        }).map_err(|err| err.to_string())
-    }
-    fn install_download(&self) -> Result<(), String> {
-        let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
-        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
-            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
-            env.call_method(&*activity, jni_str!("pdfInstallDownloadedUpdate"),
-                jni_sig!("()V"), &[])?;
-            Ok(())
-        }).map_err(|err| err.to_string())
-    }
+
+
     pub fn do_update_check(&mut self) {
         self.check_updates(true);
     }
@@ -628,28 +604,9 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
-                    if let Some(asset) = self.update_asset_url.clone() {
-                        if !self.downloading && !self.download_ready
-                            && ui.button("Download APK").clicked() {
-                            match self.download_update(&asset) {
-                                Ok(()) => {
-                                    self.downloading = true;
-                                    self.update_status = "Starting Android download…".into();
-                                }
-                                Err(error) => self.update_status = error,
-                            }
-                        }
-                    }
+                    
                     if self.downloading { ui.spinner(); }
-                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
-                        match self.install_download() {
-                            Ok(()) => {
-                                self.downloading = true;
-                                self.update_status = "Verifying downloaded APK…".into();
-                            }
-                            Err(error) => self.update_status = error,
-                        }
-                    }
+                    
                     if ui.button("Hide update status").clicked() { self.updates_open = false; }
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for PDFCraft Android updates at startup").changed() {
@@ -657,7 +614,7 @@ impl Mobile {
                         self.update_status = format!("Could not save startup preference: {error}");
                     }
                 }
-                ui.label(egui::RichText::new("Downloads only published PDFCraft Android APKs. Android requires explicit confirmation; test packages cannot replace stable apps.").small());
+                ui.label(egui::RichText::new("Download updates from the GitHub release page in your browser; Android handles installation. No in-app APK installer.").small());
             }
         });
         hide_requested
@@ -748,21 +705,8 @@ impl Mobile {
                             if let Err(error) = self.release_page(&url) { self.update_status = error; }
                         }
                     }
-                    if let Some(asset) = self.update_asset_url.clone() {
-                        if ui.add_enabled(!self.downloading && !self.download_ready,
-                            egui::Button::new("Download APK")).clicked() {
-                            match self.download_update(&asset) {
-                                Ok(()) => { self.downloading = true; self.update_status = "Starting Android download…".into(); }
-                                Err(error) => self.update_status = error,
-                            }
-                        }
-                    }
-                    if self.download_ready && ui.button("Install downloaded APK…").clicked() {
-                        match self.install_download() {
-                            Ok(()) => { self.downloading = true; self.update_status = "Verifying downloaded APK…".into(); }
-                            Err(error) => self.update_status = error,
-                        }
-                    }
+                    
+                    
                 });
                 if ui.checkbox(&mut self.startup_check, "Check for updates at startup").changed() {
                     if let Err(error) = self.save_startup_setting(self.startup_check) {
@@ -770,7 +714,7 @@ impl Mobile {
                     }
                 }
                 ui.label(egui::RichText::new(
-                    "Published releases only. Installation requires Android confirmation. Test packages cannot replace the stable app."
+                    "Updates are checked against published GitHub releases. Open the release page to download; install through Android."
                 ).small());
             });
         self.updates_open = open;

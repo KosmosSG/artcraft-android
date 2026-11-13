@@ -7,7 +7,7 @@ use gridcraft_ui_egui::SheetApp;
 use std::{path::PathBuf, time::{Duration, Instant}};
 
 const R: f32 = 128.0;
-const INNER: f32 = 47.0;
+const INNER: f32 = 46.0;
 const SIZE: f32 = 312.0;
 // Match PhotoCraft's actual 312pt Default size, not GridCraft's earlier 12% over-scale.
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
@@ -586,6 +586,7 @@ impl Wheel {
     pub fn render(&mut self, ctx: &Context, app: &mut SheetApp) {
         self.apply(app);
         self.customise(ctx);
+        self.paint_notification(ctx);
         self.paint_stylus_pointer(ctx);
         if !self.enabled || !self.open || self.settings_open { return; }
         let Some(at) = self.center else { return; };
@@ -603,17 +604,52 @@ impl Wheel {
             });
         ctx.request_repaint_after(Duration::from_millis(100));
     }
-    /// A small round pen-tip cursor, shown ONLY during stylus contact.
-    /// Hovering above the screen can still highlight a wheel slot without
-    /// displaying a second mouse-shaped pointer over the worksheet.
+    /// PhotoCraft's bottom-centre notification pill: 1.9s visible + 0.5s fade,
+    /// same geometry and placement; use neutral dark greys and Gc branding.
+    fn paint_notification(&self, ctx: &Context) {
+        if !self.enabled && self.message != "Wheel OFF" { return; }
+        let elapsed = self.message_at.elapsed();
+        if elapsed >= FEEDBACK_HOLD + FEEDBACK_FADE { return; }
+        let alpha = if elapsed <= FEEDBACK_HOLD { 1.0 }
+            else { 1.0 - (elapsed-FEEDBACK_HOLD).as_secs_f32() /
+                FEEDBACK_FADE.as_secs_f32() };
+        let alpha = alpha.clamp(0.0,1.0);
+        ctx.request_repaint_after(Duration::from_millis(40));
+        let screen=ctx.content_rect();
+        egui::Area::new(Id::new("gc-wheel-bottom-notification"))
+            .order(Order::Foreground)
+            .fixed_pos(pos2((screen.center().x-175.0).max(screen.min.x),
+                screen.max.y-43.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (rect,_) = ui.allocate_exact_size(vec2(350.0,31.0),Sense::hover());
+                let painter=ui.painter_at(rect);
+                painter.rect_filled(rect,13.0,
+                    Color32::from_rgba_unmultiplied(46,47,49,(244.0*alpha) as u8));
+                painter.rect_stroke(rect,13.0,
+                    Stroke::new(1.0,Color32::from_rgba_unmultiplied(
+                        99,103,101,(178.0*alpha) as u8)),StrokeKind::Inside);
+                painter.text(rect.center(),egui::Align2::CENTER_CENTER,self.message,
+                    FontId::proportional(11.0),
+                    Color32::WHITE.gamma_multiply(alpha));
+            });
+    }
+
+    /// A round stylus cursor must appear while the pen HOVERS, before touching.
+    /// Touch contact is an optional fallback, not a prerequisite. The cursor
+    /// remains non-interactive and never triggers a spreadsheet selection.
     fn paint_stylus_pointer(&self, ctx: &Context) {
         if !self.enabled { return; }
-        let Some(at) = self.contact_point else { return };
-        let Some(last) = self.contact_updated else { return };
-        // Fail-safe for lost Android ACTION_UP, e.g. background transition.
-        if last.elapsed() > Duration::from_secs(20) { return; }
+        let hover_fresh = self.last_stylus_hover.is_some_and(|at|
+            at.elapsed() < Duration::from_secs(2));
+        let contact_fresh = self.contact_updated.is_some_and(|at|
+            at.elapsed() < Duration::from_secs(2));
+        let at = if hover_fresh { self.hover }
+            else if contact_fresh { self.contact_point }
+            else { None };
+        let Some(at) = at else { return };
         if !ctx.content_rect().contains(at) { return; }
-        egui::Area::new(Id::new("gc-contact-only-round-cursor"))
+        egui::Area::new(Id::new("gc-hover-round-cursor"))
             .order(Order::Tooltip).interactable(false)
             .fixed_pos(at-vec2(10.0,10.0))
             .show(ctx, |ui| {
@@ -621,9 +657,9 @@ impl Wheel {
                     vec2(20.0,20.0),Sense::hover());
                 let painter=ui.painter_at(rect);
                 let c=rect.center();
-                painter.circle_filled(c,5.0,Color32::from_rgba_unmultiplied(
-                    171,232,128,150));
-                painter.circle_stroke(c,6.5,Stroke::new(1.4,DARK));
+                painter.circle_filled(c,4.5,Color32::from_rgba_unmultiplied(
+                    171,232,128,180));
+                painter.circle_stroke(c,6.5,Stroke::new(1.3,DARK));
             });
         ctx.request_repaint_after(Duration::from_millis(80));
     }
@@ -655,8 +691,9 @@ impl Wheel {
             15,24,20,(244.0*self.opacity_percent/100.0) as u8));
         for i in 0..8 {
             let deg = -90.0 + i as f32 * 45.0;
-            let a = (deg-22.0).to_radians();
-            let b = (deg+22.0).to_radians();
+            // PhotoCraft uses 43-degree wedges with fine 2-degree gutters.
+            let a = (deg-21.5).to_radians();
+            let b = (deg+21.5).to_radians();
             let mut vertices = vec![c];
             for n in 0..=16 {
                 let rad = a+(b-a)*n as f32/16.0;
@@ -670,7 +707,7 @@ impl Wheel {
                 else { Color32::from_rgb(46, 47, 49) };
             let color = color.gamma_multiply(self.opacity_percent/100.0);
             painter.add(Shape::convex_polygon(vertices,color,Stroke::new(
-                if active { 1.65 } else { 0.7 },
+                if active { 1.8 } else { 0.65 },
                 if active { BRIGHT } else { Color32::from_gray(75) },
             )));
             let point = c+vec2(deg.to_radians().cos(),deg.to_radians().sin())*87.0*scale;
@@ -681,7 +718,7 @@ impl Wheel {
                 LABELS[self.slots[i]],FontId::proportional(11.0*scale),Color32::WHITE);
         }
         // Owner-approved thin Gc-green stroke for the circular wheel.
-        painter.circle_stroke(c,R*scale,Stroke::new(0.95*scale,LIME));
+        painter.circle_stroke(c,R*scale,Stroke::new(0.8*scale,LIME));
         painter.circle_filled(c,(INNER+2.0)*scale,DARK);
         painter.circle_stroke(c,(INNER+2.0)*scale,Stroke::new(1.3,LIME));
         // Exact artwork-inspired round centre: deep-green solid, lime Gc letters.

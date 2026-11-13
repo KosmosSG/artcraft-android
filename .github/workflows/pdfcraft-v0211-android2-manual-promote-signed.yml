@@ -1,0 +1,152 @@
+name: PDFCraft v0.21.1 Android.2 promote EXACT owner-tested permanently signed APK (manual only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      signed_run_id:
+        description: "Successful Android.2 permanent-signed TEST run ID (not an ephemeral build)"
+        required: true
+        type: string
+      source_sha:
+        description: "40-character commit SHA used by the signed TEST run"
+        required: true
+        type: string
+      apk_sha256:
+        description: "SHA-256 of exact signed APK that passed Play Protect and owner device tests"
+        required: true
+        type: string
+      explicit_approval:
+        description: "Type PLAY_PROTECT_CLEAR_AND_OWNER_APPROVED (never use if warning persists)"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: pdfcraft-v0211-android2-manual-promote-exact-bytes
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Verify explicit owner approval and provenance of signed-test workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.signed_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EXPECTED_HASH: ${{ inputs.apk_sha256 }}
+          APPROVAL: ${{ inputs.explicit_approval }}
+        run: |
+          set -euo pipefail
+          test "$APPROVAL" = "PLAY_PROTECT_CLEAR_AND_OWNER_APPROVED" || { echo "::error::Owner has not attested that the EXACT signed APK passed device / Play Protect review"; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$EXPECTED_HASH" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > checked-run.json
+          jq -e --arg sha "$SOURCE_SHA" '
+            .conclusion == "success"
+            and .head_sha == $sha
+            and .head_branch == "fix/pdfcraft-v0211-android2-signed-candidate-20261113"
+            and .path == ".github/workflows/pdfcraft-v0211-android2-signed-test.yml"
+          ' checked-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" > checked-artifacts.json
+          jq -e '.artifacts | any(.name == "PDFCraft-v0.21.1-android.2-PERMANENT-SIGNED-TEST-ONLY" and .expired == false)' checked-artifacts.json
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n PDFCraft-v0.21.1-android.2-PERMANENT-SIGNED-TEST-ONLY -D signed
+          test -s signed/PDFCraft-v0.21.1-arm64-release.apk
+          test -s signed/SOURCE-COMMIT.txt
+          test "$(tr -d '\r\n' < signed/SOURCE-COMMIT.txt)" = "$SOURCE_SHA"
+          printf '%s  %s\n' "$EXPECTED_HASH" signed/PDFCraft-v0.21.1-arm64-release.apk | sha256sum -c -
+          echo "PASS: verified exact artifact hash and source from successful signed-test run" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Independently verify signer, package, ABI, permissions and archive
+        shell: bash
+        env:
+          CERT_SHA256: ${{ secrets.PDFCRAFT_CERT_SHA256 }}
+          EXPECTED_HASH: ${{ inputs.apk_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::Existing production certificate reference missing"; exit 1; }
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          APK=signed/PDFCraft-v0.21.1-arm64-release.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > checked-signature.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" > checked-package.txt
+          grep -q "package: name='com.artcraft.pdfcraft'" checked-package.txt
+          grep -q "versionName='0.21.1-android.2'" checked-package.txt
+          grep -q "versionCode='16782594'" checked-package.txt
+          CERT_SHA256="$CERT_SHA256" python3 - <<'PY'
+          import os,re,zipfile
+          from pathlib import Path
+          badging=Path("checked-package.txt").read_text()
+          signature=Path("checked-signature.txt").read_text()
+          digests=re.findall(r"certificate sha-256 digest:\s*([0-9a-fA-F]{64})",signature,re.I)
+          assert len(digests)>=1 and digests[0].lower()==os.environ["CERT_SHA256"].lower(), "Incorrect permanent PDFCraft certificate"
+          reviewed={
+              "android.permission.INTERNET",
+              "android.permission.MANAGE_EXTERNAL_STORAGE",
+              "android.permission.REQUEST_INSTALL_PACKAGES",
+              "android.permission.READ_EXTERNAL_STORAGE",
+              "android.permission.WRITE_EXTERNAL_STORAGE",
+          }
+          permissions=set(re.findall(r"uses-permission: name='([^']+)'",badging))
+          assert permissions == reviewed, f"Unexpected permission change: {permissions ^ reviewed}"
+          assert "application-debuggable" not in badging
+          with zipfile.ZipFile("signed/PDFCraft-v0.21.1-arm64-release.apk") as f:
+              names=f.namelist()
+              assert len(names)==len(set(names)) and not f.testzip(),"Invalid or duplicated APK ZIP entries"
+              assert all(not n.startswith("/") and ".." not in n.split("/") for n in names),"Unsafe ZIP member path"
+              libs=[n for n in names if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs),"Non-ARM64 native libraries found"
+              assert not any(n.lower().endswith((".jks",".p12",".keystore")) for n in names),"Keystore found in APK"
+          print("PASS: existing PDFCraft permanent certificate, package/version, reviewed permissions, ARM64, ZIP integrity")
+          PY
+          printf '%s  %s\n' "$EXPECTED_HASH" PDFCraft-v0.21.1-arm64-release.apk > signed/SHA256SUMS.txt
+          # In the release checksums file, use the public asset name (no signed/ directory prefix).
+          printf '%s  %s\n' "$EXPECTED_HASH" PDFCraft-v0.21.1-arm64-release.apk > signed/SHA256SUMS.txt
+
+      - name: Publish only the proven identical signed APK after approval
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EXPECTED_HASH: ${{ inputs.apk_sha256 }}
+          RUN_ID: ${{ inputs.signed_run_id }}
+        run: |
+          set -euo pipefail
+          TAG=pdfcraft-v0.21.1-android.2
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists; never overwrite existing release"; exit 1
+          fi
+          cat > signed/release-notes.md <<EOF
+          PDFCraft v0.21.1-android.2 — original permanently signed ARM64 APK, promoted as exact owner-tested bytes from GitHub Actions run $RUN_ID.
+
+          - No rebuild or re-signing between signed device test and GitHub publication.
+          - Production Android package com.artcraft.pdfcraft, versionCode 16782594, existing original PDFCraft certificate.
+          - Signed APK SHA-256: $EXPECTED_HASH
+          - Owner explicitly attested exact APK passed Play Protect/device review before manual publication.
+          - Existing PDF editor, wheel, OCR, SAF, direct-file browser, font support and user-confirmed updater preserved.
+          - Manifest permissions were checked against existing reviewed functionality; this is not a security certification.
+          - Independently maintained Android port, not official Storytold distribution.
+          EOF
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "PDFCraft v0.21.1-android.2 — ARM64" --notes-file signed/release-notes.md --latest \
+            signed/PDFCraft-v0.21.1-arm64-release.apk signed/SHA256SUMS.txt \
+            signed/signature.txt signed/package.txt signed/ocr-models.txt signed/SOURCE-COMMIT.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > checked-release.json
+          EXPECTED_HASH="$EXPECTED_HASH" python3 - <<'PY'
+          import json,os
+          release=json.load(open("checked-release.json"))
+          names={a["name"]:a for a in release["assets"]}
+          assert "PDFCraft-v0.21.1-arm64-release.apk" in names,"APK missing from public release"
+          actual=names["PDFCraft-v0.21.1-arm64-release.apk"].get("digest")
+          assert actual == "sha256:"+os.environ["EXPECTED_HASH"], f"Published asset digest cannot be verified: {actual}"
+          print("PASS: GitHub published exact SHA-256 bytes")
+          PY
+          echo "Published exact signed APK from test run $RUN_ID; no rebuild or signing at publication." >> "$GITHUB_STEP_SUMMARY"

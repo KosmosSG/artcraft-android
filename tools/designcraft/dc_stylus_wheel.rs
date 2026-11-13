@@ -1,0 +1,291 @@
+//! DesignCraft-specific Android stylus wheel. Isolated test candidate.
+//! Reuses Storytold's toolbar icon painter; never modifies the document on hover.
+use egui::{Align2, Color32, Context, FontId, Id, Order, Pos2, Rect, Sense, Shape, Stroke, Ui, pos2, vec2};
+use std::{f32::consts::{PI, TAU}, fs, path::PathBuf, time::Duration};
+
+const BG: Color32 = Color32::from_rgb(67, 8, 31);   // Owner supplied Dc icon: #43081F.
+const ACCENT: Color32 = Color32::from_rgb(236, 72, 105); // #EC4869.
+const ITEMS: [(&str, &str, &str); 14] = [
+    ("Select", "tool-selection", "selection"),
+    ("Pen", "tool-pen", "pen"),
+    ("Shapes", "tool-rect", "rectangle"),
+    ("Text", "tool-type", "type"),
+    ("Layers", "tool-selection", "window.panel"),
+    ("Hand", "tool-hand", "hand"),
+    ("Redo", "tool-rotate", "edit.redo"),
+    ("Undo", "tool-rotate", "edit.undo"),
+    ("Pencil", "tool-pencil", "pencil"),
+    ("Zoom", "tool-zoom", "zoom"),
+    ("Direct Select", "tool-direct", "directSelection"),
+    ("Frame", "tool-rect-frame", "rectangleFrame"),
+    ("Scale", "tool-scale", "scale"),
+    ("Line", "tool-line", "line"),
+];
+const DEFAULT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+
+#[derive(Clone)]
+struct Wheel {
+    enabled: bool,
+    settings_open: bool,
+    open: bool,
+    center: Pos2,
+    slots: [usize; 8],
+    size: f32,
+    opacity: f32,
+    path: Option<PathBuf>,
+}
+
+impl Wheel {
+    fn load(ctx: &Context) -> Self {
+        let path = std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config/designcraft-stylus-wheel.v1"));
+        let mut wheel = Self {
+            enabled: false, settings_open: false, open: false,
+            center: ctx.content_rect().center(), slots: DEFAULT,
+            size: 100.0, opacity: 85.0, path
+        };
+        if let Some(text) = wheel.path.as_ref().and_then(|p| fs::read_to_string(p).ok()) {
+            let parts: Vec<&str> = text.trim().split('|').collect();
+            if parts.len() == 5 && parts[0] == "v1" {
+                wheel.enabled = parts[1] == "1";
+                if let Ok(n) = parts[2].parse::<f32>() {
+                    if n.is_finite() { wheel.size = n.clamp(75.0, 125.0); }
+                }
+                if let Ok(n) = parts[3].parse::<f32>() {
+                    if n.is_finite() { wheel.opacity = n.clamp(60.0, 100.0); }
+                }
+                let values: Vec<usize> = parts[4].split(',').filter_map(|s| s.parse().ok()).collect();
+                if values.len() == 8 && values.iter().all(|n| *n < ITEMS.len())
+                    && values.iter().enumerate().all(|(i, n)| !values[..i].contains(n)) {
+                    wheel.slots.copy_from_slice(&values);
+                }
+            }
+        }
+        wheel
+    }
+
+    fn persist(&self) {
+        let Some(path) = &self.path else { return; };
+        let Some(parent) = path.parent() else { return; };
+        if fs::create_dir_all(parent).is_err() { return; }
+        let s = format!("v1|{}|{:.0}|{:.0}|{}\n",
+            u8::from(self.enabled), self.size, self.opacity,
+            self.slots.iter().map(usize::to_string).collect::<Vec<_>>().join(","));
+        let temp = path.with_extension("tmp");
+        if fs::write(&temp, s).is_ok() {
+            if let Err(error) = fs::rename(temp, path) {
+                eprintln!("DesignCraft wheel: unable to save settings: {error}");
+            }
+        }
+    }
+
+    fn radius(&self) -> f32 { 152.0 * self.size / 100.0 }
+    fn clamp_center(&mut self, ctx: &Context, wanted: Pos2) {
+        let screen = ctx.content_rect();
+        let r = self.radius() + 8.0;
+        let lo_x = screen.left() + r;
+        let hi_x = (screen.right() - r).max(lo_x);
+        let lo_y = screen.top() + r;
+        let hi_y = (screen.bottom() - r).max(lo_y);
+        self.center = pos2(wanted.x.clamp(lo_x, hi_x), wanted.y.clamp(lo_y, hi_y));
+    }
+
+    fn hit(&self, pointer: Pos2) -> Option<usize> {
+        let delta = pointer - self.center;
+        let distance = delta.length();
+        let r = self.radius();
+        if !(r * 0.32..=r).contains(&distance) { return None; }
+        let angle = (delta.y.atan2(delta.x) + PI / 2.0 + PI / 8.0).rem_euclid(TAU);
+        Some(((angle / (TAU / 8.0)).floor() as usize).min(7))
+    }
+
+    fn alpha(&self) -> u8 { (self.opacity * 2.55).round().clamp(0.0, 255.0) as u8 }
+
+    fn draw(&self, ui: &mut Ui, rectangle: Rect, selection: Option<usize>) {
+        let radius = rectangle.width() / 2.0;
+        let center = rectangle.center();
+        let p = ui.painter_at(rectangle);
+        let dark = Color32::from_rgba_unmultiplied(51, 51, 54, self.alpha());
+        let pink = Color32::from_rgba_unmultiplied(160, 35, 68, self.alpha());
+        for i in 0..8 {
+            let start = -PI / 2.0 - PI / 8.0 + i as f32 * TAU / 8.0;
+            let finish = start + TAU / 8.0;
+            let fill = if selection == Some(i) { pink } else { dark };
+            for step in 0..12 {
+                let lo = start + (finish - start) * (step as f32 / 12.0);
+                let hi = start + (finish - start) * ((step + 1) as f32 / 12.0);
+                let at = |a: f32, r: f32| center + vec2(a.cos() * r, a.sin() * r);
+                p.add(Shape::convex_polygon(vec![
+                    at(lo, radius * 0.32), at(lo, radius), at(hi, radius), at(hi, radius * 0.32)
+                ], fill, Stroke::NONE));
+            }
+            let mark_angle = start + (finish - start) / 2.0;
+            let mark = center + vec2(mark_angle.cos() * radius * 0.67, mark_angle.sin() * radius * 0.67);
+            let icon = Rect::from_center_size(mark - vec2(0.0, 10.0), vec2(radius * 0.19, radius * 0.19));
+            // Exact vector icon renderer from the upstream DesignCraft toolbar.
+            designcraft_ui_egui::icons::paint(&p, icon, ITEMS[self.slots[i]].1, Color32::WHITE);
+            p.text(mark + vec2(0.0, 17.0), Align2::CENTER_CENTER,
+                ITEMS[self.slots[i]].0, FontId::proportional((radius * 0.088).max(10.0)), Color32::WHITE);
+            let end = center + vec2(start.cos() * radius, start.sin() * radius);
+            let inner = center + vec2(start.cos() * radius * 0.32, start.sin() * radius * 0.32);
+            p.line_segment([inner, end], Stroke::new(1.2, Color32::from_gray(95)));
+        }
+        p.circle_stroke(center, radius - 1.0, Stroke::new(1.3, Color32::from_gray(120)));
+        p.circle_filled(center, radius * 0.32, BG);
+        p.circle_stroke(center, radius * 0.32, Stroke::new(2.0, ACCENT));
+        p.text(center - vec2(0.0, radius * 0.055), Align2::CENTER_CENTER,
+            "Dc", FontId::proportional(radius * 0.29), ACCENT);
+        let name = selection.map(|i| ITEMS[self.slots[i]].0).unwrap_or("DesignCraft");
+        p.text(center + vec2(0.0, radius * 0.175), Align2::CENTER_CENTER,
+            name, FontId::proportional(radius * 0.092), Color32::WHITE);
+    }
+
+    fn settings(&mut self, ctx: &Context) {
+        if !self.settings_open { return; }
+        self.open = false;
+        let mut open = self.settings_open;
+        let mut changed = false;
+        let response = egui::Window::new("Stylus Wheel Customization")
+            .id(Id::new("dc-wheel-customize-dialog"))
+            .open(&mut open).resizable(false).collapsible(false)
+            .default_width(360.0).show(ctx, |ui| {
+                ui.label("DesignCraft · Default (8 customizable segments)");
+                ui.label("Adjust tools, size and opacity. Preview uses the actual wheel scale.");
+                ui.separator();
+                changed |= ui.add(egui::Slider::new(&mut self.size, 75.0..=125.0).text("Wheel size").suffix("%")).changed();
+                changed |= ui.add(egui::Slider::new(&mut self.opacity, 60.0..=100.0).text("Opacity").suffix("%")).changed();
+                ui.separator();
+                for i in 0..8 {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Slot {}", i + 1));
+                        let mut selected = self.slots[i];
+                        egui::ComboBox::from_id_salt(("dc-wheel-slot", i))
+                            .selected_text(ITEMS[selected].0).width(185.0)
+                            .show_ui(ui, |ui| {
+                                for n in 0..ITEMS.len() {
+                                    ui.selectable_value(&mut selected, n, ITEMS[n].0);
+                                }
+                            });
+                        if selected != self.slots[i] {
+                            if let Some(previous) = self.slots.iter().position(|n| *n == selected) {
+                                self.slots[previous] = self.slots[i];
+                            }
+                            self.slots[i] = selected;
+                            changed = true;
+                        }
+                    });
+                }
+                ui.separator();
+                if ui.button("Restore Default").clicked() {
+                    self.slots = DEFAULT;
+                    self.size = 100.0;
+                    self.opacity = 85.0;
+                    changed = true;
+                }
+                ui.label("Hovering on the wheel never edits the canvas underneath.");
+            });
+        self.settings_open = open;
+        if changed { self.persist(); ctx.request_repaint(); }
+        if self.settings_open {
+            if let Some(result) = response {
+                let screen = ctx.content_rect();
+                let radius = self.radius();
+                let diameter = radius * 2.0;
+                let modal = result.response.rect;
+                let x = if screen.right() - modal.right() >= diameter + 20.0 {
+                    (modal.right() + screen.right()) / 2.0
+                } else if modal.left() - screen.left() >= diameter + 20.0 {
+                    (modal.left() + screen.left()) / 2.0
+                } else { screen.center().x };
+                let y = modal.center().y;
+                let origin = pos2(
+                    (x - radius).clamp(screen.left(), (screen.right() - diameter).max(screen.left())),
+                    (y - radius).clamp(screen.top(), (screen.bottom() - diameter).max(screen.top())),
+                );
+                egui::Area::new(Id::new("dc-wheel-actual-size-preview"))
+                    .order(Order::Foreground).fixed_pos(origin).interactable(false)
+                    .show(ctx, |ui| {
+                        let (rect, _) = ui.allocate_exact_size(vec2(diameter, diameter), Sense::hover());
+                        self.draw(ui, rect, Some(1));
+                    });
+            }
+        }
+    }
+
+    fn invoke(&mut self, app: &mut designcraft_ui_egui::DesignApp, slot: usize) {
+        let item = self.slots[slot];
+        let command = ITEMS[item].2;
+        let result = match command {
+            "window.panel" => app.run("window.panel", serde_json::json!({"panel": "layers"})).map(|_| ()),
+            "edit.undo" | "edit.redo" => app.run(command, serde_json::json!({})).map(|_| ()),
+            _ => {
+                app.select_tool(command);
+                Ok(())
+            }
+        };
+        if let Err(error) = result { app.status(format!("Stylus Wheel: {error}")); }
+        self.open = false;
+    }
+
+    fn paint_live(&mut self, ctx: &Context, app: &mut designcraft_ui_egui::DesignApp) -> bool {
+        if !self.open { return false; }
+        let r = self.radius();
+        self.clamp_center(ctx, self.center);
+        let pointer = ctx.pointer_hover_pos();
+        let selected = pointer.and_then(|pos| self.hit(pos));
+        let in_circle = pointer.is_some_and(|p| (p - self.center).length() <= r);
+        let top_left = self.center - vec2(r, r);
+        egui::Area::new(Id::new("dc-wheel-live"))
+            .order(Order::Foreground).fixed_pos(top_left).interactable(true)
+            .show(ctx, |ui| {
+                let (rect, response) = ui.allocate_exact_size(vec2(2.0 * r, 2.0 * r), Sense::click());
+                self.draw(ui, rect, selected);
+                if response.clicked() {
+                    if let Some(slot) = selected { self.invoke(app, slot); }
+                    else { self.open = false; }
+                }
+            });
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.open = false;
+        }
+        ctx.request_repaint_after(Duration::from_millis(80));
+        in_circle
+    }
+}
+
+pub(super) fn blocks_hover(ctx: &Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(Id::new("dc-wheel-hover-block")).unwrap_or(false))
+}
+
+pub(super) fn ui(
+    ui: &mut Ui,
+    app: &mut designcraft_ui_egui::DesignApp,
+    bridge: &super::saf::Bridge,
+    actions: u16,
+) {
+    let ctx = ui.ctx().clone();
+    let state_id = Id::new("dc-wheel-state");
+    let mut wheel = ctx.data(|d| d.get_temp::<Wheel>(state_id)).unwrap_or_else(|| Wheel::load(&ctx));
+    if actions & 64 != 0 {
+        wheel.enabled = !wheel.enabled;
+        if !wheel.enabled { wheel.open = false; wheel.settings_open = false; }
+        wheel.persist();
+    }
+    if actions & 128 != 0 { wheel.settings_open = true; }
+    if actions & 256 != 0 && wheel.enabled {
+        wheel.open = !wheel.open;
+        wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center()));
+    }
+    let _ = bridge.dc_wheel_set_enabled(wheel.enabled);
+    if wheel.enabled && bridge.dc_wheel_action().unwrap_or(0) != 0
+        && app.ui.dialog.is_none() && !app.session.wants_text() && !ctx.text_edit_focused()
+    {
+        wheel.open = !wheel.open;
+        if wheel.open { wheel.clamp_center(&ctx, ctx.pointer_hover_pos().unwrap_or(ctx.content_rect().center())); }
+    }
+    wheel.settings(&ctx);
+    let blocked = wheel.paint_live(&ctx, app);
+    ctx.data_mut(|d| {
+        d.insert_temp(Id::new("dc-wheel-hover-block"), blocked);
+        d.insert_temp(state_id, wheel);
+    });
+}

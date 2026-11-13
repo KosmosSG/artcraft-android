@@ -95,6 +95,7 @@ def apply_overlay(staging_dir: Path, package_name: str, addon_dir: Path) -> None
         java = replace_exact(java, signature,
                              signature + "\n                    if (gcHandleQuitShortcut(event)) return true;" +
                              "\n                    if (gcHandleSaveAsShortcut(event)) return true;" +
+                             "\n                    if (gcHandleUndoShortcut(event)) return true;" +
                              "\n                    if (gcStylusWheelIntercept(event)) return true;")
 
     java = replace_exact(java, "super.onActivityResult(requestCode, resultCode, data);",

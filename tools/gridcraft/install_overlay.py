@@ -50,8 +50,8 @@ def stage_candidate_android_version(builder: Path):
     revised = source.replace(anchor,
         '        # GRIDCRAFT_ANDROID_VERSION_NAME_V1: app-info display only; keep upstream semver.\n'
         '        build_gradle(android_meta["package"], min_sdk, target_sdk, code,\n'
-        '                     "0.18.0-android.1-test" if app == "gridcraft"\n'
-        '                     and version == "0.18.0"\n'
+        '                     "0.19.1-android.1-test" if app == "gridcraft"\n'
+        '                     and version == "0.19.1"\n'
         '                     and android_meta["package"] == "com.artcraft.gridcraft.candidate"\n'
         '                     else "0.16.1-android.3" if app == "gridcraft"\n'
         '                     and version == "0.16.1"\n'
@@ -102,18 +102,18 @@ def install(builder: Path, additions: Path):
     if upstream_manifest.is_file():
         import tomllib
         source_version = tomllib.loads(upstream_manifest.read_text())["workspace"]["package"]["version"]
-        if source_version not in ("0.11.1", "0.15.0", "0.16.1", "0.18.0"):
+        if source_version not in ("0.11.1", "0.15.0", "0.16.1", "0.18.0", "0.19.1"):
             raise RuntimeError(f"Unreviewed GridCraft upstream source version: {source_version}")
-    if source_version == "0.18.0":
+    if source_version == "0.19.1":
         # Enforce EXACT reviewed source, rather than accepting any ref with 0.18.0 metadata.
         import subprocess
         checked = subprocess.check_output(
             ["git", "-C", str(builder / "source/gridcraft"), "rev-parse", "HEAD"],
             text=True,
         ).strip()
-        if checked != "17cb3c83d9e73df6a88ed174cec612f1de2e8244":
-            raise RuntimeError("GridCraft 0.18.0 source commit mismatch: " + checked)
-    if source_version in ("0.15.0", "0.16.1", "0.18.0"):
+        if checked != "476448d7d9f3a5f8e93fcf7d98b47fd52293fe7f":
+            raise RuntimeError("GridCraft 0.19.1 source commit mismatch: " + checked)
+    if source_version in ("0.15.0", "0.16.1", "0.18.0", "0.19.1"):
         import runpy
         port_script = Path(__file__).with_name("port_v0150_ui.py")
         port = runpy.run_path(str(port_script))
@@ -227,7 +227,7 @@ def install(builder: Path, additions: Path):
     # v0.15 adds an acknowledged SAF callback ONLY to the GridCraft generated
     # builder recipe, never the original product's permanent-signing paths.
     # It is a source transformation: the real Rust/Java launch is still unbuilt.
-    if source_version in ("0.15.0", "0.16.1", "0.18.0"):
+    if source_version in ("0.15.0", "0.16.1", "0.18.0", "0.19.1"):
         import runpy
         saf_patch = runpy.run_path(str(Path(__file__).with_name("port_v0150_builder_saf.py")))
         text = saf_patch["transform"](text)
@@ -238,7 +238,7 @@ def install(builder: Path, additions: Path):
     # All generated files (Cargo.toml, Java Activity, Rust lib.rs) must exist first.
     # Inject immediately AFTER the generator writes lib.rs, before its
     # atomic staging-directory rename publishes the Android launcher.
-    if source_version in ("0.15.0", "0.16.1", "0.18.0"):
+    if source_version in ("0.15.0", "0.16.1", "0.18.0", "0.19.1"):
         stage_trackpad_primary_button(builder)
         stage_candidate_android_version(builder)
     source.write_text(text.replace(TRIGGER, TRIGGER + "\n" + SNIPPET, 1))

@@ -1,0 +1,47 @@
+{
+  "app": "gridcraft",
+  "target": "HONOR MagicPad 4 ARM64 MagicOS",
+  "official_upstream_repository": "storytold/gridcraft",
+  "official_upstream_tag": "v0.19.1",
+  "official_upstream_commit": "476448d7d9f3a5f8e93fcf7d98b47fd52293fe7f",
+  "protected_published_baseline": "gridcraft-v0.18.0-android.1",
+  "protected_baseline_commit": "60d3dd428ba2e50229a495f9b50b4de8dc0ae1dc",
+  "development_branch": "feature/gridcraft-v0191-stylus-wheel-android1-20261113",
+  "candidate_version": "0.19.1-android.1-test",
+  "candidate_package": "com.artcraft.gridcraft.candidate",
+  "production_package": "com.artcraft.gridcraft",
+  "signing": "fresh disposable Android test key only",
+  "wheel_source": "PhotoCraft owner-approved Default wheel, protected Gc launcher artwork",
+  "wheel_palette": {
+    "hub": "#006818",
+    "mark": "#ABE880",
+    "highlight": "#6EF14F"
+  },
+  "wheel_size_percent": [
+    75,
+    125
+  ],
+  "wheel_opacity_percent": [
+    60,
+    100
+  ],
+  "slots": 8,
+  "preview": "actual size and opacity in same rendering code path",
+  "event_isolation": "only wheel-owned hover/pen touch/click, no global pointer filter",
+  "retain": [
+    "XLSX/CSV round-trip",
+    "SAF font import, shared library and recursive refresh",
+    "Gc launcher/compact menu",
+    "in-app updates",
+    "Esc, Ctrl+W D/C/S, Ctrl+Q, Ctrl+Shift+S",
+    "touch/trackpad 2-finger pan/scroll, selection, clipboard",
+    "adaptive cursor, GPU graphics"
+  ],
+  "guards": {
+    "production_signing_allowed": false,
+    "release_publish_allowed": false,
+    "merge_into_production_allowed": false,
+    "device_acceptance_required": true
+  },
+  "status": "Source staged; CI test pending Android packaging; do not claim device validation."
+}

@@ -46,9 +46,12 @@ fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
             seg((-9.0,-1.0),(9.0,-1.0));
             seg((0.0,-9.0),(0.0,9.0));
         }
-        2 => { // Function: outlined formula cue; typography shares icon width.
-            p.text(centre,egui::Align2::CENTER_CENTER,"ƒx",
-                FontId::proportional(17.0*scale),Color32::WHITE);
+        2 => { // Function: vector Fx glyph, no external font dependency.
+            seg((-8.0,-9.0),(-8.0,9.0));
+            seg((-8.0,-9.0),(-1.0,-9.0));
+            seg((-8.0,-1.0),(-2.0,-1.0));
+            seg((2.0,-5.0),(9.0,8.0));
+            seg((9.0,-5.0),(2.0,8.0));
         }
         3 => { // Fill Down: two outlined cells and down arrow.
             box_at(-9.0,-9.0,3.0,9.0);

@@ -1,6 +1,6 @@
 //! Isolated Android JNI boundary, separate from CADCraft UI forbid(unsafe_code).
 //! Resolve Java methods through the Activity instance, not FindClass from Rust.
-use jni::{JavaVM, objects::{JObject, JString}};
+use jni::{JavaVM, objects::{JObject, JString, JValue}};
 
 fn with_activity<R: Default>(f: impl FnOnce(&mut jni::JNIEnv<'_>, &JObject<'_>)
     -> jni::errors::Result<R>) -> R
@@ -36,9 +36,31 @@ pub fn stylus_device_ids() -> Vec<i32> {
     with_activity(|env, activity| {
         let value = env.call_method(&activity, "cadStylusDeviceIds",
             "()Ljava/lang/String;", &[])?.l()?;
-        std::mem::forget(activity);
         if value.is_null() { return Ok(Vec::new()); }
         let ids: String = env.get_string(&JString::from(value))?.into();
         Ok(ids.split(',').filter_map(|v| v.parse::<i32>().ok()).collect())
+    })
+}
+
+pub fn stylus_set_enabled(enabled: bool) {
+    with_activity::<()>(|env, activity| {
+        env.call_method(activity, "cadStylusSetEnabled", "(Z)V",
+            &[JValue::Bool(enabled as u8)])?;
+        Ok(())
+    });
+}
+
+/// PhotoCraft-style Java input fallback: the same Magic-Pencil side-button
+/// can reach Activity or hidden IME instead of the NativeActivity input queue.
+/// Java validates its exact hardware name, so keyboard arrows are never read.
+pub fn stylus_poll() -> Vec<i32> {
+    with_activity(|env, activity| {
+        let mut events = Vec::new();
+        for _ in 0..12 {
+            let code = env.call_method(activity, "cadStylusPoll", "()I", &[])?.i()?;
+            if code == 0 { break; }
+            if code == 19 || code == 20 { events.push(code); }
+        }
+        Ok(events)
     })
 }

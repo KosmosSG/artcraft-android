@@ -201,6 +201,7 @@ def main() -> None:
         '        (staging_dir / "src" / "wordcraft_android").mkdir(exist_ok=True)\n'
         '        shutil.copy2(root / "templates" / "android" / "refresh_feedback.rs", staging_dir / "src" / "wordcraft_android" / "refresh_feedback.rs")\n'
         '        shutil.copy2(root / "templates" / "android" / "stylus_wheel.rs", staging_dir / "src" / "wordcraft_android" / "stylus_wheel.rs")\n'
+        '        shutil.copy2(root / "templates" / "android" / "stylus_wheel_wc.rgba", staging_dir / "src" / "wordcraft_android" / "stylus_wheel_wc.rgba")\n'
         '    (staging_dir / "src" / "lib.rs").write_text(entry)',
         "install WordCraft Rust module into generated launcher",
     )
@@ -211,6 +212,31 @@ def main() -> None:
         '        manifest += \'\\n[[package.metadata.android.uses_permission]]\\nname = "android.permission.INTERNET"\\n\'',
         "permit WordCraft-only read-only GitHub update checks",
     )
+
+    # WC_EXACT_LAUNCHER_WC_GLYPH_V1 — recover the original blue/cyan Wc
+    # lettering, not generic egui text. Verify the owner-approved SHA before
+    # creating the transparent RGBA used in the PhotoCraft-ratio round hub.
+    from PIL import Image
+    import hashlib
+    import json
+    assets = Path(__file__).resolve().parents[2] / "tools" / "approved-branding" / "assets"
+    manifest = json.loads((assets / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["app"] == "wordcraft" and manifest["filename"] == "WordCraft.png"
+    source_icon = assets / manifest["filename"]
+    assert hashlib.sha256(source_icon.read_bytes()).hexdigest() == manifest["source_sha256"], "STOP: WordCraft icon changed"
+    assert manifest["bg_color"].lower() == "#0e52a5"
+    assert manifest["letter_color"].lower() == "#7ad8fc"
+    assert manifest["glyph_source_bounds"] == [86, 597, 1983, 1468]
+    original = Image.open(source_icon).convert("RGBA")
+    assert original.size == (2048, 2048)
+    cropped = original.crop(tuple(manifest["glyph_source_bounds"]))
+    alpha = cropped.getchannel("R").point(
+        lambda value: round(max(0., min(1., (value - 14.) / (122. - 14.))) * 255))
+    exact_glyph = Image.new("RGBA", cropped.size, (122, 216, 252, 0))
+    exact_glyph.putalpha(alpha)
+    exact_glyph = exact_glyph.resize((192, 88), Image.Resampling.LANCZOS)
+    assert exact_glyph.getchannel("A").getbbox() is not None, "STOP: no original Wc glyph"
+    (root / "templates" / "android" / "stylus_wheel_wc.rgba").write_bytes(exact_glyph.tobytes())
 
     # The approved launcher icon is the only source for the in-app menu artwork.
     # Embed a tiny raw RGBA texture: no PNG loader, file permission or runtime

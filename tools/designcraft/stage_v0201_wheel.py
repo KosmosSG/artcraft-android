@@ -178,7 +178,7 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     # Preserve existing IME handling, adding an isolated physical Ctrl+Z
     # fallback only while no Android editor or modal owns the input.
     replace_once(activity,
-        "        int code = event.getKeyCode();\\n"
+        "        int code = event.getKeyCode();\n"
         "        int state = event.getAction();",
         """        int code = event.getKeyCode();
         int state = event.getAction();

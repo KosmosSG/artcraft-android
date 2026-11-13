@@ -42,7 +42,7 @@ one("    signal_seen: u8,\n    stylus_cursor: Option<Pos2>,\n}", """    signal_s
     message_at: Instant,
 }""")
 one("            pending: None, signal_seen: 0, stylus_cursor: None,",
-    """            pending: None, signal_seen: 0,
+    """            pending: None, signal_seen: 0, stylus_cursor: None,
             message: "Hover + single-press: open wheel",
             message_at: Instant::now(),""")
 one("    fn scale(&self) -> f32 { self.size / 100.0 }",

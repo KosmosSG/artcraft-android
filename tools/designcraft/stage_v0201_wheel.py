@@ -7,6 +7,7 @@ Never edits a user's source checkout or production release.
 from pathlib import Path
 import shutil
 import sys
+from PIL import Image
 
 def replace_once(path: Path, before: str, after: str, label: str):
     old = path.read_text(encoding="utf-8")
@@ -26,6 +27,26 @@ def main(root: Path, source: Path, android: Path):
     module_dir = android / "src/v016_android"
     module_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / "tools/designcraft/dc_stylus_wheel.rs", module_dir / "dc_stylus_wheel.rs")
+    # Exact user-approved launcher lettering, with its dark plate removed
+    # at build time so the wheel hub remains circular and solid.
+    original_icon = root / "tools/approved-branding/assets/res/mipmap-xxxhdpi/ic_launcher.png"
+    with Image.open(original_icon) as icon:
+        rgba = icon.convert("RGBA").resize((192, 192), Image.Resampling.LANCZOS)
+        image = Image.new("RGBA", rgba.size)
+        for y in range(rgba.height):
+            for x in range(rgba.width):
+                red, green, blue, alpha = rgba.getpixel((x, y))
+                # Preserve exact bright-pink antialias colour of the Dc lettering.
+                visible = max(0, min(255, (red - 69) * 255 // 125))
+                image.putpixel((x, y), (red, green, blue, min(visible, alpha)))
+        bbox = image.getbbox()
+        if bbox is None or bbox[2] - bbox[0] < 40:
+            raise RuntimeError("Dc launcher artwork cannot be isolated")
+        glyph = image.crop(bbox)
+        glyph.thumbnail((171, 103), Image.Resampling.LANCZOS)
+        padded = Image.new("RGBA", (192, 120))
+        padded.alpha_composite(glyph, ((192-glyph.width)//2, (120-glyph.height)//2))
+        (module_dir / "dc_wheel_mark.rgba").write_bytes(padded.tobytes())
 
     wrapper = android / "src/v016_android.rs"
     replace_once(wrapper, "use super::{saf, saf_next_id, ImportRequest, SafState};",
@@ -88,6 +109,20 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
         if (!enabled) dcWheelAction.set(0);
     }
     public int dcTakeWheelAction() { return dcWheelAction.getAndSet(0); }
+    // ID whitelist for the native Android InputQueue. Physical keyboards are excluded.
+    public String dcStylusDeviceIds() {
+        StringBuilder ids = new StringBuilder();
+        for (int id : android.view.InputDevice.getDeviceIds()) {
+            android.view.InputDevice device = android.view.InputDevice.getDevice(id);
+            if (device == null || device.getName() == null) continue;
+            String name = device.getName().toLowerCase(java.util.Locale.ROOT);
+            if (id > 0 && name.contains("magic-pencil")) {
+                if (ids.length() > 0) ids.append(',');
+                ids.append(id);
+            }
+        }
+        return ids.toString();
+    }
 
     public int dcUnsavedDialog(boolean active) {""", "Private isolated stylus button bridge")
     replace_once(activity,
@@ -98,7 +133,7 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
             android.view.InputDevice device =
                 android.view.InputDevice.getDevice(event.getDeviceId());
             boolean pencil = device != null && device.getName() != null
-                && device.getName().contains("Magic-Pencil 4s");
+                && device.getName().toLowerCase(java.util.Locale.ROOT).contains("magic-pencil");
             int code = event.getKeyCode();
             if (pencil && (code == KeyEvent.KEYCODE_DPAD_UP ||
                     code == KeyEvent.KEYCODE_DPAD_DOWN)) {
@@ -119,16 +154,21 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     bar = source / "crates/ui-egui/src/menus/bar.rs"
     replace_once(bar, '            ui.menu_button("DesignCraft Shortcuts", |ui| {',
         """            ui.menu_button("Stylus Wheel", |ui| {
-                for (label, bit) in [
-                    ("Turn Stylus Wheel On / Off", 64_u16),
-                    ("Customize Wheel…", 128_u16),
-                    ("Show / Hide Wheel", 256_u16),
-                ] {
-                    if ui.button(label).clicked() {
-                        DC_MENU_ACTIONS.fetch_or(bit, std::sync::atomic::Ordering::Relaxed);
-                        ui.ctx().request_repaint();
-                        ui.close();
-                    }
+                let active = ui.ctx().data(|d|
+                    d.get_temp::<bool>(egui::Id::new("dc-wheel-enabled")).unwrap_or(false));
+                if ui.button(if active {
+                    "✓ Stylus Wheel On (tap to disable)"
+                } else {
+                    "Stylus Wheel Off (tap to enable)"
+                }).clicked() {
+                    DC_MENU_ACTIONS.fetch_or(64_u16, std::sync::atomic::Ordering::Relaxed);
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
+                if ui.button("Customize Wheel…").clicked() {
+                    DC_MENU_ACTIONS.fetch_or(128_u16, std::sync::atomic::Ordering::Relaxed);
+                    ui.ctx().request_repaint();
+                    ui.close();
                 }
                 ui.label("Magic-Pencil 4s button • Default 8 segments");
                 ui.label("Saved size, opacity and tool assignments");

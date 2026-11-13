@@ -493,6 +493,30 @@
     // GC_ANDROID_SAVE_AS_SHORTCUT_V1: Ctrl+Shift+S is a separate,
     // one-shot command. Never intercept unmodified S or the modal D/C/S keys.
     // Activity and IME host can both observe one key: the atomic latch coalesces it.
+    // GC_ANDROID_CTRL_Z_V1 — one physical chord, exactly one workbook Undo.
+    // IME and Activity routes can both see one KeyEvent; latch key-down once,
+    // consume paired key-up and never leak literal 'z' into the active cell.
+    private final java.util.concurrent.atomic.AtomicBoolean gcUndoPending =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicBoolean gcUndoChordHeld =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    public boolean gcTakeUndoShortcut() { return gcUndoPending.getAndSet(false); }
+    public boolean gcHandleUndoShortcut(android.view.KeyEvent event) {
+        if (event == null || event.getKeyCode() != android.view.KeyEvent.KEYCODE_Z) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+            return gcUndoChordHeld.getAndSet(false) || (event.isCtrlPressed()
+                && !event.isShiftPressed() && !event.isAltPressed() && !event.isMetaPressed());
+        }
+        if (gcDialogActive || !event.isCtrlPressed() || event.isShiftPressed()
+                || event.isAltPressed() || event.isMetaPressed()) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0 &&
+                    gcUndoChordHeld.compareAndSet(false, true)) gcUndoPending.set(true);
+            return true;
+        }
+        return false;
+    }
+
     private final java.util.concurrent.atomic.AtomicBoolean gcSaveAsPending =
             new java.util.concurrent.atomic.AtomicBoolean();
     public boolean gcTakeSaveAsShortcut() { return gcSaveAsPending.getAndSet(false); }
@@ -519,6 +543,7 @@
         if (gcStylusWheelIntercept(event)) return true;
         if (gcHandleQuitShortcut(event)) return true;
         if (gcHandleSaveAsShortcut(event)) return true;
+        if (gcHandleUndoShortcut(event)) return true;
         if (event != null && (event.getFlags() & android.view.KeyEvent.FLAG_SOFT_KEYBOARD) == 0) {
             int code = event.getKeyCode();
             if (gcDialogKeys.contains(code)) {

@@ -277,15 +277,19 @@ impl Wheel {
                     (modal.left() + screen.left()) / 2.0
                 } else { screen.center().x };
                 let y = modal.center().y;
+                // Reserve a 20pt margin around the actual-size wheel so
+                // its new soft shadow is not clipped in the live preview.
+                let margin = 20.0;
+                let display = diameter + 2.0 * margin;
                 let origin = pos2(
-                    (x - radius).clamp(screen.left(), (screen.right() - diameter).max(screen.left())),
-                    (y - radius).clamp(screen.top(), (screen.bottom() - diameter).max(screen.top())),
+                    (x - radius - margin).clamp(screen.left(), (screen.right() - display).max(screen.left())),
+                    (y - radius - margin).clamp(screen.top(), (screen.bottom() - display).max(screen.top())),
                 );
                 egui::Area::new(Id::new("dc-wheel-actual-size-preview"))
                     .order(Order::Foreground).fixed_pos(origin).interactable(false)
                     .show(ctx, |ui| {
-                        let (rect, _) = ui.allocate_exact_size(vec2(diameter, diameter), Sense::hover());
-                        self.draw(ui, rect, Some(1));
+                        let (rect, _) = ui.allocate_exact_size(vec2(display, display), Sense::hover());
+                        self.draw(ui, rect.shrink(margin), Some(1));
                     });
             }
         }
@@ -313,12 +317,14 @@ impl Wheel {
         let pointer = ctx.pointer_hover_pos();
         let selected = pointer.and_then(|pos| self.hit(pos));
         let in_circle = pointer.is_some_and(|p| (p - self.center).length() <= r);
-        let top_left = self.center - vec2(r, r);
+        let margin = 20.0;
+        let top_left = self.center - vec2(r + margin, r + margin);
         egui::Area::new(Id::new("dc-wheel-live"))
             .order(Order::Foreground).fixed_pos(top_left).interactable(true)
             .show(ctx, |ui| {
-                let (rect, response) = ui.allocate_exact_size(vec2(2.0 * r, 2.0 * r), Sense::click());
-                self.draw(ui, rect, selected);
+                let outer = 2.0 * (r + margin);
+                let (rect, response) = ui.allocate_exact_size(vec2(outer, outer), Sense::click());
+                self.draw(ui, rect.shrink(margin), selected);
                 if response.clicked() {
                     if let Some(slot) = selected { self.invoke(app, slot); }
                     else { self.open = false; }

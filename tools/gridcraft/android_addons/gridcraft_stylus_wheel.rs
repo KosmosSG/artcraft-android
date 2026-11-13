@@ -449,40 +449,6 @@ impl Wheel {
             }
         }
     }
-    // Native egui slider themes previously rendered grey on this tablet.
-    // Paint a local, high-contrast green slider without changing app themes.
-    fn green_slider(ui: &mut Ui, name: &str, value: &mut f32,
-        min: f32, max: f32) -> bool {
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label(name);
-            let remaining = (ui.available_width()-61.0).clamp(100.0, 190.0);
-            let (rect, response) = ui.allocate_exact_size(
-                vec2(remaining, 26.0), Sense::click_and_drag());
-            if (response.clicked() || response.dragged())
-                && let Some(at) = response.interact_pointer_pos() {
-                let fraction = ((at.x-rect.left()-7.0)/
-                    (rect.width()-14.0).max(1.0)).clamp(0.0,1.0);
-                let next = (min + fraction * (max-min)).round();
-                if (*value-next).abs()>0.1 { *value=next; changed=true; }
-            }
-            let p = ui.painter_at(rect);
-            let begin = rect.left()+7.0;
-            let end = rect.right()-7.0;
-            let fraction = ((*value-min)/(max-min)).clamp(0.0,1.0);
-            let x = begin + (end-begin)*fraction;
-            let y = rect.center().y;
-            p.line_segment([pos2(begin,y),pos2(end,y)],
-                Stroke::new(5.0,Color32::from_rgb(70,75,71)));
-            p.line_segment([pos2(begin,y),pos2(x,y)],
-                Stroke::new(5.0,Color32::from_rgb(61,190,75)));
-            p.circle_filled(pos2(x,y),8.0,LIME);
-            p.circle_stroke(pos2(x,y),8.0,
-                Stroke::new(1.2,Color32::from_rgb(7,86,24)));
-            ui.label(format!("{:.0}%", *value));
-        });
-        changed
-    }
     // GridCraft / PhotoCraft UI parity: same native window, same field order,
     // eight swap-select rows, appearance sliders, Restore Default, and actual
     // size preview BESIDE the dialog, never inside.

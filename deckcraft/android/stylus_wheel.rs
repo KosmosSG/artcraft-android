@@ -15,7 +15,21 @@ const LABELS: [&str; 10] = [
     "Select", "Text", "Pen", "Eraser", "Shapes", "Undo", "Redo", "Hand",
     "Highlighter", "New Slide",
 ];
-const ICONS: [&str; 10] = ["↖", "T", "✎", "◇", "□", "↶", "↷", "✋", "▱", "+"];
+// Use DeckCraft's ORIGINAL ribbon icon registry, not Unicode/emoji glyphs.
+/// Matches the icons shown in the native Draw, Insert and quick-access toolbars.
+/// Hand has no native registry entry; render its own vector outline below.
+const ICONS: [Option<crate::icons::Icon>; 10] = [
+    Some(crate::icons::Icon::LassoSelect), // Select
+    Some(crate::icons::Icon::TextBox),     // Text
+    Some(crate::icons::Icon::Pen),         // Pen
+    Some(crate::icons::Icon::Eraser),      // Eraser
+    Some(crate::icons::Icon::Shapes),      // Shapes
+    Some(crate::icons::Icon::Undo),        // Undo
+    Some(crate::icons::Icon::Redo),        // Redo
+    None,                                  // Hand: native-style vector, never an emoji
+    Some(crate::icons::Icon::HighlighterPen), // Highlighter
+    Some(crate::icons::Icon::NewSlide),    // New Slide
+];
 const STATE: &str = "deckcraft.stylus.wheel.v1";
 
 #[derive(Clone)]
@@ -325,8 +339,15 @@ fn draw(ui:&Ui,rect:egui::Rect,w:&Wheel,highlight:Option<usize>) {
                 if selected {PINK} else {Color32::from_gray(102).gamma_multiply(alpha)})));
         let theta=degrees.to_radians();
         let icon_pos=c+vec2(theta.cos(),theta.sin())*86.0*scale;
-        painter.text(icon_pos-vec2(0.0,11.0)*scale,egui::Align2::CENTER_CENTER,
-            ICONS[w.slots[slot]],FontId::proportional(22.0*scale),Color32::WHITE);
+        // Identical painter path as DeckCraft's own toolbars, including stroke
+        // scaling. White 24x24 line art; no font fallback or tofu on MagicOS.
+        let icon_box=egui::Rect::from_center_size(
+            icon_pos-vec2(0.0,10.0)*scale, vec2(24.0,24.0)*scale);
+        if let Some(icon)=ICONS[w.slots[slot]] {
+            crate::icons::paint(&painter,icon_box,icon,Color32::WHITE,false);
+        } else {
+            paint_hand_icon(&painter,icon_box,Color32::WHITE);
+        }
         painter.text(icon_pos+vec2(0.0,17.0)*scale,egui::Align2::CENTER_CENTER,
             LABELS[w.slots[slot]],FontId::proportional(11.0*scale),Color32::WHITE);
     }
@@ -340,6 +361,24 @@ fn draw(ui:&Ui,rect:egui::Rect,w:&Wheel,highlight:Option<usize>) {
         highlight.map(|i| LABELS[w.slots[i]]).unwrap_or("Default"),
         FontId::proportional(10.0*scale),Color32::WHITE);
 }
+/// Custom hand/pan outline, in the same 24x24 painter coordinates as the
+/// original DeckCraft icons. A genuine stroke path, not a Unicode emoji.
+fn paint_hand_icon(painter:&egui::Painter,rect:egui::Rect,ink:Color32) {
+    let size=rect.width().min(rect.height());
+    let start=rect.center()-vec2(size*0.5,size*0.5);
+    let p=|x:f32,y:f32| pos2(start.x+x*size/24.0,start.y+y*size/24.0);
+    let stroke=Stroke::new((size/19.0).max(1.1),ink);
+    let outline=vec![
+        p(6.5,14.5),p(6.2,7.5),p(6.5,6.3),p(7.5,5.9),p(8.6,6.5),
+        p(8.9,12.0),p(9.0,4.7),p(9.4,3.6),p(10.5,3.2),p(11.8,4.1),
+        p(11.9,11.6),p(12.2,6.5),p(12.8,5.5),p(13.9,5.4),
+        p(15.0,6.5),p(15.1,12.5),p(15.3,9.0),p(16.2,8.1),
+        p(17.2,8.3),p(18.0,9.3),p(18.2,16.0),p(17.4,19.2),
+        p(15.3,20.5),p(11.4,20.6),p(9.3,19.4),p(5.4,16.9),
+        p(4.7,15.7),p(5.1,14.8),p(6.5,14.5),
+    ];
+    painter.add(Shape::line(outline,stroke));
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +386,14 @@ mod tests {
     fn default_slots_are_unique_and_valid() {
         assert!(DEFAULT.iter().all(|i| *i<LABELS.len()));
         assert!(DEFAULT.iter().enumerate().all(|(i,n)| !DEFAULT[..i].contains(n)));
+    }
+    #[test]
+    fn android_wheel_uses_native_vector_icons_not_text_glyphs() {
+        assert_eq!(ICONS.len(), LABELS.len());
+        assert_eq!(ICONS[2],Some(crate::icons::Icon::Pen));
+        assert_eq!(ICONS[3],Some(crate::icons::Icon::Eraser));
+        assert_eq!(ICONS[5],Some(crate::icons::Icon::Undo));
+        assert_eq!(ICONS[6],Some(crate::icons::Icon::Redo));
+        assert!(ICONS[7].is_none()); // vector hand fallback
     }
 }

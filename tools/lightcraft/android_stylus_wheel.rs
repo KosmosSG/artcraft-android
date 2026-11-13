@@ -101,8 +101,11 @@ pub fn request_stylus_toggle(ctx: &Context) {
     ctx.request_repaint();
 }
 pub fn set_pen_hover(ctx: &Context, position: Option<Pos2>) {
-    ctx.data_mut(|d| d.insert_temp(Id::new(PEN), position));
-    if position.is_some() { ctx.request_repaint(); }
+    let changed = ctx.data(|d| d.get_temp::<Option<Pos2>>(Id::new(PEN))).flatten() != position;
+    if changed {
+        ctx.data_mut(|d| d.insert_temp(Id::new(PEN), position));
+        ctx.request_repaint();
+    }
 }
 
 /// Captures ONLY events within the open wheel, before the normal canvas/UI
@@ -226,7 +229,7 @@ fn paint(ui: &mut Ui, p: &WheelPrefs, hover: Option<Pos2>) {
             let spread = (12.0 - j as f32 * 0.82) * k;
             let strength = 0.008 + j as f32 * 0.0017;
             painter.circle_filled(c + vec2(0.8, 2.0) * k,
-                R * k + spread, Color32::BLACK.gamma_multiply(strength));
+                R * k + spread, Color32::from_black_alpha((strength * 255.0) as u8));
         }
     }
     painter.circle_filled(c, R * k, Color32::from_gray(45).gamma_multiply(alpha));

@@ -79,7 +79,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
         ast.parse(s)
         self.assertIn('wc_raw_dcs = ', s)
         self.assertIn('self.wc.capture_unsaved_keys(self.inner.android_unsaved_dcs_active(), ctx, raw)', s)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}        self.handle_clipboard_shortcuts(raw);', s)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}{wc_wheel_input}        self.handle_clipboard_shortcuts(raw);', s)
 
     def test_approved_icon_is_derived_from_launcher_and_not_unrelated_asset(self):
         s = text(BUILD)
@@ -199,7 +199,7 @@ class WordCraftDeviceFixes(unittest.TestCase):
             'ctx.request_repaint();',
         ):
             self.assertIn(line, rust)
-        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}        self.handle_clipboard_shortcuts(raw);', build)
+        self.assertIn('{wc_raw_dcs}{wc_trackpad_scroll}{wc_touch_pan}{wc_stylus_samples}{wc_wheel_input}        self.handle_clipboard_shortcuts(raw);', build)
         self.assertIn("wc_trackpad_scroll = ", build)
         # No JNI bridge is created for other apps; no fake touchscreen drag events.
         self.assertIn("if app == 'wordcraft' else ''", build)

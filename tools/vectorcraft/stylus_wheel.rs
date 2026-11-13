@@ -573,7 +573,10 @@ mod tests {
                 w.set_layout_string(settings);
                 let mut raw=RawInput::default();
                 raw.screen_rect=Some(egui::Rect::from_min_size(Pos2::ZERO,vec2(width,800.0)));
-                let out=ctx.run_ui(raw, |ui| w.render(ui));
+                let mut out=ctx.run_ui(raw, |ui| w.render(ui));
+                // Headless tests have no GPU texture uploader. Explicitly consume
+                // its pending deltas before FullOutput is dropped (egui 0.37).
+                out.textures_delta.clear();
                 assert!(!out.shapes.is_empty()); assert_eq!(w.take_action(),None);
             }
         }

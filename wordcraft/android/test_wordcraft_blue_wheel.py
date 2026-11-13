@@ -30,6 +30,19 @@ class BlueWheelTests(unittest.TestCase):
         self.assertIn("Color32::from_black_alpha(alpha)", SRC)
         self.assertNotIn("painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::from_gray(124)))", SRC)
 
+    def test_soft_feather_shadow_without_other_wheel_changes(self):
+        # Keep the same circle and PhotoCraft-style input geometry. Only
+        # replace the old four thick halo bands with subtle fine layering.
+        self.assertIn("WC_ANDROID7_SOFT_FEATHER_SHADOW_V1", SRC)
+        self.assertIn("for step in 0..16 {", SRC)
+        self.assertIn("14.0 - step as f32 * 0.8", SRC)
+        self.assertIn("if step < 10 { 1 } else { 2 }", SRC)
+        self.assertIn("center + egui::vec2(0.6, 1.4)", SRC)
+        self.assertNotIn("[(17.0, 3), (12.0, 5), (7.0, 7), (3.0, 10)]", SRC)
+        self.assertIn("painter.circle_stroke(center, radius, Stroke::new(1.5, CYAN));", SRC)
+        self.assertIn("Color32::from_gray(89)", SRC)
+        self.assertIn("radius * 0.37", SRC)
+
     def test_full_size_preview_and_customization(self):
         for text in ("170.0, 380.0, 190.0", "0.25, 1.0, 190.0", "Live preview", "Reset to default",
                      "Edit shortcuts", "self.paint(ui.ctx(), ui.painter(), rect.center(), self.size, self.opacity",

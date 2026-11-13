@@ -5,7 +5,7 @@ on:
     branches:
       - fix/pdfcraft-v0211-android2-signed-candidate-20261113
     paths:
-      - .github/workflows/pdfcraft-v0211-android1-original-cert-publish.yml
+      - .github/workflows/pdfcraft-v0211-android2-signed-test.yml
       - lib/build-common.sh
       - assets/pdfcraft/**
       - templates/android/pdfcraft_modifiers.rs
@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pdfcraft-original-cert-production-release

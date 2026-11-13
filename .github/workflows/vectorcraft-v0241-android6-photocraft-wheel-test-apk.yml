@@ -1,0 +1,843 @@
+name: VectorCraft v0.24.1-android.6 PhotoCraft Wheel Parity ARM64 TEST ONLY
+
+# Protected baseline 9b031d503b1c5073b7b88bf80ca498d7f970563b; official v0.24.1. No permanent release changes.
+# One-time Android.7 trigger-file gated push; normal changes do not rebuild.
+# No production signing, release publication, or published APK replacement.
+on:
+  push:
+    branches:
+      - fix/vectorcraft-v0241-android6-photocraft-wheel-parity-20261114
+    paths:
+      - .github/vectorcraft-v0241-android6-photocraft-wheel.trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v0241-android6-photocraft-wheel-test
+  cancel-in-progress: true
+
+jobs:
+  disposable-test-apk:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android6-photocraft-wheel-parity-20261114'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      UPSTREAM_SHA: f4922aa7ac99a4f6d56fc68a83a44945207ec610
+      BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
+      VERSION_NAME: 0.24.1-android.6
+      VERSION_CODE: '16784906'
+      LAST_PUBLISHED_CODE: '16783907'
+      ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: 35.0.0
+      ARTCRAFT_NDK_VERSION: 27.2.12479018
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      # Strip native symbol tables but retain Release opt-level 3 / thin-LTO
+      # to avoid slowing startup, painting, font import or trackpad gestures.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      - name: Check out owner Android changes (no write credentials)
+        uses: actions/checkout@v5
+        with:
+          path: android-port
+          persist-credentials: false
+      - name: Check out immutable Android builder
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
+          path: builder
+          persist-credentials: false
+      - name: Check out official VectorCraft v0.24.1
+        uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: f4922aa7ac99a4f6d56fc68a83a44945207ec610
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Enforce source, version, signing and test-only gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test "$VERSION_CODE" -gt "$LAST_PUBLISHED_CODE"
+          test ! -e builder/keys/artcraft-builder.jks
+          test ! -e android-port/keys/artcraft-builder.jks
+          grep -q '^version = "0.24.1"' builder/source/vectorcraft/Cargo.toml
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android7_trackpad_relaunch.py android-port/tools/vectorcraft/patch_android6_touch_canvas.py android-port/tools/vectorcraft/patch_android5_first_pinch_menu.py android-port/tools/vectorcraft/patch_android4_quit_trace.py android-port/tools/vectorcraft/patch_android2_native_quit.py android-port/tools/vectorcraft/patch_android1_native_trackpad.py android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py android-port/tools/vectorcraft/patch_android19_reference_ime.py android-port/tools/vectorcraft/patch_android20_native_keyboard_splash.py android-port/tools/vectorcraft/patch_android21_photocraft_parity.py android-port/tools/vectorcraft/patch_android22_high_refresh.py android-port/tools/vectorcraft/patch_android23_input_boot.py android-port/tools/vectorcraft/patch_android23_font_fastpath.py android-port/tools/vectorcraft/patch_android24_startup_menu.py android-port/tools/vectorcraft/patch_android25_reference_gestures.py android-port/tools/vectorcraft/patch_android8_wheel_touch.py android-port/tools/vectorcraft/patch_android8_ime_reset.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py android-port/tools/vectorcraft/test_android9_ime_guard.py
+          python3 android-port/tools/vectorcraft/test_android9_ime_guard.py
+          python3 android-port/tools/vectorcraft/test_android9_wheel_preferences.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android5_updater.py android-port/tools/vectorcraft/test_v0241_android5_updater.py
+          python3 android-port/tools/vectorcraft/test_v0241_android5_updater.py
+
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android10_imported_ai_text.py android-port/tools/vectorcraft/test_android10_imported_ai_text.py android-port/tools/vectorcraft/patch_android12_relaunch_ime.py android-port/tools/vectorcraft/test_android12_relaunch_ime.py
+          PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android12_relaunch_ime.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android13_document_ime_fence.py android-port/tools/vectorcraft/test_android13_document_ime_fence.py
+          PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android13_document_ime_fence.py
+          PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android10_imported_ai_text.py
+          # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
+          # This keeps stale Java/Rust source anchors from burning build minutes.
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, tempfile, sys
+          sys.path.insert(0, "android-port/tools/vectorcraft")
+          from patch_stability_v021 import patch_adapter, patch_dialog, patch_startup
+          from patch_android12_keyboard import patch as keyboard12
+          from patch_android12_startup import patch as startup12
+          from patch_android12_menu_scroll import patch as scroll12
+          from patch_android13_recovery import patch as recovery13
+          from patch_android13_menu_scroll import patch as scroll13
+          from patch_keyboard_diagnostics_v021 import patch as keyboard_diag
+          from patch_android14_diagnostic_session import patch as diagnostic14
+          from patch_android15_modal_keys import patch as modal15
+          from patch_android16_modal_frame import patch as modal16
+          from patch_android17_reference_adoption import patch as reference17
+          from patch_android18_modal_and_gestures import patch as android18
+          from patch_android19_reference_ime import patch as android19
+          from patch_android20_native_keyboard_splash import patch as android20
+          from patch_android21_photocraft_parity import patch as photocraft21
+          from patch_android22_high_refresh import patch as refresh22
+          from patch_android23_input_boot import patch as input23
+          from patch_android23_font_fastpath import patch as fonts23
+          from patch_android24_startup_menu import patch as input24, patch_winit as backend24
+          from patch_android25_reference_gestures import patch_staged as ref25, restore_winit as restore25
+          from patch_android1_native_trackpad import patch_staged as own_pad, patch_winit as own_pad_winit
+          from patch_android2_native_quit import patch as quit2
+          from patch_android4_quit_trace import patch as quit_trace4
+          from patch_android5_first_pinch_menu import patch as patch5
+          from patch_android6_touch_canvas import patch as patch6
+          from patch_android7_trackpad_relaunch import patch as patch7
+          from patch_smooth_menu_scroll_v021 import patch as smooth_scroll
+          owner=Path("android-port/adapters/vectorcraft")
+          upstream=Path("builder/source/vectorcraft/crates/ui-egui/src")
+          with tempfile.TemporaryDirectory(prefix="vc-android11-overlay-") as temp:
+              root=Path(temp)
+              dst=root/"adapters/vectorcraft"
+              shutil.copytree(owner,dst)
+              target=root/"source/vectorcraft/crates/ui-egui/src"
+              target.mkdir(parents=True)
+              for filename in ("shortcuts.rs","dialogs.rs","widgets/dropdowns.rs","menus/tree.rs","menus/run.rs","app/commands.rs","canvas/input.rs"):
+                  (target/filename).parent.mkdir(parents=True,exist_ok=True)
+                  shutil.copyfile(upstream/filename,target/filename)
+              patch_adapter(root)
+              patch_dialog(root)
+              patch_startup(root)
+              # The full builder runs patch_android_menus_v020.py before the
+              # smooth-scroll overlay. Mirror its reviewed ScrollSource::ALL
+              # insert here, without mutating the official pinned upstream.
+              from patch_smooth_menu_scroll_v021 import ORIGINAL
+              dropdowns=target/"widgets/dropdowns.rs"
+              menu_source=dropdowns.read_text()
+              original_line='        egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room).show(ui, add_contents).inner'
+              v0241_line='        let area = egui::ScrollArea::vertical().max_height(room).min_scrolled_height(room);'
+              scroll='egui::ScrollArea::vertical().scroll_source(egui::containers::scroll_area::ScrollSource::ALL)'
+              if menu_source.count(original_line) == 1 and menu_source.count(v0241_line) == 0:
+                  dropdowns.write_text(menu_source.replace(original_line, ORIGINAL, 1))
+              elif menu_source.count(v0241_line) == 1 and menu_source.count(original_line) == 0:
+                  dropdowns.write_text(menu_source.replace(v0241_line, v0241_line.replace('egui::ScrollArea::vertical()', scroll), 1))
+              else:
+                  raise AssertionError("Unreviewed upstream menu scroll; refuse incompatible patch")
+              smooth_scroll(root)
+              new_menu = dropdowns.read_text()
+              assert 'vectorcraft-android-smooth-menu' in new_menu
+              assert 'wheel_scroll_multiplier(egui::vec2(1.0, 0.78))' in new_menu
+              # Earlier full-build Android menu integration supplies these
+              # two anchors to the keyboard diagnostic overlay. Mirror that
+              # exact source transformation in this cheap dry-run.
+              from patch_android_menus_v020 import add_vc_menu, insert_once
+              tree=target/"menus/tree.rs"
+              tree_src=add_vc_menu(tree.read_text())
+              tree_src=insert_once(tree_src,
+                  '            "Help",\n            vec![\n                c("Join Our Discord", "help.discord"),',
+                  '            "Help",\n            vec![\n                #[cfg(target_os = "android")]\n                c("Graphics Diagnostics…", "android.vectorcraft.diagnostics"),\n                #[cfg(target_os = "android")]\n                Sep,\n                c("Join Our Discord", "help.discord"),',
+                  "Help diagnostics dry-run")
+              tree.write_text(tree_src)
+              run=target/"menus/run.rs"
+              original='pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<Result<Value, String>> {\n'
+              source=run.read_text()
+              synthetic = '    #[cfg(target_os = "android")]\n    {\n        let bit = match id {\n            "android.vectorcraft.diagnostics" => 64,\n            _ => 0,\n        };\n        if bit != 0 { return Some(Ok(Value::Null)); }\n    }\n'
+              source=insert_once(source, original, original+synthetic, "Android run command dry-run")
+              run.write_text(source)
+              keyboard_diag(root)
+              keyboard12(root)
+              startup12(root)
+              scroll12(root)
+              recovery13(root)
+              scroll13(root)
+              diagnostic14(root)
+              modal15(root)
+              modal16(root)
+              reference17(root)
+              android18(root)
+              android19(root)
+              android20(root)
+              photocraft21(root)
+              refresh22(root)
+              input23(root)
+              input24(root)
+              ref25(root)
+              own_pad(root)
+              quit2(root)
+              quit_trace4(root)
+              patch5(root)
+              patch6(root)
+              patch7(root)
+              # Android.9 hover patch must target stable Java declarations, not
+              # transient comments introduced/removed by earlier overlays.
+              java_preflight=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              for declaration in (
+                  "    public void vcNativeUiReady() {",
+                  "    public void onWindowFocusChanged(boolean hasFocus) {",
+                  "    private void imeSetup() {",
+              ):
+                  assert java_preflight.count(declaration) == 1, declaration
+              from patch_android9_ime_hover_menu import guard_both_ime_show_paths
+              guard_both_ime_show_paths(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java")
+              assert 'vcImeFocusEpoch.get() != focusToken' in (dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              print("PASS: Android.9 stable hover method anchors and both Java IME show guards before NDK")
+              assert 'delta.x *= -1.15;' in (dst/'src/lib.rs').read_text()
+              assert 'delta.y *= -1.15;' in (dst/'src/lib.rs').read_text()
+              assert 'main_looper_max_delay_ms' in (dst/'java/com/artcraft/vectorcraft/VectorCraftActivity.java').read_text()
+              assert 'splashHandler.post(this::vcAndroid24RevealNativeBuffer);' not in (dst/'java/com/artcraft/vectorcraft/VectorCraftActivity.java').read_text()
+              assert 'android6_early_touch_pan' in (target/'canvas/input.rs').read_text()
+              assert 'scroll.y -= 2.0 * native_pan.y;' in (target/'canvas/input.rs').read_text()
+              assert 'scroll.y -= early_pan.y;' in (target/'canvas/input.rs').read_text()
+              assert 'trackpad_pinch_needs_anchor' in (target/'canvas/input.rs').read_text()
+              assert 'delta.y = -delta.y;' in (dst/'src/lib.rs').read_text()
+              rust=(dst/"src/lib.rs").read_text()
+              java=(dst/"java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+              shortcuts=(target/"shortcuts.rs").read_text()
+              assert "poll_hidden_ime_close" in rust
+              assert "if self.last_type_editing && !editing_now" in rust
+              assert "vcPollHiddenImeClose" in java
+              assert "verifiedNativeFrames >= 3" in java
+              assert "android_save_changes_key" in shortcuts
+              assert "vcPollPhysicalShortcut" in java
+              assert "verifiedNativeFrames >= 3" in java
+              assert "self.menu_scroll.apply(ctx, raw);" not in rust
+              assert "hardwareShortcutMode" in java
+              assert "final boolean canvasKey = mode == 1" in java
+              assert "finishAndRemoveTask();" not in java
+              assert "firstFrameProbeStartMs = System.currentTimeMillis();" in java
+              assert "android_owner_unsaved_key" in shortcuts and "android_owner_unsaved_key" in rust
+              assert 'self.inner.select_tool(tool_id)' in rust
+              assert ".wheel_scroll_multiplier(egui::vec2(1.0, 0.90))" in (target/"widgets/dropdowns.rs").read_text()  # v0.24.1 retains revised upstream popup with Android.24 wheel tuning
+              assert ".scroll_source(egui::containers::scroll_area::ScrollSource::ALL)" in (target/"widgets/dropdowns.rs").read_text()
+              assert 'let hovered_menu = egui::Popup::is_any_open(ctx);' in (dst/"src/android_modifiers.rs").read_text()
+              assert "vcDiagnosticSnapshot" in java
+              assert "vcCopyDiagnosticReport" in java
+              assert "vc_diag_recording" in rust
+              assert "vc_native_trackpad_axis_pan" in rust
+              assert "winit::platform::android::vc_pad_reset_diagnostics();" in rust
+              assert "VectorCraft v0.23.0-android.4 Diagnostic Session" in rust
+              assert "vc_native_trackpad_historical_zoom_packets" in rust
+              assert "vcMarkNativeQuitStage" in rust and "vcMarkNativeQuitStage" in java
+              assert "VC_QUIT4 stage=" in java
+              assert 'self.bridge.mark_quit_stage("native_close_requested")' in rust
+              assert 'bridge.mark_quit_stage("native_loop_returned")' in rust
+              assert r"\nvc_native_trackpad_axis_pan" in rust
+              assert r"\\nvc_native_trackpad_axis_pan" not in rust
+              assert "vc_quit_after_native.store(true, Ordering::Release)" in rust
+              assert "send_viewport_cmd(egui::ViewportCommand::Close)" in rust
+              assert "VC_QUIT_ANDROID2 stage=native_loop_returned" in rust
+              assert "VC_QUIT_ANDROID2 stage=java_finish_after_native_return" in java
+              assert "match self.bridge.finish_android_after_quit()" not in rust
+              assert "Copy Report" in rust
+              assert "No typed text, document content" in rust
+              assert "vcDiagStartupStage" in java
+              assert "vcDiagShortcutDowns" in java
+              assert "vcOfferModalShortcut" in java
+              assert "vcOfferModalCommit" in java
+              assert "last_modal_action" in rust
+              assert 'route={source}' in rust
+              assert "vc_diag_last_modal_action" in rust
+              assert "vc_modal_pending_action" in rust
+              assert "self.vc_modal_pending_action.take()" in rust
+              assert "self.vc_modal_followup_repaints = 8" in rust
+              assert "phase=logic" in rust
+              assert "vcDiagSavePickerStage" in java
+              assert "vcDiagFrameProbeStage" in java
+              assert "vcWakeNativeLoop" in java
+              assert "wake_native_loop()" in rust
+              assert "platform_splash_until_native_ui" not in java
+              assert "native_ui_traversal_ready" in java
+              assert "mode == 2 && previousMode != 2" in java
+              assert "nativeSurface.requestFocus();" in java
+              assert "app.session.prefs.touch_gestures = true;" in rust
+              assert "touch_center.is_some()" in (target/"canvas/input.rs").read_text()
+              assert '(31, 1) => Some(egui::Key::C)' in rust
+              assert "KeyEvent.KEYCODE_A && key <= KeyEvent.KEYCODE_Z" in java
+              assert 'splash.setKeepOnScreenCondition(() -> !nativeEditorReady' not in java
+              assert '        showStartupCover();' not in java
+              assert "incoming_nonempty = incoming.ctrl" in (dst/"src/android_modifiers.rs").read_text()
+              assert "vcDiagNativeWakes" in java
+              assert "imeView.setVisibility(View.GONE);" in java
+              assert "view.setVisibility(View.VISIBLE);" in java
+              assert "view.setVisibility(View.GONE);" in java
+              assert "view.setFocusable(false);" in java
+              assert "vcProbeWindowFrame" not in java
+              assert "photocraft_direct_native_launch" in java
+              assert "native_editor_ui_ready" in java
+              assert "SplashScreen.installSplashScreen(this);" not in java
+              assert "if (!nativeEditorReady) showStartupCover();" in java
+              assert "vcAndroid24RevealNativeBuffer" in java
+              assert "android24_first_buffer_visible" in java
+              assert "android25_after_native_onCreate" in java
+              assert "VC_BOOT25 after_font_environment" in rust
+              assert "splashHandler.postDelayed(this::dismissStartupCover, 120);" in java
+              assert "        self.inner.raw_input_hook(raw);" in rust
+              assert "PhotoCraft parity: let egui" in rust
+              assert "vcRefreshRateHint" in java
+              assert "preferredRefreshRate=chosen;" in java
+              assert "VC_PERF_UI_PROXY" in rust
+              assert "VC_UI_STALL" in rust
+              assert "vc_prune_last" in rust
+              assert "vc_perf_active_until" in rust
+              assert "from_micros(6060)" not in rust
+              assert "PhotoCraft parity: do NOT rewrite Android native wheel sources" in rust
+              assert "vc_font_fallback_last" in rust
+              assert "from_micros(6060)" not in (target/"widgets/dropdowns.rs").read_text()
+              backend=Path("android-port/tools/vectorcraft/backend_stability.py").read_text()
+              assert "unclassified_pad" in backend
+              assert "pad_fallback_gesture" in backend
+              assert "clamp(-48.0, 48.0)" in backend
+              assert "factor.clamp(0.94, 1.06)" in backend
+              assert "reported_pad_gesture != PadGesture::None" in backend
+              assert "return input_status;" in backend
+              assert "PixelCopy.request(source, bitmap" not in java
+              assert "native_editor_ui_ready" in java
+              assert "progress.setIndeterminate(true);" in java
+              assert "vcSplashDeadline = android.os.SystemClock.uptimeMillis() + 1200L;" not in java
+              assert "decor.requestFocus();" in java
+              assert "physical_key.unwrap_or(*native) != key" in rust
+              assert "The real key is needed by NativeActivity to wake its looper." in java
+              assert "com.artcraft.ime.ArtCraftIme.wake();" in java
+              assert "vc_after_type_exit_frames" in rust
+              assert "just_exited_type" in rust
+              assert "vcWakeNativeLoop();" in java
+          # Simulate the FINAL vendored winit patch on immutable builder files
+          # before SDK/NDK setup, so a stale backend anchor cannot burn minutes.
+          from backend_stability import patch as final_vendor_patch
+          with tempfile.TemporaryDirectory(prefix="vc-winit-preflight-") as temp_dir:
+              temporary=Path(temp_dir)
+              shutil.copytree(Path("builder/vendor/winit/src"), temporary/"src")
+              final_vendor_patch(temporary)
+              backend_output=(temporary/"src/platform_impl/android/mod.rs").read_text()
+              assert "unclassified_pad" in backend_output
+              assert "pad_fallback_gesture: PadGesture" in backend_output
+              assert "if unclassified_pad && pad_gesture==PadGesture::None" in backend_output
+              assert "Classification::TwoFingerSwipe => PadGesture::Scroll" in backend_output
+              assert "Classification::Pinch => PadGesture::Pinch" in backend_output
+              backend24(temporary)
+              restore25(temporary, Path("builder/vendor/winit/src/platform_impl/android/mod.rs"))
+              own_pad_winit(temporary, Path("android-port/tools/vectorcraft/native_pad_math.rs"))
+              backend_output=(temporary/"src/platform_impl/android/mod.rs").read_text()
+              assert "Classification::TwoFingerSwipe => PadGesture::Scroll" in backend_output
+              assert "Classification::Pinch => PadGesture::Pinch" in backend_output
+              assert "unclassified_pad" not in backend_output
+              assert "pad_fallback_gesture" not in backend_output
+              assert "Axis::from(50u32)" in backend_output and "Axis::from(52u32)" in backend_output
+              assert "vc_pad_detector" in backend_output
+              assert "successive_scale" in backend_output
+              assert "(pointer_class || touchpad) && pointer_count == 2" in backend_output
+              assert "((pointer_class || touchpad) && (is_two_pad || has_pad_axes || active_here))" in backend_output
+              assert "self.vc_pad_detector.mode() == vectorcraft_pad_math::Mode::Pinch" in backend_output
+              assert "vc_pad_diagnostics" in (temporary/"src/platform/android.rs").read_text()
+              assert "vc_pad_reset_diagnostics" in (temporary/"src/platform/android.rs").read_text()
+              assert "pinch_streak" in (temporary/"src/platform_impl/android/vectorcraft_pad_math.rs").read_text()
+              assert "for history in p.history()" in backend_output
+              assert "native_axes.scale()" in backend_output
+              assert "AxisTotals" in (temporary/"src/platform_impl/android/vectorcraft_pad_math.rs").read_text()
+              assert "VC_PAD_HISTORICAL_ZOOM" in (temporary/"src/platform/android.rs").read_text()
+              assert ".clamp(-160.0, 160.0)" not in backend_output
+              assert "factor.clamp(0.75, 1.33)" not in backend_output
+              print("PASS: Android.4 relative-axis history accumulation, native pinch before pan, session reset")
+          # Verify the cold-start font cache still resolves the full SAF
+          # library, but never counts 5000 external files on the UI thread.
+          template=root/"templates/android"
+          template.mkdir(parents=True,exist_ok=True)
+          from patch_cached_system_fonts_v020 import apply as apply_cached_fonts
+          source=Path("builder/templates/android/system_fonts.rs").read_text()
+          (template/"system_fonts.rs").write_text(apply_cached_fonts(source))
+          fonts23(root)
+          font_source=(template/"system_fonts.rs").read_text()
+          assert "refresh_font_links_off_ui_thread();" in font_source
+          assert "entries.flatten().count()" not in font_source
+          assert "fn refresh_font_links_off_ui_thread()" in font_source
+          assert "vectorcraft-font-links-cache-v1" in font_source
+          print("PASS: Android.7 trackpad 2-axis natural pan and relaunch probe mitigation; Android.5/6 pinch/menu/touch and Ctrl+Q preserved")
+          PY
+          python3 -m unittest discover -s android-port/tools/vectorcraft -p 'test_*.py' -v
+          rustc --edition=2021 --test android-port/tools/vectorcraft/native_pad_math.rs -o "$RUNNER_TEMP/vc-native-pad-tests"
+          "$RUNNER_TEMP/vc-native-pad-tests"
+          rustc --edition=2021 --test android-port/tools/vectorcraft/test_device_kind.rs -o "$RUNNER_TEMP/vc-pointer-tests"
+          "$RUNNER_TEMP/vc-pointer-tests"
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          meta=tomllib.loads(Path("android-port/adapters/vectorcraft/Cargo.toml").read_text())["package"]["metadata"]["android"]
+          assert meta["package"]=="com.artcraft.vectorcraft"
+          assert meta["build_targets"]==["aarch64-linux-android"]
+          assert meta["application"]["activity"][0]["name"]==".VectorCraftActivity"
+          assert Path("android-port/assets/branding/vectorcraft/vc-owner-20261103.svg").is_file()
+          print("PASS: independent production package and original artwork retained; permanent key forbidden")
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # Reuse only an official, SHA-256 verified Gradle ZIP; avoid another
+      # 20-minute Rust compile ending in a Gradle download HTTP 504.
+      - name: Restore Gradle 8.11.1 distribution cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vectorcraft-gradle/gradle-8.11.1-bin.zip
+          key: vectorcraft-gradle-8.11.1-bin-f397b287-v1
+      - name: Prefetch and verify Gradle 8.11.1 before ARM64 compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_SHA="f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
+          CACHE="$HOME/.cache/vectorcraft-gradle"
+          ZIP="$CACHE/gradle-8.11.1-bin.zip"
+          mkdir -p "$CACHE"
+          if ! (test -s "$ZIP" && echo "$GRADLE_SHA  $ZIP" | sha256sum --check --status); then
+            rm -f "$ZIP" "$ZIP.part"
+            ok=0
+            for source in \
+              "https://downloads.gradle.org/distributions/gradle-8.11.1-bin.zip" \
+              "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"; do
+              for attempt in 1 2 3; do
+                echo "Gradle 8.11.1 fetch attempt $attempt: $source"
+                if curl --fail --location --silent --show-error \
+                    --retry 2 --retry-all-errors --retry-delay 3 \
+                    --connect-timeout 20 --max-time 300 \
+                    --output "$ZIP.part" "$source" \
+                    && echo "$GRADLE_SHA  $ZIP.part" | sha256sum --check --status; then
+                  mv "$ZIP.part" "$ZIP"
+                  ok=1
+                  break 2
+                fi
+                rm -f "$ZIP.part"
+              done
+            done
+            if [[ "$ok" -ne 1 ]]; then
+              echo "::error::Pinned Gradle ZIP unavailable/mismatched; aborting before expensive Rust compilation"
+              exit 1
+            fi
+          fi
+          echo "$GRADLE_SHA  $ZIP" | sha256sum --check
+          # Pinned builder copies templates/gradle to the generated launcher.
+          # Modify only this disposable checkout; no permanent release changes.
+          python3 - "$ZIP" "$GRADLE_SHA" <<'PY'
+          from pathlib import Path
+          import sys
+          zip_path=Path(sys.argv[1]).resolve()
+          expected=sys.argv[2]
+          props=Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          original=props.read_text()
+          remote=r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+          assert original.count(remote)==1, "Unreviewed Gradle wrapper template; refuse modification"
+          uri=zip_path.as_uri().replace(":",r"\:")
+          updated=original.replace(remote,"distributionUrl="+uri)
+          assert "distributionSha256Sum=" not in updated
+          updated+="distributionSha256Sum="+expected+"\n"
+          props.write_text(updated)
+          assert "distributionUrl=file\:///" in updated
+          print("PASS: official SHA-256 Gradle 8.11.1 ZIP; local wrapper URL; no late remote download")
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android 35, tools and NDK 27.2 once
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage owner adapter and reviewed upstream v0.21 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Catch Java SDK mismatches before the expensive ARM64 Rust build.
+          grep -Fq 'import android.view.PixelCopy;' android-port/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          ! grep -Fq 'import android.graphics.PixelCopy;' android-port/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          javap -classpath "$ANDROID_HOME/platforms/android-35/android.jar" android.view.PixelCopy >/dev/null
+          echo "PASS: SDK 35 PixelCopy import and class verified"
+          rm -rf builder/adapters/vectorcraft
+          cp -a android-port/adapters/vectorcraft builder/adapters/vectorcraft
+          python3 android-port/tools/vectorcraft/patch_android_menus_v020.py builder
+          python3 android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py builder
+          python3 android-port/tools/vectorcraft/patch_android_about_updates.py builder
+          # The builder replaces upstream android-activity and winit during the full APK build.
+          # Its native-activity 0.6.1 lacked classification() despite winit calling it.
+          # Safely resolve the Android API-29+ symbol at runtime; on API 28 return None.
+          python3 android-port/tools/vectorcraft/patch_android_native_classification.py builder
+          # VectorCraft v0.21's official egui-winit expects Storytold winit's
+          # ImeResetCompleted and reset_ime_with_request APIs; this builder's
+          # older vendored winit has neither. Preserve all custom touch/mouse
+          # code while adding exactly the upstream public IME interface.
+          python3 android-port/tools/vectorcraft/patch_android_winit_ime_v020.py builder
+          # The reference builder copies adapters/vectorcraft again during packaging.
+          # Patch THAT source, not only the compatibility check's temporary apps crate.
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,"android-port/tools/vectorcraft")
+          from patch_android_adapter_v020 import patch_staged_source
+          manifest=Path("builder/source/vectorcraft/Cargo.toml").read_text()
+          path=Path("builder/adapters/vectorcraft/src/lib.rs")
+          path.write_text(patch_staged_source(manifest,path.read_text()))
+          print("PASS: v0.21 MIME filters and input hook fixed in builder-owned Android adapter")
+          PY
+          python3 android-port/tools/vectorcraft/patch_stability_v021.py builder
+          python3 android-port/tools/vectorcraft/patch_android24_startup_menu.py builder
+          python3 android-port/tools/vectorcraft/patch_android24_startup_menu.py builder --install-backend-hook
+          python3 android-port/tools/vectorcraft/patch_android25_reference_gestures.py builder
+          python3 android-port/tools/vectorcraft/patch_android25_reference_gestures.py builder --install-hook
+          python3 android-port/tools/vectorcraft/patch_android1_native_trackpad.py builder
+          python3 android-port/tools/vectorcraft/patch_android2_native_quit.py builder
+          python3 android-port/tools/vectorcraft/patch_android4_quit_trace.py builder
+          python3 android-port/tools/vectorcraft/patch_android5_first_pinch_menu.py builder
+          python3 android-port/tools/vectorcraft/patch_android6_touch_canvas.py builder
+          python3 android-port/tools/vectorcraft/patch_android7_trackpad_relaunch.py builder
+          python3 android-port/tools/vectorcraft/patch_android1_native_trackpad.py builder --install-hook
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py
+          python3 android-port/tools/vectorcraft/patch_android8_wheel_touch.py builder
+          python3 android-port/tools/vectorcraft/patch_android8_ime_reset.py builder
+          python3 android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py builder
+          # Run after Android.8 selected-text fallback; fail before NDK/ARM64 compile.
+          python3 android-port/tools/vectorcraft/patch_android10_imported_ai_text.py builder
+          python3 android-port/tools/vectorcraft/patch_android11_typing_trace.py builder
+          python3 android-port/tools/vectorcraft/patch_android11_pointer_retry.py builder
+          python3 android-port/tools/vectorcraft/patch_android12_relaunch_ime.py builder
+          python3 android-port/tools/vectorcraft/patch_android13_document_ime_fence.py builder
+          VC_ANDROID13_STAGED=builder PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android13_document_ime_fence.py
+          VC_ANDROID12_STAGED=builder PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android12_relaunch_ime.py
+          VC_ANDROID11_STAGED=builder PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android11_trace.py
+          # Cheap source-preflight for eight editable slots and SharedPreferences.
+          # Keep before ARM64 native compilation to conserve CI minutes.
+          python3 - <<'PY'
+          from pathlib import Path
+          wheel=Path("builder/adapters/vectorcraft/src/stylus_wheel.rs").read_text()
+          patch=Path("android-port/tools/vectorcraft/patch_android8_wheel_touch.py").read_text()
+          java=Path("builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+          host=Path("builder/adapters/vectorcraft/src/lib.rs").read_text()
+          menus=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/tree.rs").read_text()
+          # The tapped Vc icon is rendered by android_vc_menu in menus.rs,
+          # NOT by the upstream tree: verify the actual onscreen menu.
+          visible_menu=Path("builder/source/vectorcraft/crates/ui-egui/src/menus.rs").read_text()
+          commands=Path("builder/source/vectorcraft/crates/ui-egui/src/menus/run.rs").read_text()
+          assert "const DEFAULT_LAYOUT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7]" in wheel
+          assert "const COMMANDS: [&str; 12]" in wheel and "Restore Default" in wheel
+          assert 'ui.label("Wheel size")' in wheel
+          assert 'ui.label("Opacity")' in wheel
+          assert 'saved.push_str(&format!(",{},{}", self.size_percent, self.opacity_percent))' in wheel
+          assert 'values.len() == 8 || values.len() == 10' in wheel
+          assert 'self.size_percent = 84;' in wheel and 'self.opacity_percent = 78;' in wheel
+
+          assert "size_percent: 84, opacity_percent: 78" in wheel
+          assert 'Stylus Wheel — Default' in wheel
+          assert 'fn external_preview(&self, ctx: &Context)' in wheel
+          assert '.default_width(400.0)' in wheel
+          assert 'self.external_preview(&ctx);' in wheel
+          assert 'fn controls(' not in wheel
+          assert '.step_by(1.0)' in wheel
+          assert '.width(236.0)' in wheel
+          # Android.6 exact PhotoCraft-style parity while preserving Vc colors.
+          assert 'Stylus Wheel — Default' in wheel
+          assert 'format!("Slot {}", slot + 1)' in wheel
+          assert 'Existing' in wheel and 'selections swap positions.' in wheel
+          assert 'Color32::from_rgb(43, 43, 45)' in wheel
+          assert 'Color32::from_rgb(49, 49, 51)' in wheel
+          assert 'let width = screen.width().min(450.0).max(120.0);' in wheel
+          assert 'vec2(width, 38.0)' in wheel
+          assert 'egui::DragValue::new(&mut self.size_percent)' in wheel
+          assert 'egui::DragValue::new(&mut self.opacity_percent)' in wheel
+          assert 'self.size_percent = 84;' in wheel and 'self.opacity_percent = 78;' in wheel
+          assert 'fn external_preview(&self, ctx: &Context)' in wheel
+          assert wheel.count('self.paint_wheel(ui, rect, scale, highlighted);') == 2
+          assert 'Button::new("Done")' not in wheel
+
+          assert "self.layout[i]" in wheel and "set_layout_string" in wheel
+          assert "vcStylusGetLayout" in java and "vcStylusSetLayout" in java
+          assert "vc_stylus_get_layout" in host and "vc_stylus_set_layout" in host
+          assert 'sub("Stylus Wheel", vec![' in menus and 'stylusWheelCustomize" => 512' in commands
+          assert 'pub(crate) fn android_vc_menu(' in visible_menu
+          assert 'ui.menu_button("Stylus Wheel", |ui| {' in visible_menu
+          assert 'ui.checkbox(&mut wheel_enabled, "Stylus Wheel On").changed()' in visible_menu
+          assert 'clicked = Some(("android.vectorcraft.stylusWheel".into()' in visible_menu
+          assert 'ui.button("Customization").clicked()' in visible_menu
+          assert 'clicked = Some(("android.vectorcraft.stylusWheelCustomize".into()' in visible_menu
+          assert 'ANDROID_WHEEL_ENABLED.load(std::sync::atomic::Ordering::Acquire)' in visible_menu
+          assert "self.stylus_wheel.open_customizer(ui.ctx())" in host
+          assert "take_layout_change" in host and "take_layout_change" in wheel
+          assert "vc_stylus_native_take" in host
+          assert "patch_android8_ime_reset" in patch
+          # Verify opaque egui reset tokens use Option<T>: the upstream IdTypeMap
+          # remove_temp<T>() requires Default, which ImeResetId does not implement.
+          ime=Path("builder/source/vectorcraft/crates/ui-egui/src/ime.rs").read_text()
+          ime_bridge=Path("builder/adapters/vectorcraft/src/ime_bridge.rs").read_text()
+          assert "data.insert_temp(key, Some(request_id));" in ime
+          assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime
+          assert "get_temp::<Option<egui::ImeResetId>>(key).flatten()" in ime_bridge
+          assert "remove_temp::<Option<egui::ImeResetId>>(key)" in ime_bridge
+          assert "remove_temp::<egui::ImeResetId>" not in ime + ime_bridge
+          # Opened .ai text edit: active Type host and selected live text fallback.
+          live_text=Path("builder/source/vectorcraft/crates/tools/src/text.rs").read_text()
+          assert 'cx.selection.objects.iter().copied().find' in live_text
+          assert 'let text_id = h?.leaf' in live_text  # desktop unaffected
+          assert 'let top_hit_parent = h.as_ref()' in live_text
+          assert 'node.geometric_bounds()' in live_text
+          assert 'is_editable_with(&cx.doc.locked_artboards(), *id)' in live_text
+          assert 'if (imeWanted)' in java and 'imeView.requestFocus()' in java
+          # Touchscreen X/Y follows centroid only on canvas; trackpad unchanged.
+          canvas=Path("builder/source/vectorcraft/crates/ui-egui/src/canvas/input.rs").read_text()
+          assert 'if active { translated } else { egui::Vec2::ZERO }' in canvas
+          assert 'scroll = if early_pan != egui::Vec2::ZERO' in canvas
+          assert '#[cfg(target_os = "android")]\n    {\n        // This whole block is Android-only' in canvas
+          assert 'native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)' in canvas
+          assert 'scroll.y -= 2.0 * native_pan.y' not in canvas
+          assert 'delta.x *= -1.15;' in host and 'delta.y *= -1.15;' in host
+          # Android.9: imported .ai → close → new blank document must not
+          # inherit an asynchronous IME hide/reset from the previous document.
+          assert 'com.artcraft.vectorcraft.test' in Path("builder/lib/android_project.py").read_text() or 'com.artcraft.vectorcraft.test' in Path("builder/adapters/vectorcraft/src/lib.rs").read_text() or 'com.artcraft.vectorcraft.test' in Path("android-port/tools/vectorcraft/patch_test_package_v021.py").read_text()
+          assert 'vcImeFocusEpoch.incrementAndGet()' in java
+          assert 'vcDocumentChanged()' in java, "Missing vcDocumentChanged Java method"
+          assert 'imeEvents.clear();' in java, "Missing synchronous stale IME queue clear"
+          assert 'public boolean vcStylusHoverActive()' in java
+          assert 'setOnHoverListener((view, motion) -> {' in java
+          assert 'return false;' in java  # native pointer delivery not consumed
+          assert 'vc_last_doc_uid: Option<u64>' in host
+          assert 'self.bridge.vc_document_changed()' in host
+          assert 'self.ime.poll(ctx, raw);' in host
+          assert host.index('self.bridge.vc_document_changed()') < host.index('self.ime.poll(ctx, raw);')
+          assert 'vc_stylus_hovering()' in host
+          assert 'ui.menu_button("Stylus Wheel", |ui| {' in visible_menu
+          assert 'ui.checkbox(&mut wheel_enabled, "Stylus Wheel On")' in visible_menu
+          assert 'ui.button("Customization").clicked()' in visible_menu
+          assert 'sub("Stylus Wheel", vec![' in menus
+          assert 'getWindow().getDecorView().post(() -> {' in java
+          assert 'if (!imeWanted && imeView != null && imeView.hasFocus()) vcEndTypeEditing();' in java
+          print("PASS: Android.9 IME document-switch epoch, no stale SAF cleanup, passive stylus hover, nested Vc wheel menu")
+          print("PASS: opened live text fallback, Type IME focus recovery and direct two-touch pan")
+          print("PASS: editor-owned IME reset IDs use Default-safe Option storage; stale IDs remain guarded")
+          print("PASS: actual tapped Vc menu displays checked Stylus Wheel and Customize action; routes to host")
+          print("PASS: eight configurable wheel slots, safe actions, persisted settings and baseline wheel routing")
+          PY
+          python3 android-port/tools/vectorcraft/patch_v0241_android2.py builder
+          python3 android-port/tools/vectorcraft/test_v0241_android2.py builder
+          # Android.5 verified download + PackageInstaller are applied only
+          # after the preserved Android.4 wheel, keyboard and IME overlays.
+          python3 android-port/tools/vectorcraft/patch_v0241_android5_updater.py builder android-port
+          VC_ANDROID5_STAGED=builder python3 android-port/tools/vectorcraft/test_v0241_android5_updater.py
+
+          # Android.3 Ctrl+Z: the real adapter must call document Undo once.
+          # This is checked before expensive native ARM64 compilation.
+          python3 - <<'PY'
+          from pathlib import Path
+          host=Path("builder/adapters/vectorcraft/src/lib.rs").read_text()
+          input=Path("builder/adapters/vectorcraft/src/android_modifiers.rs").read_text()
+          assert 'has_android_undo_chord(' in host
+          assert 'self.inner.run("edit.undo", serde_json::json!({}))' in host
+          assert 'consume_android_undo_chord(raw);' in host
+          assert 'pub fn has_android_undo_chord(' in input
+          assert 'pub fn consume_android_undo_chord(' in input
+          # The generated adapter is patched by earlier upstream overlays,
+          # which omit #[cfg(test)] modules. Source tests live in the owner
+          # module and are compiled explicitly by the behavioral-gates step.
+          owner_input=Path("android-port/adapters/vectorcraft/src/android_modifiers.rs").read_text()
+          assert 'fn ctrl_z_undo_chord_is_scoped_to_open_document_and_single_command()' in owner_input
+          assert 'fn ctrl_z_never_swallow_shift_redo_alt_plain_or_repeat()' in owner_input
+          print("PASS: Android.3 Ctrl+Z generated runtime handlers and owner tests")
+          PY
+          python3 android-port/tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$VERSION_CODE"
+          # Android.3: the real Vc mark is the clickable top-left menu,
+          # native launch window is brand maroon, and icon safe-zone padding
+          # applies to both Android adaptive and legacy mipmaps.
+          # VectorCraft NativeActivity needs no AppCompat, Kotlin or
+          # GameActivity. Do not pull them into the final DEX/resources.
+          python3 android-port/tools/vectorcraft/patch_compact_apk_v020.py builder android-port
+          # Fail *before* expensive ARM64 Rust compilation if the generated
+          # Gradle theme still points to AppCompat after its dependency removal.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("builder/lib/android_project.py").read_text()
+          assert 'parent="android:style/Theme.Material.NoActionBar"' in source
+          assert 'parent="Theme.SplashScreen"' in source
+          assert "implementation 'androidx.core:core-splashscreen:1.0.1'" in source
+          assert 'postSplashScreenTheme' in source
+          assert 'parent="Theme.AppCompat.NoActionBar"' not in source
+          assert "implementation 'androidx.appcompat:" not in source
+          assert "implementation 'androidx.games:" not in source
+          assert 'android:windowFullscreen' in source
+          assert 'useLegacyPackaging = true' in source
+          assert 'useLegacyPackaging = false' not in source
+          print("PASS: native Vc theme and compressed ARM64 test package; no AppCompat mismatch")
+          PY
+          # Reuse unchanged system-font symlink layout across cold launches
+          # without affecting native font fallbacks or SAF imported fonts.
+          python3 android-port/tools/vectorcraft/patch_cached_system_fonts_v020.py builder
+          python3 android-port/tools/vectorcraft/patch_android23_font_fastpath.py builder
+          grep -Fq 'vectorcraft_android24.py' builder/lib/build-common.sh
+          grep -Fq 'vectorcraft_android25.py' builder/lib/build-common.sh
+          grep -Fq 'vectorcraft_android1_trackpad.py' builder/lib/build-common.sh
+          grep -Fq 'vc_pad_diagnostics()' builder/adapters/vectorcraft/src/lib.rs
+          grep -Fq 'VC_QUIT_ANDROID2 stage=native_loop_returned' builder/adapters/vectorcraft/src/lib.rs
+          grep -Fq 'android25_after_native_onCreate' builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          grep -Fq 'vcAndroid24RevealNativeBuffer' builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java
+          # Only this disposable candidate gets a separate application ID.
+          # Keep stable Java/JNI namespace, original Android source and signing key unchanged.
+          python3 android-port/tools/vectorcraft/patch_test_package_v021.py builder
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("builder/lib/android_project.py")
+          s=p.read_text()
+          old="applicationId '{_groovy(namespace)}.test'"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"applicationId '{_groovy(namespace)}.candidate_v0241a6'",1))
+          PY
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          # Owner supplied a NEW flat Vc artwork; the previous glossy approved
+          # icon is preserved for older releases but must not enter this candidate.
+          python3 android-port/tools/vectorcraft/render_owner_icon.py \
+            android-port/assets/branding/vectorcraft/vc-owner-20261103.svg \
+            "$RUNNER_TEMP/vectorcraft-test-icon.png"
+          python3 - "$RUNNER_TEMP/vectorcraft-test-icon.png" <<'PY'
+          from PIL import Image
+          import sys
+          icon=Image.open(sys.argv[1]).convert("RGBA")
+          assert icon.size==(1024,1024) and icon.getpixel((0,0))[3]==0
+          assert icon.getpixel((512,80))[:3]==(45,0,0)
+          orange=icon.getpixel((420,450))
+          assert orange[0]>180 and orange[1]>70 and orange[2]<80
+          print("PASS: owner dark-maroon/orange Vc artwork and transparent corners")
+          PY
+          python3 android-port/tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 android-port/tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vectorcraft-test-icon.png"
+          grep -Fq 'self.inner.raw_input_hook(ctx, raw);' builder/adapters/vectorcraft/src/lib.rs
+          # System install request permission and generated class must reach
+          # the final build. No production keys, no installer invocations in CI.
+          grep -Fq '"android.permission.REQUEST_INSTALL_PACKAGES"' builder/adapters/vectorcraft/Cargo.toml
+          test -f builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftUpdateInstaller.java
+          grep -Fq 'session.commit(sender.getIntentSender())' builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftUpdateInstaller.java
+
+      - name: Behavioral gates on generated code before ARM64 compilation
+        shell: bash
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_PROFILE_TEST_DEBUG: '0'
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib android_wheel_tests --no-default-features
+          cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib android_stability --no-default-features
+          python3 android-port/tools/vectorcraft/run_staged_input_tests.py builder
+          # Owner regression tests cover Ctrl+Z before staging strips test modules.
+          python3 android-port/tools/vectorcraft/run_staged_input_tests.py android-port
+          # Exercise engine text operations and UI typing/IME regression suites.
+          cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-engine --lib text --no-default-features
+          cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib typing --no-default-features
+          cargo test --manifest-path builder/source/vectorcraft/Cargo.toml -p vectorcraft-ui-egui --lib ime --no-default-features
+      - name: Compile optimized ARM64 VectorCraft Android test APK (disposable builder key)
+        shell: bash
+        timeout-minutes: 125
+        run: |
+          set -euo pipefail
+          # The latest Mostafa builder auto-updates to upstream v0.22.0 by default,
+          # which discards our reviewed v0.23.0 owner UI/keyboard overlays.
+          # --noupdate is a supported builder flag: pin the tested upstream commit.
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test -f builder/adapters/vectorcraft/src/ime_bridge.rs
+          test -f builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pub fn set_android_preferences(' builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'pub fn take_android_menu_bits()' builder/source/vectorcraft/crates/ui-egui/src/menus.rs
+          grep -Fq 'fn android_owner_unsaved_key(' builder/source/vectorcraft/crates/ui-egui/src/shortcuts.rs
+          grep -Fq 'vectorcraft_android1_trackpad.py' builder/lib/build-common.sh
+          bash builder/build.sh -vectorcraft --noupdate "-appicon=$RUNNER_TEMP/vectorcraft-test-icon.png"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test "$(find builder/output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
+      - name: Verify installable test APK package, ARM64, signature and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p private-test
+          APK="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$AAPT" dump badging "$APK" > private-test/badging.txt
+          "$AAPT" dump resources "$APK" > private-test/resources.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > private-test/signature.txt
+          python3 - "$APK" <<'PY'
+          import json,os,re,sys,zipfile,hashlib
+          from pathlib import Path
+          apk=Path(sys.argv[1])
+          badging=Path("private-test/badging.txt").read_text()
+          resources=Path("private-test/resources.txt").read_text()
+          match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
+          assert match and match.groups()==("com.artcraft.vectorcraft.candidate_v0241a6",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
+          assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
+          sig=Path("private-test/signature.txt").read_text()
+          fingerprints=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
+          assert len(fingerprints)==1 and fingerprints[0].lower()!=os.environ["ORIGINAL_CERT"], "Test must NOT use permanent key"
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              files=z.namelist()
+              libs=[x for x in files if x.startswith("lib/") and x.endswith(".so")]
+              assert libs and all(x.startswith("lib/arm64-v8a/") for x in libs),libs
+              assert "lib/arm64-v8a/libvectorcraft_android.so" in files
+              assert z.getinfo("lib/arm64-v8a/libvectorcraft_android.so").compress_type == zipfile.ZIP_DEFLATED, "Native library not compressed"
+              dex=[z.read(x) for x in files if x.endswith(".dex")]
+              assert dex and any(b"VectorCraftActivity" in x for x in dex)
+              # aapt2/Gradle compiles launcher mipmap entries into resources.arsc;
+              # individual ic_launcher files do NOT necessarily appear as ZIP names.
+              assert "resources.arsc" in files, "Android compiled resources missing"
+          assert "mipmap/ic_launcher" in resources or "drawable/ic_launcher" in resources, "Android launcher icon resource missing"
+          report={"source_commit":os.environ["GITHUB_SHA"],"build_number":os.environ["GITHUB_RUN_NUMBER"],"run_id":os.environ["GITHUB_RUN_ID"],"upstream_sha":os.environ["UPSTREAM_SHA"],"builder_sha":os.environ["BUILDER_SHA"],"package":match.group(1),"version_code":int(match.group(2)),"version_name":match.group(3),"test_certificate_sha256":fingerprints[0].lower(),"original_certificate_used":False,"apk_sha256":hashlib.sha256(apk.read_bytes()).hexdigest(),"install_mode":"separate test application ID; stable installation and its data stay untouched","device_checks":"pending"}
+          Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("PASS: separate-install temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and version")
+          PY
+          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-ARM64-DISPOSABLE-TEST-SIGNED.apk"
+          (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
+          # Compare against prior test APK (163407944 bytes); this candidate
+          # compresses native code in the package, extracting once on install.
+          python3 - "$APK" <<'PY'
+          import json,sys,zipfile
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          with zipfile.ZipFile(path) as z:
+              entries=sorted(z.infolist(),key=lambda e:e.file_size,reverse=True)
+              total_lib=sum(e.file_size for e in entries if e.filename.startswith("lib/") and e.filename.endswith(".so"))
+              details=[{"path":e.filename,"raw_bytes":e.file_size,"compressed_bytes":e.compress_size}
+                       for e in entries[:12]]
+              report={"apk_bytes":path.stat().st_size,"native_library_raw_bytes":total_lib,
+                      "largest_entries":details,"release_symbols_stripped":True,
+                      "unused_androidx_gameactivity_removed":True,
+                      "native_library_compressed_in_apk":True,
+                      "native_library_extracted_at_install":True,
+                      "previous_uncompressed_apk_bytes":163407944,
+                      "apk_download_bytes_saved":163407944-path.stat().st_size}
+              assert report["apk_download_bytes_saved"] > 0, "Native APK compression did not reduce download size"
+          Path("private-test/size-report.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("PASS: APK size report recorded",report["apk_bytes"],"bytes")
+          PY
+          cp android-port/docs/vectorcraft/v0241-android6-test.md private-test/TEST-NOTES.md
+      - name: Upload test artifact only — never publish a GitHub Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: VectorCraft-v0.24.1-android.6-PHOTOCRAFT-WHEEL-ARM64-TEST-ONLY
+          path: private-test/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Delete disposable builder signing materials
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys

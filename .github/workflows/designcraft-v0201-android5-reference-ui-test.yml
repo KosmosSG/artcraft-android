@@ -41,7 +41,7 @@ jobs:
           grep -Fq 'Mirrored monoline return arrows' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq 'Clean two-shape motif' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq 'radius * 0.019' tools/designcraft/dc_stylus_wheel.rs
-          grep -Fq 'egui::Frame::window(&ctx.style())' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'egui::Frame::window(ctx.style_of(egui::Theme::Dark).as_ref())' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq 'visuals.selection.bg_fill = ACCENT' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq 'ui.scope(|ui|' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq 'Three evenly spaced stacked diamond outlines' tools/designcraft/dc_stylus_wheel.rs

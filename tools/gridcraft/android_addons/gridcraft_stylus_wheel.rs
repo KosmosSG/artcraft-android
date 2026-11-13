@@ -33,7 +33,7 @@ fn deck_style_curved_arrow(p: &egui::Painter, rect: egui::Rect, redo: bool) {
         (-4.8,-4.7), (-2.0,-5.8), (1.0,-6.0), (5.0,-5.5),
         (8.0,-4.0),
     ];
-    p.add(Shape::line(points.iter().map(|&(x,y)|pt(x,y)).collect(), ink));
+    p.add(Shape::line(points.iter().map(|&(x,y)|pt(x,y)).collect::<Vec<_>>(), ink));
     p.add(Shape::line(vec![pt(2.0,-9.0),pt(9.0,-4.0),pt(3.0,2.0)],ink));
 }
 /// No multicolour filled toolbar art or platform-dependent emoji icon glyphs.
@@ -428,6 +428,18 @@ impl Wheel {
                     self.opacity_percent = 85.0;
                     dirty = true;
                 }
+                // Temporary acceptance-check indicator: tells the tester
+                // whether real Java stylus-hover samples reach the native app.
+                let incoming = self.last_stylus_hover.is_some_and(
+                    |at| at.elapsed() < Duration::from_secs(3));
+                let message = if !self.enabled {
+                    "Stylus hover: enable wheel in Gc menu"
+                } else if incoming {
+                    "Stylus hover: signal detected"
+                } else {
+                    "Stylus hover: move Magic-Pencil above the screen"
+                };
+                ui.small(message);
                 ui.small("Pen side-button: single to open • double to open immediately.");
             });
         self.settings_open = window_open;

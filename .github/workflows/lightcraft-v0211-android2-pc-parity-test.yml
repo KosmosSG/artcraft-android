@@ -7,6 +7,7 @@ on:
       - fix/lightcraft-v0211-android2-pc-wheel-hover-updater-20261114
     paths:
       - '.github/workflows/lightcraft-v0211-android2-pc-parity-test.yml'
+      - 'tools/lightcraft/**'
 
 permissions:
   contents: read

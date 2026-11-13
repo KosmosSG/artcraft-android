@@ -1,4 +1,4 @@
-name: CADCraft v0.19.0 Android.2 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.3 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
@@ -6,12 +6,8 @@ on:
     branches:
       - feature/cadcraft-v0190-android1-test-20261111
     paths:
-      - '.github/workflows/cadcraft-v0190-android1-test.yml'
+      # Explicit, focused completion gate. Interim edits do not burn Actions minutes.
       - 'tools/cadcraft_android_patch.py'
-      - 'tools/cadcraft_android_wheel.rs'
-      - 'tools/cadcraft_icon_fix.py'
-      - 'tools/CadCraftIcon.java'
-      - 'assets/cadcraft/Cc-launcher-icon.svg'
   workflow_dispatch:
 
 permissions:
@@ -107,13 +103,13 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.2-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.3-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.2-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.3-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
@@ -125,7 +121,7 @@ jobs:
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.1-ARM64-TEST
+          name: CADCraft-v0.19.0-android.3-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -135,7 +131,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo '### CADCraft v0.19.0 Android.2 test'
+            echo '### CADCraft v0.19.0 Android.3 test'
             echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
             echo '* Isolated package: com.artcraft.cadcraft.test'
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'

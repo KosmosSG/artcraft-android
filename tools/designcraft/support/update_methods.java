@@ -144,14 +144,18 @@
             dcUpdateMessage("The separately signed test app cannot install production updates.");
             return;
         }
+        if (tag == null || !tag.matches(
+                "designcraft-v[0-9]+\\.[0-9]+\\.[0-9]+-android\\.[1-9][0-9]*")) {
+            dcUpdateMessage("Invalid DesignCraft release tag.");
+            return;
+        }
         String canonical = DesignCraftUpdatePolicy.REPOSITORY
             + "/releases/download/" + tag + "/DesignCraft-v"
             + tag.substring("designcraft-v".length()) + "-arm64-v8a.apk";
         String legacy = DesignCraftUpdatePolicy.REPOSITORY
             + "/releases/download/" + tag + "/DesignCraft-"
             + tag.substring("designcraft-v".length()) + "-arm64-v8a.apk";
-        if (!tag.matches("designcraft-v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-android\\\\.[1-9][0-9]*")
-                || (!apkUrl.equals(canonical) && !apkUrl.equals(legacy))
+        if ((!apkUrl.equals(canonical) && !apkUrl.equals(legacy))
                 || !expectedSha.matches("[0-9a-f]{64}")
                 || expectedCode <= 0) {
             dcUpdateMessage("Update metadata did not match the approved release.");

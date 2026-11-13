@@ -1,4 +1,4 @@
-name: CADCraft v0.19.0 Android.4 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.5 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
@@ -91,9 +91,15 @@ jobs:
           grep -q 'cadWheelEnabled' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q 'CADCRAFT_ISOLATED_PEN_KEY_QUEUE' reference/vendor/android-activity/src/lib.rs
           grep -q 'cad_stylus_capture' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -q 'cadStylusIntercept(event)' reference/templates/android/SafActivity.java
+          grep -q 'public int cadStylusPoll()' reference/templates/android/SafActivity.java
+          grep -q 'cadWheelPresetVersion' reference/source/cadcraft/crates/ui-egui/src/lib.rs
+          grep -q 'request_repaint_after(Duration::from_millis(100))' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'const DEFAULT_SIZE: f32 = 0.75' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
           grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
-          grep -q 'android.4' reference/templates/android/UpdateCheck.java
+          grep -q 'android.5' reference/templates/android/UpdateCheck.java
           grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
           echo "Source and Cc menu overlay staged. No production app or key touched."
@@ -110,13 +116,13 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.4-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.5-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.4-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.5-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
@@ -128,7 +134,7 @@ jobs:
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.4-ARM64-TEST
+          name: CADCraft-v0.19.0-android.5-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -138,12 +144,12 @@ jobs:
         shell: bash
         run: |
           {
-            echo '### CADCraft v0.19.0 Android.4 test'
+            echo '### CADCraft v0.19.0 Android.5 test'
             echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
             echo '* Isolated package: com.artcraft.cadcraft.test'
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
             echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
-            echo '* Wheel: PhotoCraft-style two-tone segments, actual-size preview, default 100%/85%, 12-layer shadow, Magic-Pencil-only trigger (device verification pending)'\n            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
+            echo '* Wheel: PhotoCraft two-tone segments, external preview, default 75%/85%, soft 12-layer shadow; native + Java verified Magic-Pencil button, 100ms queue poll (device verification pending)'\n            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
             echo '* Test signing: new disposable key; no original key, no release'
             if test -s dist/SHA256SUMS.txt; then
               echo '#### APK checksum'

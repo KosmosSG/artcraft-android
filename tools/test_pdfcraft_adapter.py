@@ -266,7 +266,15 @@ with tempfile.TemporaryDirectory() as folder:
     assert "Couldn't check PDFCraft updates:" in bridge
     assert 'public void pdfCheckForUpdates(boolean manual)' in java
     assert 'android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()' in java
-    assert 'ui.button("Download APK")' in mobile and 'self.install_download()' in mobile
+    # PDFCraft Android browser-only update path, tested after Play Protect permission isolation.
+    assert 'View GitHub release' in mobile and 'View release' in mobile
+    assert 'Download APK' not in mobile
+    assert 'Install downloaded APK' not in mobile
+    assert 'self.install_download()' not in mobile
+    assert 'self.download_update(' not in mobile
+    assert 'jni_str!("pdfOpenReleasePage")' in mobile
+    assert 'In-app APK installation is disabled.' in java
+    assert 'PackageInstaller' not in java
     # On fresh installations startup checks default ON; an existing OFF
     # preference remains OFF. Toggling gives a native bottom Toast.
     assert 'mobile.read_startup_setting().unwrap_or(true)' in mobile

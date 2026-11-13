@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/investigate/pdfcraft-v0211-android4-storage-only-20261113'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/pdfcraft-v0211-android6-browser-update-20261113'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:

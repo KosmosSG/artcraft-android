@@ -35,12 +35,13 @@ one("const DEFAULT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];",
 one("use crate::SlideApp;", "use crate::SlideApp;\nuse std::time::{Duration,Instant};\n"
     "const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);\n"
     "const FEEDBACK_FADE: Duration = Duration::from_millis(500);")
-one("    signal_seen: u8,\n}", """    signal_seen: u8,
+one("    signal_seen: u8,\n    stylus_cursor: Option<Pos2>,\n}", """    signal_seen: u8,
+    stylus_cursor: Option<Pos2>,
     // Noninteractive PhotoCraft-style bottom-center feedback pill.
     message: &'static str,
     message_at: Instant,
 }""")
-one("            pending: None, signal_seen: 0,",
+one("            pending: None, signal_seen: 0, stylus_cursor: None,",
     """            pending: None, signal_seen: 0,
             message: "Hover + single-press: open wheel",
             message_at: Instant::now(),""")

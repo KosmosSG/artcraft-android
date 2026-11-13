@@ -83,6 +83,15 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
             }).map_err(|e| e.to_string())
         }
 
+        pub fn dc_undo_action(&self) -> Result<i32, String> {
+            self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+                let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                env.call_method(&*activity, jni_str!("dcTakeUndoAction"),
+                    jni_sig!("()I"), &[])?.i()
+            }).map_err(|e| e.to_string())
+        }
+
         pub fn dc_wheel_action(&self) -> Result<i32, String> {
             self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
                 let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
@@ -117,6 +126,9 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     private final java.util.concurrent.atomic.AtomicInteger dcWheelAction =
         new java.util.concurrent.atomic.AtomicInteger(0);
     private long dcWheelLastPress;
+    private final java.util.concurrent.atomic.AtomicInteger dcUndoAction =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+    public int dcTakeUndoAction() { return dcUndoAction.getAndSet(0); }
     public void dcSetWheelEnabled(boolean enabled) {
         dcWheelEnabled = enabled;
         if (!enabled) dcWheelAction.set(0);
@@ -163,6 +175,22 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
         }
         if (event == null)""",
         "Physical stylus rocker only while wheel enabled")
+    # Preserve existing IME handling, adding an isolated physical Ctrl+Z
+    # fallback only while no Android editor or modal owns the input.
+    replace_once(activity,
+        "        int code = event.getKeyCode();\\n"
+        "        int state = event.getAction();",
+        """        int code = event.getKeyCode();
+        int state = event.getAction();
+        boolean dcUndoShortcut = code == KeyEvent.KEYCODE_Z
+            && event.isCtrlPressed() && !event.isAltPressed()
+            && !event.isShiftPressed();
+        if (dcUndoShortcut && !imeWanted && !dcDialogActive) {
+            if (state == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+                dcUndoAction.set(1);
+            return true;
+        }""",
+        "Ctrl+Z physical keyboard fallback")
 
     bar = source / "crates/ui-egui/src/menus/bar.rs"
     replace_once(bar, '            ui.menu_button("DesignCraft Shortcuts", |ui| {',
@@ -201,6 +229,9 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
         "Prevent canvas selecting/transforming behind the wheel")
     assert "dc_stylus_wheel::ui(ui, app, bridge, dc_actions)" in wrapper.read_text()
     assert "dc-wheel-hover-block" in canvas.read_text()
+    assert "dcTakeUndoAction" in activity.read_text()
+    assert "dcUndoShortcut" in activity.read_text()
+    assert "dc_undo_action" in host.read_text()
     assert "Dc icon menu" not in bar.read_text() or "Stylus Wheel" in bar.read_text()
     print("PASS: isolated DesignCraft stylus wheel, actual-scale preview, Android rocker, canvas hover guard")
 

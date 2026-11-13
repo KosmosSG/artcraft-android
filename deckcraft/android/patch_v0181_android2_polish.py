@@ -168,15 +168,26 @@ once(activity, '    private volatile boolean dkWheelEnabled = false;',
             }
         }
     }
-    @Override public boolean dispatchGenericMotionEvent(MotionEvent e) {
-        dkCaptureRealStylusHover(e);
-        return super.dispatchGenericMotionEvent(e);
-    }
     @Override public boolean onGenericMotionEvent(MotionEvent e) {
         dkCaptureRealStylusHover(e);
         return super.onGenericMotionEvent(e);
     }
     private volatile boolean dkWheelEnabled = false;''')
+# The builder already has a dispatchGenericMotionEvent override for trackpads
+# and mouse. Extend that precise override rather than declaring a duplicate;
+# the existing super dispatch, gesture routing and tap-to-click stay untouched.
+once(activity,
+'''    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        // Trackpad/touchpad/mouse/stylus should go through native handling (enables tap-to-click)''',
+'''    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        dkCaptureRealStylusHover(event);
+        // Trackpad/touchpad/mouse/stylus should go through native handling (enables tap-to-click)''')
+activity_text=activity.read_text(encoding="utf-8")
+assert activity_text.count("public boolean dispatchGenericMotionEvent(") == 1, "Duplicate Android generic-motion override"
+assert activity_text.count("dkCaptureRealStylusHover(event);") == 1, "Hover must be captured exactly once in existing dispatch"
+assert "return super.dispatchGenericMotionEvent(event);" in activity_text, "Original trackpad/gesture forwarding lost"
+assert activity_text.count("public boolean onGenericMotionEvent(") == 1
+
 # A separate JNI method so stylus hover remains independent of button/dcs.
 once(bridge,
 "    pub fn editor_close(&self, ctx: &egui::Context) {\n        self.wheel_input(ctx);",

@@ -209,7 +209,7 @@ impl GridCraftTools {
             let mut definitions = egui::FontDefinitions::default();
             let mut lines = vec![format!("Saved files: {saved}; catalog files: {}; detected families: {}", paths.len(), families.len())];
             for family in &families {
-                let bound = fonts::bind_family(&mut definitions, family);
+                let bound = fonts::bind_faces(&mut definitions, family, &fonts::faces_of(family));
                 lines.push(format!("{} — {}", family, if bound.len() == 4 { "available in Home; font data bound" } else { "detected but font data unavailable" }));
             }
             if saved > paths.len() {

@@ -356,10 +356,16 @@ impl Wheel {
     pub fn paint(&self, ctx: &egui::Context, painter: &egui::Painter, center: Pos2, size: f32, opacity: f32,
                  selected: Option<usize>) {
         let radius = size * 0.5;
-        // Layered low-alpha shadows rather than a hard black halo.
-        for (extra, alpha) in [(17.0, 3), (12.0, 5), (7.0, 7), (3.0, 10)] {
-            painter.circle_filled(center + egui::vec2(2.0, 3.0),
-                radius + extra, Color32::from_black_alpha(alpha));
+        // WC_ANDROID7_SOFT_FEATHER_SHADOW_V1: use sixteen fine, translucent
+        // rings rather than the four coarse bands that appeared hard on
+        // white document pages. Similar total darkness but a gentle radial
+        // falloff, with only a slight downward offset. This same painter
+        // drives the full-size settings preview. Leave cyan rim untouched.
+        for step in 0..16 {
+            let feather = 14.0 - step as f32 * 0.8;
+            let alpha = if step < 10 { 1 } else { 2 };
+            painter.circle_filled(center + egui::vec2(0.6, 1.4),
+                radius + feather, Color32::from_black_alpha(alpha));
         }
         let sector_width = TAU / 8.0;
         for i in 0..8 {

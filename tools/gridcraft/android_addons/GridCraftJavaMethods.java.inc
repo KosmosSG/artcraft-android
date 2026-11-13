@@ -408,12 +408,57 @@
             gcWheelHover.set("E");
         } else if (action == android.view.MotionEvent.ACTION_HOVER_MOVE
                 || action == android.view.MotionEvent.ACTION_HOVER_ENTER) {
-            final float x = event.getX(0);
-            final float y = event.getY(0);
+            // GC_STYLUS_HOVER_V3: Raw screen pixels are stable regardless of
+            // which GameActivity child View delivers a hover event. The old
+            // event.getX/getY values were child-relative and could highlight
+            // the wrong wheel slot or miss it entirely.
+            android.view.Window window = getWindow();
+            android.view.View decor = window != null ? window.getDecorView() : null;
+            int[] windowOrigin = {0,0};
+            if (decor != null) decor.getLocationOnScreen(windowOrigin);
+            final float x = event.getRawX() - windowOrigin[0];
+            final float y = event.getRawY() - windowOrigin[1];
             if (Float.isFinite(x) && Float.isFinite(y)) {
                 gcWheelHover.set("M:" + Float.toString(x) + "," + Float.toString(y));
             }
         }
+    }
+
+    // GameActivity's native SurfaceView may own hover directly, bypassing the
+    // Activity generic-motion callbacks. Observe the actual native surface too.
+    // Never return true: the original GameActivity/winit path must continue.
+    private final java.util.Set<android.view.View> gcHoverInstalled =
+            java.util.Collections.newSetFromMap(
+                    new java.util.WeakHashMap<android.view.View, Boolean>());
+    private final android.view.View.OnHoverListener gcWheelPassiveHoverListener =
+            (view, event) -> {
+                gcObserveStylusHover(event);
+                return false;
+            };
+    private void gcAttachPassiveHover(android.view.View view) {
+        if (view == null || gcHoverInstalled.contains(view)) return;
+        view.setOnHoverListener(gcWheelPassiveHoverListener);
+        gcHoverInstalled.add(view);
+    }
+    private void gcInstallPassiveHoverObservers() {
+        // Called only when the user opts in to Stylus Wheel. UI-thread-only.
+        runOnUiThread(() -> {
+            try {
+                android.view.Window window = getWindow();
+                if (window == null) return;
+                android.view.View decor = window.getDecorView();
+                gcAttachPassiveHover(decor);
+                android.view.View content = decor.findViewById(android.R.id.content);
+                gcAttachPassiveHover(content);
+                if (content instanceof android.view.ViewGroup) {
+                    android.view.ViewGroup children = (android.view.ViewGroup) content;
+                    for (int i=0; i<children.getChildCount(); i++)
+                        gcAttachPassiveHover(children.getChildAt(i));
+                }
+            } catch (RuntimeException error) {
+                android.util.Log.w("GridCraftWheel", "Passive stylus-hover listener unavailable", error);
+            }
+        });
     }
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         gcObserveStylusHover(event);
@@ -431,6 +476,7 @@
         gcStylusWheelEnabled = value;
         gcStylusWheelKeys.clear();
         gcWheelHover.set(null);
+        if (value) gcInstallPassiveHoverObservers();
     }
     public String gcStylusWheelPoll() { return gcStylusWheelKeys.poll(); }
     public boolean gcStylusWheelIntercept(android.view.KeyEvent event) {

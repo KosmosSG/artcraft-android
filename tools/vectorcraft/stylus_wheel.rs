@@ -288,8 +288,8 @@ impl Wheel {
                 .constrain(true)
                 .show(&ctx, |ui| {
                     ui.set_width((screen.width() - 70.0).min(368.0).max(245.0));
-                    ui.label("Style: Default  •  8 segments");
-                    ui.small("Choose a tool for each wheel position.");
+                    ui.strong("Style: Default  •  8 segments");
+                    ui.small("Choose a tool for each position. Wheel slots are editable.");
                     ui.add_space(5.0);
                     ui.separator();
                     // Shorter devices scroll ONLY the assignments, not the
@@ -364,9 +364,9 @@ impl Wheel {
         egui::Grid::new("vc-wheel-assignment-grid").num_columns(2)
             .spacing(vec2(12.0, 6.0)).min_row_height(30.0).show(ui, |ui| {
                 for slot in 0..8 {
-                    ui.add_sized(vec2(116.0, 30.0), egui::Label::new(format!("{}. {}", slot + 1, POSITIONS[slot])).halign(egui::Align::Min));
+                    ui.add_sized(vec2(115.0, 30.0), egui::Label::new(format!("{}. {}", slot + 1, POSITIONS[slot])).halign(egui::Align::Min));
                     egui::ComboBox::from_id_salt(("vc-wheel-slot", slot))
-                        .selected_text(LABELS[self.layout[slot]]).width(156.0).height(240.0)
+                        .selected_text(LABELS[self.layout[slot]]).width(206.0).height(240.0)
                         .show_ui(ui, |ui| {
                             for index in 0..LABELS.len() {
                                 if ui.selectable_value(&mut self.layout[slot], index, LABELS[index]).changed() {
@@ -399,15 +399,15 @@ impl Wheel {
     }
     fn buttons(&mut self, ui: &mut Ui, done: &mut bool) {
         ui.horizontal(|ui| {
-            if ui.button("Reset to Default").clicked() {
+            if ui.button("Restore Default").clicked() {
                 self.layout = DEFAULT_LAYOUT;
                 self.size_percent = 84;
                 self.opacity_percent = 78;
                 self.layout_dirty = true;
             }
-            *done |= ui.button("Done").clicked();
+            *done |= ui.add(egui::Button::new("Done").fill(Color32::from_rgb(100, 42, 8))).clicked();
         });
-        ui.small("Saved automatically. Double press: Eraser.");
+        ui.small("Changes saved automatically.");
     }
     /// The preview is a non-interactive foreground area on the canvas,
     /// OUTSIDE the settings dialog. It uses the actual wheel scale/opacity,

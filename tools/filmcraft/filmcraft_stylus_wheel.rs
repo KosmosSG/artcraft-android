@@ -317,68 +317,85 @@ impl Wheel {
     }
     fn settings(&mut self, ctx: &egui::Context) {
         if !self.settings_open { return; }
-        let mut is_open=true;
+        let mut open=self.settings_open;
         let mut changed=false;
-        let viewport=ctx.content_rect();
-        egui::Window::new("Fc   Customize Stylus Wheel")
+        let result=egui::Window::new("Stylus Wheel — Default")
             .id(egui::Id::new("filmcraft.stylus.settings"))
-            .open(&mut is_open).collapsible(false).resizable(false)
-            .default_width(444.0)
-            .default_pos(pos2((viewport.center().x-450.0).max(10.0),55.0))
-            .show(ctx, |ui| {
-                ui.set_min_width(422.0);
-                ui.label("Assign an action to each of the eight wheel segments.");
+            .open(&mut open).collapsible(false).resizable(false)
+            .default_width(338.0)
+            .show(ctx,|ui|{
+                ui.label("Style: Default  •  8 segments");
+                ui.label("Choose a tool for each position. Existing selections swap positions.");
                 ui.separator();
-                ui.strong("Wheel slots");
-                const POSITIONS:[&str;8]=[
-                    "Top","Upper right","Right","Lower right","Bottom",
-                    "Lower left","Left","Upper left"];
-                for index in 0..8 {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{:02}  {}",index+1,POSITIONS[index]));
-                        ui.add_space(6.0);
-                        egui::ComboBox::from_id_salt(("fc_wheel_slot",index))
-                            .selected_text(COMMANDS[self.slots[index]].0)
-                            .width(160.0)
+                for slot in 0..8 {
+                    ui.horizontal(|ui|{
+                        ui.label(format!("Slot {}",slot+1));
+                        let mut selected=self.slots[slot];
+                        egui::ComboBox::from_id_salt(("fc_wheel_slot",slot))
+                            .selected_text(COMMANDS[selected].0).width(180.0)
                             .show_ui(ui,|ui|{
                                 for (j,(name,_)) in COMMANDS.iter().enumerate() {
-                                    changed |= ui.selectable_value(&mut self.slots[index],j,*name).changed();
+                                    ui.selectable_value(&mut selected,j,*name);
                                 }
                             });
+                        if selected!=self.slots[slot] {
+                            if let Some(old)=self.slots.iter().position(|n| *n==selected) {
+                                self.slots[old]=self.slots[slot];
+                            }
+                            self.slots[slot]=selected;
+                            changed=true;
+                        }
                     });
                 }
-                ui.add_space(6.0);
                 ui.separator();
-                ui.strong("Appearance");
-                changed |= ui.checkbox(&mut self.enabled,"Enable Stylus Wheel").changed();
-                changed |= Self::slider(ui,"Wheel size",&mut self.size,0.75,1.50);
-                changed |= Self::slider(ui,"Opacity",&mut self.opacity,0.40,1.0);
-                ui.label("Size: 75–150%   •   Opacity: 40–100%");
+                changed|=ui.checkbox(&mut self.enabled,"Enable Stylus Wheel").changed();
+                changed|=Self::slider(ui,"Wheel size",&mut self.size,0.75,1.25);
+                changed|=Self::slider(ui,"Opacity",&mut self.opacity,0.60,1.0);
+                if ui.button("Restore Default").clicked() {
+                    self.slots=DEFAULT_SLOTS;
+                    self.size=DEFAULT_SIZE;
+                    self.opacity=DEFAULT_OPACITY;
+                    changed=true;
+                }
                 ui.separator();
-                ui.label("Live preview updates beside this panel. Changes save automatically.");
-                ui.horizontal(|ui| {
-                    if ui.button("Reset defaults").clicked() {
-                        self.enabled=true;self.size=1.0;self.opacity=0.90;self.slots=DEFAULT_SLOTS;
-                        changed=true;
-                    }
-                    if ui.button("Done").clicked() { self.settings_open=false; }
-                });
+                ui.label("Actual-size preview appears beside this window.");
+                ui.label("Size: 75–125%  •  Opacity: 60–100%");
+                ui.label("Hover + pen-button: open wheel  •  Tap a segment: select.");
             });
-        self.settings_open &= is_open;
-        if changed { self.save(); ctx.request_repaint(); }
-        // Exactly one actual-size preview OUTSIDE dialog, matching DeckCraft.
+        self.settings_open=open;
+        if changed {
+            self.save();
+            self.notify("Wheel settings saved • live preview",ctx);
+        }
+        // PhotoCraft's true-scale preview lives beside the dialog. No preview
+        // inside this window and no unintended editor interaction underneath.
         if self.settings_open {
-            let radius=DEFAULT_RADIUS*self.size;
-            let d=2.0*radius;
-            let center=pos2((viewport.center().x+radius+155.0).min(viewport.right()-radius-8.0),
-                (viewport.center().y).clamp(viewport.top()+radius+8.0,viewport.bottom()-radius-8.0));
-            egui::Area::new(egui::Id::new("filmcraft.wheel.preview"))
-                .order(egui::Order::Foreground)
-                .fixed_pos(center-vec2(radius,radius)).interactable(false)
-                .show(ctx,|ui|{
-                    let (rect,_)=ui.allocate_exact_size(vec2(d,d),Sense::hover());
-                    self.draw(ui,rect.center(),radius,Some(1));
-                });
+            if let Some(response)=result {
+                let screen=ctx.content_rect();
+                let dialog=response.response.rect;
+                let size=PLATE_SIZE*self.size;
+                let margin=16.0;
+                let right_room=screen.right()-dialog.right();
+                let left_room=dialog.left()-screen.left();
+                let center_x=if right_room>=size+margin*2.0 {
+                    (dialog.right()+screen.right())*0.5
+                } else if left_room>=size+margin*2.0 {
+                    (screen.left()+dialog.left())*0.5
+                } else { screen.center().x };
+                let center=pos2(
+                    center_x.clamp(screen.left()+size*0.5,
+                        (screen.right()-size*0.5).max(screen.left()+size*0.5)),
+                    dialog.center().y.clamp(screen.top()+size*0.5,
+                        (screen.bottom()-size*0.5).max(screen.top()+size*0.5))
+                );
+                egui::Area::new(egui::Id::new("filmcraft.wheel.preview"))
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(center-vec2(size*0.5,size*0.5)).interactable(false)
+                    .show(ctx,|ui|{
+                        let (rect,_)=ui.allocate_exact_size(vec2(size,size),Sense::hover());
+                        self.draw(ui,rect.center(),DEFAULT_RADIUS*self.size,None);
+                    });
+            }
         }
     }
     pub fn show(&mut self, ctx: &egui::Context) -> Option<&'static str> {
@@ -387,16 +404,19 @@ impl Wheel {
             self.settings_open = true;
             self.open = false;
             self.center = None;
+            self.notify("Wheel settings • live preview",ctx);
         }
         self.settings(ctx);
+        self.paint_feedback(ctx);
         if self.open && !self.settings_open {
             if let Some(center)=self.center {
                 let radius=DEFAULT_RADIUS*self.size;
+                let size=PLATE_SIZE*self.size;
                 egui::Area::new(egui::Id::new("filmcraft.wheel.active"))
                     .order(egui::Order::Foreground)
-                    .fixed_pos(center-vec2(radius,radius)).interactable(false)
+                    .fixed_pos(center-vec2(size*0.5,size*0.5)).interactable(false)
                     .show(ctx,|ui|{
-                        let (rect,_)=ui.allocate_exact_size(vec2(radius*2.0,radius*2.0),Sense::hover());
+                        let (rect,_)=ui.allocate_exact_size(vec2(size,size),Sense::hover());
                         self.draw(ui,rect.center(),radius,self.hovered_segment);
                     });
             }

@@ -114,6 +114,32 @@
                     }
                     ui.small("Hold a cell, then drag to select; drag the fill handle to extend.");
                 });
+                // GRIDCRAFT_PHOTO_WHEEL_V1: PhotoCraft Default UI, exact Gc colour.
+                ui.menu_button("Stylus Wheel", |ui| {
+                    let enabled = ui.ctx().data(|d|
+                        d.get_temp::<bool>(egui::Id::new("gridcraft.android.wheel.enabled"))
+                    ).unwrap_or(false);
+                    let command_id = egui::Id::new("gridcraft.android.wheel.menu");
+                    if ui.button(if enabled { "✓ Stylus Wheel ON (tap to disable)" }
+                        else { "Stylus Wheel OFF (tap to enable)" }).clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(command_id, "toggle".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    if ui.button("Customize Wheel…").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(command_id, "settings".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    if enabled && ui.button("Show Wheel at Pointer").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(command_id, "show".to_owned()));
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                    ui.small("Default • 8 customizable segments");
+                    ui.small("HONOR Magic-Pencil: hover + side button");
+                    ui.small("Wheel preview uses actual size and opacity.");
+                });
                 ui.menu_button("Spreadsheet Shortcuts", |ui| {
                     for (title, command) in [
                         ("Undo", "edit.undo"), ("Redo", "edit.redo"),

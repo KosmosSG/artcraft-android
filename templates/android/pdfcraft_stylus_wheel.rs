@@ -315,29 +315,50 @@ impl Wheel {
                     ui.add_space(7.0);
                     ui.heading("Appearance");
                     ui.add_space(5.0);
-                    // Fixed slider widths prevent the squeezed values and
-                    // overlapping labels seen on the MagicPad screenshot.
-                    egui::Grid::new("pdf-wheel-appearance-grid")
-                        .num_columns(3)
-                        .spacing(vec2(14.0, 10.0))
+                    // The app theme makes inactive weak fills transparent for
+                    // flat buttons. Sliders also use that fill for their rail.
+                    // Override only this appearance card so tracks stay visible.
+                    egui::Frame::new()
+                        .fill(ui.visuals().faint_bg_color)
+                        .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
+                        .corner_radius(egui::CornerRadius::same(7))
+                        .inner_margin(egui::Margin::same(10))
                         .show(ui, |ui| {
-                            ui.label("Wheel size");
-                            if ui.add_sized(
-                                [215.0, 23.0],
-                                egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
-                                    .show_value(false)
-                            ).changed() { self.layout_dirty = true; }
-                            ui.label(format!("{:.1}%", self.size_percent));
-                            ui.end_row();
-
-                            ui.label("Opacity");
-                            if ui.add_sized(
-                                [215.0, 23.0],
-                                egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
-                                    .show_value(false)
-                            ).changed() { self.layout_dirty = true; }
-                            ui.label(format!("{:.1}%", self.opacity_percent));
-                            ui.end_row();
+                            let dark = ui.visuals().dark_mode;
+                            let rail = if dark { Color32::from_rgb(100, 108, 122) }
+                                else { Color32::from_rgb(165, 175, 190) };
+                            let accent = if dark { Color32::from_rgb(110, 170, 255) }
+                                else { Color32::from_rgb(27, 99, 224) };
+                            let visuals = ui.visuals_mut();
+                            visuals.widgets.inactive.weak_bg_fill = rail;
+                            visuals.widgets.hovered.weak_bg_fill = rail;
+                            visuals.widgets.active.weak_bg_fill = rail;
+                            visuals.widgets.inactive.bg_fill = accent;
+                            visuals.widgets.hovered.bg_fill = accent;
+                            visuals.widgets.active.bg_fill = accent;
+                            visuals.selection.bg_fill = accent;
+                            ui.spacing_mut().slider_width = 215.0;
+                            egui::Grid::new("pdf-wheel-appearance-grid")
+                                .num_columns(3)
+                                .spacing(vec2(14.0, 14.0))
+                                .show(ui, |ui| {
+                                    ui.label("Wheel size");
+                                    if ui.add_sized([215.0, 28.0],
+                                        egui::Slider::new(&mut self.size_percent, 75.0..=150.0)
+                                            .trailing_fill(true).show_value(false)
+                                    ).changed() { self.layout_dirty = true; }
+                                    ui.strong(format!("{:.1}%", self.size_percent));
+                                    ui.end_row();
+                                    ui.label("Opacity");
+                                    if ui.add_sized([215.0, 28.0],
+                                        egui::Slider::new(&mut self.opacity_percent, 40.0..=100.0)
+                                            .trailing_fill(true).show_value(false)
+                                    ).changed() { self.layout_dirty = true; }
+                                    ui.strong(format!("{:.1}%", self.opacity_percent));
+                                    ui.end_row();
+                                });
+                            ui.add_space(6.0);
+                            ui.small("Size: 75–150%   •   Opacity: 40–100%");
                         });
 
                     ui.add_space(9.0);

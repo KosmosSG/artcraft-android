@@ -56,3 +56,24 @@ An appeal should identify the exact APK URL, SHA-256, package, version, signing 
 Separate test package `com.artcraft.pdfcraft.v0211test1`, disposable key, versionCode 16782593 (greater than production Android.5). Existing releases and signing secrets unchanged. CI must pass before test delivery. No merge, production signing or stable publication is authorized.
 
 Device checklist: keep Play Protect enabled; record any expanded classification; test hover before first contact over wheel segments with a PDF object underneath, no document highlight/draw/selection; tip activation, eraser and pressure; custom assignments/size/opacity persistence; ESC and repeated D/C/S; Ctrl+Q/relaunch ten times; mouse/trackpad/touch and pinch; PDF editing/forms/redaction/save/reopen; OCR and imported/shared fonts; update-check feedback and startup preference. Test-package data is separate from production.
+
+## Owner test follow-up — 13 November 2026
+
+The owner supplied an expanded Play Protect screenshot for the Android.1 test APK. It still says Harmful app blocked / This app may be harmful / Installing this app may put your device at risk. It provides no malware family/category. The block is confirmed on the separate test package as well as previously on production. This does not prove a certificate-reputation cause, a false positive, or actual malware; earlier source hardening did not clear the block.
+
+Official appeal form verified: https://support.google.com/googleplay/android-developer/contact/protectappeals
+The form requests email, application package, the SHA-256 of the APK uploaded to VirusTotal, and supporting information. It states no response will be provided. No appeal or third-party APK upload has been submitted by this workflow.
+
+Exact blocked test package: `com.artcraft.pdfcraft.v0211test1`
+Version: `0.21.1-android.1`
+APK SHA-256: `985dc737da326fd9f0a36f5f20c34ab48549709f45a28716453a3b13af85331a`
+Source: `8a55a760b7a410c992a7577fa4513be30a3e5dcd`
+Artifact: https://github.com/KosmosSG/artcraft-android/actions/runs/43334978712/artifacts/13997243297
+
+Suggested factual appeal wording (review before submission):
+
+Please review the Play Protect classification of this independently maintained, open-source PDF editor for Android, distributed through GitHub. The attached warning appears on HONOR MagicPad 4 / MagicOS 10. This submission concerns the exact test package and APK hash entered above. The app provides local PDF editing, annotation, forms, OCR and font import. It declares storage access for document/font handling, Internet for GitHub update checking, and REQUEST_INSTALL_PACKAGES for a user-initiated updater. The updater requires checksum, package, version and signer checks and Android installation confirmation. It does not declare SMS, accessibility or notification-listener access. The separate test package cannot update the production package. The source, build and audit are public in PR #160. We have verified the published bytes and reviewed these paths, but do not claim that a successful build or scanner verdict alone establishes safety. Please review the classification of this exact APK.
+
+Production Android.5 requires a separate entry using `com.artcraft.pdfcraft` and its own `41a072...44479a` full hash above. Never substitute the earlier Android.4 hash or a newly rebuilt APK's hash for the file under appeal. Keep Play Protect enabled.
+
+Wheel appearance follow-up: the global theme's transparent inactive weak fill hid the stock slider rails. The appearance card now locally overrides rail/handle/fill colors, includes size/opacity ranges, and uses bold percentage values. Existing values, ranges, preview behavior and persistence are retained. This UI change is unrelated to the Play Protect classification.

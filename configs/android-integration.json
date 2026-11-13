@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-28",
+  "android_reference": {
+    "repository": "MostafaXS1/artcraft-android",
+    "release": "v0.4.1",
+    "commit": "fbb4f66fcc868afdd8303d5227aa81db6a21d7fa"
+  },
+  "production_ready": false,
+  "apps": {
+    "photocraft": {
+      "upstream_repository": "storytold/photocraft",
+      "upstream_tag": "v0.16.0",
+      "upstream_commit": "b1794c6e0608ccfc887213dcf58398977c5cb75e",
+      "release_baseline_tag": "photocraft-v0.14.0-android.1",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "f708fff8a333c2246b6d342570b19db5b95f4be1"
+    },
+    "vectorcraft": {
+      "upstream_repository": "storytold/vectorcraft",
+      "upstream_tag": "v0.17.0",
+      "upstream_commit": "43313f9451de7ab5b909801006b8881458f2bf04",
+      "release_baseline_tag": "vectorcraft-v0.14.0-android.11",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "e3557f5ccf22a1e449c4ef10375cda90c4151b05"
+    },
+    "designcraft": {
+      "upstream_repository": "storytold/designcraft",
+      "upstream_tag": "v0.13.0",
+      "upstream_commit": "dcce40fb8731213c1f8e31cdd23444995afc62ce",
+      "release_baseline_tag": "designcraft-v0.12.0-android.4",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "731c661235401aa5154db038853a36878b136c61"
+    },
+    "filmcraft": {
+      "upstream_repository": "storytold/filmcraft",
+      "upstream_tag": "v0.13.0",
+      "upstream_commit": "30536bc5d0ddf690f2181b7b97182db8658a6038",
+      "release_baseline_tag": "filmcraft-v0.10.0-android.2",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "870269f5f9654a3090dbf4b199d1a38d784d1568"
+    },
+    "pdfcraft": {
+      "upstream_repository": "storytold/pdfcraft",
+      "upstream_tag": "v0.14.0",
+      "upstream_commit": "5a78b223871add8e3883856205cc653d741e0e94",
+      "release_baseline_tag": "pdfcraft-v0.12.1-android.3",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "ba604057f77eb0ae45dac85914280121d0e9eb12"
+    },
+    "wordcraft": {
+      "upstream_repository": "storytold/wordcraft",
+      "upstream_tag": "v0.11.0",
+      "upstream_commit": "e31f2f06a5f8004ceaa88f68c00b47908e321aa4",
+      "release_baseline_tag": "wordcraft-v0.9.0-android.4",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "d86dfcf3209f2acf36ef05c473c432e5894cac53"
+    },
+    "deckcraft": {
+      "upstream_repository": "storytold/deckcraft",
+      "upstream_tag": "v0.11.1",
+      "upstream_commit": "9ec39267931c0163dd5648c879043edcb9603cb8",
+      "release_baseline_tag": "deckcraft-v0.9.0-android.3",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "34be6d7229e8fe8c0c424c7efa6bd69c700d8457"
+    },
+    "effectcraft": {
+      "upstream_repository": "storytold/effectcraft",
+      "upstream_tag": "v0.17.0",
+      "upstream_commit": "362474a843ddb67555d4c2d19ad6a590388aad0e",
+      "release_baseline_tag": "effectcraft-v0.16.0-android.5",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "9767b7e6eefc3dd5ae0ab57711b0bfe6f8346408"
+    },
+    "lightcraft": {
+      "upstream_repository": "storytold/lightcraft",
+      "upstream_tag": "v0.14.0",
+      "upstream_commit": "03c88c166c054c009db2a47187d59991f6232b85",
+      "release_baseline_tag": "lightcraft-v0.11.0-android.8",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "7496af6c95e4bf6c1a1be6586838801f193ed749"
+    },
+    "soundcraft": {
+      "upstream_repository": "storytold/soundcraft",
+      "upstream_tag": "v0.13.1",
+      "upstream_commit": "01b39850ad16e84b45904ba07bd5cec7cf96c4b7",
+      "release_baseline_tag": null,
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false
+    },
+    "cadcraft": {
+      "upstream_repository": "storytold/cadcraft",
+      "upstream_tag": "v0.13.0",
+      "upstream_commit": "1fcf654ea8414ea2ef052ca2b3b77411f2026f78",
+      "release_baseline_tag": null,
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false
+    },
+    "figcraft": {
+      "upstream_repository": "storytold/figcraft",
+      "upstream_tag": "v0.11.2",
+      "upstream_commit": "d4a303d4708602a9df1738960852d18b185a616b",
+      "release_baseline_tag": null,
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false
+    },
+    "gridcraft": {
+      "upstream_repository": "storytold/gridcraft",
+      "upstream_tag": "v0.12.1",
+      "upstream_commit": "f86aec12dabc744b5f75e1033f87bfe685e78481",
+      "release_baseline_tag": "gridcraft-v0.11.1-android.2",
+      "preservation_verified": false,
+      "artifact_verified": false,
+      "device_verified": false,
+      "release_baseline_commit": "6179f8fd933650e573a2769c7a2877926e83effc"
+    }
+  }
+}

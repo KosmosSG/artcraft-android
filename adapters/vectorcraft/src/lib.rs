@@ -41,7 +41,7 @@ mod ime_bridge;
 // Device-tested MagicPad physical keyboard recovery; Escape keeps the Contextual Task Bar visible.
 mod android_modifiers;
 mod adaptive_cursor;
-use android_modifiers::{AndroidModifiers, AndroidMenuScrollSmoother, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll};
+use android_modifiers::{AndroidModifiers, AndroidMenuScrollSmoother, apply_android_modifiers, restore_tool_key_text, normalize_type_editor_escape, canvas_hardware_command, consume_canvas_hardware_command, CanvasHardwareCommand, consume_type_close_chord, classify_android_precision_scroll, has_android_undo_chord, consume_android_undo_chord};
 
 /// Emitted at startup so the builder can confirm the bridge is present in the packaged `.so`.
 const SAF_BRIDGE_MARKER: &str = "ARTCRAFT_VECTORCRAFT_SAF_BRIDGE_V1";
@@ -1062,6 +1062,23 @@ impl eframe::App for VectorCraftAndroidApp {
         let field_focused = ctx.text_edit_focused();
         let composing = self.inner.session.tool_composing();
         let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // Physical Ctrl+Z follows the *same* document undo command as the
+        // Shortcut Pad and stylus wheel. Consume accepted key-downs before
+        // upstream egui handles them (one press must never undo twice).
+        // Leave Save Changes, unrelated text inputs and live IME composition
+        // alone; Ctrl+Shift+Z remains available to upstream Redo.
+        if has_android_undo_chord(
+            raw, editing, field_focused, composing, modal,
+            self.inner.session.active().is_some(),
+        ) {
+            match self.inner.run("edit.undo", serde_json::json!({})) {
+                Ok(_) => {
+                    consume_android_undo_chord(raw);
+                    ctx.request_repaint();
+                }
+                Err(error) => log::warn!("VectorCraft Ctrl+Z undo request failed: {error}"),
+            }
+        }
         // Treat Ctrl+Q as a native application quit request (not merely a
         // viewport-close hint, which Android NativeActivity may ignore).
         // Delegate to the existing upstream unsaved-document state machine;

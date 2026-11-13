@@ -39,6 +39,13 @@ def main(root):
     s = exactly(s, '"0.17.2"', '"0.20.1"', "workspace version in provenance checker")
     s = exactly(s, "git clone --depth 1 --branch v0.17.2", "git clone --depth 1 --branch v0.20.1", "pinned checkout")
     s = exactly(s, 'APP_VERSION="0.17.2-android.5"', f'APP_VERSION="{NEW_VERSION}"', "test APK filename")
+    # Execute the wheel's guarded Android menu/JNI/canvas patch only after the
+    # original DesignCraft Android overlay has finished staging.
+    ending = '|| fail "Could not stage approved DesignCraft v0.17 Android UI and icon parity."'
+    extended = (ending + '\n'
+        + '    python3 "$ROOT/tools/designcraft/stage_v0201_wheel.py" "$ROOT" "$SRC" "$ANDROID_DIR" \\\n'
+        + '        || fail "Could not stage DesignCraft v0.20.1 Stylus Wheel (test only)."')
+    s = exactly(s, ending, extended, "wheel stage follows legacy Android preservation")
     builder.write_text(s)
     overlay = root / "tools/designcraft/patch_v017_android.py"
     o = overlay.read_text()

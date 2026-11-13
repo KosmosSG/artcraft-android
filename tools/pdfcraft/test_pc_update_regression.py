@@ -20,18 +20,16 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         self.assertIn("scroll_bar: true", patch)
         self.assertIn("upstream sidebar changed", patch)
 
-    def test_update_requires_user_and_existing_signing_identity(self):
-        updater = (ROOT / "templates/android/pdfcraft_update_java.txt").read_text()
-        self.assertIn("pdfDownloadUpdate(String url, String sha256Digest)", updater)
-        self.assertIn("getPackageArchiveInfo", updater)
-        self.assertIn("getApkContentsSigners", updater)
-        self.assertIn("getLongVersionCode", updater)
-        self.assertIn("SessionParams.USER_ACTION_REQUIRED", updater)
-        self.assertIn("session.commit(pending.getIntentSender())", updater)
-        self.assertIn('session.openWrite("base.apk"', updater)
-        self.assertNotIn("ACTION_INSTALL_PACKAGE", updater)
-        self.assertNotIn("INSTALL_PACKAGES", updater)
-        self.assertIn("DownloadManager", updater)
+    def test_updater_uses_browser_without_package_installation(self):
+        updater=(ROOT / "templates/android/pdfcraft_update_java.txt").read_text()
+        self.assertIn("pdfDownloadUpdate(String url, String sha256Digest)",updater)
+        self.assertIn("pdfInstallDownloadedUpdate()",updater)
+        self.assertIn("pdfHandleInstallResult(Intent intent)",updater)
+        self.assertIn("In-app APK installation is disabled.",updater)
+        for token in ("PackageInstaller", "DownloadManager", "getPackageArchiveInfo",
+                      "getApkContentsSigners", "getLongVersionCode", "session.openWrite",
+                      "INSTALL_PACKAGES", "ACTION_INSTALL_PACKAGE"):
+            self.assertNotIn(token,updater)
 
     def test_compact_updater_separated_from_diagnostics(self):
         rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
@@ -40,7 +38,7 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         self.assertIn("self.updater_dialog(ctx)", rust)
         self.assertIn('egui::Button::new("Check again")', rust)
         self.assertIn("Check for updates at startup", rust)
-        self.assertIn("self.download_ready", rust)
+        self.assertIn('View release',rust)
 
     def test_deckcraft_style_app_updates_submenu_and_startup_toggle(self):
         menu = (ROOT / "tools/pdfcraft/android_tools_menu_patch.py").read_text()
@@ -56,14 +54,17 @@ class PdfCraftOwnerUpdateRegression(unittest.TestCase):
         self.assertIn('pdfUpdateToast("PDFCraft update checks at startup: "', java)
         self.assertIn('if self.startup_check { self.check_updates(false); }', rust)
         self.assertIn('if self.update_asset_url.is_some() {', rust)
-        self.assertIn('pdfInstallDownloadedUpdate', rust)
+        self.assertNotIn('pdfInstallDownloadedUpdate', rust)
 
-    def test_updater_does_not_automatic_install(self):
-        rust = (ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
-        self.assertIn('egui::Button::new("Download APK")', rust)
-        self.assertIn('ui.button("Install downloaded APK…")', rust)
-        self.assertIn("self.download_ready", rust)
-        self.assertIn("pdfInstallDownloadedUpdate", rust)
-        self.assertIn("pdfCheckForUpdates", (ROOT / "templates/android/pdfcraft_mobile_java.txt").read_text())
+    def test_updater_has_only_release_link_not_apk_install_controls(self):
+        rust=(ROOT / "templates/android/pdfcraft_mobile.rs").read_text()
+        self.assertIn('View GitHub release',rust)
+        self.assertIn('View release',rust)
+        self.assertIn('pdfOpenReleasePage',rust)
+        self.assertIn('Check for updates at startup',rust)
+        self.assertNotIn('egui::Button::new("Download APK")',rust)
+        self.assertNotIn('ui.button("Install downloaded APK…")',rust)
+        self.assertNotIn('pdfInstallDownloadedUpdate',rust)
+        self.assertIn("pdfCheckForUpdates",(ROOT / "templates/android/pdfcraft_mobile_java.txt").read_text())
 
 if __name__ == "__main__": unittest.main()

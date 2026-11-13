@@ -1,0 +1,160 @@
+name: DesignCraft v0.20.1 Android.7 PhotoCraft Wheel and In-App Updater ARM64
+# Test-only: official upstream v0.20.1; preserves published release and keys.
+on:
+  push:
+    branches: [fix/designcraft-v0201-android7-photocraft-wheel-20261114]
+    paths: [.github/workflows/designcraft-v0201-android7-photocraft-updater-test.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-v0201-android7-photocraft-updater
+  cancel-in-progress: true
+jobs:
+  disposable-arm64:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify official upstream v0.20.1 identity
+        run: |
+          set -euo pipefail
+          git ls-remote https://github.com/storytold/designcraft.git refs/tags/v0.20.1 |
+            awk '{print $1}' | grep -qx 33a467872268c98536231491865b4011b0275b17
+          python3 -m py_compile tools/designcraft/prepare_v0201_test_builder.py tools/designcraft/stage_v0201_wheel.py tools/designcraft/stage_v0201_native.py
+          grep -Fq '#43081F' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq '#EC4869' tools/designcraft/dc_stylus_wheel.rs
+          rustfmt --edition 2024 --emit stdout tools/designcraft/dc_stylus_wheel.rs >/dev/null
+          # Protect prior native pen capture and verified toolbar icons.
+          grep -Fq 'dc_stylus_native_take' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq '("Layers", "panel-layers", "window.panel")' tools/designcraft/dc_stylus_wheel.rs
+          # Guard specifically against the two visual regressions reported on-device.
+          grep -Fq 'vec2(radius * 0.4212, radius * 0.2646)' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'Shape::mesh(plate)' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'center - vec2(0.0, radius * 0.052)' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'DeckCraft-inspired return arrows' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'Clean two-shape motif' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'radius * 0.019' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'egui::Frame::window(ctx.style_of(egui::Theme::Dark).as_ref())' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'visuals.selection.bg_fill = ACCENT' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'ui.scope(|ui|' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'dc_undo_action()' tools/designcraft/v016_android.rs
+          grep -Fq 'app.run("edit.undo"' tools/designcraft/v016_android.rs
+          grep -Fq 'dcUndoShortcut' tools/designcraft/stage_v0201_wheel.py
+          grep -Fq 'dcTakeUndoAction' tools/designcraft/stage_v0201_wheel.py
+          grep -Fq 'size: 75.0, opacity: 100.0' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'i % 2 == 0 { dark_a } else { dark_b }' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'Stylus Wheel — Default' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'self.size = 75.0;' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'self.opacity = 100.0;' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'dcDownloadVerifiedApk' tools/designcraft/support/update_methods.java
+          grep -Fq 'dcVerifyDownloadedApk' tools/designcraft/support/update_methods.java
+          grep -Fq 'getApkContentsSigners' tools/designcraft/support/update_methods.java
+          grep -Fq 'getUriForDownloadedFile' tools/designcraft/support/update_methods.java
+          grep -Fq 'REQUEST_INSTALL_PACKAGES' tools/designcraft/install_v017_updater.py
+          grep -Fq 'Three evenly spaced stacked diamond outlines' tools/designcraft/dc_stylus_wheel.rs
+          ! grep -Fq 'for step in 0..12 {' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'for step in (0..16).rev()' tools/designcraft/dc_stylus_wheel.rs
+          grep -Fq 'Rect::from_center_size' tools/designcraft/dc_stylus_wheel.rs
+      - name: Prepare disposable builder with upstream source pin and wheel stage
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/designcraft-builder"
+          cp -a "$GITHUB_WORKSPACE/." "$RUNNER_TEMP/designcraft-builder/"
+          python3 tools/designcraft/prepare_v0201_test_builder.py "$RUNNER_TEMP/designcraft-builder"
+          bash -n "$RUNNER_TEMP/designcraft-builder/lib/build-common.sh"
+          grep -Fq 'stage_v0201_wheel.py' "$RUNNER_TEMP/designcraft-builder/lib/build-common.sh"
+          grep -Fq 'stage_v0201_native.py' "$RUNNER_TEMP/designcraft-builder/lib/build-common.sh"
+          python3 - "$RUNNER_TEMP/designcraft-builder" <<'PY'
+          import json,sys
+          from pathlib import Path
+          obj=json.loads((Path(sys.argv[1])/'configs/upstream/designcraft-v017.json').read_text())
+          assert obj['stable_tag']=='v0.20.1'
+          assert obj['tag_commit']=='33a467872268c98536231491865b4011b0275b17'
+          assert obj['production_release_authorized'] is False
+          assert obj['permanent_signing_authorized'] is False
+          print('Protected release and permanent signing remain disabled')
+          PY
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {targets: aarch64-linux-android}
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018'
+      - name: Confirm Android dependencies
+        run: |
+          python3 -m pip install --user pillow
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$NDK" || sdkmanager --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+      - name: Compile DesignCraft v0.20.1 Android wheel test APK
+        timeout-minutes: 75
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/designcraft-builder"
+          bash build-debug.sh -designcraft -designcraft-v017 \
+            -packagename=com.artcraft.designcraft.test \
+            -appname='DesignCraft v0.20.1 WHEEL TEST'
+          grep -Fq 'dc-wheel-hover-block' source/designcraft/crates/ui-egui/src/canvas/input.rs
+          grep -Fq 'dc_stylus_wheel::ui' source/designcraft/apps/designcraft-android/src/v016_android.rs
+          grep -Fq 'dcTakeWheelAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcStylusDeviceIds' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcTakeUndoAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcUndoShortcut' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcDownloadVerifiedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcVerifyDownloadedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'com.artcraft.designcraft' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'android.permission.REQUEST_INSTALL_PACKAGES' source/designcraft/apps/designcraft-android/Cargo.toml
+          grep -Fq 'dc_undo_action' source/designcraft/apps/designcraft-android/src/lib.rs
+          grep -Fq 'app.run("edit.undo"' source/designcraft/apps/designcraft-android/src/v016_android.rs
+          grep -Fq 'dc_stylus_native_capture' source/designcraft/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'dc_stylus_native_take' source/designcraft/vendor/android-activity/src/lib.rs
+          test "$(wc -c < source/designcraft/apps/designcraft-android/src/v016_android/dc_wheel_mark.rgba)" -eq 92160
+          ! grep -Fq 'Show / Hide Wheel' source/designcraft/crates/ui-egui/src/menus/bar.rs
+          grep -Fq '✓ Stylus Wheel On' source/designcraft/crates/ui-egui/src/menus/bar.rs
+          grep -Fq 'artcraftSelectSharedFonts' source/designcraft/crates/ui-egui/src/menus/ui_commands.rs
+      - name: Verify APK, arm64, isolated package and disposable signature
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/designcraft-builder/output/designcraft-0.20.1-android.7-debug.apk"
+          test -s "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK")"
+          grep -q "name='com.artcraft.designcraft.test'" <<<"$BADGING"
+          grep -q "versionName='0.20.1-android.7'" <<<"$BADGING"
+          grep -Fq "android.permission.REQUEST_INSTALL_PACKAGES" <<<"$BADGING"
+          python3 - "$APK" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              libs=[x for x in z.namelist() if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and {x.split('/')[1] for x in libs}=={'arm64-v8a'}, libs
+              assert z.testzip() is None
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/cert-check.txt"
+          grep -q 'CN=ArtCraft Android Builder' "$RUNNER_TEMP/cert-check.txt"
+          sha256sum "$APK" > "$RUNNER_TEMP/SHA256SUMS.txt"
+          echo 'TEST ONLY; device testing required. No permanent signing, production publish or release.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: DesignCraft-v0.20.1-android.7-PHOTOCRAFT-WHEEL-INAPP-UPDATER-ARM64-TEST
+          path: |
+            ${{ runner.temp }}/designcraft-builder/output/designcraft-0.20.1-android.7-debug.apk
+            ${{ runner.temp }}/SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: DesignCraft-wheel-build-logs
+          path: ${{ runner.temp }}/designcraft-builder/logs/
+          retention-days: 3
+          if-no-files-found: ignore

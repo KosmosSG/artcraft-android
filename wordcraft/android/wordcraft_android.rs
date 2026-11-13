@@ -255,11 +255,13 @@ impl Tools {
         // WC_WHEEL_HOVER_ISOLATION_V1: remove hover and sampled ink over
         // the wheel before the document's cursor/ink renderer can see it.
         let screen = ctx.content_rect();
-        let samples = samples.into_iter().filter(|p|
-            !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
-        ).collect::<Vec<_>>();
+        let samples = if self.wheel.visible { Vec::new() } else {
+            samples.into_iter().filter(|p|
+                !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
+            ).collect::<Vec<_>>()
+        };
         let hover = hover.filter(|p|
-            !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
+            !self.wheel.visible && !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
         );
         let got_samples = !samples.is_empty();
         ctx.data_mut(|d| {

@@ -18,13 +18,30 @@ const LABELS: [&str; 16] = [
     "Save", "Clear", "Go To", "New Sheet",
 ];
 const DEFAULT: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
-/// One stroke language for every slot, including the extra assignable actions.
-/// No multicolour filled toolbar art or platform-dependent Unicode glyph icons.
+/// DeckCraft-inspired white-outline pictograms, not the previous mixed toolkit
+/// icons. Every slot is drawn using one stroke weight and matching dimensions.
+fn deck_style_curved_arrow(p: &egui::Painter, rect: egui::Rect, redo: bool) {
+    let scale = rect.width() / 24.0;
+    let centre = rect.center();
+    let ink = Stroke::new(2.15 * scale, Color32::WHITE);
+    // The smooth return-shaped shaft curves into a fully separate outward
+    // arrowhead. Left = Undo, right = Redo (matching DeckCraft's ribbon).
+    let side = if redo { 1.0 } else { -1.0 };
+    let pt = |x: f32, y: f32| centre + vec2(side*x, y) * scale;
+    let points = [
+        (-8.0, 8.0), (-8.0, 4.0), (-7.6, 0.0), (-6.6,-2.6),
+        (-4.8,-4.7), (-2.0,-5.8), (1.0,-6.0), (5.0,-5.5),
+        (8.0,-4.0),
+    ];
+    p.add(Shape::line(points.iter().map(|&(x,y)|pt(x,y)).collect(), ink));
+    p.add(Shape::line(vec![pt(2.0,-9.0),pt(9.0,-4.0),pt(3.0,2.0)],ink));
+}
+/// No multicolour filled toolbar art or platform-dependent emoji icon glyphs.
 fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
     let centre = rect.center();
     let scale = rect.width() / 24.0;
     let pt = |x: f32, y: f32| centre + vec2(x, y) * scale;
-    let stroke = Stroke::new(1.65 * scale, Color32::WHITE);
+    let stroke = Stroke::new(2.0 * scale, Color32::WHITE);
     let line = |coords: &[(f32, f32)]| {
         p.add(Shape::line(
             coords.iter().map(|&(x,y)| pt(x,y)).collect::<Vec<_>>(), stroke));
@@ -46,12 +63,9 @@ fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
             seg((-9.0,-1.0),(9.0,-1.0));
             seg((0.0,-9.0),(0.0,9.0));
         }
-        2 => { // Function: vector Fx glyph, no external font dependency.
-            seg((-8.0,-9.0),(-8.0,9.0));
-            seg((-8.0,-9.0),(-1.0,-9.0));
-            seg((-8.0,-1.0),(-2.0,-1.0));
-            seg((2.0,-5.0),(9.0,8.0));
-            seg((9.0,-5.0),(2.0,8.0));
+        2 => { // Standard spreadsheet function mark: clean, readable "fx".
+            p.text(centre, egui::Align2::CENTER_CENTER, "fx",
+                FontId::proportional(19.0 * scale), Color32::WHITE);
         }
         3 => { // Fill Down: two outlined cells and down arrow.
             box_at(-9.0,-9.0,3.0,9.0);
@@ -69,18 +83,8 @@ fn draw_icon(p: &egui::Painter, rect: egui::Rect, action: usize) {
             seg((-4.0,0.0),(4.0,0.0));
             seg((-4.0,5.0),(3.0,5.0));
         }
-        6 => { // Undo: single outlined curved direction.
-            line(&[(1.0,-7.0),(-3.0,-7.0),(-7.0,-4.0),(-8.0,0.0),
-                (-5.0,5.0),(0.0,7.0),(6.0,5.0),(8.0,1.0)]);
-            line(&[(-1.0,-11.0),(-6.0,-7.0),(-1.0,-3.0)]);
-        }
-        7 => { // Redo: unmistakeable clockwise, right-pointing curved arrow.
-            // A simple swept shaft with an outward arrowhead, NOT Undo mirrored.
-            // The arrowhead points to screen-right (positive X) at the upper edge.
-            line(&[(-9.0,8.0),(-9.0,2.0),(-7.0,-3.0),
-                (-3.0,-7.0),(2.0,-8.0),(9.0,-5.0)]);
-            line(&[(3.0,-10.0),(9.0,-5.0),(3.0,0.0)]);
-        }
+        6 => deck_style_curved_arrow(p, rect, false), // Undo: left.
+        7 => deck_style_curved_arrow(p, rect, true),  // Redo: right.
         8 => { // Previous sheet.
             box_at(-2.0,-9.0,9.0,9.0);
             line(&[(-3.0,-5.0),(-9.0,0.0),(-3.0,5.0)]);

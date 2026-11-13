@@ -462,6 +462,7 @@ impl Tools {
         tools.startup_updates = tools.call_bool("wcStartupUpdates").unwrap_or(false);
         let wheel_saved = tools.call_string("wcGetStylusWheelPrefs").ok().flatten();
         tools.wheel = stylus_wheel::Wheel::load(wheel_saved.as_deref());
+        let _ = tools.call_bool_arg("wcWheelSetEnabled", tools.wheel.enabled);
         if let Ok(Some(saved)) = tools.call_string("wcGetShortcutPad") {
             for (i, id) in saved.split(',').take(6).enumerate() {
                 if let Some(index) = ACTIONS.iter().position(|(_, command)| *command == id) {
@@ -551,7 +552,37 @@ impl Tools {
         }
     }
 
+    fn poll_wheel(&mut self, ctx: &egui::Context) {
+        // WC_MAGIC_PENCIL_WHEEL_BUTTON_V2: Java verifies physical stylus
+        // identity. Poll at a modest rate so a consumed side-button wakes
+        // native UI without relying on an incidental touchscreen event.
+        if self.wheel.enabled {
+            for _ in 0..4 {
+                match self.call_string("wcWheelPoll") {
+                    Ok(Some(signal)) if signal == "key" || signal == "motion" =>
+                        self.wheel.pen_button(ctx),
+                    _ => break,
+                }
+            }
+            // Hover coordinates originate only from Android TOOL_TYPE_STYLUS.
+            let scale = ctx.pixels_per_point();
+            let hover = self.call_string("wcStylusHoverPosition").ok().flatten()
+                .and_then(|raw| {
+                    let (x,y) = raw.split_once(',')?;
+                    let (Ok(x),Ok(y)) = (x.parse::<f32>(),y.parse::<f32>()) else {return None};
+                    (scale > 0.0 && x.is_finite() && y.is_finite())
+                        .then_some(egui::pos2(x/scale,y/scale))
+                });
+            self.wheel.set_pen_hover(hover);
+            ctx.request_repaint_after(Duration::from_millis(
+                if hover.is_some() || self.wheel.visible {48} else {130}));
+        } else {
+            self.wheel.set_pen_hover(None);
+        }
+    }
+
     pub fn poll(&mut self, app: &mut wordcraft_ui_egui::WordApp, ctx: &egui::Context) {
+        self.poll_wheel(ctx);
         // WC_ANDROID_FAST_INPUT_V1: soft keyboard commits live in Java's queue.
         // GameActivity need not wake Rust on each IME commit, so keep frames
         // responsive while editing without polling continuously while idle.
@@ -777,7 +808,7 @@ impl Tools {
             d.insert_temp(egui::Id::new("wc_menu_font_busy"), self.fonts.busy);
             d.insert_temp(egui::Id::new("wc_menu_startup"), self.startup_updates);
             d.insert_temp(egui::Id::new("wc_menu_pad"), self.show_pad);
-            d.insert_temp(egui::Id::new("wc_menu_wheel_visible"), self.wheel.visible);
+            d.insert_temp(egui::Id::new("wc_menu_wheel_visible"), self.wheel.enabled);
             d.insert_temp(egui::Id::new("wc_menu_status"), self.status.clone());
             d.insert_temp(egui::Id::new("wc_menu_release"), self.release_url.clone().unwrap_or_default());
             d.insert_temp(egui::Id::new("wc_menu_gpu"), gpu);
@@ -890,9 +921,16 @@ impl Tools {
                     Err(error) => self.status = format!("Cannot save pen pressure setting: {error}"),
                 }
             }
-            "wheel_customize" => self.wheel.settings_open = true,
+            "wheel_customize" => {
+                self.wheel.visible = false;
+                self.wheel.settings_open = true;
+            }
+            "wheel_open" => self.wheel.open_at_hover(ctx),
             "wheel_on" | "wheel_off" => {
-                self.wheel.visible = action == "wheel_on";
+                self.wheel.enabled = action == "wheel_on";
+                self.wheel.visible = false;
+                self.wheel.pending = None;
+                let _ = self.call_bool_arg("wcWheelSetEnabled", self.wheel.enabled);
                 self.save_wheel();
             }
             "pad_on" => self.show_pad = true,

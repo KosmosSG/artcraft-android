@@ -254,7 +254,7 @@ impl Tools {
             });
         // WC_WHEEL_HOVER_ISOLATION_V1: remove hover and sampled ink over
         // the wheel before the document's cursor/ink renderer can see it.
-        let screen = ctx.input(|i| i.screen_rect());
+        let screen = ctx.content_rect();
         let samples = samples.into_iter().filter(|p|
             !self.wheel.owns(egui::pos2(p[0], p[1]), screen)
         ).collect::<Vec<_>>();
@@ -339,7 +339,7 @@ impl Tools {
     /// Route wheel input before WordApp sees it; keyboard and multitouch canvas
     /// gestures outside the wheel are deliberately left untouched.
     pub fn isolate_wheel_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        let screen = raw.screen_rect.unwrap_or_else(|| ctx.input(|i| i.screen_rect()));
+        let screen = raw.screen_rect.unwrap_or_else(|| ctx.content_rect());
         self.wheel.filter_input(raw, screen);
     }
 

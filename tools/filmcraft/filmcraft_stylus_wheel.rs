@@ -275,7 +275,7 @@ impl Wheel {
             let mut changed=false;
             if resp.clicked() || resp.dragged() {
                 if let Some(p)=resp.interact_pointer_pos() {
-                    let next=(min+(max-min)*((p.x-left)/(right-left)).clamp(0.0,1.0)*100.0).round()/100.0;
+                    let next=((min+(max-min)*((p.x-left)/(right-left)).clamp(0.0,1.0))*100.0).round()/100.0;
                     if (*value-next).abs() > 0.001 { *value=next; changed=true; }
                 }
             }

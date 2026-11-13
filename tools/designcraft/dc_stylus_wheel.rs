@@ -1,19 +1,19 @@
 //! DesignCraft-specific Android stylus wheel. Isolated test candidate.
 //! Reuses Storytold's toolbar icon painter; never modifies the document on hover.
 use egui::{Align2, Color32, Context, FontId, Id, Order, Pos2, Rect, Sense, Shape, Stroke, Ui, pos2, vec2};
-use std::{f32::consts::{PI, TAU}, fs, path::PathBuf, time::Duration};
+use std::{f32::consts::{PI, TAU}, fs, path::PathBuf, time::{Duration, Instant}};
 
 const BG: Color32 = Color32::from_rgb(67, 8, 31);   // Owner supplied Dc icon: #43081F.
 const ACCENT: Color32 = Color32::from_rgb(236, 72, 105); // #EC4869.
 const ITEMS: [(&str, &str, &str); 14] = [
     ("Select", "tool-selection", "selection"),
     ("Pen", "tool-pen", "pen"),
-    ("Shapes", "tool-rect", "rectangle"),
+    ("Shapes", "wheel-shapes", "rectangle"),
     ("Text", "tool-type", "type"),
-    ("Layers", "tool-selection", "window.panel"),
+    ("Layers", "panel-layers", "window.panel"),
     ("Hand", "tool-hand", "hand"),
-    ("Redo", "tool-rotate", "edit.redo"),
-    ("Undo", "tool-rotate", "edit.undo"),
+    ("Redo", "wheel-redo", "edit.redo"),
+    ("Undo", "wheel-undo", "edit.undo"),
     ("Pencil", "tool-pencil", "pencil"),
     ("Zoom", "tool-zoom", "zoom"),
     ("Direct Select", "tool-direct", "directSelection"),
@@ -33,6 +33,7 @@ struct Wheel {
     size: f32,
     opacity: f32,
     path: Option<PathBuf>,
+    last_device_scan: Option<Instant>,
 }
 
 impl Wheel {
@@ -41,7 +42,7 @@ impl Wheel {
         let mut wheel = Self {
             enabled: false, settings_open: false, open: false,
             center: ctx.content_rect().center(), slots: DEFAULT,
-            size: 100.0, opacity: 85.0, path
+            size: 100.0, opacity: 85.0, path, last_device_scan: None
         };
         if let Some(text) = wheel.path.as_ref().and_then(|p| fs::read_to_string(p).ok()) {
             let parts: Vec<&str> = text.trim().split('|').collect();

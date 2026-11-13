@@ -390,24 +390,41 @@
     private final java.util.concurrent.atomic.AtomicReference<String> gcWheelHover =
             new java.util.concurrent.atomic.AtomicReference<>();
     public String gcStylusWheelPollHover() { return gcWheelHover.getAndSet(null); }
-    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
-        if (gcStylusWheelEnabled && event != null && event.getPointerCount() > 0) {
-            final int action = event.getActionMasked();
-            final int tool = event.getToolType(0);
-            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
-                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
-                if (action == android.view.MotionEvent.ACTION_HOVER_MOVE
-                        || action == android.view.MotionEvent.ACTION_HOVER_ENTER) {
-                    gcWheelHover.set("M:" + Float.toString(event.getX(0))
-                            + "," + Float.toString(event.getY(0)));
-                } else if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
-                    gcWheelHover.set("E");
-                }
+    // GC_STYLUS_HOVER_V2: accept HONOR Magic-Pencil stylus tool OR stylus
+    // input-source flags. Some hover frames arrive as TOOL_TYPE_UNKNOWN,
+    // particularly near the digitizer's hover-distance boundary.
+    // Only queue a 2D hover position. Never synthesize a touch, click, key
+    // or consume an event that the underlying editor should still receive.
+    private void gcObserveStylusHover(android.view.MotionEvent event) {
+        if (!gcStylusWheelEnabled || event == null || event.getPointerCount() == 0) return;
+        final int action = event.getActionMasked();
+        final int tool = event.getToolType(event.getActionIndex());
+        final boolean pen = tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
+                || tool == android.view.MotionEvent.TOOL_TYPE_ERASER
+                || (event.getSource() & android.view.InputDevice.SOURCE_STYLUS)
+                   == android.view.InputDevice.SOURCE_STYLUS;
+        if (!pen) return;
+        if (action == android.view.MotionEvent.ACTION_HOVER_EXIT) {
+            gcWheelHover.set("E");
+        } else if (action == android.view.MotionEvent.ACTION_HOVER_MOVE
+                || action == android.view.MotionEvent.ACTION_HOVER_ENTER) {
+            final float x = event.getX(0);
+            final float y = event.getY(0);
+            if (Float.isFinite(x) && Float.isFinite(y)) {
+                gcWheelHover.set("M:" + Float.toString(x) + "," + Float.toString(y));
             }
         }
-        // Preserve NativeActivity/winit hover routing and all existing
-        // touch, trackpad and mouse generic-motion handling.
+    }
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        gcObserveStylusHover(event);
+        // Preserve NativeActivity/winit hover, touch, and trackpad delivery.
         return super.dispatchGenericMotionEvent(event);
+    }
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
+        // Fallback for Android paths that invoke the Activity callback instead
+        // of forwarding hover through dispatchGenericMotionEvent.
+        gcObserveStylusHover(event);
+        return super.onGenericMotionEvent(event);
     }
 
     public void gcStylusWheelSetEnabled(boolean value) {

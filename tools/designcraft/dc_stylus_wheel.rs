@@ -126,19 +126,20 @@ impl Wheel {
                 tip + vec2(d*0.63, d*0.45),
             ], Stroke::new(1.8, Color32::WHITE)));
         } else if icon == "wheel-undo" || icon == "wheel-redo" {
-            let direction = if icon == "wheel-undo" { -1.0 } else { 1.0 };
-            let radius = rect.width() * 0.30;
-            let center = rect.center() + vec2(0.0, rect.height()*0.04);
-            let arc: Vec<Pos2> = (0..19).map(|i| {
-                let a = -2.2 + (i as f32)*3.8 / 18.0;
-                center + vec2(direction*a.cos()*radius, a.sin()*radius)
-            }).collect();
-            p.add(Shape::line(arc.clone(), Stroke::new(2.2, Color32::WHITE)));
-            let tip = arc[0];
-            p.line_segment([tip, tip + vec2(-direction*radius*0.22, -radius*0.70)],
-                Stroke::new(2.2, Color32::WHITE));
-            p.line_segment([tip, tip + vec2(-direction*radius*0.77, radius*0.10)],
-                Stroke::new(2.2, Color32::WHITE));
+            // Familiar mirrored Undo / Redo: a clear left/right arrowhead
+            // followed by a rounded return stroke (rather than a rotate glyph).
+            let direction = if icon == "wheel-undo" { 1.0 } else { -1.0 };
+            let scale = rect.width().min(rect.height());
+            let at = |x: f32, y: f32| rect.center() + vec2(direction * x * scale, y * scale);
+            let stroke = Stroke::new(2.2, Color32::WHITE);
+            p.add(Shape::line(vec![
+                at(-0.33, -0.11), at(-0.13, -0.11), at(0.04, -0.11),
+                at(0.19, -0.05), at(0.29, 0.08), at(0.30, 0.20),
+                at(0.23, 0.32), at(0.08, 0.37),
+            ], stroke));
+            p.add(Shape::line(vec![
+                at(-0.11, -0.32), at(-0.33, -0.11), at(-0.11, 0.11),
+            ], stroke));
         } else {
             // Use the same real icons as DesignCraft's own toolbar/panels.
             designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
@@ -179,8 +180,9 @@ impl Wheel {
         p.circle_stroke(center, radius * 0.32, Stroke::new(2.0, ACCENT));
         let logo = Self::original_dc_logo(ui.ctx());
         p.image(logo.id(),
-            Rect::from_center_size(center - vec2(0.0, radius * 0.065),
-                vec2(radius * 0.78, radius * 0.49)),
+            // 60% of Android.2's Dc mark; preserve the exact launcher artwork.
+            Rect::from_center_size(center - vec2(0.0, radius * 0.070),
+                vec2(radius * 0.468, radius * 0.294)),
             Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             Color32::WHITE);
         let name = selection.map(|i| ITEMS[self.slots[i]].0).unwrap_or("DesignCraft");

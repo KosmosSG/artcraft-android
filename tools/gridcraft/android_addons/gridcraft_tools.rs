@@ -390,6 +390,18 @@ impl GridCraftTools {
         }).ok().flatten()
     }
 
+    fn gc_poll_wheel_contact(&self) -> Option<String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let value = env.call_method(&*activity, jni_str!("gcStylusWheelPollContact"),
+                jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+            if value.is_null() { return Ok(None); }
+            let string = JString::cast_local(env, value)?;
+            Ok(Some(string.try_to_string(env)?))
+        }).ok().flatten()
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, _sheet: &mut gridcraft_ui_egui::SheetApp) {
         let ctx = ui.ctx();
         // GRIDCRAFT_PHOTO_WHEEL_V1 — switch pen routing only when the owner
@@ -414,6 +426,9 @@ impl GridCraftTools {
         if self.stylus_wheel.enabled {
             if let Some(sample) = self.gc_poll_wheel_hover() {
                 self.stylus_wheel.stylus_hover(&sample, ctx);
+            }
+            if let Some(sample) = self.gc_poll_wheel_contact() {
+                self.stylus_wheel.stylus_contact(&sample, ctx);
             }
         }
         self.stylus_wheel.render(ctx, _sheet);

@@ -1,0 +1,16 @@
+{
+  "version": "0.21.1-android.10",
+  "package": "com.artcraft.pdfcraft",
+  "signed_test_run_id": 43475526563,
+  "source_commit": "6e58b1674633b4f5745c308b6c34c0f7ff42e02b",
+  "signed_artifact_name": "PDFCraft-v0.21.1-android.10-BORDERED-SLOTS-75-85-UPDATER-SIGNED-TEST",
+  "signed_apk_sha256": "CALCULATE_FROM_SIGNED_ARTIFACT",
+  "approved_for_publication": true,
+  "requested_changes": [
+    "Subtle grey borders around eight customization slots",
+    "Default wheel size 75 percent and opacity 85 percent",
+    "Verified in-app APK updater with Android Save APK export"
+  ],
+  "owner_request_context": "The owner explicitly reported PDFCraft Android.10 device testing completed and requested permanent signing and publication.",
+  "policy": "Publish the exact original-certificate signed CI artifact from successful run 43475526563 with no rebuild, resigning, merge or overwrite. Verify artifact SHA-256, signing certificate, app ID, version and ABI before publishing. Keep Play Protect enabled."
+}

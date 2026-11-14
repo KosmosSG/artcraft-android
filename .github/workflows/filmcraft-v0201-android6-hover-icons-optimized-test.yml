@@ -193,29 +193,20 @@ jobs:
         FILMCRAFT_TEST_PACKAGE: com.artcraft.filmcraft.test
         FILMCRAFT_EPHEMERAL_VERSION_CODE: '2001006'
         ARTCRAFT_TARGET_SDK: '35'
-      run: 'set -euo pipefail
-
+      run: |
+        set -euo pipefail
         python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
-
         python3 suite/tools/filmcraft/stage_upstream_v0201_variant.py filmcraft-builder/lib/android_project.py
-
         python3 -m pip install Pillow==11.3.0
-
         python3 suite/tools/approved-branding/approved_branding.py install filmcraft-builder filmcraft
-
         cd filmcraft-builder
-
         bash build.sh -filmcraft -packagename=com.artcraft.filmcraft.test -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-user-approved.png"
-
-        test -f output/filmcraft-0.20.1.apk
-
-        mv output/filmcraft-0.20.1.apk output/filmcraft-0.20.1-android.6-test.apk
-        printf "FilmCraft Android.6 APK bytes: "
+        test -s output/filmcraft-0.20.1.apk
+        mv -- output/filmcraft-0.20.1.apk output/filmcraft-0.20.1-android.6-test.apk
+        test -s output/filmcraft-0.20.1-android.6-test.apk
+        printf 'FilmCraft Android.6 APK bytes: '
         stat -c %s output/filmcraft-0.20.1-android.6-test.apk
-        unzip -l output/filmcraft-0.20.1-android.6-test.apk | sort -nr | head -n 12 || true
         echo "FilmCraft Android.6 APK size: $(stat -c %s output/filmcraft-0.20.1-android.6-test.apk) bytes (strip=symbols, thin LTO)" >> "$GITHUB_STEP_SUMMARY"
-
-        '
     - name: Verify compiled APK artwork and retain candidate evidence
       shell: bash
       run: |

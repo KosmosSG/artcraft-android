@@ -30,7 +30,7 @@ for name,needle in {
     "surface listener before touch": "setOnHoverListener(fcWheelSurfaceHover)",
     "cold-start attach": "fcWheelPrepareEarlyHover();",
     "Activity resumed": "onResume()",
-    "window focus reattach": "onWindowFocusChanged(boolean hasFocus)",
+    "initial Activity resume hook": "onResume()",
     "native generic motion fallback": "onGenericMotionEvent(android.view.MotionEvent e)",
     "non-consuming hover": "return false; // ALWAYS allow GameActivity/winit to process input",
     "stationary hovering pen": "Do not",

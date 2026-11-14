@@ -117,12 +117,13 @@ public final class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        bg=Color.parseColor(dark?"#0B1422":"#F4F7FB");
-        surface=Color.parseColor(dark?"#17263B":"#FFFFFF");
-        border=Color.parseColor(dark?"#2A4057":"#DAE4ED");
-        foreground=Color.parseColor(dark?"#EDF6FD":"#182C40");
-        muted=Color.parseColor(dark?"#A7B8CA":"#657587");
-        accent=Color.parseColor("#40BFD7");
+        // Neutral graphite surfaces with a single teal accent throughout.
+        bg=Color.parseColor(dark?"#22272C":"#F0F2F3");
+        surface=Color.parseColor(dark?"#343B41":"#FFFFFF");
+        border=Color.parseColor(dark?"#59636B":"#CAD0D4");
+        foreground=Color.parseColor(dark?"#F4F6F6":"#232B30");
+        muted=Color.parseColor(dark?"#BDC6CA":"#69757B");
+        accent=Color.parseColor("#12AFA3");
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -178,10 +179,10 @@ public final class MainActivity extends Activity {
     }
 
     private TextView action(String label,boolean primary,int color,Runnable click) {
-        TextView button=text(label,13,primary?Color.WHITE:foreground,true);
+        TextView button=text(label,13,primary?Color.WHITE:accent,true);
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(13),dp(10),dp(13),dp(10));
-        button.setBackground(shape(primary?color:surface,primary?Color.TRANSPARENT:border,11));
+        button.setBackground(shape(primary?accent:surface,primary?Color.TRANSPARENT:accent,11));
         button.setOnClickListener(v->click.run());
         return button;
     }
@@ -192,14 +193,17 @@ public final class MainActivity extends Activity {
         LinearLayout head=horizontal();
         head.setPadding(dp(18),dp(16),dp(18),dp(13));
         root.addView(head,new LinearLayout.LayoutParams(-1,dp(82)));
-        TextView emblem=artCraftBadge("Ac",52,Color.parseColor("#28BBD4"));
+        ImageView emblem=new ImageView(this);
+        emblem.setImageResource(R.drawable.ac_brand_icon);
+        emblem.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        emblem.setContentDescription("ArtCraft Ac logo");
         head.addView(emblem,new LinearLayout.LayoutParams(dp(52),dp(52)));
         LinearLayout heading=vertical();
         heading.setPadding(dp(12),0,0,0);
         head.addView(heading,new LinearLayout.LayoutParams(0,-2,1f));
         heading.addView(text("ArtCraft",25,foreground,true));
         heading.addView(text("ANDROID SUITE  ·  LAUNCHER",10,muted,true));
-        TextView refresh=action("Check Updates",true,Color.parseColor("#207B9E"),this::refreshCatalog);
+        TextView refresh=action("Check Updates",true,accent,this::refreshCatalog);
         head.addView(refresh);
         TextView menu=text(" ⋮ ",25,foreground,true);
         menu.setGravity(Gravity.CENTER);
@@ -214,7 +218,12 @@ public final class MainActivity extends Activity {
         scroller.addView(page);
         LinearLayout welcome=vertical();
         welcome.setPadding(dp(19),dp(17),dp(19),dp(17));
-        welcome.setBackground(shape(surface,border,18));
+        GradientDrawable welcomeBackground=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{surface,dark?Color.parseColor("#3A4F50"):Color.parseColor("#E1E8E7")});
+        welcomeBackground.setCornerRadius(dp(18));
+        welcomeBackground.setStroke(dp(1),border);
+        welcome.setBackground(welcomeBackground);
         page.addView(welcome,new LinearLayout.LayoutParams(-1,-2));
         welcome.addView(text("Your creative workspace, all in one place",19,foreground,true));
         TextView descriptor=text("Open installed apps, check published GitHub releases, and manage updates with Android's installer.",13,muted,false);
@@ -352,9 +361,9 @@ public final class MainActivity extends Activity {
             onPrimary=()->confirmDownload(app,remote);
         else if(installed!=null)onPrimary=()->openApp(app);
         else onPrimary=()->openReleases();
-        TextView primary=action(label,true,app.accent,onPrimary);
+        TextView primary=action(label,true,accent,onPrimary);
         buttons.addView(primary,new LinearLayout.LayoutParams(0,dp(40),1f));
-        TextView secondary=action(installed!=null?"Info":"Details",false,app.accent,
+        TextView secondary=action(installed!=null?"Info":"Details",false,accent,
             ()->{ if(remote==null) openReleases(); else openUrl(remote.notesUrl); });
         LinearLayout.LayoutParams secondLp=new LinearLayout.LayoutParams(0,dp(40),1f);
         secondLp.setMargins(dp(6),0,0,0);
@@ -411,7 +420,7 @@ public final class MainActivity extends Activity {
             }
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.4  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.5  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });

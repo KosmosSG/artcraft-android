@@ -50,7 +50,7 @@ jobs:
       - name: Upload TEST-ONLY artifact (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: ArtCraft-Launcher-v0.1.0-android.4-ARM64-TEST-ONLY
+          name: ArtCraft-Launcher-v0.1.0-android.5-ARM64-TEST-ONLY
           path: |
             launcher-android/app/build/outputs/apk/debug/app-debug.apk
             launcher-android/app/build/outputs/apk/debug/SHA256SUMS.txt

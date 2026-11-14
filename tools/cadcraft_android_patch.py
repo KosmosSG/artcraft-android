@@ -310,11 +310,15 @@ struct CadStylusKeys {
     allowed_ids: Vec<i32>,
     events: Vec<u8>,
     last: Option<std::time::Instant>,
+    candidate_count: u32,
+    accepted_count: u32,
+    last_candidate: Option<(i32, i32, i32)>,
 }
 #[cfg(feature = "native-activity")]
 static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
     std::sync::Mutex::new(CadStylusKeys {
-        enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None
+        enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None,
+        candidate_count: 0, accepted_count: 0, last_candidate: None
     });
 
 #[cfg(feature = "native-activity")]
@@ -332,6 +336,12 @@ pub fn cad_stylus_configure(enabled: bool, ids: &[i32]) {
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> bool {
     let Ok(mut state) = CAD_STYLUS_KEYS.lock() else { return false };
+    // Count possible DPAD events without consuming unrelated physical keyboards.
+    // Device ID + action let us diagnose mismatched HONOR naming/IME routing.
+    if code == 19 || code == 20 {
+        state.candidate_count = state.candidate_count.saturating_add(1);
+        state.last_candidate = Some((device, code, action));
+    }
     if !state.enabled || !state.allowed_ids.contains(&device) ||
         (code != 19 && code != 20) { return false; }
     // Accept first press/release edge from the named pen, even if the paired
@@ -341,11 +351,22 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
         if state.last.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(550))
             && state.events.len() < 16 {
             state.events.push(code as u8);
+            state.accepted_count = state.accepted_count.saturating_add(1);
             state.last = Some(now);
             log::info!("CADCraft: verified Magic-Pencil button code={code} device={device}");
         }
     }
     true
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_native_status() -> String {
+    if let Ok(state) = CAD_STYLUS_KEYS.lock() {
+        format!(
+            "Native enabled: {} | Verified IDs: {:?} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?}",
+            state.enabled, state.allowed_ids, state.candidate_count,
+            state.accepted_count, state.last_candidate
+        )
+    } else { "Native input state lock unavailable".to_owned() }
 }
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_native_take() -> Vec<u8> {

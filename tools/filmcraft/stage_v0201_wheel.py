@@ -159,12 +159,17 @@ HEADER_ADD = '''                ui.menu_button("Stylus Wheel", |ui| {
 ''' + HEADER_ANCHOR
 
 # The Android bridge already supports genuine in-app download/verify/install.
-# Expose it using explicit PhotoCraft-style naming; never remove the package
-# identity and certificate checks that forbid a test APK overwriting production.
+# Show the official release checker only; that check offers download on user
+# approval, and verified downloads offer Android-approved installation.
+# Keep package identity and signer checks for production and .test isolation.
+# Keep download and install functionality behind Check for Updates, but do
+# not clutter Fc > App Updates with separate administrative commands.
 HEADER_DOWNLOAD_ANCHOR = 'action(ui, "Download Verified APK…", 8);'
-HEADER_DOWNLOAD_LABEL = 'action(ui, "Download & Verify APK in App…", 8);'
+HEADER_DOWNLOAD_LABEL = '// Verified download offered by Check for Updates dialog.'
 HEADER_INSTALL_ANCHOR = 'action(ui, "Install Verified Download…", 10);'
-HEADER_INSTALL_LABEL = 'action(ui, "Install Verified APK (Android Approval)…", 10);'
+HEADER_INSTALL_LABEL = '// Install offered only after verification and Android approval.'
+HEADER_RELEASE_ANCHOR = 'action(ui, "Open Official Release Page…", 6);'
+HEADER_RELEASE_LABEL = '// Release information is included in verified update metadata.'
 
 
 
@@ -199,6 +204,15 @@ def prepare(builder: Path, wheel: Path) -> None:
         HEADER_DOWNLOAD_LABEL, "in-app verified APK download menu")
     header_src = replace_once(header_src, HEADER_INSTALL_ANCHOR,
         HEADER_INSTALL_LABEL, "in-app Android installer menu")
+    header_src = replace_once(header_src, HEADER_RELEASE_ANCHOR,
+        HEADER_RELEASE_LABEL, "redundant official release page menu")
+    for hidden in (HEADER_DOWNLOAD_ANCHOR, HEADER_INSTALL_ANCHOR, HEADER_RELEASE_ANCHOR,
+                   "Download & Verify APK in App…",
+                   "Install Verified APK (Android Approval)…"):
+        if hidden in header_src:
+            raise RuntimeError(f"STOP: FilmCraft exposed redundant update action: {hidden}")
+    if 'action(ui, "Check for Updates…", 4);' not in header_src:
+        raise RuntimeError("STOP: single visible update check entry missing")
     # Check all changes first; do not partially modify the builder on an anchor failure.
     runtime.write_text(updated_runtime)
     feature.write_text(feature_src)
@@ -224,7 +238,7 @@ def prepare(builder: Path, wheel: Path) -> None:
         wheel_source = wheel_source.replace(original, new, 1)
     (builder / "tools/filmcraft/filmcraft_stylus_wheel.rs").write_text(wheel_source)
     print(f"PASS: user-supplied original Fc lettering verified; exact navy {navy} lavender {lavender}")
-    print("PASS: PhotoCraft-style Fc menu, wheel customization, and verified in-app updater")
+    print("PASS: PhotoCraft Fc menu with one update-check action; download/install confirmation retained internally")
 
 
 def main() -> None:

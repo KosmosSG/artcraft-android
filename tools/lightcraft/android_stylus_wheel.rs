@@ -158,63 +158,47 @@ pub fn capture(p: &WheelPrefs, ctx: &Context, raw: &mut RawInput) {
         notify(ctx, "Wheel selection accepted");
     }
 }
-fn icon(p: &egui::Painter, c: Pos2, size: f32, act: WheelAction, color: Color32) {
-    // Vector geometry rather than special font glyphs: no MagicOS tofu.
-    let r = size * 0.45;
-    let stroke = Stroke::new((size / 12.0).max(1.4), color);
-    let seg = |a: egui::Vec2, b: egui::Vec2| p.line_segment([c + a, c + b], stroke);
-    match act {
-        WheelAction::Undo | WheelAction::Redo => {
-            let reversed = act == WheelAction::Undo;
-            let mut points = Vec::new();
-            for j in 0..=16 {
-                let t = (if reversed { 210.0 } else { -30.0 }) +
-                    (if reversed { -1.0 } else { 1.0 }) * (j as f32 / 16.0) * 240.0;
-                points.push(c + vec2(t.to_radians().cos(), t.to_radians().sin()) * r);
-            }
-            p.add(Shape::line(points, stroke));
-            let x = if reversed { -r } else { r };
-            seg(vec2(x, -0.10 * size), vec2(x + if reversed { r * 0.48 } else { -r * 0.48 }, -0.44 * size));
-            seg(vec2(x, -0.10 * size), vec2(x + if reversed { r * 0.48 } else { -r * 0.48 }, r * 0.23));
+// Match LightCraft's OWN toolbar vector icons rather than drawing
+// improvised symbols. Upstream's icons use a consistent 20x20 grid,
+// 1.5pt rounded strokes and remain sharp at all wheel sizes.
+fn icon(p: &egui::Painter, center: Pos2, size: f32, action: WheelAction, color: Color32) {
+    use crate::icons::Icon;
+    if matches!(action, WheelAction::Undo | WheelAction::Redo) {
+        // Balanced Lucide-style U-turn: mirrored horizontal arrow with an
+        // open curved tail. This avoids the distorted loop previously shown.
+        let reverse = action == WheelAction::Redo;
+        let k = size / 24.0;
+        let point = |x: f32, y: f32| {
+            let x = if reverse { 24.0 - x } else { x };
+            center + vec2((x - 12.0) * k, (y - 12.0) * k)
+        };
+        let stroke = Stroke::new((1.75 * k).max(1.4), color);
+        p.add(Shape::line(vec![point(8.5, 4.5), point(4.0, 9.0), point(8.5, 13.5)], stroke));
+        p.line_segment([point(4.0, 9.0), point(14.0, 9.0)], stroke);
+        let mut arc = Vec::with_capacity(17);
+        for j in 0..=16 {
+            let theta = (-90.0_f32 + 180.0 * j as f32 / 16.0).to_radians();
+            arc.push(point(14.0 + 5.5 * theta.cos(), 14.5 + 5.5 * theta.sin()));
         }
-        WheelAction::Crop => {
-            seg(vec2(-r, -r), vec2(-r, r * 0.58));
-            seg(vec2(-r, -r), vec2(r * 0.56, -r));
-            seg(vec2(r, r), vec2(-r * 0.56, r));
-            seg(vec2(r, r), vec2(r, -r * 0.58));
-        }
-        WheelAction::Mask => {
-            p.circle_stroke(c, r, stroke);
-            p.circle_filled(c, r * 0.35, color);
-        }
-        WheelAction::Remove => {
-            seg(vec2(-r * 0.65, -r * 0.65), vec2(r * 0.65, r * 0.65));
-            seg(vec2(-r * 0.65, r * 0.65), vec2(r * 0.65, -r * 0.65));
-            p.circle_stroke(c, r, Stroke::new(stroke.width * 0.6, color));
-        }
-        WheelAction::Picker => {
-            seg(vec2(-r * 0.70, r * 0.85), vec2(r * 0.50, -r * 0.45));
-            seg(vec2(r * 0.30, -r * 0.35), vec2(r * 0.70, -r * 0.75));
-            seg(vec2(r * 0.52, -r), vec2(r, -r * 0.5));
-            p.circle_stroke(c + vec2(-r * 0.76, r * 0.8), r * 0.22, stroke);
-        }
-        WheelAction::Zoom | WheelAction::Fit => {
-            p.circle_stroke(c - vec2(r * 0.15, r * 0.15), r * 0.64, stroke);
-            seg(vec2(r * 0.28, r * 0.31), vec2(r * 0.82, r * 0.86));
-            if act == WheelAction::Zoom {
-                seg(vec2(-r * 0.55, -r * 0.15), vec2(r * 0.25, -r * 0.15));
-                seg(vec2(-r * 0.15, -r * 0.55), vec2(-r * 0.15, r * 0.25));
-            }
-        }
-        WheelAction::Edit | WheelAction::Profiles | WheelAction::Versions |
-        WheelAction::History | WheelAction::Compare | WheelAction::BeforeAfter => {
-            for dy in [-r * 0.66, 0.0, r * 0.66] {
-                seg(vec2(-r, dy), vec2(r, dy));
-                p.circle_filled(c + vec2(if dy == 0.0 { -r * 0.35 } else { r * 0.38 }, dy),
-                    r * 0.17, color);
-            }
-        }
+        p.add(Shape::line(arc, stroke));
+        return;
     }
+    let mark = match action {
+        WheelAction::Edit => Icon::Sliders,
+        WheelAction::Crop => Icon::Crop,
+        WheelAction::Mask => Icon::Mask,
+        WheelAction::Remove => Icon::Eraser,
+        WheelAction::Picker => Icon::Picker,
+        WheelAction::Zoom => Icon::Search,
+        WheelAction::Profiles => Icon::ProfileGrid,
+        WheelAction::Versions => Icon::Versions,
+        WheelAction::BeforeAfter => Icon::BeforeAfter,
+        WheelAction::Fit => Icon::Single,
+        WheelAction::History => Icon::Activity,
+        WheelAction::Compare => Icon::Compare,
+        WheelAction::Undo | WheelAction::Redo => unreachable!(),
+    };
+    crate::icons::paint(p, egui::Rect::from_center_size(center, vec2(size, size)), mark, color);
 }
 /// This renderer is used without resizing in the pop-out preview.
 fn paint(ui: &mut Ui, p: &WheelPrefs, hover: Option<Pos2>) {
@@ -346,33 +330,7 @@ pub fn show(app: &mut crate::LightcraftApp, ctx: &Context) {
     }
     if !prefs.enabled { open = false; }
 
-    // PhotoCraft-style shortcut pad stays available but never pre-opens the wheel.
-    if prefs.enabled && !settings {
-        egui::Area::new(Id::new("lightcraft.android.wheel.pad"))
-            .anchor(Align2::RIGHT_CENTER, vec2(-10.0, 0.0))
-            .order(Order::Foreground).show(ctx, |ui| {
-                ui.vertical(|ui| {
-                    for (label, act) in [
-                        ("Undo", Some(WheelAction::Undo)),
-                        ("Redo", Some(WheelAction::Redo)),
-                        ("Lc", None),
-                        ("Zoom", Some(WheelAction::Zoom)),
-                        ("Fit", Some(WheelAction::Fit)),
-                    ] {
-                        if ui.add_sized([52.0, if act.is_some() { 47.0 } else { 54.0 }],
-                            egui::Button::new(egui::RichText::new(label)
-                                .color(if act.is_none() { CYAN } else { Color32::WHITE }))).clicked() {
-                            match act {
-                                Some(a) => { if let Err(e) = app.run(a.command(), serde_json::Value::Null) {
-                                    app.toast(ctx, e);
-                                } }
-                                None => request_stylus_toggle(ctx),
-                            }
-                        }
-                    }
-                });
-            });
-    }
+    // No floating right-side shortcut pad: open via stylus hover/button only.
     if settings {
         open = false;
         egui_extras::install_image_loaders(ctx);

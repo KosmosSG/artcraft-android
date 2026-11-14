@@ -40,11 +40,12 @@
             this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setMax(1000);
+        progress.setPadding(48, 24, 48, 0);
         final java.util.concurrent.atomic.AtomicBoolean cancelled =
             new java.util.concurrent.atomic.AtomicBoolean(false);
-        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(
+                this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("Downloading EffectCraft " + targetVersion)
-            .setMessage("Downloading inside EffectCraft. Your project will not close.")
             .setView(progress)
             .setNegativeButton("Cancel", (d, w) -> cancelled.set(true))
             .setCancelable(false).create();

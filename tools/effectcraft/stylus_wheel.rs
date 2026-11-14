@@ -170,74 +170,74 @@ impl Wheel {
         mark
     }
 
-    /// Custom curved Undo/Redo arrows and accurate, crisp Layers/Crop/Adjust.
+    /// Uniform, 24-point, crisp white vector symbols. Match PhotoCraft's
+    /// toolbar weight and icon semantics rather than using playback arrows,
+    /// stars for Filters, or tiny inconsistent hand-drawn marks.
     fn paint_slot_icon(painter: &egui::Painter, center: Pos2,
         choice: usize, scale: f32, color: Color32) {
-        let stroke = Stroke::new(2.1 * scale, color);
+        let stroke = Stroke::new(2.05 * scale, color);
+        let p = |x: f32, y: f32| center + vec2((x - 12.0) * scale, (y - 12.0) * scale);
+        let line = |nodes: &[(f32, f32)]| {
+            painter.add(Shape::line(nodes.iter().map(|&(x, y)| p(x, y)).collect(), stroke));
+        };
         match choice {
-            6 | 7 => {
-                // Familiar PhotoCraft/Undo2 U-turn silhouette. The previous
-                // shallow parabola resembled a roof; this cubic Bézier has a
-                // distinct turn and an open, left/right-facing arrowhead.
-                // Undo faces left, Redo is the exact mirrored counterpart.
-                let mirror = if choice == 6 { 1.0 } else { -1.0 };
-                let line: Vec<Pos2> = (0..=32).map(|i| {
-                    let t = i as f32 / 32.0;
-                    let u = 1.0 - t;
-                    let x = u * u * u * -9.0
-                        + 3.0 * u * u * t * -0.5
-                        + 3.0 * u * t * t * 12.0
-                        + t * t * t * 8.5;
-                    let y = u * u * u * -2.0
-                        + 3.0 * u * u * t * -11.0
-                        + 3.0 * u * t * t * -11.0
-                        + t * t * t * 8.0;
-                    center + vec2(mirror * x * scale, y * scale)
-                }).collect();
-                painter.add(Shape::line(line, stroke));
-                let tip = center + vec2(-9.0 * mirror, -2.0) * scale;
-                painter.line_segment([tip,
-                    center + vec2(-2.5 * mirror, -8.2) * scale], stroke);
-                painter.line_segment([tip,
-                    center + vec2(-2.2 * mirror, 4.0) * scale], stroke);
+            0 => { // Effect: uniform magic wand with three clean sparkle crosses
+                line(&[(5.0, 20.0), (17.0, 8.0)]);
+                line(&[(13.7, 11.3), (17.7, 15.3)]);
+                line(&[(16.0, 2.0), (16.0, 6.0)]);
+                line(&[(14.0, 4.0), (18.0, 4.0)]);
+                line(&[(4.0, 4.0), (4.0, 8.0)]);
+                line(&[(2.0, 6.0), (6.0, 6.0)]);
+                line(&[(20.0, 16.0), (20.0, 20.0)]);
+                line(&[(18.0, 18.0), (22.0, 18.0)]);
             }
-            2 => {
-                // Three stacked diamond outlines, not the previous star icon.
-                for row in 0..3 {
-                    let y = (-8.0 + row as f32 * 5.5) * scale;
-                    painter.add(Shape::line(vec![
-                        center + vec2(-9.0 * scale, y),
-                        center + vec2(0.0, y + 4.2 * scale),
-                        center + vec2(9.0 * scale, y)], stroke));
+            1 => { // Filter: recognizable classic funnel instead of a star
+                line(&[(3.5, 4.5), (20.5, 4.5), (14.0, 12.0),
+                    (14.0, 18.0), (10.0, 20.5), (10.0, 12.0),
+                    (3.5, 4.5)]);
+            }
+            2 => { // Layers: three consistent tilted diamond layers
+                line(&[(12.0, 3.0), (21.0, 8.0), (12.0, 13.0),
+                    (3.0, 8.0), (12.0, 3.0)]);
+                line(&[(3.0, 12.0), (12.0, 17.0), (21.0, 12.0)]);
+                line(&[(3.0, 16.0), (12.0, 21.0), (21.0, 16.0)]);
+            }
+            3 => { // Crop: opposing L-shaped crop corners
+                line(&[(6.0, 3.0), (6.0, 17.0), (21.0, 17.0)]);
+                line(&[(3.0, 7.0), (17.0, 7.0), (17.0, 21.0)]);
+            }
+            5 => { // Adjust: PhotoCraft/Lucide horizontal sliders
+                line(&[(4.0, 6.0), (10.0, 6.0)]);
+                line(&[(14.0, 6.0), (20.0, 6.0)]);
+                painter.circle_stroke(p(12.0, 6.0), 2.0 * scale, stroke);
+                line(&[(4.0, 12.0), (7.0, 12.0)]);
+                line(&[(11.0, 12.0), (20.0, 12.0)]);
+                painter.circle_stroke(p(9.0, 12.0), 2.0 * scale, stroke);
+                line(&[(4.0, 18.0), (15.0, 18.0)]);
+                line(&[(19.0, 18.0), (20.0, 18.0)]);
+                painter.circle_stroke(p(17.0, 18.0), 2.0 * scale, stroke);
+            }
+            6 | 7 => { // Lucide-style Undo2 / Redo2, 180-degree U-turn
+                let flipped = choice == 7;
+                let mirror = |x: f32| if flipped { 24.0 - x } else { x };
+                line(&[(mirror(9.0), 14.0), (mirror(4.0), 9.0),
+                    (mirror(9.0), 4.0)]);
+                let mut curve = vec![p(mirror(4.0), 9.0),
+                    p(mirror(14.5), 9.0)];
+                for i in 1..=24 {
+                    let angle = -std::f32::consts::FRAC_PI_2
+                        + std::f32::consts::PI * i as f32 / 24.0;
+                    curve.push(p(mirror(14.5 + 5.5 * angle.cos()),
+                        14.5 + 5.5 * angle.sin()));
                 }
-                painter.line_segment([center + vec2(-9.0, -8.0) * scale,
-                    center + vec2(0.0, -12.0) * scale], stroke);
-                painter.line_segment([center + vec2(0.0, -12.0) * scale,
-                    center + vec2(9.0, -8.0) * scale], stroke);
+                curve.push(p(mirror(11.0), 20.0));
+                painter.add(Shape::line(curve, stroke));
             }
-            3 => {
-                for (a, b) in [
-                    ((-7.0, -11.0), (-7.0, 6.0)),
-                    ((-11.0, -7.0), (6.0, -7.0)),
-                    ((7.0, -6.0), (7.0, 11.0)),
-                    ((-6.0, 7.0), (11.0, 7.0))
-                ] {
-                    painter.line_segment([center + vec2(a.0, a.1) * scale,
-                        center + vec2(b.0, b.1) * scale], stroke);
-                }
+            _ => { // Hand, Select, Pen, Zoom use the official editor icon registry
+                icons::paint(painter,
+                    egui::Rect::from_center_size(center, vec2(24.0, 24.0) * scale),
+                    ICONS[choice], color);
             }
-            5 => {
-                for (y, knob) in [(-7.0, -3.0), (0.0, 5.0), (7.0, -4.0)] {
-                    let y = y * scale;
-                    painter.line_segment([center + vec2(-11.0 * scale, y),
-                        center + vec2(11.0 * scale, y)], stroke);
-                    painter.circle_filled(center + vec2(knob * scale, y),
-                        2.7 * scale, color);
-                }
-            }
-            _ => icons::paint(painter,
-                egui::Rect::from_center_size(center, vec2(24.0, 24.0) * scale),
-                ICONS[choice], color),
         }
     }
 
@@ -315,15 +315,14 @@ impl Wheel {
                 });
         }
         if let Some(pos) = self.pen_hover {
-            if !self.settings_open {
-                // Purely visual stylus-hover marker, above the wheel and
-                // non-interactive. Never synthesize a click or canvas hover.
-                let painter = ctx.layer_painter(egui::LayerId::new(
-                    Order::Tooltip, Id::new("ec-stylus-hover-dot")));
-                painter.circle_filled(pos, 7.5, BLUE.gamma_multiply(0.28));
-                painter.circle_stroke(pos, 6.0, Stroke::new(1.4, LAVENDER));
-                painter.circle_filled(pos, 1.7, LAVENDER);
-            }
+            // A pointer is visible immediately on proximity hover, even with
+            // the customization dialog open and before any screen contact.
+            // It is a non-interactive paint layer, not a synthesized click.
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                Order::Tooltip, Id::new("ec-stylus-hover-dot")));
+            painter.circle_filled(pos, 7.5, BLUE.gamma_multiply(0.20));
+            painter.circle_stroke(pos, 6.0, Stroke::new(1.5, LAVENDER));
+            painter.circle_filled(pos, 1.7, LAVENDER);
         }
     }
 
@@ -447,7 +446,7 @@ impl Wheel {
         let mark = Self::ec_mark(ui.ctx());
         painter.image(mark.id(),
             egui::Rect::from_center_size(center - vec2(0.0, 8.0) * scale,
-                vec2(50.0, 33.0) * scale),
+                vec2(42.5, 28.05) * scale),
             egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             Color32::WHITE);
         painter.text(center + vec2(0.0, 24.0 * scale),

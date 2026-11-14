@@ -366,9 +366,12 @@ fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::Design
 /// authoritative. This overlay is purely painted and never selects content.
 pub fn paint_stylus_hover_pointer(ctx: &egui::Context, bridge: &saf::Bridge) -> bool {
     if wheel_blocks_hover(ctx) { return false; }
-    let Ok(Some((raw_x, raw_y))) = bridge.dc_stylus_hover_point() else {
-        return false;
-    };
+    // NativeActivity dispatches hover to the NDK queue on MagicOS even when
+    // Java Activity callbacks are skipped. Keep the Java path as a fallback,
+    // but never synthesize hover from ordinary mouse/trackpad coordinates.
+    let pen_hover = android_activity::dc_stylus_native_hover_sample()
+        .or_else(|| bridge.dc_stylus_hover_point().ok().flatten());
+    let Some((raw_x, raw_y)) = pen_hover else { return false; };
     let scale = ctx.pixels_per_point();
     if !scale.is_finite() || scale <= 0.0 { return false; }
     let pos = egui::pos2(raw_x / scale, raw_y / scale);

@@ -69,10 +69,6 @@ def patch(root: Path) -> None:
             return true;
         }
         return super.dispatchKeyEvent(event);"""
-    activity = in_method(activity,
-        "    public boolean dispatchKeyEvent(KeyEvent event) {",
-        "    public ", "        return super.dispatchKeyEvent(event);",
-        key_fallback, "physical dispatch fallback") if False else activity
     # dispatchKeyEvent precedes the next annotated method, not a new public
     # declaration on all pinned builders. Use the uniquely reviewed final call.
     activity = replace_once(activity,

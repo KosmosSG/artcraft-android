@@ -75,7 +75,7 @@ jobs:
           KEYSTORE_B64: ${{ secrets.EFFECTCRAFT_KEYSTORE_BASE64 }}
           STOREPASS: ${{ secrets.EFFECTCRAFT_KEYSTORE_PASSWORD }}
           KEYPASS: ${{ secrets.EFFECTCRAFT_KEY_PASSWORD }}
-          KEYALIAS: ${{ secrets.EFFECTCRAFT_KEY_ALIAS }}
+          KEYALIAS: 'effectcraft'
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -181,7 +181,7 @@ jobs:
           KEYSTORE_B64: ${{ secrets.EFFECTCRAFT_KEYSTORE_BASE64 }}
           STOREPASS: ${{ secrets.EFFECTCRAFT_KEYSTORE_PASSWORD }}
           KEYPASS: ${{ secrets.EFFECTCRAFT_KEY_PASSWORD }}
-          KEYALIAS: ${{ secrets.EFFECTCRAFT_KEY_ALIAS }}
+          KEYALIAS: 'effectcraft'
         run: |
           set -euo pipefail
           SDK="$ANDROID_HOME/build-tools/35.0.0"

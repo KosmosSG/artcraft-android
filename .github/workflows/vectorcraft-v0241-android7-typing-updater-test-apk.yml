@@ -1,4 +1,4 @@
-name: VectorCraft v0.24.1-android.7 PhotoCraft Wheel Parity ARM64 TEST ONLY
+name: VectorCraft v0.24.1-android.7 Typing + Updater ARM64 TEST ONLY
 
 # Protected baseline 9b031d503b1c5073b7b88bf80ca498d7f970563b; official v0.24.1. No permanent release changes.
 # One-time Android.7 trigger-file gated push; normal changes do not rebuild.
@@ -6,7 +6,7 @@ name: VectorCraft v0.24.1-android.7 PhotoCraft Wheel Parity ARM64 TEST ONLY
 on:
   push:
     branches:
-      - fix/vectorcraft-v0241-android7-typing-updater-parity-20261114
+      - fix/vectorcraft-v0241-android7-typing-updater-20261114
     paths:
       - .github/vectorcraft-v0241-android7-typing-updater.trigger
   workflow_dispatch:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   disposable-test-apk:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android7-typing-updater-parity-20261114'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android7-typing-updater-20261114'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

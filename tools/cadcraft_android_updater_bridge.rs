@@ -32,6 +32,13 @@ pub fn check_updates() {
     });
 }
 
+pub fn show_pen_diagnostics() {
+    with_activity::<()>(|env, activity| {
+        env.call_method(activity, "cadStylusShowInputStatus", "()V", &[])?;
+        Ok(())
+    });
+}
+
 pub fn stylus_device_ids() -> Vec<i32> {
     with_activity(|env, activity| {
         let value = env.call_method(&activity, "cadStylusDeviceIds",

@@ -133,6 +133,39 @@ JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Neve
         }
         decor.post(() -> fcWheelAttachHoverSurface());
     }
+    // FilmCraft's engine increments session.document_epoch whenever a
+    // different project document is installed. A project switch can leave
+    // MagicOS with a stale SurfaceView hover target or keyboard focus even
+    // though pre-project hover worked. Rebind on that exact transition.
+    private volatile long fcWheelObservedDocumentEpoch = Long.MIN_VALUE;
+    public void fcWheelOnDocumentEpoch(long epoch) {
+        if (fcWheelObservedDocumentEpoch == epoch) return;
+        fcWheelObservedDocumentEpoch = epoch;
+        runOnUiThread(() -> {
+            if (isFinishing() || getWindow() == null) return;
+            android.view.View decor = getWindow().getDecorView();
+            android.view.View surface = fcWheelFindSurface(decor);
+            if (surface == null) {
+                fcWheelPrepareEarlyHover();
+                return;
+            }
+            // Reinstall even if the same native SurfaceView was retained;
+            // opening a project may recreate/rebind its event handling.
+            fcWheelHoverTarget = null;
+            fcWheelAttachHoverSurface();
+            // Don't steal Android focus while typing or when a real text
+            // control is active. Otherwise ensure hover can be dispatched
+            // immediately to the canvas rather than only after first touch.
+            android.view.View focused = getCurrentFocus();
+            if (!imeWanted && (focused == null || focused == decor
+                    || focused == surface || focused == imeView
+                    || !(focused instanceof android.widget.EditText))) {
+                surface.setFocusable(true);
+                surface.setFocusableInTouchMode(true);
+                if (!surface.hasFocus()) surface.requestFocus();
+            }
+        });
+    }
     @Override protected void onResume() {
         super.onResume();
         fcWheelPrepareEarlyHover();
@@ -165,7 +198,8 @@ RUNTIME_EXTRA = '''    rust = require_once(rust, "mod filmcraft_features;",
         "Wheel::new(fc_features.storage_dir());",
         "Wheel::new(fc_features.storage_dir(), &app);", "Hardware wheel Activity handle")
     rust = require_once(rust, "        self.handle_clipboard_shortcuts(raw);",
-        "        self.wheel.capture(ctx, raw);\\n        self.handle_clipboard_shortcuts(raw);",
+        "        self.wheel.capture(ctx, raw, self.inner.session.document_epoch);\\n"
+        "        self.handle_clipboard_shortcuts(raw);",
         "Wheel input pre-editor interception")
     java = require_once(java, "public final class FilmCraftActivity extends GameActivity {",
         "public final class FilmCraftActivity extends GameActivity {\\n" + JAVA_STYLUS_BRIDGE,
@@ -190,6 +224,13 @@ RUNTIME_EXTRA = '''    rust = require_once(rust, "mod filmcraft_features;",
             "        return super.dispatchGenericMotionEvent(e);\\n    }\\n"
             "    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {",
             "Real stylus hover generic-motion dispatch")
+    # Re-arm real stylus hover whenever the existing Activity regains focus.
+    # This is an insertion into the already present override, not a duplicate.
+    java = require_once(java,
+        "        super.onWindowFocusChanged(hasFocus);\\n        if (hasFocus) {",
+        "        super.onWindowFocusChanged(hasFocus);\\n"
+        "        if (hasFocus) fcWheelPrepareEarlyHover();\\n"
+        "        if (hasFocus) {", "Existing window-focus hover rearm")
 '''
 RUNTIME_WRITE_ANCHOR = '    print("FilmCraft native font/update integration overlaid on generated crate")'
 RUNTIME_WRITE_REPLACE = '''    (project / "src" / "filmcraft_stylus_wheel.rs").write_text(
@@ -337,7 +378,9 @@ def main() -> None:
         for marker in ("onResume()",
                        "setOnHoverListener(fcWheelSurfaceHover)",
                        "onGenericMotionEvent(android.view.MotionEvent e)",
-                       "fcWheelFindSurface", "return false; // ALWAYS"):
+                       "fcWheelFindSurface", "fcWheelOnDocumentEpoch(long epoch)",
+                       "fcWheelObservedDocumentEpoch", "fcWheelHoverTarget = null",
+                       "if (!imeWanted", "return false; // ALWAYS"):
             if marker not in JAVA_STYLUS_BRIDGE:
                 raise RuntimeError("STOP: cold-start hover bridge missing " + marker)
         print("FilmCraft wheel, icon and updater staging guard self-test PASS")

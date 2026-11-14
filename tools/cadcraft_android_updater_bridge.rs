@@ -39,6 +39,18 @@ pub fn show_pen_diagnostics() {
     });
 }
 
+/// Read-only diagnostics for the in-app egui test window. If Android/JNI
+/// cannot resolve the Activity method, return empty (the UI explains this).
+pub fn stylus_status() -> String {
+    with_activity(|env, activity| {
+        let value = env.call_method(activity, "cadStylusSnapshot",
+            "()Ljava/lang/String;", &[])?.l()?;
+        if value.is_null() { return Ok(String::new()); }
+        let status: String = env.get_string(&JString::from(value))?.into();
+        Ok(status)
+    })
+}
+
 pub fn stylus_device_ids() -> Vec<i32> {
     with_activity(|env, activity| {
         let value = env.call_method(&activity, "cadStylusDeviceIds",

@@ -1,0 +1,211 @@
+name: CADCraft v0.19.0 Android.9 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+
+# Only this isolated feature branch. No publication, merge or production signing.
+on:
+  push:
+    branches:
+      - feature/cadcraft-v0190-android1-test-20261111
+    paths:
+      # Explicit, focused completion gate. Interim edits do not burn Actions minutes.
+      - 'tools/cadcraft_build_gate.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cadcraft-android1-temporary-arm64-test
+  cancel-in-progress: false
+
+jobs:
+  build-arm64-test:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    env:
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.2.12479018
+      ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.2.12479018
+      ARTCRAFT_TARGET_SDK: '35'
+
+    steps:
+      - name: Checkout isolated CADCraft overlay (never modify main)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned MostafaXS1 Android reference (read-only checkout)
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
+          path: reference
+          persist-credentials: false
+
+      - name: Java 21 (supported by reference Gradle builder)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Rust stable with ARM64 Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Prepare Android SDK and NDK (no SVG package downloads)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          if [[ ! -f "$SDK_ROOT/platforms/android-35/android.jar" ||
+                ! -d "$SDK_ROOT/build-tools/35.0.0" ||
+                ! -d "$SDK_ROOT/ndk/27.2.12479018" ]]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null || true
+            "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          fi
+          echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+          # Reference builder requires Pillow for Android adaptive icon layers.
+          # Use a wheel rather than Ubuntu apt mirrors; fail before compiling.
+          python3 -m pip install --user --disable-pip-version-check "Pillow>=10,<13"
+          python3 -c 'from PIL import Image; print("Pillow ready:", Image.__version__)'
+
+      - name: Prepare official CADCraft v0.19.0 and exact Cc Android menu overlay
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 --branch v0.19.0 https://github.com/storytold/cadcraft.git reference/source/cadcraft
+          test -f reference/source/cadcraft/crates/ui-egui/src/menus.rs
+          python3 -m py_compile tools/cadcraft_android_patch.py tools/cadcraft_icon_fix.py
+          python3 tools/cadcraft_android_patch.py --source reference/source/cadcraft --reference reference
+          mkdir -p reference/assets/cadcraft
+          java -Djava.awt.headless=true tools/CadCraftIcon.java assets/cadcraft/Cc-launcher-icon.svg reference/assets/cadcraft/cc-icon-1024.png
+          file reference/assets/cadcraft/cc-icon-1024.png
+          test -s reference/assets/cadcraft/cc-icon-1024.png
+          grep -q 'CADCRAFT_ANDROID_CC_MENU_V2' reference/source/cadcraft/crates/ui-egui/src/menus.rs
+          test -s reference/source/cadcraft/crates/ui-egui/src/cadcraft_cc_icon.rgba
+          test -s reference/source/cadcraft/crates/ui-egui/src/cadcraft_cc_glyph.rgba
+          grep -q 'cadWheelEnabled' reference/source/cadcraft/crates/ui-egui/src/lib.rs
+          grep -q 'CADCRAFT_ISOLATED_PEN_KEY_QUEUE' reference/vendor/android-activity/src/lib.rs
+          grep -q 'cad_stylus_capture' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'CADCRAFT_STYLUS_HOVER' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cad_stylus_hover_capture' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'cadStylusHoverNative' reference/templates/android/SafActivity.java
+          grep -Fq 'stylus_hover_pos' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'draw_hover_pointer' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -Fq 'event.getAction() == KeyEvent.ACTION_DOWN' reference/templates/android/SafActivity.java
+          grep -Fq 'InputView.onKeyPreIme' reference/templates/android/SafActivity.java
+          grep -Fq 'InputView.onKeyDown' reference/templates/android/SafActivity.java
+          grep -Fq 'cadStylusMouseButton' reference/templates/android/SafActivity.java
+          grep -Fq 'cadStylusShowInputStatus' reference/templates/android/SafActivity.java
+          grep -Fq 'cadStylusSnapshot' reference/templates/android/SafActivity.java
+          grep -Fq 'cad_stylus_native_status' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cadcraft_pen_status_window' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -Fq 'stylus_status' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'egui::Key::D' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq 'egui::Key::S' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq 'egui::Key::C' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq '[D]' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq '[S]' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq '[C]' reference/source/cadcraft/crates/ui-egui/src/closing.rs
+          grep -Fq 'show_pen_diagnostics' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'Activity.genericMotion' reference/templates/android/SafActivity.java
+          grep -Fq 'AMotionEvent_getButtonState' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'BEFORE pre_dispatch' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -q 'cadWheelButtonNative' reference/templates/android/SafActivity.java
+          grep -q 'stylus_take_direct' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -q 'cadStylusIntercept(event)' reference/templates/android/SafActivity.java
+          grep -q 'public int cadStylusPoll()' reference/templates/android/SafActivity.java
+          grep -q 'cadWheelPresetVersion' reference/source/cadcraft/crates/ui-egui/src/lib.rs
+          grep -q 'request_repaint_after(Duration::from_millis(100))' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'const DEFAULT_SIZE: f32 = 0.75' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
+          grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
+          grep -q 'android.9' reference/templates/android/UpdateCheck.java
+          grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
+          grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
+          echo "Source and Cc menu overlay staged. No production app or key touched."
+
+      - name: Build optimized ARM64 test APK with disposable per-run key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash reference/build.sh -cadcraft -tag=v0.19.0 --noupdate \
+            -appname=CADCraft \
+            -packagename=com.artcraft.cadcraft.test \
+            -appicon="$GITHUB_WORKSPACE/reference/assets/cadcraft/cc-icon-1024.png"
+          test -f reference/keys/artcraft-builder.jks
+          mkdir -p dist
+          src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
+          test -s "$src"
+          cp "$src" dist/CADCraft-v0.19.0-android.9-ARM64-TEST.apk
+
+      - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apk="dist/CADCraft-v0.19.0-android.9-ARM64-TEST.apk"
+          unzip -t "$apk" | tail -n 1
+          unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
+          aapt dump badging "$apk" | tee dist/apk-badging.txt
+          grep -q "package: name='com.artcraft.cadcraft.test'" dist/apk-badging.txt
+          apksigner verify --verbose --print-certs "$apk" | tee dist/apk-signing.txt
+          # Catch JNI bridge stripping and missing Java declaration before
+          # offering a signed test artifact to the HONOR device user.
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          unzip -p "$apk" lib/arm64-v8a/libcadcraft_android.so > "$tmpdir/cad.so"
+          readelf -Ws "$tmpdir/cad.so" > "$tmpdir/symbols.txt"
+          grep -F 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative' "$tmpdir/symbols.txt"
+          grep -F 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadStylusHoverNative' "$tmpdir/symbols.txt"
+          : > "$tmpdir/dex-strings.txt"
+          for dex in $(unzip -Z1 "$apk" | grep -E '^classes[0-9]*[.]dex$'); do
+            unzip -p "$apk" "$dex" > "$tmpdir/current.dex"
+            strings "$tmpdir/current.dex" >> "$tmpdir/dex-strings.txt"
+          done
+          grep -Fq 'cadWheelButtonNative' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusIntercept' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusHoverNative' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusMouseButton' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusShowInputStatus' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusSnapshot' "$tmpdir/dex-strings.txt"
+          echo "PASS: Android Java pen capture and exported JNI callback packaged"
+          sha256sum "$apk" | tee dist/SHA256SUMS.txt
+          echo "TEST ONLY. No permanent signing. No GitHub Release."
+
+      - name: Upload disposable-signed test APK (no publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CADCraft-v0.19.0-android.9-ARM64-TEST
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report exact test gates
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### CADCraft v0.19.0 Android.6 test'
+            echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
+            echo '* Isolated package: com.artcraft.cadcraft.test'
+            echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
+            echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
+            echo '* Wheel: 75%/85%, cream Cc +15%, verified pen DOWN/UP first edge, native/Java JNI and 550ms duplicate filter (device test pending)'
+            echo '* Hover: stylus motion forwarded to non-interactive pointer; real device verification pending'
+            echo '* Android.9: Save Changes D/S/C dialog hints and modal-only keyboard controls, native Pen Input Status window with Java and native event counters'
+            echo '* PhotoCraft-style pen pre-IME, named Magic-Pencil routing, hover pointer, updater and SAF retained'
+            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
+            echo '* Test signing: new disposable key; no original key, no release'
+            if test -s dist/SHA256SUMS.txt; then
+              echo '#### APK checksum'
+              cat dist/SHA256SUMS.txt
+            else
+              echo '* Build or verification incomplete: review logs. No APK claimed ready.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

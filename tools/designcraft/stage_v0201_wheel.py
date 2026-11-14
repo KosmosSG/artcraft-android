@@ -189,6 +189,51 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
 
     public int dcUnsavedDialog(boolean active) {""", "Private isolated stylus button bridge")
     replace_once(activity,
+        "    public int dcTakeWheelAction() { return dcWheelAction.getAndSet(0); }",
+        """    public int dcTakeWheelAction() { return dcWheelAction.getAndSet(0); }
+
+    // Capture real stylus hover events from first approach, without touching
+    // the display or intercepting ordinary mouse and trackpad events.
+    private volatile float dcPenHoverX = -1f;
+    private volatile float dcPenHoverY = -1f;
+    private volatile long dcPenHoverAt = 0L;
+    private volatile boolean dcPenHoverActive = false;
+    private void dcTrackPenHover(android.view.MotionEvent event) {
+        if (event == null || event.getPointerCount() < 1) return;
+        int tool = event.getToolType(0);
+        if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
+                && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) return;
+        switch (event.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_HOVER_ENTER:
+            case android.view.MotionEvent.ACTION_HOVER_MOVE:
+                dcPenHoverX = event.getX(0);
+                dcPenHoverY = event.getY(0);
+                dcPenHoverAt = android.os.SystemClock.uptimeMillis();
+                dcPenHoverActive = true;
+                break;
+            case android.view.MotionEvent.ACTION_HOVER_EXIT:
+                dcPenHoverActive = false;
+                break;
+            default:
+                break;
+        }
+    }
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        dcTrackPenHover(event);
+        return super.dispatchGenericMotionEvent(event);
+    }
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
+        dcTrackPenHover(event);
+        return super.onGenericMotionEvent(event);
+    }
+    public String dcStylusHoverSample() {
+        long age = android.os.SystemClock.uptimeMillis() - dcPenHoverAt;
+        if (!dcPenHoverActive || age < 0L || age > 1300L) return "";
+        return Float.toString(dcPenHoverX) + "," + Float.toString(dcPenHoverY);
+    }""",
+        "Immediate Android hover entry/move/exit capture")
+
+    replace_once(activity,
         "    @Override public boolean dispatchKeyEvent(KeyEvent event) {\n        if (event == null)",
         """    @Override public boolean dispatchKeyEvent(KeyEvent event) {
         // Magic-Pencil 4s hardware rocker, never intercept normal keyboard.
@@ -270,6 +315,11 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     assert "dcTakeUndoAction" in activity.read_text()
     assert "dcUndoShortcut" in activity.read_text()
     assert "dc_undo_action" in host.read_text()
+    assert "dc_stylus_hover_point" in host.read_text()
+    assert "paint_stylus_hover_pointer" in host.read_text()
+    assert "dcStylusHoverSample" in activity.read_text()
+    assert "dispatchGenericMotionEvent" in activity.read_text()
+    assert "onGenericMotionEvent" in activity.read_text()
     assert "Dc icon menu" not in bar.read_text() or "Stylus Wheel" in bar.read_text()
     print("PASS: isolated DesignCraft stylus wheel, actual-scale preview, Android rocker, canvas hover guard")
 

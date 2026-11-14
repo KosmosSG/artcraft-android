@@ -77,7 +77,15 @@ def probe(builder: Path) -> None:
             raise AssertionError("Expected pinned unpatched builder to lack the reset transport")
         vendor(temp)
         assert_backend_connected(temp)
-    print("PASS: Android.10 source-only probe confirms native reset JNI handoff, no false ack")
+        # Reproduce the actual failed build: the builder previously staged
+        # the winit reset method, but packaging reconstructs fresh activity
+        # glue. Reapplying --vendor must keep that exact winit method and
+        # still wire the newly copied android-activity sources through JNI.
+        for relative in VENDOR_FILES[:2]:
+            shutil.copy2(builder / relative, temp / relative)
+        vendor(temp)
+        assert_backend_connected(temp)
+    print("PASS: Android.10 source-only probe covers fresh and pre-staged winit JNI reset transport, no false ack")
 
 
 def main() -> None:

@@ -562,9 +562,9 @@ jobs:
           assert 'app.run("view.darkMode"' in tools
           assert 'app.ui.theme.code()' in tools
           assert 'app.session.view.dark_mode' in tools
-          assert 'WC_ANDROID11_COMPACT_MENU_V1' in menu
+          assert 'WC_ANDROID10_COMPACT_MENU_V1' in menu
           assert 'ui.menu_button("App Updates"' in menu
-          assert "WC_ANDROID11_PRESSURE_DEFAULT_ON_V1" in extension
+          assert "WC_ANDROID10_PRESSURE_DEFAULT_ON_V1" in extension
           assert "Pressure-responsive stroke width: Not yet available." not in menu
           assert "PackageInstaller" in java and "verifyPackageAndSigner" in java
           assert "progress.isCanceled()" not in java

@@ -110,19 +110,18 @@ def patch(root: Path) -> None:
     # The last statement makes only the physical 't' path return Event::Text,
     # so IME commits 'c' never reset the side-specific modifier tracker.
     modifiers = once(modifiers,
-        """            egui::Event::Text(_) if state.modifiers().command => {}""",
-        """            egui::Event::ModifiersChanged(modifiers)
-                if !modifiers.ctrl && !modifiers.alt && !modifiers.command
-                    && !modifiers.mac_cmd =>
-            {
-                // A trustworthy key-up/modifier snapshot from egui-winit,
-                // or an explicitly unmodified physical Android 't' event.
-                // Without this, a lost Ctrl-up can discard plain Text events.
+        "    for mut event in raw.events.drain(..) {",
+        """    for mut event in raw.events.drain(..) {
+        // Android.8: a physical KeyEvent was explicitly unmodified at the
+        // Activity; the bridge emits this authoritative NONE snapshot before
+        // its Text event. Discard only stale side-specific modifier latches.
+        // Preserve ALL existing downstream event, shortcut and hover logic.
+        if let egui::Event::ModifiersChanged(modifiers) = &event {
+            if !modifiers.ctrl && !modifiers.alt && !modifiers.command && !modifiers.mac_cmd {
                 *state = AndroidModifiers::default();
-                kept.push(event);
             }
-            egui::Event::Text(_) if state.modifiers().command => {}""",
-        "modifier-release authority")
+        }""",
+        "modifier release before native/IME event filters")
 
     assert 'imeEvents.offer("c" + text);' in java
     assert new_physical in java
@@ -132,7 +131,7 @@ def patch(root: Path) -> None:
     assert "'c' if !payload.is_empty()" in bridge
     assert "'t' if !payload.is_empty()" in bridge
     assert "raw.events.push(egui::Event::ImeResetCompleted { request_id })" in bridge
-    assert "egui::Event::ModifiersChanged(modifiers)" in modifiers
+    assert "if let egui::Event::ModifiersChanged(modifiers) = &event" in modifiers
 
     # Build every transformation before mutating any file.
     java_path.write_text(java)

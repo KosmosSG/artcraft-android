@@ -167,7 +167,10 @@ jobs:
         python3 suite/tools/filmcraft/stage_v0201_wheel.py --self-test
         python3 suite/tools/filmcraft/stage_v0201_wheel.py filmcraft-builder
         test "$(stat -c %s filmcraft-builder/tools/filmcraft/filmcraft_wheel_icons.rgba)" -eq 165888
-        grep -Fq 'onWindowFocusChanged(boolean hasFocus)' suite/tools/filmcraft/stage_v0201_wheel.py
+        # The existing Activity already overrides onWindowFocusChanged.
+        # Guard the new cold-start hover hook without introducing a duplicate override.
+        grep -Fq 'fcWheelPrepareEarlyHover();' suite/tools/filmcraft/stage_v0201_wheel.py
+        grep -Fq 'setOnHoverListener(fcWheelSurfaceHover)' suite/tools/filmcraft/stage_v0201_wheel.py
         HEADER=filmcraft-builder/source/filmcraft/crates/ui-egui/src/header.rs
         grep -Fq 'action(ui, "Check for Updates…", 4);' "$HEADER"
         ! grep -Fq 'Download & Verify APK in App…' "$HEADER"

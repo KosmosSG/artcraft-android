@@ -27,7 +27,14 @@ class TouchscreenCanvasPanDirectionTests(unittest.TestCase):
         # native trackpad routing. Those stay independently device-tested.
         before = source.split("let native_canvas_touch = ui.input(|i| i.multi_touch())", 1)[0]
         self.assertIn("Keep the upstream wheel's pinch zoom unchanged.", before)
-        self.assertIn("Only", "Only touchscreen canvas pan signs are intentionally changed")
+        # No global inversion of the entire wheel/trackpad scroll stream.
+        self.assertNotIn("scroll = -scroll", source)
+        self.assertNotIn("delta.x *= 1.15", source)
+        self.assertNotIn("delta.y *= 1.15", source)
+        # Both negations are in the touchscreen-only branch, not applied to
+        # wheel or trackpad data outside that branch.
+        self.assertEqual(source.count("-early_pan"), 1)
+        self.assertEqual(source.count("-native_canvas_touch.map_or"), 1)
 
 
 if __name__ == "__main__":

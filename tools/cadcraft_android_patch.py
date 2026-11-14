@@ -103,9 +103,10 @@ def install_pen_button(reference: Path) -> None:
     // A direct JNI callback bridges the pen's verified release even when
     // querying Java from the Rust render thread is temporarily unavailable.
     private native void cadWheelButtonNative(int code);
+    private native void cadStylusHoverNative(float x, float y, int action);
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> cadWheelKeys =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
-    private long cadWheelLastDown = 0L, cadWheelLastUp = 0L;
+    private long cadWheelLastButtonMs = 0L;
     public void cadStylusSetEnabled(boolean enabled) {
         cadWheelEnabled = enabled;
         if (!enabled) cadWheelKeys.clear();
@@ -118,16 +119,16 @@ def install_pen_button(reference: Path) -> None:
         if (!cadWheelEnabled || event == null) return false;
         final int code = event.getKeyCode();
         if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
-        final InputDevice device = InputDevice.getDevice(event.getDeviceId());
+        final InputDevice device = event.getDevice() != null ? event.getDevice() : InputDevice.getDevice(event.getDeviceId());
         if (device == null || device.getName() == null) return false;
         final String name = device.getName().toLowerCase(java.util.Locale.ROOT);
         if (!name.contains("magic-pencil") && !name.contains("magic pencil")) return false;
-        // Do not trigger on ACTION_DOWN or repeat. The pen's key release is
-        // the one-shot event matching the existing PhotoCraft wheel behavior.
-        if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0) {
+        // HONOR can send DOWN only, UP only, or both. Accept the first verified
+        // non-repeat edge; debounce the paired event from the same pen press.
+        if ((event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)
+                && event.getRepeatCount() == 0) {
             long now = android.os.SystemClock.uptimeMillis();
-            long prior = code == KeyEvent.KEYCODE_DPAD_DOWN ? cadWheelLastDown : cadWheelLastUp;
-            if (now - prior >= 650L && cadWheelKeys.size() < 12) {
+            if (now - cadWheelLastButtonMs >= 550L && cadWheelKeys.size() < 12) {
                 cadWheelKeys.offer(code);
                 try {
                     cadWheelButtonNative(code);
@@ -136,9 +137,10 @@ def install_pen_button(reference: Path) -> None:
                     // library is loaded, e.g. very early in app startup.
                     Log.w(TAG, "CADCraft pen direct JNI not available", error);
                 }
-                if (code == KeyEvent.KEYCODE_DPAD_DOWN) cadWheelLastDown = now;
-                else cadWheelLastUp = now;
-                Log.d(TAG, "CADCraft validated Magic-Pencil button " + code);
+                cadWheelLastButtonMs = now;
+                wakeNativeLoop();
+                Log.i(TAG, "CADCraft validated Magic-Pencil button code=" + code
+                    + " action=" + event.getAction() + " device=" + event.getDeviceId());
             }
         }
         return true;
@@ -152,6 +154,20 @@ def install_pen_button(reference: Path) -> None:
     public boolean dispatchKeyShortcutEvent(KeyEvent event) {
         if (cadStylusIntercept(event)) return true;
         return super.dispatchKeyShortcutEvent(event);
+    }
+    // Separate hover stream: only STYLUS tool events, never mouse or finger.
+    private void cadStylusHover(MotionEvent event) {
+        if (event == null || event.getPointerCount() == 0
+                || event.getToolType(0) != MotionEvent.TOOL_TYPE_STYLUS) return;
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_HOVER_ENTER
+                || action == MotionEvent.ACTION_HOVER_EXIT || action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            try { cadStylusHoverNative(event.getX(), event.getY(), action); }
+            catch (UnsatisfiedLinkError error) {
+                Log.w(TAG, "CADCraft hover JNI not yet loaded", error);
+            }
+        }
     }
     // Match real HONOR Magic-Pencil hardware IDs before consuming DPAD events.
     public String cadStylusDeviceIds() {
@@ -179,6 +195,20 @@ def install_pen_button(reference: Path) -> None:
         """                public boolean sendKeyEvent(KeyEvent event) {
                     if (cadStylusIntercept(event)) return true;
                     if (event != null && !isFromSoftKeyboard(event)) {""", 1)
+    # Java Activity receives hover events on some MagicOS routes where the
+    # NativeActivity input queue does not. Both paths forward the event.
+    motion_anchor = """    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {"""
+    if source.count(motion_anchor) != 1:
+        raise SystemExit("CADCraft generic motion anchor changed")
+    source = source.replace(motion_anchor, """    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        cadStylusHover(event);
+        return super.dispatchTouchEvent(event);
+    }
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        cadStylusHover(event);""", 1)
     java.write_text(source, encoding="utf-8")
 
     # Vendor crate is copied into the CADCraft source during the builder step.
@@ -219,11 +249,11 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
     let Ok(mut state) = CAD_STYLUS_KEYS.lock() else { return false };
     if !state.enabled || !state.allowed_ids.contains(&device) ||
         (code != 19 && code != 20) { return false; }
-    // Swallow both DPAD_DOWN and DPAD_UP from the named pen; only release
-    // triggers a wheel toggle. Never swallow physical keyboard arrows.
-    if action == 1 && repeat == 0 {
+    // Accept first press/release edge from the named pen, even if the paired
+    // edge is lost by MagicOS. Never swallow physical keyboard arrows.
+    if (action == 0 || action == 1) && repeat == 0 {
         let now = std::time::Instant::now();
-        if state.last.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(650))
+        if state.last.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(550))
             && state.events.len() < 16 {
             state.events.push(code as u8);
             state.last = Some(now);
@@ -237,6 +267,26 @@ pub fn cad_stylus_native_take() -> Vec<u8> {
     if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
         std::mem::take(&mut state.events)
     } else { Vec::new() }
+}
+'''
+    original += r'''
+// CADCRAFT_STYLUS_HOVER: native motion coordinates (physical pixels).
+#[cfg(feature = "native-activity")]
+static CAD_HOVER_POINT: std::sync::Mutex<Option<(f32, f32)>> =
+    std::sync::Mutex::new(None);
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_hover_capture(x: f32, y: f32, action: i32) {
+    if let Ok(mut point) = CAD_HOVER_POINT.lock() {
+        match action {
+            7 | 9 if x.is_finite() && y.is_finite() => *point = Some((x, y)),
+            0 | 1 | 3 | 10 => *point = None,
+            _ => {}
+        }
+    }
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_hover_current() -> Option<(f32, f32)> {
+    CAD_HOVER_POINT.lock().ok().and_then(|p| *p)
 }
 '''
     root.write_text(original, encoding="utf-8")
@@ -262,6 +312,17 @@ pub fn cad_stylus_native_take() -> Vec<u8> {
                 if crate::cad_stylus_capture(device, code, action, repeat) {
                     queue.finish_event(ndk_event, true);
                     return true;
+                }
+            }
+            // Hover events remain in the stock winit queue; this is a copy
+            // for the CAD-only visual pointer, not an input interception.
+            if let ndk::event::InputEvent::MotionEvent(ref motion) = ndk_event {
+                let ptr = motion.ptr().as_ptr();
+                let action = unsafe { ndk_sys::AMotionEvent_getAction(ptr) } & 0xff;
+                if unsafe { ndk_sys::AMotionEvent_getToolType(ptr, 0) } == 2 {
+                    let x = unsafe { ndk_sys::AMotionEvent_getX(ptr, 0) };
+                    let y = unsafe { ndk_sys::AMotionEvent_getY(ptr, 0) };
+                    crate::cad_stylus_hover_capture(x, y, action);
                 }
             }
 """

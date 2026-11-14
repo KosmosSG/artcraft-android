@@ -32,15 +32,14 @@ def fixture(root: Path) -> None:
     # Android.11 diagnostic and Android.12 shortcut overlays generate these
     # methods before Android.8; model their exact stable anchors in this cheap
     # isolated unit test without altering owner release sources.
-    source = source.replace("    private void imeSetup() {", """    private final java.util.concurrent.atomic.AtomicLong vcTraceCommits =
-        new java.util.concurrent.atomic.AtomicLong();
-    private final java.util.concurrent.atomic.AtomicLong vcTraceRejected =
-        new java.util.concurrent.atomic.AtomicLong();
+    source = source.replace("    private void imeSetup() {", """    private final java.util.concurrent.atomic.AtomicLong vcTraceCommits = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong vcTraceRejected = new java.util.concurrent.atomic.AtomicLong();
     public boolean dispatchKeyEvent(KeyEvent event) {
         return super.dispatchKeyEvent(event);
     }
     private String vcDiagnosticSnapshotForTest() {
-        return "test" + "; ime_callback_rejected=" + vcTraceRejected.get();
+        return "test"
+            + "; ime_callback_rejected=" + vcTraceRejected.get();
     }
     private void imeSetup() {""", 1)
     java.write_text(source)

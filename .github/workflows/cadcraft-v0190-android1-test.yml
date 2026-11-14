@@ -132,51 +132,21 @@ jobs:
           aapt dump badging "$apk" | tee dist/apk-badging.txt
           grep -q "package: name='com.artcraft.cadcraft.test'" dist/apk-badging.txt
           apksigner verify --verbose --print-certs "$apk" | tee dist/apk-signing.txt
-          # Ensure Java's validated-pen direct JNI entry really survives the
-          # final release/AAB stripping, and that its Java declaration is in DEX.
+          # Catch JNI bridge stripping and missing Java declaration before
+          # offering a signed test artifact to the HONOR device user.
           tmpdir="$(mktemp -d)"
           trap 'rm -rf "$tmpdir"' EXIT
           unzip -p "$apk" lib/arm64-v8a/libcadcraft_android.so > "$tmpdir/cad.so"
           readelf -Ws "$tmpdir/cad.so" > "$tmpdir/symbols.txt"
           grep -F 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative' "$tmpdir/symbols.txt"
           : > "$tmpdir/dex-strings.txt"
-          for dex in $(unzip -Z1 "$apk" | grep -E '^classes[0-9]*[.]dex          sha256sum "$apk" | tee dist/SHA256SUMS.txt
-          echo "TEST ONLY. No permanent signing. No GitHub Release."
-
-      - name: Upload disposable-signed test APK (no publishing)
-        uses: actions/upload-artifact@v4
-        with:
-          name: CADCraft-v0.19.0-android.6-ARM64-TEST
-          path: dist/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Report exact test gates
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo '### CADCraft v0.19.0 Android.6 test'
-            echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
-            echo '* Isolated package: com.artcraft.cadcraft.test'
-            echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
-            echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
-            echo '* Wheel: PhotoCraft style and default 75%/85%; exact cream Cc enlarged 15%; named-pen key capture before IME predispatch + Java direct JNI callback (device verification pending)'\n            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
-            echo '* Test signing: new disposable key; no original key, no release'
-            if test -s dist/SHA256SUMS.txt; then
-              echo '#### APK checksum'
-              cat dist/SHA256SUMS.txt
-            else
-              echo '* Build or verification incomplete: review logs. No APK claimed ready.'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-); do
+          for dex in $(unzip -Z1 "$apk" | grep -E '^classes[0-9]*[.]dex$'); do
             unzip -p "$apk" "$dex" > "$tmpdir/current.dex"
             strings "$tmpdir/current.dex" >> "$tmpdir/dex-strings.txt"
           done
           grep -Fq 'cadWheelButtonNative' "$tmpdir/dex-strings.txt"
           grep -Fq 'cadStylusIntercept' "$tmpdir/dex-strings.txt"
-          echo "PASS: Java pen capture and JNI callback are packaged into signed APK"
+          echo "PASS: Android Java pen capture and exported JNI callback packaged"
           sha256sum "$apk" | tee dist/SHA256SUMS.txt
           echo "TEST ONLY. No permanent signing. No GitHub Release."
 
@@ -198,7 +168,8 @@ jobs:
             echo '* Isolated package: com.artcraft.cadcraft.test'
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
             echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
-            echo '* Wheel: PhotoCraft two-tone segments, external preview, default 75%/85%, soft 12-layer shadow; native + Java verified Magic-Pencil button, 100ms queue poll (device verification pending)'\n            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
+            echo '* Wheel: PhotoCraft-style defaults 75%/85%; exact cream Cc +15%; validated Magic-Pencil key before IME predispatch and direct JNI callback (device verification pending)'
+            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
             echo '* Test signing: new disposable key; no original key, no release'
             if test -s dist/SHA256SUMS.txt; then
               echo '#### APK checksum'

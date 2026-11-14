@@ -192,6 +192,29 @@ impl Wheel {
                 line(&[(0.0, -0.89), (0.0, -0.21)]);
                 p.circle_stroke(at(0.0, 0.04), half * 0.12, stroke);
             }
+            "tool-hand" => {
+                // Clean, recognizable open palm in the same 24pt white line style
+                // as the other segments. Do not use the small upstream toolbar
+                // hand glyph: its tiny fingers look distorted at wheel scale.
+                // The single uninterrupted contour makes each finger distinct.
+                let outline = [
+                    (-0.59, 0.06), (-0.69, -0.10), (-0.64, -0.24),
+                    (-0.51, -0.28), (-0.41, -0.23), (-0.25, 0.04),
+                    (-0.25, -0.62), (-0.20, -0.76), (-0.08, -0.81),
+                    (0.03, -0.73), (0.06, -0.61),
+                    (0.06, -0.81), (0.13, -0.94), (0.27, -0.94),
+                    (0.36, -0.81), (0.36, -0.63),
+                    (0.42, -0.76), (0.55, -0.78), (0.66, -0.65),
+                    (0.65, -0.42), (0.71, -0.52), (0.83, -0.50),
+                    (0.93, -0.38), (0.89, -0.16),
+                    (0.80, 0.22), (0.58, 0.65), (0.39, 0.79),
+                    (0.01, 0.79), (-0.25, 0.62), (-0.59, 0.06),
+                ];
+                p.add(Shape::line(
+                    outline.iter().map(|&(x, y)| at(x, y)).collect(), stroke));
+                // Slight palm crease, not a stack of overlapping finger lines.
+                line(&[(-0.19, 0.32), (0.13, 0.48), (0.48, 0.42)]);
+            }
             "wheel-shapes" => {
                 // Clean two-shape motif; remove the extraneous little triangle.
                 p.rect_stroke(
@@ -240,7 +263,7 @@ impl Wheel {
                 ]);
             }
             _ => {
-                // Keep supported optional tools and hand exactly as upstream.
+                // Reuse approved upstream vectors for the optional tools.
                 designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
             }
         }

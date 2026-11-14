@@ -420,7 +420,7 @@ public final class MainActivity extends Activity {
             }
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.5  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.6  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });

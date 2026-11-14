@@ -98,7 +98,7 @@ def patch(root: Path) -> None:
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("vcSetPhysicalTypeEditing"),
-                jni_sig!("(Z)V"), &[JValue::Bool(if editing { 1 } else { 0 })])?;
+                jni_sig!("(Z)V"), &[JValue::Bool(editing)])?;
             Ok(())
         }).map_err(|error| error.to_string())
     }

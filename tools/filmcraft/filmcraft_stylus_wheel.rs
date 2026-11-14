@@ -131,13 +131,18 @@ impl Wheel {
             });
         ctx.request_repaint_after(Duration::from_millis(50));
     }
-    fn poll_java(&self) -> Option<(i32, i64)> {
+    fn poll_java(&self, document_epoch: u64) -> Option<(i32, i64)> {
         let vm = unsafe { JavaVM::from_raw(self.app.vm_as_ptr() as *mut _) };
         vm.attach_current_thread(|env| -> jni::errors::Result<(i32, i64)> {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("fcWheelSetEnabled"), jni_sig!("(Z)V"),
                 &[JValue::Bool(self.enabled.into())])?;
+            // A new project can change native SurfaceView focus/routing while
+            // the Activity itself remains alive. Java rebinds its listener
+            // only on an actual document epoch transition (UI thread).
+            env.call_method(&*activity, jni_str!("fcWheelOnDocumentEpoch"),
+                jni_sig!("(J)V"), &[JValue::Long(document_epoch as i64)])?;
             let signal = env.call_method(&*activity, jni_str!("fcWheelTakeSignal"),
                 jni_sig!("()I"), &[])?.i()?;
             let hover = env.call_method(&*activity, jni_str!("fcWheelTakeHover"),
@@ -151,7 +156,8 @@ impl Wheel {
         let theta = (v.y.atan2(v.x) + PI / 2.0 + TAU / 16.0).rem_euclid(TAU);
         Some(((theta / (TAU / 8.0)).floor() as usize).min(7))
     }
-    pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+    pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput,
+        document_epoch: u64) {
         // MagicOS/egui-winit can be idle after startup, before a first touch:
         // native SurfaceView ACTION_HOVER_ENTER/MOVE reaches the Java bridge
         // but does not reliably wake a Rust frame. Poll the real JNI queue
@@ -159,7 +165,7 @@ impl Wheel {
         // settings or enable-state. 80 ms is the validated DeckCraft cadence;
         // no synthetic hover locations or touch events are generated.
         ctx.request_repaint_after(Duration::from_millis(80));
-        if let Some((button, hover)) = self.poll_java() {
+        if let Some((button, hover)) = self.poll_java(document_epoch) {
             if hover == -1 { self.pen_hover = None; }
             else if hover != 0 {
                 let bits = hover as u64;

@@ -166,12 +166,30 @@ def vendor(root):
     lib=root/'vendor/android-activity/src/lib.rs'
     native=root/'vendor/android-activity/src/native_activity/mod.rs'
     winit=root/'vendor/winit/src/platform_impl/android/mod.rs'
-    once(lib,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    #[cfg(feature = "native-activity")]
+    # The test workflow stages the vendor patch before invoking build.sh.
+    # The pinned builder copies the modified vendor tree into the app source
+    # and runs this same patch once more. Each insertion must occur exactly
+    # once across both phases, never twice (Rust E0592).
+    def insert_or_verify(path, anchor, patched, label):
+        signature = '    pub fn vc_reset_ime(&self, request_id: u64) {'
+        before = path.read_text()
+        existing_count = before.count(signature)
+        if existing_count == 0:
+            once(path, anchor, patched)
+        elif existing_count == 1 and before.count(patched) == 1:
+            print(f'PASS: {label} already contains exactly one verified JNI reset method')
+        else:
+            raise ValueError(f'{path}: unreviewed {label} reset transport; '
+                             f'method count={existing_count}, exact block count={before.count(patched)}')
+        if path.read_text().count(signature) != 1:
+            raise ValueError(f'{path}: duplicate native IME reset method')
+
+    insert_or_verify(lib,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    #[cfg(feature = "native-activity")]
     pub fn vc_reset_ime(&self, request_id: u64) {
         self.inner.read().unwrap().vc_reset_ime(request_id);
     }
-    pub fn show_soft_input(&self, show_implicit: bool) {''')
-    once(native,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    pub fn vc_reset_ime(&self, request_id: u64) {
+    pub fn show_soft_input(&self, show_implicit: bool) {''', 'android-activity facade')
+    insert_or_verify(native,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    pub fn vc_reset_ime(&self, request_id: u64) {
         let result = self.jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_method(self.activity.as_ref(), jni::jni_str!("vcResetIme"),
                 jni::jni_sig!("(J)V"), &[jni::objects::JValue::Long(request_id as i64)])?;
@@ -179,7 +197,7 @@ def vendor(root):
         });
         if let Err(error) = result { log::warn!("VectorCraft IME reset not completed: {error:?}"); }
     }
-    pub fn show_soft_input(&self, show_implicit: bool) {''')
+    pub fn show_soft_input(&self, show_implicit: bool) {''', 'android-activity JNI bridge')
     # The builder's preparation phase can copy a previously patched winit into
     # source/vectorcraft/vendor/winit while copying fresh android-activity glue.
     # Reapply only to the reviewed legacy body; accept an EXACT previously

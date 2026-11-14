@@ -152,6 +152,13 @@ impl Wheel {
         Some(((theta / (TAU / 8.0)).floor() as usize).min(7))
     }
     pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // MagicOS/egui-winit can be idle after startup, before a first touch:
+        // native SurfaceView ACTION_HOVER_ENTER/MOVE reaches the Java bridge
+        // but does not reliably wake a Rust frame. Poll the real JNI queue
+        // from the very first frame, regardless of pointer, wheel visibility,
+        // settings or enable-state. 80 ms is the validated DeckCraft cadence;
+        // no synthetic hover locations or touch events are generated.
+        ctx.request_repaint_after(Duration::from_millis(80));
         if let Some((button, hover)) = self.poll_java() {
             if hover == -1 { self.pen_hover = None; }
             else if hover != 0 {

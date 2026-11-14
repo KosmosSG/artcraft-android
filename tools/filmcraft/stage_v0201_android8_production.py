@@ -74,7 +74,8 @@ def stage(suite: Path, builder: Path) -> None:
         '"java/com/artcraft/filmcraft/FilmCraftActivity.java"',
         "generated production Java Activity path")
     compile(android_runtime, str(runtime), "exec")
-    if 'if ("com.artcraft.filmcraft.test".equals(getPackageName()))' not in android_runtime:
+    overlay = (suite/"tools/filmcraft/FilmCraftActivity.features.v019.bottom-feedback.java.inc").read_text()
+    if 'if ("com.artcraft.filmcraft.test".equals(getPackageName()))' not in overlay:
         raise RuntimeError("STOP: original test APK update-install isolation lost")
     if 'fcWheelOnDocumentEpoch(long epoch)' not in android_runtime:
         raise RuntimeError("STOP: reviewed Android.8 project-open hover rebind lost")

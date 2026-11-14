@@ -27,6 +27,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -293,6 +294,28 @@ public final class MainActivity extends Activity {
         if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
     }
 
+    /**
+     * Use the installed app's actual Android launcher artwork, including adaptive
+     * or illustrative icons, instead of approximating it with colored initials.
+     * Keep the Ac-style placeholder only when an app has no accessible icon.
+     */
+    private View appIcon(CatalogClient.App app) {
+        try {
+            android.graphics.drawable.Drawable actual =
+                getPackageManager().getApplicationIcon(app.packageName);
+            if (actual != null) {
+                ImageView icon = new ImageView(this);
+                icon.setImageDrawable(actual);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setContentDescription(app.name + " app icon");
+                return icon;
+            }
+        } catch (PackageManager.NameNotFoundException | SecurityException ignored) {
+            // App not installed, package not visible or icon inaccessible.
+        }
+        return artCraftBadge(app.letters,46,app.accent);
+    }
+
     private View appCard(CatalogClient.App app) {
         PackageInfo installed=installed(app.packageName);
         CatalogClient.Release remote=available.get(app.key);
@@ -300,7 +323,7 @@ public final class MainActivity extends Activity {
         card.setPadding(dp(13),dp(14),dp(13),dp(14));
         card.setBackground(shape(surface,border,17));
         LinearLayout row=horizontal();card.addView(row);
-        TextView icon=artCraftBadge(app.letters,46,app.accent);
+        View icon=appIcon(app);
         row.addView(icon,new LinearLayout.LayoutParams(dp(46),dp(46)));
         LinearLayout title=vertical();title.setPadding(dp(10),0,0,0);
         row.addView(title,new LinearLayout.LayoutParams(0,-2,1f));
@@ -388,7 +411,7 @@ public final class MainActivity extends Activity {
             }
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.3  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.4  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });

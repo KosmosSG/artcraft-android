@@ -7,8 +7,8 @@ android {
         applicationId 'com.artcraft.launcher'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '0.1.0-android.3'
+        versionCode 4
+        versionName '0.1.0-android.4'
     }
     buildTypes {
         debug { minifyEnabled false }

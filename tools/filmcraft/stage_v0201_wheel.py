@@ -8,6 +8,7 @@ All replacements are single-anchor and fail closed on upstream/builder drift.
 from pathlib import Path
 import argparse
 from render_approved_fc_mark import render_logo
+from render_filmcraft_wheel_icons import render_icons
 
 RUNTIME_ANCHOR = "    return rust, java, manifest\n"
 JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Never change GameActivity's
@@ -134,6 +135,8 @@ RUNTIME_WRITE_REPLACE = '''    (project / "src" / "filmcraft_stylus_wheel.rs").w
         Path(__file__).with_name("filmcraft_stylus_wheel.rs").read_text())
     (project / "src" / "filmcraft_fc_logo.rgba").write_bytes(
         Path(__file__).with_name("filmcraft_fc_logo.rgba").read_bytes())
+    (project / "src" / "filmcraft_wheel_icons.rgba").write_bytes(
+        Path(__file__).with_name("filmcraft_wheel_icons.rgba").read_bytes())
 ''' + RUNTIME_WRITE_ANCHOR
 FEATURE_ANCHOR = "impl FilmcraftFeatures {\n"
 FEATURE_ADD = FEATURE_ANCHOR + "    pub fn storage_dir(&self) -> Option<PathBuf> { self.app_dir.clone() }\n"
@@ -222,7 +225,11 @@ def prepare(builder: Path, wheel: Path) -> None:
         raise RuntimeError("STOP: original FilmCraft Fc mark missing")
     logo_file = builder / "tools/filmcraft/filmcraft_fc_logo.rgba"
     navy, lavender = render_logo(icon, logo_file)
+    sprite_file = builder / "tools/filmcraft/filmcraft_wheel_icons.rgba"
+    render_icons(sprite_file)
     wheel_source = wheel.read_text()
+    if 'include_bytes!("filmcraft_wheel_icons.rgba")' not in wheel_source:
+        raise RuntimeError("STOP: quality FilmCraft icon sprite not referenced")
     palette = {
         "const NAVY: Color32 = Color32::from_rgb(0x00, 0x04, 0x7a);":
             f"const NAVY: Color32 = Color32::from_rgb({navy[0]}, {navy[1]}, {navy[2]});",
@@ -264,6 +271,8 @@ def main() -> None:
             navy, lavender = render_logo(icon, Path(scratch) / "logo.rgba")
             assert lavender[0] > navy[0] + 50
             assert (Path(scratch) / "logo.rgba").stat().st_size == 40960
+            render_icons(Path(scratch) / "wheel-icons.rgba")
+            assert (Path(scratch) / "wheel-icons.rgba").stat().st_size == 72*72*8*4
         print("FilmCraft wheel, icon and updater staging guard self-test PASS")
         return
     if args.builder is None:

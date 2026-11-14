@@ -161,111 +161,127 @@ impl Wheel {
     }
 
     fn wheel_icon(p: &egui::Painter, rect: Rect, icon: &str) {
-        // Unified 24-point pictograms. The wheel has the same icon geometry,
-        // line weight and white tint regardless of segment orientation.
+        // Android.10: one 24x24 optical grid for EVERY slot. All strokes are
+        // consistently white, with identical scale, line weight and alignment.
+        // Hand and arrows use readable open contours rather than tiny toolbar
+        // paths or disproportionate icon-specific bounding boxes.
         let center = rect.center();
-        let half = rect.width().min(rect.height()) * 0.5;
-        let at = |x: f32, y: f32| center + vec2(x * half, y * half);
-        let stroke = Stroke::new((half * 0.15).clamp(1.8, 2.3), Color32::WHITE);
+        let unit = rect.width().min(rect.height()) / 24.0;
+        let at = |x: f32, y: f32| center + vec2((x - 12.0) * unit, (y - 12.0) * unit);
+        let stroke = Stroke::new((unit * 1.9).clamp(1.7, 2.4), Color32::WHITE);
         let line = |points: &[(f32, f32)]| {
-            p.add(Shape::line(
-                points.iter().map(|&(x, y)| at(x, y)).collect(),
-                stroke,
-            ));
+            p.add(Shape::line(points.iter().map(|&(x, y)| at(x, y)).collect(), stroke));
+        };
+        let closed = |points: &[(f32, f32)]| {
+            p.add(Shape::closed_line(
+                points.iter().map(|&(x, y)| at(x, y)).collect(), stroke));
         };
         match icon {
             "tool-selection" => {
-                // Image 1: clear monoline pointer, not an uneven filled cursor.
-                p.add(Shape::closed_line(vec![
-                    at(-0.60, -0.92), at(-0.51, 0.73),
-                    at(-0.14, 0.34), at(0.22, 0.89),
-                    at(0.53, 0.68), at(0.18, 0.15),
-                    at(0.76, 0.06),
-                ], stroke));
+                // Canonical cursor silhouette: clear tip and lower tail.
+                closed(&[(4.2, 3.4), (5.8, 20.5), (10.4, 16.2),
+                    (14.3, 21.2), (16.5, 19.4), (12.8, 14.5),
+                    (20.0, 12.1)]);
             }
             "tool-pen" => {
-                // Symmetric fountain pen nib with a distinct ink breather.
-                line(&[
-                    (0.0, -0.89), (0.60, -0.12), (0.25, 0.77),
-                    (-0.25, 0.77), (-0.60, -0.12), (0.0, -0.89),
-                ]);
-                line(&[(0.0, -0.89), (0.0, -0.21)]);
-                p.circle_stroke(at(0.0, 0.04), half * 0.12, stroke);
-            }
-            "tool-hand" => {
-                // Clean, recognizable open palm in the same 24pt white line style
-                // as the other segments. Do not use the small upstream toolbar
-                // hand glyph: its tiny fingers look distorted at wheel scale.
-                // The single uninterrupted contour makes each finger distinct.
-                let outline = [
-                    (-0.59, 0.06), (-0.69, -0.10), (-0.64, -0.24),
-                    (-0.51, -0.28), (-0.41, -0.23), (-0.25, 0.04),
-                    (-0.25, -0.62), (-0.20, -0.76), (-0.08, -0.81),
-                    (0.03, -0.73), (0.06, -0.61),
-                    (0.06, -0.81), (0.13, -0.94), (0.27, -0.94),
-                    (0.36, -0.81), (0.36, -0.63),
-                    (0.42, -0.76), (0.55, -0.78), (0.66, -0.65),
-                    (0.65, -0.42), (0.71, -0.52), (0.83, -0.50),
-                    (0.93, -0.38), (0.89, -0.16),
-                    (0.80, 0.22), (0.58, 0.65), (0.39, 0.79),
-                    (0.01, 0.79), (-0.25, 0.62), (-0.59, 0.06),
-                ];
-                p.add(Shape::line(
-                    outline.iter().map(|&(x, y)| at(x, y)).collect(), stroke));
-                // Slight palm crease, not a stack of overlapping finger lines.
-                line(&[(-0.19, 0.32), (0.13, 0.48), (0.48, 0.42)]);
+                // Balanced fountain nib, centered breather, no spurious wings.
+                closed(&[(12.0, 2.7), (19.0, 11.2), (16.2, 20.7),
+                    (7.8, 20.7), (5.0, 11.2)]);
+                line(&[(12.0, 2.7), (12.0, 9.6)]);
+                p.circle_stroke(at(12.0, 12.3), 1.55 * unit, stroke);
+                line(&[(12.0, 13.9), (12.0, 17.5)]);
             }
             "wheel-shapes" => {
-                // Clean two-shape motif; remove the extraneous little triangle.
-                p.rect_stroke(
-                    Rect::from_min_max(at(-0.78, -0.72), at(0.17, 0.23)),
-                    0.4, stroke, egui::StrokeKind::Middle,
-                );
-                p.circle_stroke(at(0.34, 0.31), half * 0.43, stroke);
+                // Clean two-shape motif with matching outline weights.
+                p.rect_stroke(Rect::from_min_max(at(3.5, 3.8), at(14.7, 15.0)),
+                    1.1 * unit, stroke, egui::StrokeKind::Middle);
+                p.circle_stroke(at(16.0, 16.0), 4.6 * unit, stroke);
             }
             "tool-type" => {
-                line(&[(-0.76, -0.72), (0.76, -0.72)]);
-                line(&[(0.0, -0.72), (0.0, 0.77)]);
-                line(&[(-0.30, 0.77), (0.30, 0.77)]);
+                // Text capital T with stable cap-height and baseline.
+                line(&[(3.9, 4.2), (20.1, 4.2)]);
+                line(&[(12.0, 4.2), (12.0, 20.0)]);
+                line(&[(8.5, 20.0), (15.5, 20.0)]);
             }
             "panel-layers" => {
                 // Three evenly spaced stacked diamond outlines.
-                line(&[
-                    (-0.82, -0.39), (0.0, -0.83),
-                    (0.82, -0.39), (0.0, 0.06), (-0.82, -0.39),
+                closed(&[(12.0, 3.0), (20.5, 8.3),
+                    (12.0, 13.4), (3.5, 8.3)]);
+                line(&[(3.7, 12.7), (12.0, 17.7), (20.3, 12.7)]);
+                line(&[(3.7, 17.2), (12.0, 22.0), (20.3, 17.2)]);
+            }
+            "tool-hand" => {
+                // Clearly open palm, separated rounded finger contours, splayed
+                // thumb; no overlapping little finger scribbles.
+                // The single uninterrupted contour makes each finger distinct.
+                closed(&[
+                    (8.9, 13.8), (6.4, 11.5), (5.3, 11.1), (4.1, 11.5),
+                    (3.4, 12.4), (3.7, 13.7), (7.0, 18.3),
+                    (9.0, 20.5), (11.0, 21.3), (15.1, 21.3),
+                    (17.7, 19.6), (19.7, 16.5), (20.0, 11.0),
+                    (19.7, 9.7), (18.8, 9.0), (17.8, 9.1), (17.0, 10.0),
+                    (17.0, 7.5), (16.7, 6.2), (15.8, 5.7),
+                    (14.8, 6.0), (14.2, 7.0),
+                    (14.2, 5.3), (13.8, 4.0), (12.8, 3.6),
+                    (11.8, 4.3), (11.8, 6.3),
+                    (11.8, 5.3), (11.4, 4.1), (10.4, 3.5),
+                    (9.5, 4.0), (9.0, 5.2), (8.9, 13.8),
                 ]);
-                line(&[(-0.82, -0.03), (0.0, 0.41), (0.82, -0.03)]);
-                line(&[(-0.82, 0.32), (0.0, 0.76), (0.82, 0.32)]);
+                // Subtle internal finger seams make the silhouette legible.
+                line(&[(11.8, 6.3), (11.8, 11.8)]);
+                line(&[(14.2, 7.0), (14.2, 11.8)]);
+                line(&[(17.0, 10.0), (17.0, 12.5)]);
             }
             "wheel-undo" | "wheel-redo" => {
-                // DeckCraft-inspired return arrows with a recognizable arrowhead.
-                // Left-pointing Undo and mirrored right-pointing Redo share the
-                // same consistent white stroke; no distorted cubic hooks.
-                let direction = if icon == "wheel-undo" { 1.0 } else { -1.0 };
-                let mut shaft = vec![
-                    at(direction * -0.66, -0.20),
-                    at(direction * 0.09, -0.20),
-                ];
-                // Smooth, clean quarter-circle turning into the return stem.
-                for step in 1..=16 {
-                    let angle = -PI / 2.0 + (step as f32 / 16.0) * PI / 2.0;
-                    shaft.push(at(
-                        direction * (0.09 + 0.44 * angle.cos()),
-                        0.24 + 0.44 * angle.sin(),
-                    ));
+                // DeckCraft-inspired return arrows, now a coherent swept
+                // curve and a true angled arrowhead. Both share exact geometry.
+                let mirror = if icon == "wheel-undo" { 1.0 } else { -1.0 };
+                let mirror_at = |x: f32, y: f32| at(12.0 + mirror * (x - 12.0), y);
+                let mut shaft = vec![mirror_at(4.0, 9.0), mirror_at(14.2, 9.0)];
+                for step in 1..=20 {
+                    let angle = -PI / 2.0 + (step as f32 / 20.0) * PI;
+                    shaft.push(mirror_at(
+                        14.2 + 5.4 * angle.cos(), 14.4 + 5.4 * angle.sin()));
                 }
-                shaft.push(at(direction * 0.53, 0.47));
+                shaft.push(mirror_at(12.4, 19.8));
                 p.add(Shape::line(shaft, stroke));
-                line(&[
-                    (direction * -0.31, -0.52),
-                    (direction * -0.66, -0.20),
-                    (direction * -0.31, 0.12),
-                ]);
+                p.add(Shape::line(vec![
+                    mirror_at(9.0, 4.0), mirror_at(4.0, 9.0),
+                    mirror_at(9.0, 14.0),
+                ], stroke));
             }
-            _ => {
-                // Reuse approved upstream vectors for the optional tools.
-                designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE);
+            "tool-pencil" => {
+                closed(&[(4.1, 19.9), (5.4, 14.3), (16.4, 3.3),
+                    (20.6, 7.5), (9.6, 18.5)]);
+                line(&[(5.4, 14.3), (9.6, 18.5)]);
             }
+            "tool-zoom" => {
+                p.circle_stroke(at(10.3, 10.0), 6.3 * unit, stroke);
+                line(&[(15.0, 14.8), (20.6, 20.5)]);
+            }
+            "tool-direct" => {
+                closed(&[(5.0, 3.8), (6.8, 20.4), (11.0, 15.5),
+                    (15.1, 20.4), (17.1, 18.4), (13.0, 13.4),
+                    (19.5, 11.3)]);
+                p.circle_stroke(at(19.0, 5.1), 1.6 * unit, stroke);
+            }
+            "tool-rect-frame" => {
+                p.rect_stroke(Rect::from_min_max(at(4.0, 4.0), at(20.0, 20.0)),
+                    1.0 * unit, stroke, egui::StrokeKind::Middle);
+                line(&[(4.0, 4.0), (20.0, 20.0)]);
+                line(&[(20.0, 4.0), (4.0, 20.0)]);
+            }
+            "tool-scale" => {
+                line(&[(4.0, 20.0), (20.0, 4.0)]);
+                line(&[(12.7, 4.0), (20.0, 4.0), (20.0, 11.3)]);
+                line(&[(4.0, 12.7), (4.0, 20.0), (11.3, 20.0)]);
+            }
+            "tool-line" => {
+                line(&[(4.0, 20.0), (20.0, 4.0)]);
+                p.circle_stroke(at(4.0, 20.0), 1.1 * unit, stroke);
+                p.circle_stroke(at(20.0, 4.0), 1.1 * unit, stroke);
+            }
+            _ => designcraft_ui_egui::icons::paint(p, rect, icon, Color32::WHITE),
         }
     }
 
@@ -319,7 +335,7 @@ impl Wheel {
             let finish = start + TAU / 8.0;
             let mark_angle = start + (finish - start) / 2.0;
             let mark = center + vec2(mark_angle.cos() * radius * 0.67, mark_angle.sin() * radius * 0.67);
-            let icon = Rect::from_center_size(mark - vec2(0.0, 10.0), vec2(radius * 0.19, radius * 0.19));
+            let icon = Rect::from_center_size(mark - vec2(0.0, 10.0), vec2(radius * 0.218, radius * 0.218));
             // Exact vector icon renderer from the upstream DesignCraft toolbar.
             Self::wheel_icon(&p, icon, ITEMS[self.slots[i]].1);
             p.text(mark + vec2(0.0, 17.0), Align2::CENTER_CENTER,

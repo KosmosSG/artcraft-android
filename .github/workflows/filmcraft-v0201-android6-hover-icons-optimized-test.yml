@@ -159,6 +159,9 @@ jobs:
         python3 suite/tools/filmcraft/patch_unsaved_dcs_v019.py filmcraft-builder/source/filmcraft
         grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
         grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        # The pinned Android builder creates a fresh isolated Python venv.
+        # Reinstall CairoSVG there for deterministic, offline-at-runtime icons.
+        python3 -m pip install Pillow==11.3.0 CairoSVG==2.8.2
         # Add the owner-approved PhotoCraft-style radial wheel, Fc settings and
         # pointer-isolated foreground UI without changing Android/production source.
         python3 suite/tools/filmcraft/stage_v0201_wheel.py --self-test

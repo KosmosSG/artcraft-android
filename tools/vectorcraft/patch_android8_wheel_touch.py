@@ -223,8 +223,12 @@ pub fn set_android_wheel_enabled(enabled: bool) {
 ''')
     # Android.6 had the raw touch centroid fallback only when egui lacked
     # multi_touch(), but wheel() also includes native/synthetic scrolling.
-    # For consistent finger-following motion use measured raw centroid deltas
-    # when present, native multi_touch translation otherwise; do not add both.
+    # On MagicPad, the canvas movement recorded in the owner's device video
+    # is opposite to the requested two-finger gesture. Reverse the touchscreen
+    # centroid vectors on both axes, and only inside the on-canvas two-touch
+    # path. Never change native trackpad, menu wheel, stylus, or pinch vectors.
+    # Use measured raw centroid deltas when present; native multi_touch
+    # translation otherwise. Do not add both.
     once(ui/'canvas/input.rs',
          'if active && !has_native_multi_touch { translated } else { egui::Vec2::ZERO }',
          'if active { translated } else { egui::Vec2::ZERO }')
@@ -239,14 +243,17 @@ pub fn set_android_wheel_enabled(enabled: bool) {
         scroll.y -= early_pan.y;
     }''','''    {
         // This whole block is Android-only (the preceding cfg applies to it).
-        // Replace synthetic scroll with one real touchscreen centroid delta.
+        // MagicPad two-finger touchscreen pan: reverse the observed opposite
+        // movement on both X and Y. Keep the touch-only, canvas-only guard and
+        // choose exactly one centroid source (raw or egui) per frame.
+        // Mouse wheel, native trackpad routing and pinch factor stay unchanged.
         let native_canvas_touch = ui.input(|i| i.multi_touch())
             .filter(|t| rect.contains(t.center_pos));
         if early_two_touch_on_canvas || native_canvas_touch.is_some() {
             scroll = if early_pan != egui::Vec2::ZERO {
-                early_pan
+                -early_pan
             } else {
-                native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
+                -native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
             };
         }
     }''')
@@ -256,7 +263,7 @@ pub fn set_android_wheel_enabled(enabled: bool) {
     sh=root/'lib/build-common.sh'
     anchor='cp -a "$ROOT/vendor/android-activity" "$SRC/vendor/android-activity"\n'
     once(sh, anchor, anchor + 'if [ "$APP" = "vectorcraft" ]; then\n    python3 "$ROOT/tools/patch_android8_wheel_touch.py" "$SRC" --vendor\n    python3 "$ROOT/tools/patch_android8_ime_reset.py" "$SRC" --vendor\nfi\n')
-    print('PASS: Proposal A wheel and same-direction touchscreen pan staged')
+    print('PASS: Proposal A wheel and reversed-direction two-finger touchscreen pan staged')
 
 def vendor(root):
     lib=root/'vendor/android-activity/src/lib.rs'; native=root/'vendor/android-activity/src/native_activity/mod.rs'

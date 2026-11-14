@@ -1,15 +1,20 @@
-CADCraft v0.19.0-android.5 ARM64 TEST ONLY / HONOR Magic-Pencil regression
-Keep original Storytold v0.19.0 + pinned reference builder; isolated branch + draft PR #158.
-Changes:
-- Fix pen button not opening wheel: PhotoCraft 100ms enabled-only queue polling
-  + Java Activity / IME fallback on verified Magic-Pencil key release DPAD_DOWN/UP
-  + retain native AInputQueue capture with Java-provided physical pen IDs
-  + suppress duplicate native/Java delivery; never intercept keyboard arrows
-- Default wheel size 75%, opacity 85%; migrate legacy untouched 100% default
-  without resetting manually customized values
-- Retain PhotoCraft two-tone grey slots, soft feathered shadow, exact Cc glyph,
-  outside-dialog actual-size preview, bottom-center fading notice
-- Retain in-app updater, CAD-specific GitHub release download and Android install prompt
-- Preserve SAF DXF/DWG, package com.artcraft.cadcraft.test and disposable signer
-- Require APK ZIP, ARM64 .so, aapt appId, signer/certificate SHA and SHA-256 checks.
-NEVER merge, publish or alter production keys, main, or other app baselines.
+CADCraft v0.19.0-android.6 ARM64 TEST ONLY / stylus-button routing repair
+User verified on HONOR MagicPad 4: Android.5 75% size/85% opacity correct,
+BUT stylus hover + Magic-Pencil 4s side-button still does not open wheel.
+Source-grounded device diagnostic: HONOR Magic-Pencil 4s Mouse, ID often 109,
+KEYCODE_DPAD_DOWN=20 on hover press/release, occasional orphan UP;
+hover motion has a different stylus device ID and does not expose button state.
+
+This build adjusts only isolated CADCraft proposal C branch / draft PR #158:
+- Add +15% size to exact launcher Cc glyph in circular wheel hub; no font substitute
+- Capture verified named Magic-Pencil keys BEFORE Android IME pre_dispatch
+- Keep unmatched KEY UP valid, match pen names/IDs, never consume real keyboard arrows
+- Add Java Activity/IME verified pen direct JNI callback into Rust queue (and Java polling fallback)
+- De-duplicate Java+native delivery, keep 100ms enabled-only polling and hover anchor
+- Verify direct JNI callback exported in libcadcraft_android.so and declaration packed in DEX
+- Preserve defaults 75% size / 85% opacity, custom wheel actions, soft shadow,
+  dual-grey sectors, outside-dialog live preview, fading bottom-center feedback
+- Preserve in-app published CADCraft-specific APK updates and SAF DXF/DWG.
+- Verify appId com.artcraft.cadcraft.test, APK ZIP, lib/arm64-v8a, temporary signer,
+  SHA-256 and uploaded artifact before offering user link.
+- Never touch main/other apps, merge PR, permanently sign, or publish.

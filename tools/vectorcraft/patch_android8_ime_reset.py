@@ -180,16 +180,31 @@ def vendor(root):
         if let Err(error) = result { log::warn!("VectorCraft IME reset not completed: {error:?}"); }
     }
     pub fn show_soft_input(&self, show_implicit: bool) {''')
-    once(winit,'''    pub fn reset_ime_with_request(&self, _request_id: u64) {
+    # The builder's preparation phase can copy a previously patched winit into
+    # source/vectorcraft/vendor/winit while copying fresh android-activity glue.
+    # Reapply only to the reviewed legacy body; accept an EXACT previously
+    # bridged body to avoid failing halfway through the full APK packaging.
+    # Any unfamiliar body still fails closed: never fake an IME reset ACK.
+    legacy_winit = '''    pub fn reset_ime_with_request(&self, _request_id: u64) {
         // On NativeActivity the IME is driven by the system input method framework; asking the
         // IME to reset its state is done by toggling `set_ime_allowed` off and on again.
         self.set_ime_allowed(false);
         self.set_ime_allowed(true);
-    }''','''    pub fn reset_ime_with_request(&self, request_id: u64) {
+    }'''
+    bridged_winit = '''    pub fn reset_ime_with_request(&self, request_id: u64) {
         // Java clears the old composition, invalidates old InputConnections,
         // restarts the IME, then queues this exact ID for the adapter to deliver.
         self.app.vc_reset_ime(request_id);
-    }''')
+    }'''
+    current_winit = winit.read_text()
+    if current_winit.count(legacy_winit) == 1 and bridged_winit not in current_winit:
+        once(winit, legacy_winit, bridged_winit)
+    elif current_winit.count(bridged_winit) == 1 and legacy_winit not in current_winit:
+        print('PASS: winit already has exact verified native IME reset transport')
+    else:
+        raise ValueError(f'{winit}: unreviewed reset method: '
+                         f'legacy={current_winit.count(legacy_winit)}, '
+                         f'bridged={current_winit.count(bridged_winit)}')
     print('PASS: native reset request forwarded with its ID; no synthetic success')
 
 if __name__=='__main__':

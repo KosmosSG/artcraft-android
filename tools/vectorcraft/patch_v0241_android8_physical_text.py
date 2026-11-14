@@ -40,6 +40,31 @@ def patch(root: Path) -> None:
     old_physical = 'imeEvents.offer("c" + new String(Character.toChars(unicode)));'
     new_physical = 'imeEvents.offer("t" + new String(Character.toChars(unicode)));'
     java = once(java, old_physical, new_physical, "hardware key enqueue")
+    # Counting at Activity dispatch distinguishes hardware keys arriving at
+    # Android from characters reaching the focused IME-host EditText.
+    java = once(java,
+        '    private final java.util.concurrent.atomic.AtomicLong vcTraceCommits = new java.util.concurrent.atomic.AtomicLong();',
+        '''    private final java.util.concurrent.atomic.AtomicLong vcTraceActivityKeys = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong vcTracePhysicalText = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong vcTraceCommits = new java.util.concurrent.atomic.AtomicLong();''',
+        "privacy-safe physical keyboard counters")
+    java = once(java,
+        '    public boolean dispatchKeyEvent(KeyEvent event) {',
+        '''    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getDeviceId() >= 0 && !event.isSystem()) {
+            vcTraceActivityKeys.incrementAndGet();
+        }''',
+        "Activity dispatch counter")
+    java = once(java,
+        '''            + "\\\\nime_commit_callbacks=" + vcTraceCommits.get()''',
+        '''            + "\\\\nime_commit_callbacks=" + vcTraceCommits.get()
+            + "; activity_physical_down=" + vcTraceActivityKeys.get()
+            + "; physical_text_queued=" + vcTracePhysicalText.get()''',
+        "copyable diagnostics counters")
+    java = once(java, new_physical,
+        'vcTracePhysicalText.incrementAndGet();\\n                            ' + new_physical,
+        "physical text enqueue counter")
     java = once(java, '"VC_IME7 physical_text_commit key="',
                 '"VC_IME8 physical_text_application key="', "privacy-safe hardware marker")
 
@@ -70,7 +95,7 @@ def patch(root: Path) -> None:
                                 unreachable!()
                             }
 """,
-                            """                            if matches!(event, egui::Event::Text(_)) {
+                            """                            if matches!(&event, egui::Event::Text(_)) {
                                 // Java issued this 't' only for a physical,
                                 // unmodified key-down. Clear any missed Ctrl
                                 // release BEFORE applying the character.

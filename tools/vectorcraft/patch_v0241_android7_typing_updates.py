@@ -26,7 +26,7 @@ def patch(root: Path) -> None:
     activity_path = base / "java/com/artcraft/vectorcraft/VectorCraftActivity.java"
     host_path = base / "src/lib.rs"
     ime_path = base / "src/ime_bridge.rs"
-    menu_path = root / "source/vectorcraft/crates/ui-egui/src/menus/bar.rs"
+    menu_path = root / "source/vectorcraft/crates/ui-egui/src/menus.rs"
     activity = activity_path.read_text()
     host = host_path.read_text()
     ime = ime_path.read_text()
@@ -71,9 +71,14 @@ def patch(root: Path) -> None:
         return super.dispatchKeyEvent(event);"""
     # dispatchKeyEvent precedes the next annotated method, not a new public
     # declaration on all pinned builders. Use the uniquely reviewed final call.
-    activity = replace_once(activity,
-        "        return super.dispatchKeyEvent(event);",
-        key_fallback, "physical key dispatch")
+    # The final dispatch fallthrough is distinct from Ctrl+W/Q and the
+    # canvas shortcut forwarding branches. Patch only the final fallthrough.
+    terminal = "        return super.dispatchKeyEvent(event);"
+    count = activity.count(terminal)
+    if count != 3:
+        raise RuntimeError(f"Android.7 expected three reviewed dispatch returns, got {count}")
+    position = activity.rfind(terminal)
+    activity = activity[:position] + key_fallback + activity[position + len(terminal):]
 
     # Separate 'h' (hardware printable text) from 'c' (soft-IME commit). The
     # upstream Type sequence takes Text directly; do not synthesize IME reset
@@ -99,6 +104,17 @@ def patch(root: Path) -> None:
     }
     fn set_hardware_shortcut_mode(&self, mode: i32) -> Result<(), String> {""",
         "JNI hardware typing mode")
+    host = replace_once(host,
+        "restore_tool_key_text,", "restore_tool_key_text, restore_type_hardware_text,",
+        "native Type fallback import")
+    host = replace_once(host,
+        "        restore_tool_key_text(raw, allow_letters);",
+        """        restore_tool_key_text(raw, allow_letters);
+        // If native winit provides Key without Text and Java cannot see the
+        // event, emit a single printable Text only for live Type editing.
+        // An existing IME event or Java hardware Text suppresses duplicates.
+        restore_type_hardware_text(raw, editing, field_focused, composing, modal);""",
+        "native Type fallback dispatch")
     host = replace_once(host,
         "    last_hardware_shortcut_mode: i32,",
         """    last_hardware_shortcut_mode: i32,

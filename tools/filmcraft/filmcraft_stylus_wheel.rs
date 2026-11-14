@@ -21,8 +21,8 @@ const COMMANDS: [(&str, &str); 8] = [
 ];
 // FilmCraft command equivalents in the same eight-position PhotoCraft arrangement.
 const DEFAULT_SLOTS: [usize; 8] = [0, 1, 6, 2, 5, 7, 4, 3];
-const DEFAULT_SIZE: f32 = 1.0;
-const DEFAULT_OPACITY: f32 = 0.85;
+const DEFAULT_SIZE: f32 = 0.75;
+const DEFAULT_OPACITY: f32 = 0.80;
 const FEEDBACK_HOLD: Duration = Duration::from_millis(1900);
 const FEEDBACK_FADE: Duration = Duration::from_millis(500);
 const NAVY: Color32 = Color32::from_rgb(0x00, 0x04, 0x7a);
@@ -76,6 +76,14 @@ impl Wheel {
                             }
                         }
                     }
+                    // Migrate only untouched Android.5 defaults. Preserve a
+                    // user's explicit size/opacity settings and slot assignments.
+                    if v["schema"].as_u64().unwrap_or(1) < 3
+                        && (out.size-1.0).abs()<0.001
+                        && (out.opacity-0.85).abs()<0.001 {
+                        out.size=DEFAULT_SIZE;
+                        out.opacity=DEFAULT_OPACITY;
+                    }
                 }
             }
         }
@@ -85,7 +93,7 @@ impl Wheel {
         if let Some(path) = &self.path {
             if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
             let cfg = serde_json::json!({
-                "schema": 2, "enabled": self.enabled, "size": self.size,
+                "schema": 3, "enabled": self.enabled, "size": self.size,
                 "opacity": self.opacity, "slots": self.slots
             });
             if let Ok(bytes) = serde_json::to_vec_pretty(&cfg) {
@@ -235,65 +243,20 @@ impl Wheel {
         ctx.data_mut(|d|d.insert_temp(key,tex.clone()));
         tex
     }
-    // Refined wheel-specific vector strokes. Commands still route through
-    // the original FilmCraft command registry; icons do not change behavior.
-    fn paint_segment_icon(p:&egui::Painter, rect:egui::Rect, command:usize, opacity:f32) {
-        let c=rect.center();
-        let k=rect.width().min(rect.height())/24.0;
-        let at=|x:f32,y:f32| c+vec2(x*k,y*k);
-        let ink=Color32::WHITE.gamma_multiply(opacity);
-        let stroke=Stroke::new(2.0*k,ink);
-        match command {
-            0 => { // Razor — diagonal blade, not a cassette-looking box
-                p.add(egui::Shape::line(vec![
-                    at(-10.0,-3.0),at(2.0,-10.0),at(10.0,-1.0),
-                    at(-2.0,8.0),at(-10.0,-3.0)],stroke));
-                p.line_segment([at(-6.0,1.0),at(5.0,-6.0)],stroke);
-                p.line_segment([at(-1.0,8.0),at(2.0,11.0)],stroke);
-            }
-            1 => { // Selection pointer
-                p.add(egui::Shape::line(vec![
-                    at(-8.0,-11.0),at(-7.0,11.0),at(-1.0,5.0),
-                    at(4.0,12.0),at(8.0,9.5),at(3.0,2.0),
-                    at(11.0,1.0),at(-8.0,-11.0)],stroke));
-            }
-            2 => { // Open Hand, four fingers and thumb
-                p.add(egui::Shape::line(vec![
-                    at(-9.0,0.0),at(-9.0,-3.0),at(-7.0,-5.0),
-                    at(-4.0,-4.0),at(-3.0,0.0),at(-3.0,-10.0),
-                    at(-1.0,-12.0),at(1.0,-10.0),at(1.0,-4.0),
-                    at(1.0,-11.0),at(3.0,-13.0),at(5.0,-11.0),
-                    at(5.0,-4.0),at(5.0,-9.0),at(7.0,-10.0),
-                    at(9.0,-8.0),at(9.0,5.0),at(6.0,10.0),
-                    at(2.0,12.0),at(-3.0,11.0),at(-7.0,7.0),
-                    at(-9.0,0.0)],stroke));
-            }
-            3 | 4 => { // Undo/Redo — classic hook arrows
-                let d=if command==3 {1.0} else {-1.0};
-                p.add(egui::Shape::line(vec![
-                    at(-d*8.0,-3.0),at(d*1.0,-3.0),
-                    at(d*6.0,-1.0),at(d*9.0,3.0),
-                    at(d*9.0,7.0),at(d*6.0,10.0)],stroke));
-                p.line_segment([at(-d*8.0,-3.0),at(-d*2.0,-9.0)],stroke);
-                p.line_segment([at(-d*8.0,-3.0),at(-d*2.0,3.0)],stroke);
-            }
-            5 => { // Play/Pause
-                p.add(egui::Shape::convex_polygon(
-                    vec![at(-10.0,-9.0),at(-10.0,9.0),at(-1.0,0.0)],
-                    ink,Stroke::NONE));
-                p.line_segment([at(4.0,-8.0),at(4.0,8.0)],Stroke::new(2.5*k,ink));
-                p.line_segment([at(10.0,-8.0),at(10.0,8.0)],Stroke::new(2.5*k,ink));
-            }
-            6 | 7 => { // Zoom +/- with magnifying glass and centred mark
-                p.circle_stroke(at(-3.0,-4.0),7.0*k,stroke);
-                p.line_segment([at(2.0,1.0),at(10.0,9.0)],stroke);
-                p.line_segment([at(-7.0,-4.0),at(1.0,-4.0)],stroke);
-                if command==6 {
-                    p.line_segment([at(-3.0,-8.0),at(-3.0,0.0)],stroke);
-                }
-            }
-            _ => {}
+    // Source artwork is the pinned Lucide ISC icon set, rendered at 3x the
+    // 24-point logical size to preserve rounded line caps and smooth curves.
+    // Cache a single sprite texture; no APK runtime SVG decoder is required.
+    fn icon_atlas(ctx:&egui::Context) -> egui::TextureHandle {
+        let key=egui::Id::new("filmcraft.wheel.quality.icons.v1");
+        if let Some(tex)=ctx.data(|d|d.get_temp::<egui::TextureHandle>(key)) {
+            return tex;
         }
+        const PIXELS:&[u8]=include_bytes!("filmcraft_wheel_icons.rgba");
+        let image=egui::ColorImage::from_rgba_unmultiplied([72,576],PIXELS);
+        let tex=ctx.load_texture("filmcraft-photo-quality-monochrome-wheel-icons",
+            image,egui::TextureOptions::LINEAR);
+        ctx.data_mut(|d|d.insert_temp(key,tex.clone()));
+        tex
     }
     fn draw(&self, ui: &egui::Ui, center: Pos2, radius: f32, hover: Option<usize>) {
         let painter=ui.painter();
@@ -307,6 +270,7 @@ impl Wheel {
         }
         painter.circle_filled(center,radius,
             Color32::from_gray(53).gamma_multiply(self.opacity));
+        let symbols=Self::icon_atlas(ui.ctx());
         for slot in 0..8 {
             let degrees=-90.0+slot as f32*45.0;
             let first=(degrees-21.5).to_radians();
@@ -330,8 +294,12 @@ impl Wheel {
             let rect=egui::Rect::from_center_size(icon_pos-vec2(0.0,10.0)*scale,
                 vec2(24.0,24.0)*scale);
             let cmd=self.slots[slot];
-            // Single-colour 24pt PhotoCraft-style strokes, no emoji or stacked characters.
-            Self::paint_segment_icon(painter,rect,cmd,self.opacity);
+            // Separate high-resolution icon for each command; no malformed
+            // handwritten arrows or cramped hand silhouettes.
+            let uv=egui::Rect::from_min_max(
+                pos2(0.0,cmd as f32/8.0),pos2(1.0,(cmd+1) as f32/8.0));
+            painter.image(symbols.id(),rect,uv,
+                Color32::WHITE.gamma_multiply(self.opacity));
             painter.text(icon_pos+vec2(0.0,13.0)*scale,
                 egui::Align2::CENTER_CENTER,COMMANDS[cmd].0,
                 FontId::proportional(11.0*scale),

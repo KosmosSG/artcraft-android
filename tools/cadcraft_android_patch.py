@@ -116,6 +116,15 @@ def install_pen_button(reference: Path) -> None:
         Integer code = cadWheelKeys.poll();
         return code == null ? 0 : code;
     }
+    // Polled by an in-app egui diagnostics window; no AlertDialog/UI-thread
+    // lifecycle dependency, so the TEST window always opens even if JNI fails.
+    public String cadStylusSnapshot() {
+        return "Wheel enabled: " + cadWheelEnabled
+            + "|Java pen key events: " + cadKeyEvents
+            + "|Java pen mouse-button events: " + cadMouseEvents
+            + "|Last Java route: " + cadLastButtonRoute
+            + "|Magic-Pencil device IDs: " + cadStylusDeviceIds();
+    }
     // Diagnostics are disposable-test-only and are removed before production.
     private int cadKeyEvents = 0, cadMouseEvents = 0;
     private String cadLastButtonRoute = "No button detected";

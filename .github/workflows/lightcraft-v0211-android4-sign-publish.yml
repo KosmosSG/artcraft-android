@@ -336,3 +336,172 @@ jobs:
           path: verified/
           retention-days: 14
           if-no-files-found: error
+  sign-and-publish:
+    needs: lightcraft-only
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'release/lightcraft-v0211-android4-owner-approved-20261114'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    env:
+      TAG: lightcraft-v0.21.1-android.4
+      APK: LightCraft-v0.21.1-android.4-arm64-v8a.apk
+      ORIGINAL_CERT: b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4
+    steps:
+      - name: Check production secrets and refuse any existing release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYSTORE_B64: ${{ secrets.LIGHTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.LIGHTCRAFT_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64" && test -n "$STOREPASS"
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::LightCraft release already exists; refusing overwrite"; exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists"; exit 1
+          fi
+      - name: Download exact same-run production package, verified by prior job
+        uses: actions/download-artifact@v4
+        with:
+          name: LightCraft-v0.21.1-android.4-PRODUCTION-CANDIDATE-RESIGN-REQUIRED
+          path: candidate
+      - name: Check candidate and production in-place upgrade continuity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SOURCE=candidate/LightCraft-v0.21.1-android.4-arm64-v8a-RESIGN-REQUIRED.apk
+          test -s "$SOURCE"
+          (cd candidate && sha256sum -c SHA256SUMS.txt)
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD="$SDK/build-tools/35.0.0"
+          "$BUILD/apksigner" verify --verbose --print-certs "$SOURCE" > candidate-certificate.txt
+          if grep -Fqi "certificate SHA-256 digest: $ORIGINAL_CERT" candidate-certificate.txt; then
+            echo "::error::Input incorrectly bears original permanent signing certificate"; exit 1
+          fi
+          "$BUILD/aapt" dump badging "$SOURCE" > candidate-package.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.21.1-android.4'" candidate-package.txt
+          python3 - "$SOURCE" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              assert z.testzip() is None and len(names)==len(set(names))
+              libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert 'classes.dex' in names
+              assert not any(n.lower().endswith(('.p12','.keystore','.jks')) for n in names)
+          PY
+          curl --proto '=https' --tlsv1.2 --location --fail --retry 3 --silent --show-error \
+            'https://github.com/KosmosSG/artcraft-android/releases/download/lightcraft-v0.20.0-android.1/LightCraft-v0.20.0-android.1-arm64-v8a.apk' \
+            -o "$RUNNER_TEMP/lightcraft-previous.apk"
+          "$BUILD/apksigner" verify --verbose --print-certs "$RUNNER_TEMP/lightcraft-previous.apk" > old-certificate.txt
+          grep -Fqi "certificate SHA-256 digest: $ORIGINAL_CERT" old-certificate.txt
+          "$BUILD/aapt" dump badging "$RUNNER_TEMP/lightcraft-previous.apk" > old-package.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          def code(path):
+              txt=Path(path).read_text()
+              m=re.search(r"(?m)^package: name='com\.artcraft\.lightcraft' versionCode='(\d+)'",txt)
+              if not m: raise SystemExit('STOP: missing production package versionCode')
+              return int(m.group(1))
+          previous,candidate=code('old-package.txt'),code('candidate-package.txt')
+          print(f'Production versionCode continuity: {previous} -> {candidate}')
+          if candidate<=previous: raise SystemExit('STOP: downgrade or unchanged versionCode')
+          PY
+          rm -f "$RUNNER_TEMP/lightcraft-previous.apk"
+      - name: Sign using original LightCraft key and verify payload/certificate
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LIGHTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.LIGHTCRAFT_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD="$SDK/build-tools/35.0.0"
+          KEY="$RUNNER_TEMP/lightcraft-original.p12"
+          trap 'rm -f "$KEY" "$RUNNER_TEMP/lightcraft-cert.pem" "$RUNNER_TEMP/aligned.apk"' EXIT
+          printf %s "$KEYSTORE_B64" | base64 --decode > "$KEY"
+          test -s "$KEY"
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$KEY" \
+            -alias artcraftbuilder -storepass:env STOREPASS > "$RUNNER_TEMP/lightcraft-cert.pem"
+          actual="$(openssl x509 -in "$RUNNER_TEMP/lightcraft-cert.pem" -outform DER | sha256sum | cut -d' ' -f1)"
+          if [ "$actual" != "$ORIGINAL_CERT" ]; then
+            echo "::error::Incorrect LightCraft signing identity"; exit 1
+          fi
+          SOURCE=candidate/LightCraft-v0.21.1-android.4-arm64-v8a-RESIGN-REQUIRED.apk
+          mkdir -p published
+          "$BUILD/zipalign" -P 16 -f 4 "$SOURCE" "$RUNNER_TEMP/aligned.apk"
+          "$BUILD/apksigner" sign \
+            --ks "$KEY" --ks-type PKCS12 --ks-key-alias artcraftbuilder \
+            --ks-pass env:STOREPASS --v1-signing-enabled true --v2-signing-enabled true \
+            --v3-signing-enabled true --v4-signing-enabled false \
+            --out "published/$APK" "$RUNNER_TEMP/aligned.apk"
+          "$BUILD/apksigner" verify --verbose --print-certs "published/$APK" > published/SIGNATURE.txt
+          grep -Fqi "certificate SHA-256 digest: $ORIGINAL_CERT" published/SIGNATURE.txt
+          "$BUILD/zipalign" -c -P 16 4 "published/$APK"
+          "$BUILD/aapt" dump badging "published/$APK" > published/PACKAGE.txt
+          grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.21.1-android.4'" published/PACKAGE.txt
+          python3 - "$SOURCE" "published/$APK" <<'PY'
+          import hashlib,sys,zipfile
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  return {n:hashlib.sha256(z.read(n)).hexdigest()
+                          for n in z.namelist() if not n.upper().startswith('META-INF/')}
+          assert payload(sys.argv[1])==payload(sys.argv[2]), 'STOP: signing altered app payload'
+          PY
+          (cd published && sha256sum "$APK" > SHA256SUMS.txt)
+          stat -c '%s' "published/$APK" > published/APK_SIZE_BYTES.txt
+          printf '%s\n' "$ORIGINAL_CERT" > published/SIGNING-CERTIFICATE-SHA256.txt
+      - name: Publish approved stable LightCraft release only once
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Existing tag will not be overwritten"; exit 1
+          fi
+          cat > published/RELEASE-NOTES.md <<'NOTES'
+          # LightCraft v0.21.1-android.4 — Stable ARM64
+
+          Approved Android package based on official upstream LightCraft v0.21.1.
+          - PhotoCraft-style eight-segment dual-tone stylus wheel, refined native LightCraft vector icons, blue/cyan hub and soft shadow.
+          - Center Lc lettering enlarged another 15%, raised slightly; no square logo background.
+          - Wheel size 75% and opacity 85% by default and on Restore Default; eight customizable actions.
+          - Stylus hovering, pen button activation, wheel input isolation, bottom-center message bar.
+          - Lc > Stylus Wheel submenu with Enable toggle and Customization; right shortcut pad removed.
+          - In-app GitHub update checks/download and Android-confirmed installer; existing Android import, fonts and appearance features.
+          - Optimized ARM64 build with thin LTO, one codegen unit and stripped symbols. No features removed.
+          - Original production package com.artcraft.lightcraft, permanent signing identity verified against the previous release, and increased versionCode.
+          - Owner tested the same-version Android.4 TEST APK: https://github.com/KosmosSG/artcraft-android/actions/runs/43554271232
+          - Tested source commit e594525e0edbd09d5dcbaaa8bf5d406ca2a0bfaa; upstream 361e3bc0c838ffe5e5cea515b1fe5b71951989c6.
+          - Production version rebuilt under the original app identity and independently verified; back up your photo library before upgrading.
+          - Unofficial independently maintained Android port, not an official Storytold distribution.
+          NOTES
+          gh release create "$TAG" "published/$APK" published/SHA256SUMS.txt \
+            published/RELEASE-NOTES.md published/APK_SIZE_BYTES.txt published/SIGNING-CERTIFICATE-SHA256.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'LightCraft v0.21.1-android.4 — Stable ARM64' \
+            --notes-file published/RELEASE-NOTES.md --latest
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > released.json
+          python3 - <<'PY'
+          import json,os,hashlib
+          r=json.load(open('released.json'))
+          assets={x['name']:x for x in r['assets']}
+          name=os.environ['APK']
+          assert name in assets
+          size=os.stat('published/'+name).st_size
+          expected=hashlib.sha256(open('published/'+name,'rb').read()).hexdigest()
+          assert assets[name]['size']==size
+          digest=assets[name].get('digest')
+          if digest: assert digest=='sha256:'+expected
+          print('PASS: published signed LightCraft APK SHA256',expected)
+          PY
+          echo "Published https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

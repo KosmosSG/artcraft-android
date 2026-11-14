@@ -99,6 +99,10 @@ def install_pen_button(reference: Path) -> None:
     // routes for the SAME HONOR pen key, depending on IME focus on MagicOS.
     // Only a physically named Magic-Pencil device may enter this queue.
     private volatile boolean cadWheelEnabled = true;
+    // The Java Activity name is fixed by the isolated test package.
+    // A direct JNI callback bridges the pen's verified release even when
+    // querying Java from the Rust render thread is temporarily unavailable.
+    private native void cadWheelButtonNative(int code);
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> cadWheelKeys =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
     private long cadWheelLastDown = 0L, cadWheelLastUp = 0L;
@@ -125,6 +129,13 @@ def install_pen_button(reference: Path) -> None:
             long prior = code == KeyEvent.KEYCODE_DPAD_DOWN ? cadWheelLastDown : cadWheelLastUp;
             if (now - prior >= 650L && cadWheelKeys.size() < 12) {
                 cadWheelKeys.offer(code);
+                try {
+                    cadWheelButtonNative(code);
+                } catch (UnsatisfiedLinkError error) {
+                    // Preserve the Java polling fallback until the native
+                    // library is loaded, e.g. very early in app startup.
+                    Log.w(TAG, "CADCraft pen direct JNI not available", error);
+                }
                 if (code == KeyEvent.KEYCODE_DPAD_DOWN) cadWheelLastDown = now;
                 else cadWheelLastUp = now;
                 Log.d(TAG, "CADCraft validated Magic-Pencil button " + code);
@@ -216,6 +227,7 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
             && state.events.len() < 16 {
             state.events.push(code as u8);
             state.last = Some(now);
+            log::info!("CADCraft: verified Magic-Pencil button code={code} device={device}");
         }
     }
     true
@@ -231,23 +243,27 @@ pub fn cad_stylus_native_take() -> Vec<u8> {
 
     native = vendor / "src/native_activity/mod.rs"
     original = native.read_text(encoding="utf-8")
-    anchor = "            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {"
+    # The previous implementation intercepted AFTER pre_dispatch; some
+    # MagicOS pen releases are consumed by that IME pre-dispatch stage.
+    # Always identify the verified device and key BEFORE it runs.
+    anchor = "        if let Ok(Some(ndk_event)) = queue.event() {"
     if original.count(anchor) != 1:
         raise SystemExit("NativeActivity input queue changed; refuse pen interception")
-    injected = """            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
-                // Capture named HONOR pen button before winit maps DPAD to
-                // physical keyboard shortcuts. Always finish native input.
-                if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
-                    let ptr = key.ptr().as_ptr();
-                    let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
-                    let code = unsafe { ndk_sys::AKeyEvent_getKeyCode(ptr) };
-                    let action = unsafe { ndk_sys::AKeyEvent_getAction(ptr) };
-                    let repeat = unsafe { ndk_sys::AKeyEvent_getRepeatCount(ptr) };
-                    if crate::cad_stylus_capture(device, code, action, repeat) {
-                        queue.finish_event(ndk_event, true);
-                        return true;
-                    }
+    injected = """        if let Ok(Some(ndk_event)) = queue.event() {
+            // CADCraft: intercept a named HONOR Magic-Pencil 4s keyboard event
+            // BEFORE pre_dispatch can consume its orphan key-release.
+            // All non-pen keys still follow the stock Android/winit path.
+            if let ndk::event::InputEvent::KeyEvent(ref key) = ndk_event {
+                let ptr = key.ptr().as_ptr();
+                let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
+                let code = unsafe { ndk_sys::AKeyEvent_getKeyCode(ptr) };
+                let action = unsafe { ndk_sys::AKeyEvent_getAction(ptr) };
+                let repeat = unsafe { ndk_sys::AKeyEvent_getRepeatCount(ptr) };
+                if crate::cad_stylus_capture(device, code, action, repeat) {
+                    queue.finish_event(ndk_event, true);
+                    return true;
                 }
+            }
 """
     native.write_text(original.replace(anchor, injected, 1), encoding="utf-8")
     print("PASS: native stylus-only capture plus safe updater Activity method")

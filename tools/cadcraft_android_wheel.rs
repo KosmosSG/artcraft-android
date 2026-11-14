@@ -162,6 +162,11 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
                     "Wheel ON • hover + pen button" } else { "Wheel OFF" });
                 ui.close();
             }
+            // Visible only in this disposable TEST build, not final CADCraft.
+            if ui.button("Pen Input Status (TEST)...").clicked() {
+                cadcraft_android_updater_bridge::show_pen_diagnostics();
+                ui.close();
+            }
             if ui.button("Customize Wheel...").clicked() {
                 app.ui.cad_wheel_customize = true;
                 ui.close();

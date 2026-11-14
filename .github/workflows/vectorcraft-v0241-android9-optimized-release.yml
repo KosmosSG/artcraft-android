@@ -497,6 +497,31 @@ jobs:
           "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Check original VectorCraft v0.23.0-android.7 release upgrade identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p previous-release
+          gh release download vectorcraft-v0.23.0-android.7 --repo "$GITHUB_REPOSITORY" \
+            --pattern 'VectorCraft-v0.23.0-android.7-arm64-v8a.apk' --dir previous-release
+          APK=previous-release/VectorCraft-v0.23.0-android.7-arm64-v8a.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > previous-release/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > previous-release/signer.txt
+          python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          old=Path('previous-release/badging.txt').read_text()
+          signer=Path('previous-release/signer.txt').read_text()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", old, re.M)
+          assert m and m.groups()==('com.artcraft.vectorcraft',os.environ['LAST_PUBLISHED_CODE'],'0.23.0-android.7'),m
+          cert=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",signer)
+          assert len(cert)==1 and cert[0].lower()==os.environ['ORIGINAL_CERT'], "Original published signature differs"
+          assert int(os.environ['VERSION_CODE'])>int(m.group(2)), "Version code cannot update current release"
+          print('PASS: previous stable VectorCraft signer and Android version upgrade identity')
+          PY
       - name: Stage owner adapter and reviewed upstream v0.21 patches
         shell: bash
         run: |
@@ -864,6 +889,75 @@ jobs:
           Path("pre-sign/size-report.json").write_text(json.dumps(report,indent=2)+"\n")
           print("PASS: APK size report recorded",report["apk_bytes"],"bytes")
           PY
+      - name: Zipalign and permanently sign with ORIGINAL VectorCraft certificate
+        shell: bash
+        env:
+          KEY_DATA: ${{ secrets.VECTORCRAFT_KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.VECTORCRAFT_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEY_DATA" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_DATA" | base64 --decode > "$RUNNER_TEMP/vectorcraft-original.jks"
+          test -s "$RUNNER_TEMP/vectorcraft-original.jks"
+          SOURCE="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          python3 - "$SOURCE" "$RUNNER_TEMP/unsigned.apk" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as old, zipfile.ZipFile(sys.argv[2],'w') as new:
+              for info in old.infolist():
+                  if info.filename.upper().startswith('META-INF/'): continue
+                  new.writestr(info,old.read(info.filename))
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -f 4 \
+            "$RUNNER_TEMP/unsigned.apk" "$RUNNER_TEMP/zipaligned.apk"
+          mkdir -p signed
+          FINAL="signed/VectorCraft-v$VERSION_NAME-arm64-v8a.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/vectorcraft-original.jks" --ks-key-alias artcraftbuilder \
+            --ks-pass env:KEY_PASSWORD --key-pass env:KEY_PASSWORD \
+            --v4-signing-enabled false \
+            --out "$FINAL" "$RUNNER_TEMP/zipaligned.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$FINAL" > signed/signer.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$FINAL" > signed/badging.txt
+          python3 - "$FINAL" <<'PY'
+          import json,os,re,sys,zipfile,hashlib
+          from pathlib import Path
+          apk=Path(sys.argv[1])
+          badging=Path('signed/badging.txt').read_text()
+          sig=Path('signed/signer.txt').read_text()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
+          assert m and m.groups()==('com.artcraft.vectorcraft',os.environ['VERSION_CODE'],os.environ['VERSION_NAME']),m
+          cert=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
+          assert len(cert)==1 and cert[0].lower()==os.environ['ORIGINAL_CERT'], "Reject incompatible signer"
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, "APK zip integrity failed"
+              entries=z.namelist()
+              libs=[x for x in entries if x.startswith('lib/') and x.endswith('.so')]
+              assert libs and all(x.startswith('lib/arm64-v8a/') for x in libs),libs
+              assert z.getinfo('lib/arm64-v8a/libvectorcraft_android.so').compress_type==zipfile.ZIP_DEFLATED, "Lost optimized native compression"
+              assert any(x.endswith('.dex') for x in entries), "Missing Android DEX"
+          size=apk.stat().st_size
+          assert size<163258497, 'Optimized release must be smaller than published v0.23.0-android.7 APK'
+          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
+          verification={
+              'package':'com.artcraft.vectorcraft',
+              'version_name':os.environ['VERSION_NAME'],
+              'version_code':int(os.environ['VERSION_CODE']),
+              'certificate_sha256':cert[0].lower(),
+              'apk_sha256':digest,
+              'apk_bytes':size,
+              'native_arm64_compressed':True,
+              'source_commit':os.environ['GITHUB_SHA'],
+              'previous_release':'vectorcraft-v0.23.0-android.7',
+              'previous_apk_bytes':163258497,
+              'tested_candidate':'VectorCraft v0.24.1-android.9 separate-install test APK'
+          }
+          Path('signed/verification.json').write_text(json.dumps(verification,indent=2)+'\n')
+          Path('signed/size-report.json').write_text(Path('pre-sign/size-report.json').read_text())
+          print('PASS: ORIGINAL VectorCraft signer, production package, upgrade code and optimized size:',size)
+          PY
+          (cd signed && sha256sum "VectorCraft-v$VERSION_NAME-arm64-v8a.apk" > SHA256SUMS.txt)
+          rm -f signed/badging.txt signed/signer.txt
       - name: Upload original-signed release files as Actions backup
         uses: actions/upload-artifact@v4
         with:
@@ -871,6 +965,38 @@ jobs:
           path: signed/
           if-no-files-found: error
           retention-days: 30
+      - name: Publish original-signed optimized v0.24.1-android.9 GitHub Release (no overwrites)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="vectorcraft-v$VERSION_NAME"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists; never replace it"; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists; never move it"; exit 1
+          fi
+          cat > "$RUNNER_TEMP/vectorcraft-notes.md" <<'MD'
+          VectorCraft v0.24.1-android.9 — original-signed ARM64 Android release.
+
+          - Pinned official VectorCraft v0.24.1 upstream, retaining approved Android toolbar, stylus wheel, hover and in-app updater.
+          - Android.9 Ctrl+Q → relaunch physical-keyboard focus-recovery candidate, approved for publication following user device testing.
+          - Optimized Rust Release symbol stripping, eliminated unused AndroidX dependencies and compressed ARM64 native library.
+          - Package: com.artcraft.vectorcraft. Signed using the existing VectorCraft production key, matching the v0.23.0-android.7 release.
+          - This production build is intended as an in-place update. It is distinct from the separate-install Android.9 TEST APK.
+          - Existing releases have not been replaced.
+          MD
+          gh release create "$TAG" \
+            "signed/VectorCraft-v$VERSION_NAME-arm64-v8a.apk" \
+            signed/SHA256SUMS.txt signed/verification.json signed/size-report.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "VectorCraft v$VERSION_NAME — Optimized Original Signed ARM64" \
+            --notes-file "$RUNNER_TEMP/vectorcraft-notes.md"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease \
+            --jq '{url: .url, draft: .isDraft, prerelease: .isPrerelease}'
       - name: Destroy all transient builder and original signing materials
         if: always()
         shell: bash

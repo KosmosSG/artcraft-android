@@ -255,7 +255,7 @@ fn draw_ring(ui: &mut egui::Ui, center: Pos2, scale: f32, selected: Option<usize
     painter.circle_filled(center, HUB * scale, tinted(BRAND, opacity));
     painter.circle_stroke(center, HUB * scale, Stroke::new(1.3, tinted(CREAM, opacity)));
     paint_center_glyph(ui, Rect::from_center_size(center - Vec2::new(0.0, 9.0) * scale,
-        Vec2::splat(61.0 * scale)), opacity);
+        Vec2::splat(70.15 * scale)), opacity);
     let name = selected.and_then(|i| actions.get(i)).map(|id| label(id));
     painter.text(center + Vec2::new(0.0, 22.0) * scale, Align2::CENTER_CENTER,
         name.unwrap_or("Default"), FontId::proportional(11.0 * scale),
@@ -316,7 +316,12 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
     }
     let native_events = android_activity::cad_stylus_native_take();
     let java_events = cadcraft_android_updater_bridge::stylus_poll();
-    for code in native_events.into_iter().map(i32::from).chain(java_events) {
+    // The Java Activity can also push a validated Magic-Pencil release directly
+    // into this Android-only bridge; this path does not depend on calling
+    // Java from egui's native render thread to obtain an event.
+    let direct_events = cadcraft_android_updater_bridge::stylus_take_direct();
+    for code in native_events.into_iter().map(i32::from)
+        .chain(java_events).chain(direct_events) {
         if app.ui.cad_wheel_enabled && !app.ui.cad_wheel_customize && (code == 20 || code == 19) {
             // The same key release might reach native and Java dispatch paths.
             // Deduplicate before toggling to avoid immediately closing the wheel.

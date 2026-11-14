@@ -66,14 +66,18 @@ pub fn ec_stylus_native_capture(device: i32, key: i32, action: i32, repeat: i32)
 }
 
 #[cfg(feature = "native-activity")]
-pub fn ec_stylus_native_hover(device: i32, tool: i32, action: i32, x: f32, y: f32) {
+pub fn ec_stylus_native_hover(device: i32, source: i32, tool: i32, action: i32, x: f32, y: f32) {
     let Ok(mut state) = EC_WHEEL_KEYS.lock() else { return };
     // MagicOS often reports hover MotionEvents through the touchscreen
     // device ID, not the separate Magic-Pencil button/keyboard device ID.
     // For hover ONLY, Android's actual STYLUS/ERASER tool type is the
     // authority; physical keyboard/button events remain strict-ID gated.
     let _ = device;
-    if tool != 2 && tool != 4 { return; }
+    // InputDevice.SOURCE_STYLUS=0x00004002. Some MagicOS builds tag
+    // the source correctly but report an UNKNOWN tool type on the first
+    // hover, before the stylus makes physical contact.
+    let pen_source = (source & 0x00004002) == 0x00004002;
+    if tool != 2 && tool != 4 && !pen_source { return; }
     match action & 255 {
         // Android MotionEvent ACTION_HOVER_MOVE / ACTION_HOVER_ENTER.
         7 | 9 if x.is_finite() && y.is_finite() => state.hover = Some((x, y)),
@@ -104,13 +108,14 @@ INJECT = r'''            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) 
                 if let ndk::event::InputEvent::MotionEvent(ref motion) = ndk_event {
                     let raw = motion.ptr().as_ptr();
                     let device = unsafe { ndk_sys::AInputEvent_getDeviceId(raw) };
+                    let source = unsafe { ndk_sys::AInputEvent_getSource(raw) };
                     let count = unsafe { ndk_sys::AMotionEvent_getPointerCount(raw) };
                     if count > 0 {
                         let tool = unsafe { ndk_sys::AMotionEvent_getToolType(raw, 0) };
                         let action = unsafe { ndk_sys::AMotionEvent_getAction(raw) };
                         let x = unsafe { ndk_sys::AMotionEvent_getX(raw, 0) };
                         let y = unsafe { ndk_sys::AMotionEvent_getY(raw, 0) };
-                        crate::ec_stylus_native_hover(device, tool, action, x, y);
+                        crate::ec_stylus_native_hover(device, source, tool, action, x, y);
                     }
                 }
                 // Verified HONOR Magic-Pencil keys only. Intercept BEFORE

@@ -120,7 +120,7 @@ public final class MainActivity extends Activity {
 
     private void initPalette() {
         // Accessible high-contrast charcoal palette, no blue/green surface cast.
-        bg=Color.parseColor(dark?"#15181B":"#F1F3F4");
+        bg=Color.parseColor(dark?"#000000":"#F1F3F4");
         surface=Color.parseColor(dark?"#30363B":"#FFFFFF");
         border=Color.parseColor(dark?"#717B83":"#B3BCC2");
         foreground=Color.parseColor(dark?"#F7FAFA":"#1D252A");
@@ -265,7 +265,7 @@ public final class MainActivity extends Activity {
         downloadPanel.setVisibility(View.GONE);
         banner=text("Updates are checked manually. You can enable startup checking in settings.",13,foreground,false);
         banner.setPadding(dp(18),dp(14),dp(18),dp(14));
-        banner.setBackground(shape(dark?Color.parseColor("#101214"):Color.parseColor("#E5E9EC"),border,0));
+        banner.setBackground(shape(dark?Color.BLACK:Color.parseColor("#E5E9EC"),border,0));
         root.addView(banner,new LinearLayout.LayoutParams(-1,-2));
         updateCards();
     }
@@ -406,7 +406,7 @@ public final class MainActivity extends Activity {
     private void openMenu(View anchor) {
         LinearLayout content=vertical();
         content.setPadding(dp(7),dp(7),dp(7),dp(7));
-        content.setBackground(shape(Color.parseColor("#050607"),
+        content.setBackground(shape(Color.BLACK,
             Color.parseColor("#677179"),15));
 
         ScrollView scroll=new ScrollView(this);
@@ -462,7 +462,7 @@ public final class MainActivity extends Activity {
         menuItem(content,popup,"About ArtCraft Launcher",false,()->{
             new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.8  •  ARM64 TEST ONLY\\n\\n"+
+                .setMessage("v0.1.0-android.9  •  ARM64 TEST ONLY\\n\\n"+
                     "Standalone hub for 13 ArtCraft apps. APK installs require your approval. "+
                     "Published launcher updates must use a compatible signing certificate.")
                 .setPositiveButton("OK",null).show();

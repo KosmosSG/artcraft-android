@@ -181,15 +181,12 @@ impl Wheel {
             painter.add(Shape::line(nodes.iter().map(|&(x, y)| p(x, y)).collect(), stroke));
         };
         match choice {
-            0 => { // Effect: uniform magic wand with three clean sparkle crosses
-                line(&[(5.0, 20.0), (17.0, 8.0)]);
-                line(&[(13.7, 11.3), (17.7, 15.3)]);
-                line(&[(16.0, 2.0), (16.0, 6.0)]);
-                line(&[(14.0, 4.0), (18.0, 4.0)]);
-                line(&[(4.0, 4.0), (4.0, 8.0)]);
-                line(&[(2.0, 6.0), (6.0, 6.0)]);
-                line(&[(20.0, 16.0), (20.0, 20.0)]);
-                line(&[(18.0, 18.0), (22.0, 18.0)]);
+            0 => { // Effect: the editor's own precise, proportionate "fx" glyph
+                // Avoid the previous wand with disconnected miniature sparkles.
+                // This is the same original vector symbol used in EffectCraft.
+                icons::paint(painter,
+                    egui::Rect::from_center_size(center, vec2(25.0, 25.0) * scale),
+                    Icon::Fx, color);
             }
             1 => { // Filter: recognizable classic funnel instead of a star
                 line(&[(3.5, 4.5), (20.5, 4.5), (14.0, 12.0),
@@ -205,6 +202,47 @@ impl Wheel {
             3 => { // Crop: opposing L-shaped crop corners
                 line(&[(6.0, 3.0), (6.0, 17.0), (21.0, 17.0)]);
                 line(&[(3.0, 7.0), (17.0, 7.0), (17.0, 21.0)]);
+            }
+            4 => { // Hand: clean outlined open palm with rounded fingers
+                // Four distinct fingertip arcs and a single smooth palm
+                // contour, matching the recognizable PhotoCraft hand tool.
+                let rounded = Stroke::new(1.85 * scale, color);
+                let draw = |nodes: &[(f32, f32)]| {
+                    painter.add(Shape::line(
+                        nodes.iter().map(|&(x, y)| p(x, y)).collect(),
+                        rounded));
+                };
+                // Thumb bends back into the palm; the base and outer edge
+                // stay unfilled so the icon reads well on dark grey segments.
+                draw(&[
+                    (8.2, 13.5), (6.7, 11.7), (5.9, 11.0),
+                    (5.1, 10.8), (4.3, 11.2), (4.0, 12.0),
+                    (4.5, 13.0), (8.5, 18.3), (9.5, 19.4),
+                    (11.0, 20.0), (14.2, 20.0), (16.4, 19.5),
+                    (17.8, 18.1), (18.6, 16.0), (18.6, 9.2)
+                ]);
+                // Rounded fingertip semicircles: index, middle, ring,
+                // little finger. No jagged outline or tiny star-like marks.
+                let finger = |left: f32, right: f32,
+                              top: f32, down_left: f32,
+                              down_right: f32| {
+                    draw(&[(left, down_left), (left, top)]);
+                    let radius = (right - left) / 2.0;
+                    let cx = (left + right) / 2.0;
+                    let cap: Vec<Pos2> = (0..=14).map(|n| {
+                        let theta = PI + n as f32 * PI / 14.0;
+                        p(cx + radius * theta.cos(), top + radius * theta.sin())
+                    }).collect();
+                    painter.add(Shape::line(cap, rounded));
+                    draw(&[(right, top), (right, down_right)]);
+                };
+                finger(8.2, 10.6, 5.8, 13.5, 10.2);
+                finger(10.6, 13.0, 4.3, 10.2, 10.3);
+                finger(13.0, 15.4, 6.1, 10.3, 11.2);
+                finger(16.2, 18.6, 9.2, 11.2, 9.2);
+                // Join the ring and little finger while keeping the
+                // finger gaps visually distinct at reduced 75% wheel size.
+                draw(&[(15.4, 11.2), (16.2, 11.2)]);
             }
             5 => { // Adjust: PhotoCraft/Lucide horizontal sliders
                 line(&[(4.0, 6.0), (10.0, 6.0)]);
@@ -233,7 +271,7 @@ impl Wheel {
                 curve.push(p(mirror(11.0), 20.0));
                 painter.add(Shape::line(curve, stroke));
             }
-            _ => { // Hand, Select, Pen, Zoom use the official editor icon registry
+            _ => { // Select, Pen, Zoom use the official editor icon registry
                 icons::paint(painter,
                     egui::Rect::from_center_size(center, vec2(24.0, 24.0) * scale),
                     ICONS[choice], color);

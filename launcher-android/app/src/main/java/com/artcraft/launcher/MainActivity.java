@@ -16,6 +16,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,7 +29,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ImageView;
-import android.widget.PopupMenu;
+import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -69,7 +70,7 @@ public final class MainActivity extends Activity {
         }
     };
 
-    private int bg,surface,border,foreground,muted,accent;
+    private int bg,surface,border,foreground,muted,accent,buttonFill,buttonOutline;
     private final BroadcastReceiver downloadReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
             if(!DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) return;
@@ -118,13 +119,15 @@ public final class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        // Neutral graphite surfaces with a single teal accent throughout.
-        bg=Color.parseColor(dark?"#22272C":"#F0F2F3");
-        surface=Color.parseColor(dark?"#343B41":"#FFFFFF");
-        border=Color.parseColor(dark?"#59636B":"#CAD0D4");
-        foreground=Color.parseColor(dark?"#F4F6F6":"#232B30");
-        muted=Color.parseColor(dark?"#BDC6CA":"#69757B");
-        accent=Color.parseColor("#12AFA3");
+        // Accessible high-contrast charcoal palette, no blue/green surface cast.
+        bg=Color.parseColor(dark?"#15181B":"#F1F3F4");
+        surface=Color.parseColor(dark?"#30363B":"#FFFFFF");
+        border=Color.parseColor(dark?"#717B83":"#B3BCC2");
+        foreground=Color.parseColor(dark?"#F7FAFA":"#1D252A");
+        muted=Color.parseColor(dark?"#D0D7DB":"#4B5962");
+        accent=Color.parseColor(dark?"#50E0D3":"#087F75");
+        buttonFill=Color.parseColor("#087F75");
+        buttonOutline=Color.parseColor(dark?"#49DACE":"#087F75");
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -180,10 +183,11 @@ public final class MainActivity extends Activity {
     }
 
     private TextView action(String label,boolean primary,int color,Runnable click) {
-        TextView button=text(label,13,primary?Color.WHITE:accent,true);
+        TextView button=text(label,13,primary?Color.WHITE:buttonOutline,true);
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(13),dp(10),dp(13),dp(10));
-        button.setBackground(shape(primary?accent:surface,primary?Color.TRANSPARENT:accent,11));
+        button.setBackground(shape(primary?buttonFill:surface,
+            primary?Color.TRANSPARENT:buttonOutline,11));
         button.setOnClickListener(v->click.run());
         return button;
     }
@@ -219,12 +223,9 @@ public final class MainActivity extends Activity {
         scroller.addView(page);
         LinearLayout welcome=vertical();
         welcome.setPadding(dp(19),dp(17),dp(19),dp(17));
-        GradientDrawable welcomeBackground=new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            new int[]{surface,dark?Color.parseColor("#3A4F50"):Color.parseColor("#E1E8E7")});
-        welcomeBackground.setCornerRadius(dp(18));
-        welcomeBackground.setStroke(dp(1),border);
-        welcome.setBackground(welcomeBackground);
+        // Solid neutral hero surface: stronger edge contrast, no green wash.
+        welcome.setBackground(shape(dark?Color.parseColor("#353C41"):
+            Color.parseColor("#E4E9EC"),border,18));
         page.addView(welcome,new LinearLayout.LayoutParams(-1,-2));
         welcome.addView(text("Your creative workspace, all in one place",19,foreground,true));
         TextView descriptor=text("Open installed apps, check published GitHub releases, and manage updates with Android's installer.",13,muted,false);
@@ -232,7 +233,7 @@ public final class MainActivity extends Activity {
         welcome.addView(descriptor);
         summary=text("",12,accent,true);
         welcome.addView(summary);
-        TextView section=text("YOUR APPS",12,muted,true);
+        TextView section=text("YOUR APPS",13,foreground,true);
         section.setPadding(dp(4),dp(23),0,dp(12));
         page.addView(section);
         list=vertical();page.addView(list);
@@ -262,9 +263,9 @@ public final class MainActivity extends Activity {
         barLp.setMargins(0,dp(10),0,0);
         downloadPanel.addView(downloadProgress,barLp);
         downloadPanel.setVisibility(View.GONE);
-        banner=text("Updates are checked manually. You can enable startup checking in settings.",12,foreground,false);
-        banner.setPadding(dp(18),dp(12),dp(18),dp(12));
-        banner.setBackground(shape(surface,border,0));
+        banner=text("Updates are checked manually. You can enable startup checking in settings.",13,foreground,false);
+        banner.setPadding(dp(18),dp(14),dp(18),dp(14));
+        banner.setBackground(shape(dark?Color.parseColor("#101214"):Color.parseColor("#E5E9EC"),border,0));
         root.addView(banner,new LinearLayout.LayoutParams(-1,-2));
         updateCards();
     }
@@ -332,22 +333,23 @@ public final class MainActivity extends Activity {
         LinearLayout card=vertical();
         card.setPadding(dp(13),dp(14),dp(13),dp(14));
         card.setBackground(shape(surface,border,17));
+        card.setElevation(dp(3));
         LinearLayout row=horizontal();card.addView(row);
         View icon=appIcon(app);
         row.addView(icon,new LinearLayout.LayoutParams(dp(46),dp(46)));
         LinearLayout title=vertical();title.setPadding(dp(10),0,0,0);
         row.addView(title,new LinearLayout.LayoutParams(0,-2,1f));
-        title.addView(text(app.name,15,foreground,true));
+        title.addView(text(app.name,16,foreground,true));
         title.addView(text(installed!=null?"Installed":"Not installed",11,muted,false));
         String note;
         if(remote==null)note="No eligible published APK";
         else note=(remote.preview?"Preview ":"Release ")+"v"+remote.version;
-        TextView detail=text(note,11,muted,false);
+        TextView detail=text(note,12,muted,false);
         detail.setMaxLines(2);
         detail.setPadding(0,dp(11),0,dp(9));
         card.addView(detail);
         if(installed!=null) {
-            TextView current=text("On device: v"+safe(installed.versionName),11,muted,false);
+            TextView current=text("On device: v"+safe(installed.versionName),12,muted,false);
             current.setMaxLines(1);current.setEllipsize(android.text.TextUtils.TruncateAt.END);
             card.addView(current);
         }
@@ -396,44 +398,104 @@ public final class MainActivity extends Activity {
         startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/KosmosSG/artcraft-android/releases")));
     }
 
+    /**
+     * Native overflow rendered on its own solid-black surface.
+     * PopupMenu inherits a platform-specific theme, so it could not reliably
+     * honor the requested black menu on HONOR/MagicOS.
+     */
     private void openMenu(View anchor) {
-        PopupMenu popup=new PopupMenu(this,anchor);
-        popup.getMenu().add(0,1,0,"Check for Updates");
-        popup.getMenu().add(0,8,1,"Check Launcher Update");
-        popup.getMenu().add(0,9,2,"Launcher startup checks: "+(settings.getBoolean("launcher_startup_check",false)?"ON":"OFF"));
-        popup.getMenu().add(0,2,3,"Suite startup checks: "+(settings.getBoolean("startup_check",false)?"ON":"OFF"));
-        popup.getMenu().add(0,3,4,"Channel: "+(settings.getBoolean("preview",true)?"Stable + Preview":"Stable only"));
-        popup.getMenu().add(0,4,5,"Theme: "+(dark?"Dark":"Light"));
-        popup.getMenu().add(0,5,6,"GitHub Releases");
-        popup.getMenu().add(0,7,7,"Downloads");
-        popup.getMenu().add(0,6,8,"About ArtCraft Launcher");
-        popup.setOnMenuItemClickListener(item->{
-            int id=item.getItemId();
-            if(id==1)refreshCatalog();
-            else if(id==8)checkLauncherUpdate(false);
-            else if(id==9) {
-                boolean next=!settings.getBoolean("launcher_startup_check",false);
-                settings.edit().putBoolean("launcher_startup_check",next).apply();
-                notice("Launcher startup update checks "+(next?"enabled":"disabled"));
-            }
-            else if(id==2) { boolean next=!settings.getBoolean("startup_check",false);
-                settings.edit().putBoolean("startup_check",next).apply();
-                notice("Startup checks "+(next?"enabled":"disabled")); }
-            else if(id==3) {settings.edit().putBoolean("preview",!settings.getBoolean("preview",true)).apply();refreshCatalog();}
-            else if(id==4) {settings.edit().putBoolean("dark_theme",!dark).apply();recreate();}
-            else if(id==5)openReleases();
-            else if(id==7) {
-                updateDownloadProgress();
-                if(downloadPanel.getVisibility()==View.GONE)
-                    notice("No active downloads. Select Install or Update on an app card.");
-            }
-            else if(id==6)new AlertDialog.Builder(this)
-                .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.7  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
-                .setPositiveButton("OK",null).show();
-            return true;
+        LinearLayout content=vertical();
+        content.setPadding(dp(7),dp(7),dp(7),dp(7));
+        content.setBackground(shape(Color.parseColor("#050607"),
+            Color.parseColor("#677179"),15));
+
+        ScrollView scroll=new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setFillViewport(true);
+        scroll.addView(content);
+
+        int maxWidth=(int)(getResources().getDisplayMetrics().widthPixels/dp(1));
+        int menuWidth=Math.min(308,Math.max(210,maxWidth-32));
+        int menuHeight=Math.min(dp(500),
+            getResources().getDisplayMetrics().heightPixels-dp(120));
+        PopupWindow popup=new PopupWindow(scroll,dp(menuWidth),menuHeight,true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+        popup.setElevation(dp(16));
+
+        menuGroup(content,"UPDATES");
+        menuItem(content,popup,"Check App Updates",true,this::refreshCatalog);
+        menuItem(content,popup,"Check Launcher Update",true,()->checkLauncherUpdate(false));
+        menuItem(content,popup,"Downloads",false,()->{
+            updateDownloadProgress();
+            if(downloadPanel.getVisibility()==View.GONE)
+                notice("No active downloads. Select Install or Update on an app card.");
         });
-        popup.show();
+        menuDivider(content);
+
+        menuGroup(content,"PREFERENCES");
+        menuItem(content,popup,"Suite startup checks: "+
+            (settings.getBoolean("startup_check",false)?"ON":"OFF"),false,()->{
+            boolean next=!settings.getBoolean("startup_check",false);
+            settings.edit().putBoolean("startup_check",next).apply();
+            notice("Suite startup update checks "+(next?"enabled":"disabled"));
+        });
+        menuItem(content,popup,"Launcher startup checks: "+
+            (settings.getBoolean("launcher_startup_check",false)?"ON":"OFF"),false,()->{
+            boolean next=!settings.getBoolean("launcher_startup_check",false);
+            settings.edit().putBoolean("launcher_startup_check",next).apply();
+            notice("Launcher startup update checks "+(next?"enabled":"disabled"));
+        });
+        menuItem(content,popup,"Channel: "+
+            (settings.getBoolean("preview",true)?"Stable + Preview":"Stable only"),
+            false,()->{
+            settings.edit().putBoolean("preview",!settings.getBoolean("preview",true)).apply();
+            refreshCatalog();
+        });
+        menuItem(content,popup,"Theme: "+(dark?"Dark":"Light"),false,()->{
+            settings.edit().putBoolean("dark_theme",!dark).apply();recreate();
+        });
+        menuDivider(content);
+
+        menuGroup(content,"MORE");
+        menuItem(content,popup,"GitHub Releases",false,this::openReleases);
+        menuItem(content,popup,"About ArtCraft Launcher",false,()->{
+            new AlertDialog.Builder(this)
+                .setTitle("ArtCraft Android Launcher")
+                .setMessage("v0.1.0-android.8  •  ARM64 TEST ONLY\\n\\n"+
+                    "Standalone hub for 13 ArtCraft apps. APK installs require your approval. "+
+                    "Published launcher updates must use a compatible signing certificate.")
+                .setPositiveButton("OK",null).show();
+        });
+        popup.showAsDropDown(anchor,0,dp(5),Gravity.RIGHT);
+    }
+
+    private void menuGroup(LinearLayout content,String label) {
+        TextView heading=text(label,10,Color.parseColor("#8EE9DF"),true);
+        heading.setPadding(dp(15),dp(9),dp(12),dp(4));
+        content.addView(heading,new LinearLayout.LayoutParams(-1,dp(33)));
+    }
+
+    private void menuDivider(LinearLayout content) {
+        View line=new View(this);
+        line.setBackgroundColor(Color.parseColor("#43494D"));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));
+        lp.setMargins(dp(11),dp(7),dp(11),dp(7));
+        content.addView(line,lp);
+    }
+
+    private void menuItem(LinearLayout content,PopupWindow popup,String title,
+                          boolean highlighted,Runnable onSelect) {
+        TextView item=text(title,14,Color.parseColor("#F6F8F9"),false);
+        item.setMinHeight(dp(44));
+        item.setPadding(dp(15),dp(10),dp(10),dp(10));
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        if(highlighted)
+            item.setBackground(shape(Color.parseColor("#123734"),
+                Color.TRANSPARENT,10));
+        else item.setBackground(shape(Color.TRANSPARENT,Color.TRANSPARENT,10));
+        item.setOnClickListener(view->{popup.dismiss();onSelect.run();});
+        content.addView(item,new LinearLayout.LayoutParams(-1,-2));
     }
 
     private void refreshCatalog() {

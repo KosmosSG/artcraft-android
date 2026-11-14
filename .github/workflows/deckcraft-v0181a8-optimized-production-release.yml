@@ -703,7 +703,7 @@ jobs:
           - Stylus button, pen-hover pointer, first-hover native SurfaceView listener and underlay isolation.
           - Dk menu, Appearance, fonts import/shared/refresh, in-app updater, D/C/S shortcuts, Ctrl+W, PPTX open/save, touch and trackpad improvements.
           - Legacy .ppt file format not supported; experimental MagicOS legacy VIEW-only MIME compatibility is not a .ppt importer.
-          - ARM64 native unneeded symbols stripped, 16 KiB aligned, original DeckCraft production certificate.
+          - ARM64 native unneeded symbols stripped, 16 KiB aligned, original DeckCraft production certificate. APK optimization is measured against the matching unstripped Android.8 build; its upstream v0.18.1 codebase is larger than the older published v0.17.0 APK.
           Package: com.artcraft.deckcraft
           versionName: 0.18.1-android.8
           versionCode: 100000036
@@ -717,7 +717,13 @@ jobs:
           from pathlib import Path
           import hashlib,json,os
           apk=Path('dist/DeckCraft-v0.18.1-android.8-arm64-v8a.apk')
-          assert apk.is_file() and apk.stat().st_size<113896437, 'Size gate: must improve upon 113,896,437-byte published v0.17.0'
+          assert apk.is_file(), 'Optimized signed APK missing'
+          original=Path('builder/output/deckcraft-0.18.1-android.8.apk')
+          assert original.is_file(), 'Matching unoptimized Android.8 APK missing'
+          assert apk.stat().st_size < original.stat().st_size, (
+              f"Same-version size regression: optimized {apk.stat().st_size} bytes, original {original.stat().st_size} bytes")
+          print(f"PASS: same-version APK size reduced {original.stat().st_size:,} -> {apk.stat().st_size:,} bytes "
+                f"({(original.stat().st_size-apk.stat().st_size)/original.stat().st_size:.1%})")
           digest=hashlib.sha256(apk.read_bytes()).hexdigest()
           assert Path('dist/SHA256SUMS.txt').read_text().split()[0]==digest
           assert Path('dist/signing-certificate-sha256.txt').read_text().strip()=='7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9'

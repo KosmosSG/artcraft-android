@@ -79,6 +79,8 @@ jobs:
           PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android12_relaunch_ime.py
           python3 -m py_compile android-port/tools/vectorcraft/patch_android13_document_ime_fence.py android-port/tools/vectorcraft/test_android13_document_ime_fence.py
           PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android13_document_ime_fence.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android7_physical_typing.py android-port/tools/vectorcraft/test_v0241_android7_physical_typing.py
+          PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_v0241_android7_physical_typing.py
           PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_android10_imported_ai_text.py
           # Dry-run generated Android overlays on reviewed files BEFORE NDK install.
           # This keeps stale Java/Rust source anchors from burning build minutes.

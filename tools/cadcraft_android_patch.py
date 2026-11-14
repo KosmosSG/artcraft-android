@@ -107,6 +107,7 @@ def install_pen_button(reference: Path) -> None:
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> cadWheelKeys =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
     private long cadWheelLastButtonMs = 0L;
+    private boolean cadHadHover = false;
     public void cadStylusSetEnabled(boolean enabled) {
         cadWheelEnabled = enabled;
         if (!enabled) cadWheelKeys.clear();
@@ -163,8 +164,16 @@ def install_pen_button(reference: Path) -> None:
         if (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_HOVER_ENTER
                 || action == MotionEvent.ACTION_HOVER_EXIT || action == MotionEvent.ACTION_DOWN
                 || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            try { cadStylusHoverNative(event.getX(), event.getY(), action); }
-            catch (UnsatisfiedLinkError error) {
+            try {
+                cadStylusHoverNative(event.getX(), event.getY(), action);
+                boolean inRange = action == MotionEvent.ACTION_HOVER_MOVE
+                    || action == MotionEvent.ACTION_HOVER_ENTER;
+                if (inRange != cadHadHover) {
+                    cadHadHover = inRange;
+                    wakeNativeLoop();
+                    Log.i(TAG, "CADCraft pen hover " + (inRange ? "entered" : "exited"));
+                }
+            } catch (UnsatisfiedLinkError error) {
                 Log.w(TAG, "CADCraft hover JNI not yet loaded", error);
             }
         }

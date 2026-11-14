@@ -17,6 +17,16 @@ public final class ReleaseRules {
         return VERSION.matcher(v).matches() ? v : null;
     }
 
+    /** Launcher versions have their own exact namespace, never mixed with Craft apps. */
+    public static String launcherVersionForTag(String tag) {
+        return versionForTag("artcraft-launcher",tag);
+    }
+
+    public static boolean isLauncherApkFor(String version,String name) {
+        return version!=null && VERSION.matcher(version).matches()
+            && ("ArtCraft-Launcher-v"+version+"-arm64-v8a.apk").equals(name);
+    }
+
     public static boolean isApkFor(String appName, String key, String version, String filename) {
         if (filename == null || version == null) return false;
         String canonical = appName + "-v" + version + "-arm64-v8a.apk";

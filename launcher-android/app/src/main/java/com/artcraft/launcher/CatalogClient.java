@@ -90,6 +90,49 @@ public final class CatalogClient {
         return found;
     }
 
+    /**
+     * Future launcher updates require an independently published release with exact
+     * tag, canonical ARM64 APK, SHA256SUMS.txt and matching signing identity.
+     * No GitHub Actions disposable artifact qualifies as a production update.
+     */
+    static Release fetchLauncher(boolean includePreviews) throws Exception {
+        Release best=null;
+        for(int page=1;page<=5;page++) {
+            JSONArray releases=new JSONArray(getText(RELEASES+"?per_page=100&page="+page));
+            for(int i=0;i<releases.length();i++) {
+                JSONObject release=releases.getJSONObject(i);
+                if(release.optBoolean("draft",true) ||
+                    (!includePreviews && release.optBoolean("prerelease",false))) continue;
+                String tag=release.optString("tag_name","");
+                String version=ReleaseRules.launcherVersionForTag(tag);
+                if(version==null) continue;
+                JSONArray assets=release.optJSONArray("assets");
+                if(assets==null) continue;
+                String apkName=null,apkUrl=null,checksumUrl=null;
+                int matches=0;
+                for(int j=0;j<assets.length();j++) {
+                    JSONObject asset=assets.getJSONObject(j);
+                    if(!"uploaded".equals(asset.optString("state","uploaded")) ||
+                        asset.optLong("size",0)<=0) continue;
+                    String name=asset.optString("name","");
+                    String url=asset.optString("browser_download_url","");
+                    if(!url.startsWith(DOWNLOAD_PREFIX+tag+"/")) continue;
+                    if(ReleaseRules.isLauncherApkFor(version,name)) {
+                        matches++;apkName=name;apkUrl=url;
+                    } else if("SHA256SUMS.txt".equals(name)) checksumUrl=url;
+                }
+                if(matches!=1 || checksumUrl==null) continue;
+                Release candidate=new Release(version,tag,apkName,apkUrl,
+                    checksumUrl,release.optString("html_url",""),
+                    release.optBoolean("prerelease",false));
+                if(best==null || ReleaseRules.compareVersions(candidate.version,best.version)>0)
+                    best=candidate;
+            }
+            if(releases.length()<100)break;
+        }
+        return best;
+    }
+
     static String expectedSha256(Release release) throws Exception {
         String sums=getText(release.checksumsUrl);
         Pattern sum=Pattern.compile("^([0-9a-fA-F]{64})\\s+\\*?(.+)$");

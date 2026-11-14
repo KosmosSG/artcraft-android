@@ -57,7 +57,7 @@ public final class MainActivity extends Activity {
     private ProgressBar downloadProgress;
     private LinearLayout downloadPanel;
     private ScrollView scroller;
-    private boolean dark,checking,checkingDownload, receiverRegistered;
+    private boolean dark,checking,checkingDownload,checkingLauncher,receiverRegistered;
     private File readyInstall;
     private String readyPackage;
     /** UI-only poll while a system DownloadManager transfer is active. */
@@ -94,6 +94,7 @@ public final class MainActivity extends Activity {
         else registerReceiver(downloadReceiver,filter);
         receiverRegistered=true;
         if(settings.getBoolean("startup_check",false)) refreshCatalog();
+        if(settings.getBoolean("launcher_startup_check",false)) checkLauncherUpdate(true);
     }
 
     @Override protected void onResume() {
@@ -398,15 +399,23 @@ public final class MainActivity extends Activity {
     private void openMenu(View anchor) {
         PopupMenu popup=new PopupMenu(this,anchor);
         popup.getMenu().add(0,1,0,"Check for Updates");
-        popup.getMenu().add(0,2,1,"Startup checks: "+(settings.getBoolean("startup_check",false)?"ON":"OFF"));
-        popup.getMenu().add(0,3,2,"Channel: "+(settings.getBoolean("preview",true)?"Stable + Preview":"Stable only"));
-        popup.getMenu().add(0,4,3,"Theme: "+(dark?"Dark":"Light"));
-        popup.getMenu().add(0,5,4,"GitHub Releases");
-        popup.getMenu().add(0,7,5,"Downloads");
-        popup.getMenu().add(0,6,6,"About ArtCraft Launcher");
+        popup.getMenu().add(0,8,1,"Check Launcher Update");
+        popup.getMenu().add(0,9,2,"Launcher startup checks: "+(settings.getBoolean("launcher_startup_check",false)?"ON":"OFF"));
+        popup.getMenu().add(0,2,3,"Suite startup checks: "+(settings.getBoolean("startup_check",false)?"ON":"OFF"));
+        popup.getMenu().add(0,3,4,"Channel: "+(settings.getBoolean("preview",true)?"Stable + Preview":"Stable only"));
+        popup.getMenu().add(0,4,5,"Theme: "+(dark?"Dark":"Light"));
+        popup.getMenu().add(0,5,6,"GitHub Releases");
+        popup.getMenu().add(0,7,7,"Downloads");
+        popup.getMenu().add(0,6,8,"About ArtCraft Launcher");
         popup.setOnMenuItemClickListener(item->{
             int id=item.getItemId();
             if(id==1)refreshCatalog();
+            else if(id==8)checkLauncherUpdate(false);
+            else if(id==9) {
+                boolean next=!settings.getBoolean("launcher_startup_check",false);
+                settings.edit().putBoolean("launcher_startup_check",next).apply();
+                notice("Launcher startup update checks "+(next?"enabled":"disabled"));
+            }
             else if(id==2) { boolean next=!settings.getBoolean("startup_check",false);
                 settings.edit().putBoolean("startup_check",next).apply();
                 notice("Startup checks "+(next?"enabled":"disabled")); }
@@ -420,7 +429,7 @@ public final class MainActivity extends Activity {
             }
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.6  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.7  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });
@@ -442,6 +451,63 @@ public final class MainActivity extends Activity {
                 });
             } catch(Exception e) {
                 ui.post(()->{checking=false;updateCards();notice("Update check unavailable: "+e.getMessage());});
+            }
+        });
+    }
+
+    private void checkLauncherUpdate(boolean startup) {
+        if(checkingLauncher)return;
+        checkingLauncher=true;
+        if(!startup)notice("Checking published launcher updates…");
+        final boolean preview=settings.getBoolean("preview",true);
+        worker.execute(()->{
+            try {
+                CatalogClient.Release latest=CatalogClient.fetchLauncher(preview);
+                ui.post(()->{
+                    checkingLauncher=false;
+                    PackageInfo installed=installed(getPackageName());
+                    String current=installed==null?null:installed.versionName;
+                    if(latest==null) {
+                        if(!startup)notice("No eligible signed launcher release found on GitHub.");
+                    } else if(current==null ||
+                        ReleaseRules.compareVersions(latest.version,current)<=0) {
+                        if(!startup)notice("ArtCraft Launcher is up to date.");
+                    } else {
+                        showLauncherUpdate(latest,current);
+                    }
+                });
+            } catch(Exception e) {
+                ui.post(()->{
+                    checkingLauncher=false;
+                    if(!startup)notice("Launcher update check unavailable: "+e.getMessage());
+                });
+            }
+        });
+    }
+
+    private void showLauncherUpdate(CatalogClient.Release release,String installedVersion) {
+        String summary="Installed: v"+installedVersion+
+            "\\nAvailable: v"+release.version+
+            (release.preview?" (Preview)":" (Stable)")+
+            "\\n\\nDownload only from official KosmosSG GitHub Releases. The update must have the same signing certificate and an increasing Android versionCode. Disposable test APKs cannot update each other unless signing identities match.";
+        new AlertDialog.Builder(this).setTitle("ArtCraft Launcher Update")
+            .setMessage(summary).setNegativeButton("Not now",null)
+            .setNeutralButton("Release details",(d,w)->openUrl(release.notesUrl))
+            .setPositiveButton("Download",(d,w)->startLauncherDownload(release)).show();
+    }
+
+    private void startLauncherDownload(CatalogClient.Release release) {
+        if(settings.getLong("download_id",-1L)>0) {
+            notice("Finish the current app download first.");return;
+        }
+        notice("Verifying launcher release checksum…");
+        worker.execute(()->{
+            try {
+                String hash=CatalogClient.expectedSha256(release);
+                ui.post(()->enqueueDownload("ArtCraft Launcher",getPackageName(),
+                    "launcher",release,hash));
+            } catch(Exception e) {
+                ui.post(()->notice("Launcher release rejected: "+e.getMessage()));
             }
         });
     }
@@ -475,26 +541,31 @@ public final class MainActivity extends Activity {
     }
 
     private void enqueue(CatalogClient.App app,CatalogClient.Release release,String sha) {
+        enqueueDownload(app.name,app.packageName,app.key,release,sha);
+    }
+
+    private void enqueueDownload(String appName,String packageName,String appKey,
+                                 CatalogClient.Release release,String sha) {
         if(settings.getLong("download_id",-1)>0) {notice("Another download is in progress");return;}
         try {
             if(!release.apkUrl.startsWith(CatalogClient.DOWNLOAD_PREFIX+release.tag+"/"))
                 throw new IllegalStateException("Unexpected GitHub asset URL");
             File directory=getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
             if(directory==null) throw new IllegalStateException("Storage unavailable");
-            String filename="ArtCraft-"+app.key+"-"+release.version+".apk";
+            String filename="ArtCraft-"+appKey+"-"+release.version+".apk";
             File local=new File(directory,filename);
             if(local.exists() && !local.delete()) throw new IllegalStateException("Old APK could not be replaced");
             DownloadManager.Request request=new DownloadManager.Request(Uri.parse(release.apkUrl));
-            request.setTitle(app.name+" v"+release.version);
+            request.setTitle(appName+" v"+release.version);
             request.setDescription("ArtCraft Launcher – verified GitHub release");
             request.setAllowedOverMetered(true);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,filename);
             long id=downloads.enqueue(request);
             settings.edit().putLong("download_id",id).putString("download_file",filename)
-                .putString("download_sha",sha).putString("download_package",app.packageName)
+                .putString("download_sha",sha).putString("download_package",packageName)
                 .putString("download_version",release.version).apply();
-            notice("Downloading "+app.name+" inside ArtCraft Launcher…");
+            notice("Downloading "+appName+" inside ArtCraft Launcher…");
             updateDownloadProgress();
             ui.removeCallbacks(progressPoll);
             ui.postDelayed(progressPoll,750);

@@ -62,7 +62,7 @@ pub struct WheelPrefs {
 impl Default for WheelPrefs {
     fn default() -> Self {
         Self {
-            enabled: true, size_percent: 100.0, opacity_percent: 85.0,
+            enabled: true, size_percent: 75.0, opacity_percent: 85.0,
             soft_shadow: true,
             // PhotoCraft placement: top, top-right, right, bottom-right,
             // bottom, bottom-left, left, top-left.
@@ -302,13 +302,13 @@ fn paint(ui: &mut Ui, p: &WheelPrefs, hover: Option<Pos2>) {
     painter.circle_filled(c, (INNER + 2.0) * k, NAVY);
     painter.circle_stroke(c, (INNER + 2.0) * k, Stroke::new(1.4, CYAN));
     // Only the transparent launcher Lc lettering: no square/tile behind it.
-    // Displayed glyph is exactly 10% larger than the previous 39pt PNG's
-    // visible letter region; cropping removes background, not padding scale.
+    // Android.4: enlarge the Android.3 glyph another 15%, preserving its
+    // original aspect ratio and cyan color. Raise it 3pt in the wheel hub.
     let (texture, glyph_fraction) = lc_glyph(ui.ctx());
-    let glyph_size = glyph_fraction * (39.0 * k * 1.10);
+    let glyph_size = glyph_fraction * (39.0 * k * 1.10 * 1.15);
     painter.image(
         texture.id(),
-        egui::Rect::from_center_size(c - vec2(0.0, 8.0) * k, glyph_size),
+        egui::Rect::from_center_size(c - vec2(0.0, 11.0) * k, glyph_size),
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
         Color32::WHITE,
     );

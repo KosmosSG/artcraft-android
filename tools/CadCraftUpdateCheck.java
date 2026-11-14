@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
 public final class UpdateCheck {
     private static final String RELEASES =
         "https://api.github.com/repos/KosmosSG/artcraft-android/releases?per_page=100";
-    private static final String CURRENT = "cadcraft-v0.19.0-android.7";
+    private static final String CURRENT = "cadcraft-v0.19.0-android.8";
     private static final Pattern CAD_TAG = Pattern.compile(
         "^cadcraft-v([0-9]+)\\.([0-9]+)\\.([0-9]+)-android\\.([0-9]+)$",
         Pattern.CASE_INSENSITIVE);

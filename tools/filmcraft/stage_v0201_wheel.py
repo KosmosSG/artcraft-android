@@ -29,16 +29,15 @@ JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Neve
     public long fcWheelTakeHover() { return fcWheelHover.getAndSet(0L); }
     private void fcWheelButton() {
         long now = android.os.SystemClock.uptimeMillis();
-        if (!fcWheelEnabled || !fcWheelHovering || now-fcWheelHoverAt > 1800L)
-            return;
+        // A stationary hovering pen stops emitting MOVE events. Do not
+        // expire valid hover after 1.8 seconds: HOVER_EXIT explicitly clears it.
+        if (!fcWheelEnabled || !fcWheelHovering) return;
         if (now-fcWheelLastButton < 350L) return;
         fcWheelLastButton = now;
         fcWheelSignal.set(1);
     }
     private boolean fcWheelKey(android.view.KeyEvent event) {
-        if (!fcWheelEnabled || event == null
-            || !fcWheelHovering
-            || android.os.SystemClock.uptimeMillis()-fcWheelHoverAt > 1800L)
+        if (!fcWheelEnabled || event == null || !fcWheelHovering)
             return false;
         android.view.InputDevice device =
             android.view.InputDevice.getDevice(event.getDeviceId());
@@ -79,6 +78,76 @@ JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Neve
             return true;
         }
         return false;
+    }
+
+    // GameActivity's Activity-level generic-motion callback may not receive
+    // the first HOVER_ENTER targeted at its SurfaceView until the user touches
+    // the screen. Observe the actual native surface from onResume/initial
+    // window focus, before any touch, without consuming or synthesizing events.
+    private android.view.View fcWheelHoverTarget;
+    private boolean fcWheelHoverLayoutObserverInstalled;
+    private final android.view.View.OnHoverListener fcWheelSurfaceHover =
+            (view, event) -> {
+                fcWheelMotion(event);
+                return false; // ALWAYS allow GameActivity/winit to process input
+            };
+    private android.view.View fcWheelFindSurface(android.view.View view) {
+        if (view == null) return null;
+        if (view instanceof android.view.SurfaceView) return view;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i=0; i<group.getChildCount(); i++) {
+                android.view.View child=fcWheelFindSurface(group.getChildAt(i));
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+    private void fcWheelAttachHoverSurface() {
+        if (getWindow() == null) return;
+        android.view.View decor=getWindow().getDecorView();
+        android.view.View surface=fcWheelFindSurface(decor);
+        if (surface == null) return; // retry after GameActivity creates surface
+        if (surface != fcWheelHoverTarget) {
+            // No overlay: the stylus hover observer is installed directly on
+            // GameActivity's render surface, and returns false.
+            surface.setOnHoverListener(fcWheelSurfaceHover);
+            fcWheelHoverTarget=surface;
+        }
+        // The surface needs initial keyboard/hover focus without first touch.
+        // Never steal focus from an IME edit box or an active text editor.
+        android.view.View focused=getCurrentFocus();
+        if (focused == null || focused == decor || focused == surface) {
+            surface.setFocusable(true);
+            surface.setFocusableInTouchMode(true);
+            if (!surface.hasFocus()) surface.requestFocus();
+        }
+    }
+    private void fcWheelPrepareEarlyHover() {
+        if (getWindow() == null) return;
+        android.view.View decor=getWindow().getDecorView();
+        if (!fcWheelHoverLayoutObserverInstalled) {
+            fcWheelHoverLayoutObserverInstalled=true;
+            decor.getViewTreeObserver().addOnGlobalLayoutListener(
+                () -> fcWheelAttachHoverSurface());
+        }
+        decor.post(() -> fcWheelAttachHoverSurface());
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        fcWheelPrepareEarlyHover();
+    }
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) fcWheelPrepareEarlyHover();
+        else {
+            fcWheelHovering=false;
+            fcWheelHover.set(-1L);
+        }
+    }
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent e) {
+        if (fcWheelMotion(e)) return true;
+        return super.onGenericMotionEvent(e);
     }
 '''
 
@@ -273,6 +342,12 @@ def main() -> None:
             assert (Path(scratch) / "logo.rgba").stat().st_size == 40960
             render_icons(Path(scratch) / "wheel-icons.rgba")
             assert (Path(scratch) / "wheel-icons.rgba").stat().st_size == 72*72*8*4
+        for marker in ("onWindowFocusChanged(boolean hasFocus)",
+                       "setOnHoverListener(fcWheelSurfaceHover)",
+                       "onGenericMotionEvent(android.view.MotionEvent e)",
+                       "fcWheelFindSurface", "return false; // ALWAYS"):
+            if marker not in JAVA_STYLUS_BRIDGE:
+                raise RuntimeError("STOP: cold-start hover bridge missing " + marker)
         print("FilmCraft wheel, icon and updater staging guard self-test PASS")
         return
     if args.builder is None:

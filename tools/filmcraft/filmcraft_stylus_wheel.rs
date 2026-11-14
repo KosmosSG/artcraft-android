@@ -1,4 +1,4 @@
-//! FilmCraft Android stylus wheel — DeckCraft layout, approved Fc navy/lavender.
+//! FilmCraft Android stylus wheel — PhotoCraft layout, approved Fc navy/lavender.
 //! The pen side-button alone opens/closes the wheel; never show on application launch.
 //! Real Magic-Pencil hover is read via the GameActivity bridge. While visible,
 //! pointer/hover events are isolated before the underlying editor's input pass.
@@ -235,6 +235,66 @@ impl Wheel {
         ctx.data_mut(|d|d.insert_temp(key,tex.clone()));
         tex
     }
+    // Refined wheel-specific vector strokes. Commands still route through
+    // the original FilmCraft command registry; icons do not change behavior.
+    fn paint_segment_icon(p:&egui::Painter, rect:egui::Rect, command:usize, opacity:f32) {
+        let c=rect.center();
+        let k=rect.width().min(rect.height())/24.0;
+        let at=|x:f32,y:f32| c+vec2(x*k,y*k);
+        let ink=Color32::WHITE.gamma_multiply(opacity);
+        let stroke=Stroke::new(2.0*k,ink);
+        match command {
+            0 => { // Razor — diagonal blade, not a cassette-looking box
+                p.add(egui::Shape::line(vec![
+                    at(-10.0,-3.0),at(2.0,-10.0),at(10.0,-1.0),
+                    at(-2.0,8.0),at(-10.0,-3.0)],stroke));
+                p.line_segment([at(-6.0,1.0),at(5.0,-6.0)],stroke);
+                p.line_segment([at(-1.0,8.0),at(2.0,11.0)],stroke);
+            }
+            1 => { // Selection pointer
+                p.add(egui::Shape::line(vec![
+                    at(-8.0,-11.0),at(-7.0,11.0),at(-1.0,5.0),
+                    at(4.0,12.0),at(8.0,9.5),at(3.0,2.0),
+                    at(11.0,1.0),at(-8.0,-11.0)],stroke));
+            }
+            2 => { // Open Hand, four fingers and thumb
+                p.add(egui::Shape::line(vec![
+                    at(-9.0,0.0),at(-9.0,-3.0),at(-7.0,-5.0),
+                    at(-4.0,-4.0),at(-3.0,0.0),at(-3.0,-10.0),
+                    at(-1.0,-12.0),at(1.0,-10.0),at(1.0,-4.0),
+                    at(1.0,-11.0),at(3.0,-13.0),at(5.0,-11.0),
+                    at(5.0,-4.0),at(5.0,-9.0),at(7.0,-10.0),
+                    at(9.0,-8.0),at(9.0,5.0),at(6.0,10.0),
+                    at(2.0,12.0),at(-3.0,11.0),at(-7.0,7.0),
+                    at(-9.0,0.0)],stroke));
+            }
+            3 | 4 => { // Undo/Redo — classic hook arrows
+                let d=if command==3 {1.0} else {-1.0};
+                p.add(egui::Shape::line(vec![
+                    at(-d*8.0,-3.0),at(d*1.0,-3.0),
+                    at(d*6.0,-1.0),at(d*9.0,3.0),
+                    at(d*9.0,7.0),at(d*6.0,10.0)],stroke));
+                p.line_segment([at(-d*8.0,-3.0),at(-d*2.0,-9.0)],stroke);
+                p.line_segment([at(-d*8.0,-3.0),at(-d*2.0,3.0)],stroke);
+            }
+            5 => { // Play/Pause
+                p.add(egui::Shape::convex_polygon(
+                    vec![at(-10.0,-9.0),at(-10.0,9.0),at(-1.0,0.0)],
+                    ink,Stroke::NONE));
+                p.line_segment([at(4.0,-8.0),at(4.0,8.0)],Stroke::new(2.5*k,ink));
+                p.line_segment([at(10.0,-8.0),at(10.0,8.0)],Stroke::new(2.5*k,ink));
+            }
+            6 | 7 => { // Zoom +/- with magnifying glass and centred mark
+                p.circle_stroke(at(-3.0,-4.0),7.0*k,stroke);
+                p.line_segment([at(2.0,1.0),at(10.0,9.0)],stroke);
+                p.line_segment([at(-7.0,-4.0),at(1.0,-4.0)],stroke);
+                if command==6 {
+                    p.line_segment([at(-3.0,-8.0),at(-3.0,0.0)],stroke);
+                }
+            }
+            _ => {}
+        }
+    }
     fn draw(&self, ui: &egui::Ui, center: Pos2, radius: f32, hover: Option<usize>) {
         let painter=ui.painter();
         let scale=radius/DEFAULT_RADIUS;
@@ -247,16 +307,6 @@ impl Wheel {
         }
         painter.circle_filled(center,radius,
             Color32::from_gray(53).gamma_multiply(self.opacity));
-        const ICONS:[filmcraft_ui_egui::icons::Icon;8]=[
-            filmcraft_ui_egui::icons::Icon::Razor,
-            filmcraft_ui_egui::icons::Icon::Selection,
-            filmcraft_ui_egui::icons::Icon::Hand,
-            filmcraft_ui_egui::icons::Icon::Undo,
-            filmcraft_ui_egui::icons::Icon::Redo,
-            filmcraft_ui_egui::icons::Icon::Play,
-            filmcraft_ui_egui::icons::Icon::Zoom,
-            filmcraft_ui_egui::icons::Icon::Zoom,
-        ];
         for slot in 0..8 {
             let degrees=-90.0+slot as f32*45.0;
             let first=(degrees-21.5).to_radians();
@@ -280,15 +330,8 @@ impl Wheel {
             let rect=egui::Rect::from_center_size(icon_pos-vec2(0.0,10.0)*scale,
                 vec2(24.0,24.0)*scale);
             let cmd=self.slots[slot];
-            filmcraft_ui_egui::icons::paint(painter,rect,ICONS[cmd],
-                Color32::WHITE.gamma_multiply(self.opacity));
-            // Distinguish native Zoom In / Zoom Out while retaining the native
-            // toolbar magnifier path as the base icon.
-            if cmd==6 || cmd==7 {
-                painter.text(rect.center()+vec2(1.0,-1.5)*scale,
-                    egui::Align2::CENTER_CENTER,if cmd==6 {"+"}else{"−"},
-                    FontId::proportional(12.0*scale),Color32::WHITE);
-            }
+            // Single-colour 24pt PhotoCraft-style strokes, no emoji or stacked characters.
+            Self::paint_segment_icon(painter,rect,cmd,self.opacity);
             painter.text(icon_pos+vec2(0.0,13.0)*scale,
                 egui::Align2::CENTER_CENTER,COMMANDS[cmd].0,
                 FontId::proportional(11.0*scale),
@@ -301,8 +344,8 @@ impl Wheel {
         painter.circle_stroke(center,48.0*scale,Stroke::new(1.4,LAVENDER));
         let mark=Self::fc_logo(ui.ctx());
         painter.image(mark.id(),
-            egui::Rect::from_center_size(center-vec2(0.0,8.0)*scale,
-                vec2(61.0,38.0)*scale),
+            egui::Rect::from_center_size(center-vec2(0.0,8.5)*scale,
+                vec2(54.0,34.0)*scale),
             egui::Rect::from_min_max(pos2(0.0,0.0),pos2(1.0,1.0)),
             Color32::WHITE);
         painter.text(center+vec2(0.0,22.0)*scale,egui::Align2::CENTER_CENTER,

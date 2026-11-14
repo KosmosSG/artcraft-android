@@ -15,13 +15,17 @@ def patch(root):
     start = source.index("    private void imeSetup() {")
     stop = source.index("    /** Show the soft keyboard", start)
     section = source[start:stop]
+    # Android.8 stylus wheel intentionally intercepts Pencil button keys first.
+    # Match the post-wheel handler rather than the pre-wheel owner baseline.
     old = """                public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    if (vcStylusIntercept(event)) return true;
                     // Let hardware key events fall through to the native input queue (winit), exactly
                     // as they did before this view existed; the soft keyboard talks to us through the
                     // InputConnection instead. This keeps physical keyboards working.
                     return false;
                 }"""
     new = """                public boolean onKeyDown(int keyCode, KeyEvent event) {
+                    if (vcStylusIntercept(event)) return true;
                     // Android.7: the focused EditText is the hardware keyboard
                     // target on MagicOS. Pass printable, modifier-free physical
                     // text through the SAME ordered native IME commit queue.
@@ -43,12 +47,15 @@ def patch(root):
                     return false;
                 }"""
     if section.count(old) != 1:
-        raise RuntimeError("Android.7 physical text path changed; refusing patch")
+        raise RuntimeError("Android.7 post-stylus physical text path changed; refusing patch")
     source = source[:start]+section.replace(old,new,1)+source[stop:]
     # The Java soft-keyboard InputConnection already emits commit events;
     # preserve its path; do not modify the native reset acknowledgements.
     assert 'imeEvents.offer("c" + text);' in source
     assert 'vcImeFocusEpoch' in source
+    assert source.count('VC_IME7 physical_text_commit') == 1
+    # The Pencil button must retain priority over keyboard printable delivery.
+    assert source.index('if (vcStylusIntercept(event)) return true;', start, stop) < source.index('VC_IME7 physical_text_commit', start, stop)
     java.write_text(source)
     print("PASS: Android.7 physical keyboard commit handoff and shortcut isolation")
 

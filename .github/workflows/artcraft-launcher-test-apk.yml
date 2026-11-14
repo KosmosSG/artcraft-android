@@ -1,0 +1,53 @@
+name: ArtCraft Launcher v0.1 ARM64 disposable test APK (never publish)
+
+on:
+  push:
+    branches:
+      - 'feature/artcraft-android-launcher-*'
+    paths:
+      - 'launcher-android/**'
+      - '.github/workflows/artcraft-launcher-test-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Unit tests and disposable debug-signed APK
+        run: gradle -p launcher-android --no-daemon testDebugUnitTest assembleDebug
+      - name: Verify APK signature, package and small size
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=launcher-android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -n 9
+          sha256sum "$APK" | tee launcher-android/app/build/outputs/apk/debug/SHA256SUMS.txt
+          ls -lh "$APK"
+      - name: Upload TEST-ONLY artifact (no GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArtCraft-Launcher-v0.1.0-android.1-ARM64-TEST-ONLY
+          path: |
+            launcher-android/app/build/outputs/apk/debug/app-debug.apk
+            launcher-android/app/build/outputs/apk/debug/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.artcraft.launcher'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.artcraft.launcher'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1.0-android.1'
+    }
+    buildTypes {
+        debug { minifyEnabled false }
+        release { minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt') }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    testOptions { unitTests.returnDefaultValues = true }
+}
+
+dependencies { testImplementation 'junit:junit:4.13.2' }

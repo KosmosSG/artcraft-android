@@ -106,10 +106,17 @@ def apply(root):
         raise RuntimeError("STOP: old startup update settings have drifted")
     current = current.replace('getBoolean("startup", false)', 'getBoolean("startup", true)')
     start = current.find("    private void ecPresentUpdate(org.json.JSONObject result, boolean manual) {")
-    separator = "\n\n    // ------------------------------------------------------------------------\n    // EffectCraft: PhotoCraft-style download + PackageInstaller handoff."
-    end = current.find(separator, start)
-    if start < 0 or end < 0 or current.count("    private void ecPresentUpdate(") != 1:
+    # End exactly at the close of ecPresentUpdate's runOnUiThread lambda.
+    # The Magic-Pencil bridge follows it in this Activity. Never delete the
+    # code between the updater method and the later downloader helpers.
+    boundary = "        });\n    }\n"
+    closing = current.find(boundary, start)
+    if start < 0 or closing < 0 or current.count("    private void ecPresentUpdate(") != 1:
         raise RuntimeError("STOP: update dialog boundary changed")
+    end = closing + len(boundary)
+    preserved_suffix = current[end:]
+    if "ecWheelDeviceIds" not in preserved_suffix or "ecTrustedReleaseAsset" not in preserved_suffix:
+        raise RuntimeError("STOP: would truncate the verified stylus or downloader bridge")
     current = current[:start] + PHOTOCRAFT_DIALOG + current[end:]
     assert "ecBeginDownload(result)" in current
     assert "ecTrustedReleaseAsset" in current

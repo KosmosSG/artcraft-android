@@ -18,3 +18,5 @@ This build adjusts only isolated CADCraft proposal C branch / draft PR #158:
 - Verify appId com.artcraft.cadcraft.test, APK ZIP, lib/arm64-v8a, temporary signer,
   SHA-256 and uploaded artifact before offering user link.
 - Never touch main/other apps, merge PR, permanently sign, or publish.
+
+Final focused gate after restoring valid workflow syntax: verify Java + native Magic-Pencil callback packaged into test APK; no additional project scope.

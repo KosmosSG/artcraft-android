@@ -293,13 +293,30 @@ pub fn check_cadcraft_updates() {
     cadcraft_android_updater_bridge::check_updates();
 }
 
+/// Visual pointer for hover-only Magic-Pencil motion. Painting is not a touch,
+/// and never changes selection/canvas input or triggers a wheel by itself.
+fn draw_hover_pointer(ctx: &egui::Context, pos: Option<Pos2>) {
+    let Some(p) = pos.filter(|p| ctx.content_rect().contains(*p)) else { return };
+    let layer = egui::LayerId::new(egui::Order::Tooltip, Id::new("cadcraft-hover-pointer"));
+    let painter = ctx.layer_painter(layer);
+    painter.circle_filled(p, 8.0, Color32::from_black_alpha(55));
+    painter.circle_stroke(p, 7.0, Stroke::new(1.7, BRAND));
+    painter.circle_filled(p, 2.6, CREAM);
+}
+
 /// Drawn above the CAD canvas without an always-visible launcher. A validated
 /// HONOR Magic-Pencil button event is the only normal path to open the wheel.
 pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
     // PhotoCraft parity: an AInputQueue pen key may be consumed without
     // causing a winit redraw. Poll at 100ms only while this feature is enabled,
     // never redraw a disabled or idle desktop app continuously.
-    if app.ui.cad_wheel_enabled {
+    let hover_pixels = cadcraft_android_updater_bridge::stylus_hover_pos()
+        .or_else(android_activity::cad_stylus_hover_current);
+    let pen_hover = hover_pixels.and_then(|(x, y)| {
+        let pp = ctx.pixels_per_point();
+        (pp.is_finite() && pp > 0.0).then(|| Pos2::new(x / pp, y / pp))
+    });
+    if app.ui.cad_wheel_enabled || pen_hover.is_some() {
         ctx.request_repaint_after(Duration::from_millis(100));
     }
     // NativeActivity consumes ONLY codes 19/20 from named Magic-Pencil devices.
@@ -332,7 +349,8 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
             ctx.data_mut(|d| d.insert_temp(last_id, Instant::now()));
             app.ui.cad_wheel_open = !app.ui.cad_wheel_open;
             if app.ui.cad_wheel_open {
-                let p = ctx.input(|i| i.pointer.hover_pos()).unwrap_or(ctx.content_rect().center());
+                let p = pen_hover.or_else(|| ctx.input(|i| i.pointer.hover_pos()))
+                    .unwrap_or(ctx.content_rect().center());
                 let screen = ctx.content_rect();
                 let half = WHEEL_SIZE * app.ui.cad_wheel_size / 2.0 + 10.0;
                 let center = Pos2::new(
@@ -404,6 +422,7 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
         }
     }
     show_feedback(ctx);
+    draw_hover_pointer(ctx, pen_hover);
     if !app.ui.cad_wheel_enabled || !app.ui.cad_wheel_open || app.ui.cad_wheel_customize { return; }
     let center = ctx.data(|d| d.get_temp::<Pos2>(Id::new("cadcraft-wheel-center")))
         .unwrap_or_else(|| ctx.content_rect().center());
@@ -414,7 +433,7 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
         .order(egui::Order::Foreground).fixed_pos(pos)
         .show(ctx, |ui| {
             let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-            let hover = ctx.input(|i| i.pointer.hover_pos());
+            let hover = pen_hover.or_else(|| ctx.input(|i| i.pointer.hover_pos()));
             let highlighted = hover.and_then(|p| wheel_index(p, center, app.ui.cad_wheel_size));
             draw_ring(ui, rect.center(), app.ui.cad_wheel_size, highlighted,
                 &app.ui.cad_wheel_actions, app.ui.cad_wheel_opacity);

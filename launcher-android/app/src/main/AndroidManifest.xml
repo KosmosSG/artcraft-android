@@ -19,7 +19,7 @@
   </queries>
   <application
       android:label="ArtCraft Launcher"
-      android:icon="@drawable/ic_launcher"
+      android:icon="@drawable/artcraft_launcher_icon"
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="false"
       android:allowBackup="false">

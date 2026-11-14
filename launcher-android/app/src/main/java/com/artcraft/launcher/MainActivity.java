@@ -28,6 +28,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -51,18 +52,31 @@ public final class MainActivity extends Activity {
     private SharedPreferences settings;
     private DownloadManager downloads;
     private LinearLayout root, list;
-    private TextView banner, summary;
+    private TextView banner, summary, downloadTitle, downloadInfo, downloadButton;
+    private ProgressBar downloadProgress;
+    private LinearLayout downloadPanel;
     private ScrollView scroller;
     private boolean dark,checking,checkingDownload, receiverRegistered;
     private File readyInstall;
     private String readyPackage;
+    /** UI-only poll while a system DownloadManager transfer is active. */
+    private final Runnable progressPoll=new Runnable() {
+        @Override public void run() {
+            updateDownloadProgress();
+            if(settings!=null && (settings.getLong("download_id",-1L)>0 || checkingDownload))
+                ui.postDelayed(this,750);
+        }
+    };
 
     private int bg,surface,border,foreground,muted,accent;
     private final BroadcastReceiver downloadReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
             if(!DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) return;
             long completed=intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID,-1);
-            if(completed==settings.getLong("download_id",-2)) inspectDownload();
+            if(completed==settings.getLong("download_id",-2)) {
+                inspectDownload();
+                updateDownloadProgress();
+            }
         }
     };
 
@@ -83,7 +97,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if(root!=null) { updateCards(); inspectDownload(); }
+        if(root!=null) {
+            updateCards(); inspectDownload(); updateDownloadProgress();
+            ui.removeCallbacks(progressPoll); ui.postDelayed(progressPoll,750);
+        }
         if(readyInstall!=null && (Build.VERSION.SDK_INT<26 || getPackageManager().canRequestPackageInstalls())) {
             File file=readyInstall; String pkg=readyPackage;
             readyInstall=null; readyPackage=null;
@@ -93,6 +110,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         if(receiverRegistered) unregisterReceiver(downloadReceiver);
+        ui.removeCallbacks(progressPoll);
         worker.shutdownNow();
         super.onDestroy();
     }
@@ -207,6 +225,32 @@ public final class MainActivity extends Activity {
         section.setPadding(dp(4),dp(23),0,dp(12));
         page.addView(section);
         list=vertical();page.addView(list);
+        downloadPanel=vertical();
+        downloadPanel.setPadding(dp(18),dp(12),dp(18),dp(12));
+        downloadPanel.setBackground(shape(surface,border,12));
+        LinearLayout.LayoutParams downloadLp=new LinearLayout.LayoutParams(-1,-2);
+        downloadLp.setMargins(dp(18),0,dp(18),dp(8));
+        root.addView(downloadPanel,downloadLp);
+        LinearLayout downloadRow=horizontal();
+        downloadPanel.addView(downloadRow,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout downloadText=vertical();
+        downloadRow.addView(downloadText,new LinearLayout.LayoutParams(0,-2,1f));
+        downloadTitle=text("Downloading…",14,foreground,true);
+        downloadInfo=text("Starting download",12,muted,false);
+        downloadInfo.setPadding(0,dp(2),0,0);
+        downloadText.addView(downloadTitle);
+        downloadText.addView(downloadInfo);
+        downloadButton=action("Cancel",false,accent,this::cancelDownload);
+        LinearLayout.LayoutParams buttonLp=new LinearLayout.LayoutParams(dp(96),dp(38));
+        buttonLp.setMargins(dp(8),0,0,0);
+        downloadRow.addView(downloadButton,buttonLp);
+        downloadProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        downloadProgress.setMax(100);
+        downloadProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        LinearLayout.LayoutParams barLp=new LinearLayout.LayoutParams(-1,dp(5));
+        barLp.setMargins(0,dp(10),0,0);
+        downloadPanel.addView(downloadProgress,barLp);
+        downloadPanel.setVisibility(View.GONE);
         banner=text("Updates are checked manually. You can enable startup checking in settings.",12,foreground,false);
         banner.setPadding(dp(18),dp(12),dp(18),dp(12));
         banner.setBackground(shape(surface,border,0));
@@ -326,7 +370,8 @@ public final class MainActivity extends Activity {
         popup.getMenu().add(0,3,2,"Channel: "+(settings.getBoolean("preview",true)?"Stable + Preview":"Stable only"));
         popup.getMenu().add(0,4,3,"Theme: "+(dark?"Dark":"Light"));
         popup.getMenu().add(0,5,4,"GitHub Releases");
-        popup.getMenu().add(0,6,5,"About ArtCraft Launcher");
+        popup.getMenu().add(0,7,5,"Downloads");
+        popup.getMenu().add(0,6,6,"About ArtCraft Launcher");
         popup.setOnMenuItemClickListener(item->{
             int id=item.getItemId();
             if(id==1)refreshCatalog();
@@ -336,9 +381,14 @@ public final class MainActivity extends Activity {
             else if(id==3) {settings.edit().putBoolean("preview",!settings.getBoolean("preview",true)).apply();refreshCatalog();}
             else if(id==4) {settings.edit().putBoolean("dark_theme",!dark).apply();recreate();}
             else if(id==5)openReleases();
+            else if(id==7) {
+                updateDownloadProgress();
+                if(downloadPanel.getVisibility()==View.GONE)
+                    notice("No active downloads. Select Install or Update on an app card.");
+            }
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.2  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.3  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });
@@ -412,7 +462,10 @@ public final class MainActivity extends Activity {
             settings.edit().putLong("download_id",id).putString("download_file",filename)
                 .putString("download_sha",sha).putString("download_package",app.packageName)
                 .putString("download_version",release.version).apply();
-            notice("Downloading "+app.name+"… Android will show progress");
+            notice("Downloading "+app.name+" inside ArtCraft Launcher…");
+            updateDownloadProgress();
+            ui.removeCallbacks(progressPoll);
+            ui.postDelayed(progressPoll,750);
         } catch(Exception e) {notice("Download failed to start: "+e.getMessage());}
     }
 
@@ -426,10 +479,12 @@ public final class MainActivity extends Activity {
             status=c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
         } catch(Exception e) {return;}
         if(status==DownloadManager.STATUS_FAILED) {
-            clearPending();notice("APK download failed; please try again");return;
+            clearPending();updateDownloadProgress();
+            notice("APK download failed; please try again");return;
         }
         if(status!=DownloadManager.STATUS_SUCCESSFUL)return;
         checkingDownload=true;
+        updateDownloadProgress();
         String filename=settings.getString("download_file","");
         String sha=settings.getString("download_sha","");
         String pkg=settings.getString("download_package","");
@@ -448,14 +503,103 @@ public final class MainActivity extends Activity {
                 String calculated=sha256(file);
                 if(!calculated.equalsIgnoreCase(sha)) throw new IllegalStateException("APK SHA-256 does not match release");
                 checkApkIdentity(file,pkg,version);
-                ui.post(()->{checkingDownload=false;readyInstall=file;readyPackage=pkg;
-                    notice("SHA-256 and APK identity verified");
-                    offerInstaller(file,pkg);
+                ui.post(()->{
+                    checkingDownload=false;
+                    readyInstall=file;readyPackage=pkg;
+                    updateDownloadProgress();
+                    notice("Download verified. Tap Install inside the launcher to continue.");
                 });
             } catch(Exception e) {
-                ui.post(()->{checkingDownload=false;notice("APK rejected: "+e.getMessage());});
+                ui.post(()->{checkingDownload=false;updateDownloadProgress();notice("APK rejected: "+e.getMessage());});
             }
         });
+    }
+
+    private void setDownloadButton(String label,Runnable click) {
+        if(downloadButton==null)return;
+        downloadButton.setText(label);
+        downloadButton.setOnClickListener(v->click.run());
+    }
+
+    private void updateDownloadProgress() {
+        if(downloadPanel==null || settings==null || downloads==null)return;
+        long id=settings.getLong("download_id",-1L);
+        if(id<=0) {
+            if(checkingDownload) {
+                downloadPanel.setVisibility(View.VISIBLE);
+                downloadTitle.setText("Verifying downloaded APK");
+                downloadInfo.setText("Checking SHA-256, package, version and signing certificate…");
+                downloadProgress.setIndeterminate(true);
+                downloadButton.setVisibility(View.GONE);
+            } else if(readyInstall!=null) {
+                downloadPanel.setVisibility(View.VISIBLE);
+                downloadTitle.setText("APK verified — ready to install");
+                downloadInfo.setText(readyInstall.getName());
+                downloadProgress.setIndeterminate(false);
+                downloadProgress.setProgress(100);
+                downloadButton.setVisibility(View.VISIBLE);
+                setDownloadButton("Install",()->{
+                    if(readyInstall!=null)offerInstaller(readyInstall,readyPackage);
+                });
+            } else downloadPanel.setVisibility(View.GONE);
+            return;
+        }
+        downloadPanel.setVisibility(View.VISIBLE);
+        downloadButton.setVisibility(View.VISIBLE);
+        setDownloadButton("Cancel",this::cancelDownload);
+        try(Cursor cursor=downloads.query(new DownloadManager.Query().setFilterById(id))) {
+            if(cursor==null || !cursor.moveToFirst()) {
+                downloadTitle.setText("Preparing download");
+                downloadInfo.setText("Waiting for Android Download Manager…");
+                downloadProgress.setIndeterminate(true);
+                return;
+            }
+            int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            long current=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+            long total=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+            String name=settings.getString("download_package","ArtCraft").replace("com.artcraft.","");
+            if(status==DownloadManager.STATUS_SUCCESSFUL) {
+                downloadTitle.setText("Download complete");
+                downloadInfo.setText("Verifying downloaded APK…");
+                downloadProgress.setIndeterminate(true);
+                downloadButton.setVisibility(View.GONE);
+                inspectDownload();
+                return;
+            }
+            if(status==DownloadManager.STATUS_FAILED) {
+                clearPending();downloadPanel.setVisibility(View.GONE);
+                notice("Download failed. Please try again.");return;
+            }
+            downloadTitle.setText("Downloading "+name+"…");
+            if(total>0) {
+                int percent=(int)Math.min(100,100L*current/total);
+                downloadProgress.setIndeterminate(false);
+                downloadProgress.setProgress(percent);
+                downloadInfo.setText(percent+"%  •  "+formatBytes(current)+" / "+formatBytes(total));
+            } else {
+                downloadProgress.setIndeterminate(true);
+                downloadInfo.setText(formatBytes(current)+" received  •  "+(status==DownloadManager.STATUS_PAUSED?"Waiting for network":"Downloading"));
+            }
+        } catch(Exception e) {
+            downloadInfo.setText("Download status temporarily unavailable");
+            downloadProgress.setIndeterminate(true);
+        }
+    }
+
+    private String formatBytes(long size) {
+        if(size<1024)return size+" B";
+        if(size<1024L*1024)return String.format(Locale.ROOT,"%.1f KB",size/1024.0);
+        return String.format(Locale.ROOT,"%.1f MB",size/(1024.0*1024));
+    }
+
+    private void cancelDownload() {
+        long id=settings.getLong("download_id",-1L);
+        if(id<=0)return;
+        try { downloads.remove(id); } catch(Exception ignored) {}
+        clearPending();
+        ui.removeCallbacks(progressPoll);
+        updateDownloadProgress();
+        notice("APK download cancelled. No installed apps were changed.");
     }
 
     private void clearPending() {
@@ -519,9 +663,11 @@ public final class MainActivity extends Activity {
         } else {
             new AlertDialog.Builder(this).setTitle("APK verified")
                 .setMessage("SHA-256, application identity and update compatibility checks passed. Continue to Android's installer?")
-                .setNegativeButton("Cancel",(d,w)->{readyInstall=null;readyPackage=null;})
+.setNegativeButton("Not now",null)
                 .setPositiveButton("Continue",(d,w)->{
-                    readyInstall=null;readyPackage=null;openInstaller(file,pkg);
+                    readyInstall=null;readyPackage=null;
+                    updateDownloadProgress();
+                    openInstaller(file,pkg);
                 }).show();
         }
     }

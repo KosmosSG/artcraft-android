@@ -361,6 +361,28 @@ fn forward_ui_shortcuts(ui: &mut egui::Ui, app: &mut designcraft_ui_egui::Design
     }
 }
 
+/// Independent Magic-Pencil hover cursor. Java captures Android HOVER_ENTER/MOVE
+/// events even before the first touch; the wheel's canvas isolation remains
+/// authoritative. This overlay is purely painted and never selects content.
+pub fn paint_stylus_hover_pointer(ctx: &egui::Context, bridge: &saf::Bridge) -> bool {
+    if wheel_blocks_hover(ctx) { return false; }
+    let Ok(Some((raw_x, raw_y))) = bridge.dc_stylus_hover_point() else {
+        return false;
+    };
+    let scale = ctx.pixels_per_point();
+    if !scale.is_finite() || scale <= 0.0 { return false; }
+    let pos = egui::pos2(raw_x / scale, raw_y / scale);
+    if !ctx.content_rect().contains(pos) { return false; }
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Tooltip, egui::Id::new("dc-stylus-immediate-hover")));
+    painter.circle_filled(pos, 5.7, egui::Color32::from_black_alpha(158));
+    painter.circle_stroke(pos, 6.1, egui::Stroke::new(1.7,
+        egui::Color32::from_rgb(236, 72, 105)));
+    painter.circle_filled(pos, 1.3, egui::Color32::WHITE);
+    ctx.request_repaint_after(std::time::Duration::from_millis(90));
+    true
+}
+
 /// Visible tool feedback beside the hotspot on systems that override native pointer icons.
 pub fn paint_pointer_feedback(ctx: &egui::Context) {
     use egui::CursorIcon as C;

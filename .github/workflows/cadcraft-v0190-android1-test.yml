@@ -1,4 +1,4 @@
-name: CADCraft v0.19.0 Android.6 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.8 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
@@ -97,6 +97,13 @@ jobs:
           grep -Fq 'stylus_hover_pos' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
           grep -Fq 'draw_hover_pointer' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -Fq 'event.getAction() == KeyEvent.ACTION_DOWN' reference/templates/android/SafActivity.java
+          grep -Fq 'InputView.onKeyPreIme' reference/templates/android/SafActivity.java
+          grep -Fq 'InputView.onKeyDown' reference/templates/android/SafActivity.java
+          grep -Fq 'cadStylusMouseButton' reference/templates/android/SafActivity.java
+          grep -Fq 'cadStylusShowInputStatus' reference/templates/android/SafActivity.java
+          grep -Fq 'show_pen_diagnostics' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'Activity.genericMotion' reference/templates/android/SafActivity.java
+          grep -Fq 'AMotionEvent_getButtonState' reference/vendor/android-activity/src/native_activity/mod.rs
           grep -Fq 'BEFORE pre_dispatch' reference/vendor/android-activity/src/native_activity/mod.rs
           grep -q 'cadWheelButtonNative' reference/templates/android/SafActivity.java
           grep -q 'stylus_take_direct' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
@@ -109,7 +116,7 @@ jobs:
           grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
           grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
-          grep -q 'android.7' reference/templates/android/UpdateCheck.java
+          grep -q 'android.8' reference/templates/android/UpdateCheck.java
           grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
           echo "Source and Cc menu overlay staged. No production app or key touched."
@@ -126,13 +133,13 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.7-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.8-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.7-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.8-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
@@ -154,6 +161,8 @@ jobs:
           grep -Fq 'cadWheelButtonNative' "$tmpdir/dex-strings.txt"
           grep -Fq 'cadStylusIntercept' "$tmpdir/dex-strings.txt"
           grep -Fq 'cadStylusHoverNative' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusMouseButton' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusShowInputStatus' "$tmpdir/dex-strings.txt"
           echo "PASS: Android Java pen capture and exported JNI callback packaged"
           sha256sum "$apk" | tee dist/SHA256SUMS.txt
           echo "TEST ONLY. No permanent signing. No GitHub Release."
@@ -161,7 +170,7 @@ jobs:
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.7-ARM64-TEST
+          name: CADCraft-v0.19.0-android.8-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -177,7 +186,8 @@ jobs:
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
             echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
             echo '* Wheel: 75%/85%, cream Cc +15%, verified pen DOWN/UP first edge, native/Java JNI and 550ms duplicate filter (device test pending)'
-            echo '* Hover: true stylus-tool motion via native queue or Java Activity into a non-interactive CAD-colored pointer (device test pending)'
+            echo '* Hover: stylus motion forwarded to non-interactive pointer; real device verification pending'
+            echo '* Android.8: PhotoCraft InputView pre-IME and key fallback, named Magic-Pencil mouse-button capture, test-only pen diagnostics'
             echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
             echo '* Test signing: new disposable key; no original key, no release'
             if test -s dist/SHA256SUMS.txt; then

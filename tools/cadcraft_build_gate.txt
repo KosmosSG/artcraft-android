@@ -1,21 +1,28 @@
-CADCraft v0.19.0-android.8 disposable ARM64 test build
-Device report: Android.7 still fails to open wheel from HONOR Magic-Pencil 4s hover press.
+CADCraft v0.19.0-android.9 ARM64 disposable TEST ONLY
 
-One isolated branch only: feature/cadcraft-v0190-android1-test-20261111 / draft PR #158.
-Target .8 fix:
-- Follow PhotoCraft's verified focused-View onKeyPreIme, onKeyDown and onKeyUp fallback
-  in addition to Activity dispatch, IME sendKeyEvent and named native pen AInputQueue.
-- Accept named HONOR Magic-Pencil 4s Mouse ACTION_BUTTON_PRESS/RELEASE with
-  STYLUS_PRIMARY / STYLUS_SECONDARY / SECONDARY button flags as fallback.
-- Physical keyboard DPAD, trackpads and unrelated mice never trigger or get swallowed.
-- Retain 550ms duplicate suppression, direct JNI key and hover bridge.
-- Add only temporary Stylus Wheel -> Pen Input Status (TEST) with enabled state,
-  verified Java key/mouse counts, last route and matching device IDs.
-  Native event logs remain separately available via logcat.
-- Retain existing hover pointer, wheel look, Cc 15% glyph, default 75%/85%,
-  in-app updater, DXF/DWG SAF and isolated com.artcraft.cadcraft.test app ID.
-- CI verifies source presence, packaged Java DEX, both direct JNI symbol exports,
-  signed APK ZIP, arm64-v8a native code, appId, v2 signature and SHA256.
-Never merge, publish, modify main/other app sources, or use permanent key.
+Device report:
+- Android.8 still fails to open stylus wheel by hovering Magic-Pencil 4s side-button.
+- "Pen Input Status (TEST)" does not function.
+- Screenshot: CADCraft Save Changes (Don't Save / Cancel / Save) dialog lacks D/S/C hints and keyboard choices.
 
-Change this build gate once to trigger ONE focused run. Device confirmation required.
+Requested Android.9 isolated changes:
+1. Patch only the Android staged CADCraft v0.19.0 close modal:
+   - D = Don't Save (discard), S = Save, C = Cancel.
+   - Show [D], [S], [C] text hints on the corresponding buttons.
+   - Only intercept unmodified keys while this modal is visible. ESC still Cancel.
+   - Preserve normal CAD shortcuts, text typing, editor commands, desktop upstream.
+2. Replace nonfunctioning Java AlertDialog Pen Input Status route with a
+   guaranteed-to-open CADCraft-native egui window from Cc > Stylus Wheel.
+   - Show Java wheel-enabled, accepted key/mouse events and named pen device IDs.
+   - If JNI unavailable display clear failure, do not silently do nothing.
+   - Show native AInputQueue candidate DPAD count, accepted count, last device/key/action,
+     including wrong-ID candidates, without consuming physical keyboard inputs.
+   - Test diagnostics only; remove prior to any permanent release.
+3. Preserve Android.8 PhotoCraft-style pre-IME/keyboard, named pen mouse routing,
+   hover pointer, Cc wheel, default 75%/85%, DXF/DWG SAF and app-specific updater.
+4. CI static source checks, signature, ZIP integrity, ARM64 native library,
+   appId com.artcraft.cadcraft.test, both JNI exports and SHA256 in artifact.
+
+Only feature/cadcraft-v0190-android1-test-20261111 / draft PR #158.
+No main/other app edits, no production keystore, no merge/publish.
+One focused build gate to conserve GitHub Actions minutes. HONOR device verification required.

@@ -116,45 +116,89 @@ def install_pen_button(reference: Path) -> None:
         Integer code = cadWheelKeys.poll();
         return code == null ? 0 : code;
     }
-    private boolean cadStylusIntercept(KeyEvent event) {
-        if (!cadWheelEnabled || event == null) return false;
-        final int code = event.getKeyCode();
-        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
-        final InputDevice device = event.getDevice() != null ? event.getDevice() : InputDevice.getDevice(event.getDeviceId());
+    // Diagnostics are disposable-test-only and are removed before production.
+    private int cadKeyEvents = 0, cadMouseEvents = 0;
+    private String cadLastButtonRoute = "No button detected";
+    public void cadStylusShowInputStatus() {
+        runOnUiThread(() -> new android.app.AlertDialog.Builder(this)
+            .setTitle("CADCraft Pen Input - TEST")
+            .setMessage("Wheel enabled: " + cadWheelEnabled
+                + "\\nJava pen key events: " + cadKeyEvents
+                + "\\nJava pen mouse events: " + cadMouseEvents
+                + "\\nLast: " + cadLastButtonRoute
+                + "\\nPen device IDs: " + cadStylusDeviceIds()
+                + "\\nNative AInputQueue input logged separately."
+                + "\\nHover and press pen button; reopen this window.")
+            .setPositiveButton("OK", null).show());
+    }
+    private static boolean cadIsMagicPencil(InputDevice device) {
         if (device == null || device.getName() == null) return false;
-        final String name = device.getName().toLowerCase(java.util.Locale.ROOT);
-        if (!name.contains("magic-pencil") && !name.contains("magic pencil")) return false;
-        // HONOR can send DOWN only, UP only, or both. Accept the first verified
-        // non-repeat edge; debounce the paired event from the same pen press.
+        String name = device.getName().toLowerCase(java.util.Locale.ROOT);
+        return name.contains("magic-pencil") || name.contains("magic pencil");
+    }
+    private void cadWheelSignal(int code, String route, int deviceId) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - cadWheelLastButtonMs < 550L || cadWheelKeys.size() >= 12) return;
+        cadWheelLastButtonMs = now;
+        cadLastButtonRoute = route + " code=" + code + " device=" + deviceId;
+        cadWheelKeys.offer(code);
+        try { cadWheelButtonNative(code); }
+        catch (UnsatisfiedLinkError error) { Log.w(TAG, "CADCraft pen JNI unavailable", error); }
+        wakeNativeLoop();
+        Log.i(TAG, "CADCraft pen button accepted: " + cadLastButtonRoute);
+    }
+    private boolean cadStylusIntercept(KeyEvent event, String route) {
+        if (!cadWheelEnabled || event == null) return false;
+        int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
+        InputDevice device = event.getDevice() != null
+            ? event.getDevice() : InputDevice.getDevice(event.getDeviceId());
+        if (!cadIsMagicPencil(device)) return false;
         if ((event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)
                 && event.getRepeatCount() == 0) {
-            long now = android.os.SystemClock.uptimeMillis();
-            if (now - cadWheelLastButtonMs >= 550L && cadWheelKeys.size() < 12) {
-                cadWheelKeys.offer(code);
-                try {
-                    cadWheelButtonNative(code);
-                } catch (UnsatisfiedLinkError error) {
-                    // Preserve the Java polling fallback until the native
-                    // library is loaded, e.g. very early in app startup.
-                    Log.w(TAG, "CADCraft pen direct JNI not available", error);
-                }
-                cadWheelLastButtonMs = now;
-                wakeNativeLoop();
-                Log.i(TAG, "CADCraft validated Magic-Pencil button code=" + code
-                    + " action=" + event.getAction() + " device=" + event.getDeviceId());
-            }
+            cadKeyEvents++;
+            cadWheelSignal(code, route + " action=" + event.getAction(), event.getDeviceId());
         }
         return true;
     }
+    private boolean cadStylusIntercept(KeyEvent event) {
+        return cadStylusIntercept(event, "InputConnection");
+    }
+    private boolean cadStylusMouseButton(MotionEvent event, String route) {
+        if (!cadWheelEnabled || event == null || !cadIsMagicPencil(event.getDevice())) return false;
+        int action = event.getActionMasked();
+        if (action != MotionEvent.ACTION_BUTTON_PRESS &&
+                action != MotionEvent.ACTION_BUTTON_RELEASE) return false;
+        int button = event.getActionButton();
+        int mask = MotionEvent.BUTTON_STYLUS_PRIMARY
+            | MotionEvent.BUTTON_STYLUS_SECONDARY | MotionEvent.BUTTON_SECONDARY;
+        if ((button & mask) == 0) return false;
+        if (action == MotionEvent.ACTION_BUTTON_PRESS) {
+            cadMouseEvents++;
+            cadWheelSignal(KeyEvent.KEYCODE_DPAD_DOWN,
+                route + " mouseButton=" + button, event.getDeviceId());
+        }
+        return true; // consume only validated pen side-button action
+    }
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (cadStylusIntercept(event)) return true;
+        if (cadStylusIntercept(event, "Activity.dispatchKeyEvent")) return true;
         return super.dispatchKeyEvent(event);
     }
     @Override
     public boolean dispatchKeyShortcutEvent(KeyEvent event) {
-        if (cadStylusIntercept(event)) return true;
+        if (cadStylusIntercept(event, "Activity.dispatchKeyShortcutEvent")) return true;
         return super.dispatchKeyShortcutEvent(event);
+    }
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (cadStylusIntercept(event, "Activity.onKeyDown")) return true;
+        return super.onKeyDown(keyCode, event);
+    }
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (cadStylusIntercept(event, "Activity.onKeyUp")) return true;
+        return super.onKeyUp(keyCode, event);
     }
     // Separate hover stream: only STYLUS tool events, never mouse or finger.
     private void cadStylusHover(MotionEvent event) {
@@ -212,12 +256,35 @@ def install_pen_button(reference: Path) -> None:
         raise SystemExit("CADCraft generic motion anchor changed")
     source = source.replace(motion_anchor, """    @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        if (cadStylusMouseButton(event, "Activity.touch")) return true;
         cadStylusHover(event);
         return super.dispatchTouchEvent(event);
     }
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (cadStylusMouseButton(event, "Activity.genericMotion")) return true;
         cadStylusHover(event);""", 1)
+    # Match PhotoCraft's working focused-view PRE_IME and key listener routing.
+    view_anchor = """        @Override
+        public InputConnection onCreateInputConnection(EditorInfo outAttrs) {"""
+    if source.count(view_anchor) != 1:
+        raise SystemExit("CADCraft focused-view IME anchor changed")
+    source = source.replace(view_anchor, """        @Override
+        public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+            if (cadStylusIntercept(event, "InputView.onKeyPreIme")) return true;
+            return super.onKeyPreIme(keyCode, event);
+        }
+        @Override
+        public boolean onKeyDown(int keyCode, KeyEvent event) {
+            if (cadStylusIntercept(event, "InputView.onKeyDown")) return true;
+            return super.onKeyDown(keyCode, event);
+        }
+        @Override
+        public boolean onKeyUp(int keyCode, KeyEvent event) {
+            if (cadStylusIntercept(event, "InputView.onKeyUp")) return true;
+            return super.onKeyUp(keyCode, event);
+        }
+""" + view_anchor, 1)
     java.write_text(source, encoding="utf-8")
 
     # Vendor crate is copied into the CADCraft source during the builder step.
@@ -319,6 +386,19 @@ pub fn cad_stylus_hover_current() -> Option<(f32, f32)> {
                 let action = unsafe { ndk_sys::AKeyEvent_getAction(ptr) };
                 let repeat = unsafe { ndk_sys::AKeyEvent_getRepeatCount(ptr) };
                 if crate::cad_stylus_capture(device, code, action, repeat) {
+                    queue.finish_event(ndk_event, true);
+                    return true;
+                }
+            }
+            // MagicOS can emit pen side buttons as mouse actions instead of keys.
+            // Never intercept input from an unrecognized touchpad or mouse.
+            if let ndk::event::InputEvent::MotionEvent(ref motion) = ndk_event {
+                let ptr = motion.ptr().as_ptr();
+                let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
+                let action = unsafe { ndk_sys::AMotionEvent_getAction(ptr) } & 0xff;
+                let buttons = unsafe { ndk_sys::AMotionEvent_getButtonState(ptr) } as i32;
+                if action == 11 && buttons & (2 | 32 | 64) != 0 &&
+                    crate::cad_stylus_capture(device, 20, 0, 0) {
                     queue.finish_event(ndk_event, true);
                     return true;
                 }

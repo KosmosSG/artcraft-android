@@ -117,6 +117,30 @@ public final class MainActivity extends Activity {
         if(stroke!=Color.TRANSPARENT) d.setStroke(dp(1),stroke);
         return d;
     }
+
+    /** Shared icon treatment: same rounded-square gradient and lettering as ArtCraft's Ac badge. */
+    private int mix(int base,int tint,float part) {
+        float rest=1f-part;
+        return Color.rgb(
+            Math.round(Color.red(base)*rest+Color.red(tint)*part),
+            Math.round(Color.green(base)*rest+Color.green(tint)*part),
+            Math.round(Color.blue(base)*rest+Color.blue(tint)*part));
+    }
+    private TextView artCraftBadge(String letters,int diameterDp,int tint) {
+        int typeSize=letters.length()>2?14:diameterDp>=50?25:20;
+        TextView badge=text(letters,typeSize,Color.WHITE,true);
+        badge.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        badge.setGravity(Gravity.CENTER);
+        int darkStop=mix(Color.rgb(19,43,69),tint,0.44f);
+        int lightStop=mix(Color.rgb(23,61,91),tint,0.88f);
+        GradientDrawable background=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,new int[]{darkStop,lightStop});
+        background.setCornerRadius(dp(diameterDp*0.29f));
+        background.setStroke(dp(1),mix(Color.WHITE,tint,0.73f));
+        badge.setBackground(background);
+        return badge;
+    }
+
     private TextView text(String value,int sp,int color,boolean bold) {
         TextView t=new TextView(this);
         t.setText(value); t.setTextColor(color); t.setTextSize(sp);
@@ -149,11 +173,7 @@ public final class MainActivity extends Activity {
         LinearLayout head=horizontal();
         head.setPadding(dp(18),dp(16),dp(18),dp(13));
         root.addView(head,new LinearLayout.LayoutParams(-1,dp(82)));
-        TextView emblem=text("Ac",25,Color.WHITE,true);
-        emblem.setGravity(Gravity.CENTER);
-        GradientDrawable emblemBg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.parseColor("#214B78"),Color.parseColor("#28BBD4")});
-        emblemBg.setCornerRadius(dp(15));emblem.setBackground(emblemBg);
+        TextView emblem=artCraftBadge("Ac",52,Color.parseColor("#28BBD4"));
         head.addView(emblem,new LinearLayout.LayoutParams(dp(52),dp(52)));
         LinearLayout heading=vertical();
         heading.setPadding(dp(12),0,0,0);
@@ -236,9 +256,7 @@ public final class MainActivity extends Activity {
         card.setPadding(dp(13),dp(14),dp(13),dp(14));
         card.setBackground(shape(surface,border,17));
         LinearLayout row=horizontal();card.addView(row);
-        TextView icon=text(app.letters,18,Color.WHITE,true);
-        icon.setGravity(Gravity.CENTER);
-        icon.setBackground(shape(app.accent,Color.TRANSPARENT,13));
+        TextView icon=artCraftBadge(app.letters,46,app.accent);
         row.addView(icon,new LinearLayout.LayoutParams(dp(46),dp(46)));
         LinearLayout title=vertical();title.setPadding(dp(10),0,0,0);
         row.addView(title,new LinearLayout.LayoutParams(0,-2,1f));
@@ -320,7 +338,7 @@ public final class MainActivity extends Activity {
             else if(id==5)openReleases();
             else if(id==6)new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.1  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
+                .setMessage("v0.1.0-android.2  •  ARM64 TEST ONLY\n\nA separate hub for 13 ArtCraft Android apps. This launcher does not modify your existing application data. APK installs require your approval.")
                 .setPositiveButton("OK",null).show();
             return true;
         });

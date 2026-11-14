@@ -2,7 +2,7 @@
 
 An **independently installable** native Android dashboard for the 13 Craft apps in the KosmosSG Android suite. This project lives in its own `launcher-android/` subfolder and an isolated feature branch. The existing Rust app builders, main branch, published releases and permanent signing keys are left alone.
 
-## v0.1.0 scope
+## v0.1.0-android.2 scope
 - Responsive tablet grid with all 13 products (including unreleased placeholders).
 - Detect app packages and launch installed apps without accessing their private data.
 - Manual and opt-in startup update checks using the **public** `KosmosSG/artcraft-android` GitHub Releases API. Startup checking is **off by default**.
@@ -10,7 +10,7 @@ An **independently installable** native Android dashboard for the 13 Craft apps 
 - Download an explicitly selected APK with Android DownloadManager, verify the release SHA-256, inspect APK identity and versionCode and compare an installed app's signing certificate before asking Android's installer to proceed. No silent installs, uninstalls or data changes.
 - System light/dark theme, no runtime dependency on AndroidX or Compose, no Rust, minimal APK size.
 
-The current app icons are typography/color placeholders. Replace them with the **approved** launcher PNG/vector artwork after review. Browser links point only to the repo's real release pages.
+The in-app tiles now share the same **Ac-inspired rounded-square, tonal gradient, white sans-serif lettering and subtle outline**. Each of the 13 apps retains its own initials and accent color; this changes launcher dashboard tiles only and does not modify the separate ArtCraft APK launcher icons. Final approved per-app artwork can replace these in a later revision. Browser links point only to real release pages.
 
 ## Build
 Use the one-off GitHub Actions test workflow `.github/workflows/artcraft-launcher-test-apk.yml`, or build locally with Java 17, Android SDK 35 and Gradle 8.10.2:

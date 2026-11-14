@@ -151,24 +151,32 @@ def main(root):
     // consume a physical keyboard arrow, touchpad or ordinary IME input.
     private volatile boolean ecWheelEnabled;
     private volatile String ecWheelHoverPosition = "";
-    /** Java fallback for native stylus hover; no event is consumed. */
+    /** Java fallback for true pen-proximity events; no event is consumed. */
     public String ecWheelHoverPos() { return ecWheelHoverPosition; }
-    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
-        if (event != null && event.getPointerCount() > 0) {
-            int tool = event.getToolType(0);
-            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS
-                    || tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
-                int act = event.getActionMasked();
-                if (act == android.view.MotionEvent.ACTION_HOVER_ENTER
-                    || act == android.view.MotionEvent.ACTION_HOVER_MOVE) {
-                    ecWheelHoverPosition = event.getX(0) + "," + event.getY(0);
-                } else if (act == android.view.MotionEvent.ACTION_HOVER_EXIT
-                    || act == android.view.MotionEvent.ACTION_DOWN
-                    || act == android.view.MotionEvent.ACTION_CANCEL) {
-                    ecWheelHoverPosition = "";
-                }
-            }
+    private void ecObserveStylusProximity(android.view.MotionEvent event) {
+        if (event == null || event.getPointerCount() <= 0) return;
+        int tool = event.getToolType(0);
+        if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
+            && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) return;
+        int act = event.getActionMasked();
+        if (act == android.view.MotionEvent.ACTION_HOVER_ENTER
+            || act == android.view.MotionEvent.ACTION_HOVER_MOVE) {
+            ecWheelHoverPosition = event.getX(0) + "," + event.getY(0);
+        } else if (act == android.view.MotionEvent.ACTION_HOVER_EXIT
+            || act == android.view.MotionEvent.ACTION_DOWN
+            || act == android.view.MotionEvent.ACTION_UP
+            || act == android.view.MotionEvent.ACTION_CANCEL) {
+            ecWheelHoverPosition = "";
         }
+    }
+    // MagicOS may dispatch proximity to Activity.dispatchGenericMotionEvent
+    // without reaching onGenericMotionEvent. Observe both without consuming.
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        ecObserveStylusProximity(event);
+        return super.dispatchGenericMotionEvent(event);
+    }
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
+        ecObserveStylusProximity(event);
         return super.onGenericMotionEvent(event);
     }
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> ecWheelButtons =
@@ -281,7 +289,17 @@ def main(root):
                 inner.stylus_button(code, ctx);
             }
         } else if let Err(error) = outcome {
-            log::warn!("EffectCraft stylus input identity bridge: {error}");
+            // Do not hide the pointer if Java's device-id lookup/IME path is
+            // unavailable. Native MotionEvent ToolType::Stylus is sufficient
+            // proof of pen proximity without requiring a screen tap.
+            log::debug!("EffectCraft Java stylus bridge unavailable: {error}");
+            let point = android_activity::ec_stylus_native_hover_point()
+                .and_then(|(x, y)| {
+                    if !(x.is_finite() && y.is_finite()) { return None; }
+                    let pos = egui::pos2(x / ctx.pixels_per_point(), y / ctx.pixels_per_point());
+                    ctx.content_rect().contains(pos).then_some(pos)
+                });
+            inner.stylus_hover(point, ctx);
         }
     }
 '''

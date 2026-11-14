@@ -66,7 +66,7 @@ impl Default for Wheel {
         Self {
             enabled: false, settings_open: false, open: false,
             center: pos2(0.0, 0.0), hover: None, pen_hover: None, slots: DEFAULT_SLOTS,
-            size_percent: 100.0, opacity_percent: 85.0,
+            size_percent: 75.0, opacity_percent: 85.0,
             storage: None, pending: None, last_press: None,
         }
     }
@@ -176,17 +176,30 @@ impl Wheel {
         let stroke = Stroke::new(2.1 * scale, color);
         match choice {
             6 | 7 => {
+                // Familiar PhotoCraft/Undo2 U-turn silhouette. The previous
+                // shallow parabola resembled a roof; this cubic Bézier has a
+                // distinct turn and an open, left/right-facing arrowhead.
+                // Undo faces left, Redo is the exact mirrored counterpart.
                 let mirror = if choice == 6 { 1.0 } else { -1.0 };
-                let curve: Vec<Pos2> = (0..=24).map(|i| {
-                    let t = i as f32 / 24.0;
-                    center + vec2(
-                        mirror * (-10.0 + 20.0 * t) * scale,
-                        (-1.0 - 10.0 * 4.0 * t * (1.0 - t) + 7.0 * t) * scale)
+                let line: Vec<Pos2> = (0..=32).map(|i| {
+                    let t = i as f32 / 32.0;
+                    let u = 1.0 - t;
+                    let x = u * u * u * -9.0
+                        + 3.0 * u * u * t * -0.5
+                        + 3.0 * u * t * t * 12.0
+                        + t * t * t * 8.5;
+                    let y = u * u * u * -2.0
+                        + 3.0 * u * u * t * -11.0
+                        + 3.0 * u * t * t * -11.0
+                        + t * t * t * 8.0;
+                    center + vec2(mirror * x * scale, y * scale)
                 }).collect();
-                painter.add(Shape::line(curve, stroke));
-                let tip = center + vec2(-10.0 * mirror, -1.0) * scale;
-                painter.line_segment([tip, center + vec2(-3.3 * mirror, -7.0) * scale], stroke);
-                painter.line_segment([tip, center + vec2(-3.0 * mirror, 5.0) * scale], stroke);
+                painter.add(Shape::line(line, stroke));
+                let tip = center + vec2(-9.0 * mirror, -2.0) * scale;
+                painter.line_segment([tip,
+                    center + vec2(-2.5 * mirror, -8.2) * scale], stroke);
+                painter.line_segment([tip,
+                    center + vec2(-2.2 * mirror, 4.0) * scale], stroke);
             }
             2 => {
                 // Three stacked diamond outlines, not the previous star icon.
@@ -355,7 +368,7 @@ impl Wheel {
                     .text("Opacity").suffix("%")).changed();
                 if ui.button("Restore Default").clicked() {
                     self.slots = DEFAULT_SLOTS;
-                    self.size_percent = 100.0;
+                    self.size_percent = 75.0;
                     self.opacity_percent = 85.0;
                     changed = true;
                 }

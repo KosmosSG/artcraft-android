@@ -68,7 +68,7 @@ class PhysicalTypingPatchTests(unittest.TestCase):
             root = Path(directory)
             java = fixture(root, with_stylus=False)
             before = java.read_text()
-            with self.assertRaisesRegex(RuntimeError, "post-stylus physical text path changed"):
+            with self.assertRaisesRegex(RuntimeError, "post-stylus keyboard fallback changed"):
                 patch(root)
             self.assertEqual(java.read_text(), before)
 
@@ -78,7 +78,7 @@ class PhysicalTypingPatchTests(unittest.TestCase):
             java = fixture(root, with_stylus=True)
             patch(root)
             before = java.read_text()
-            with self.assertRaisesRegex(RuntimeError, "post-stylus physical text path changed"):
+            with self.assertRaisesRegex(RuntimeError, "post-stylus keyboard fallback changed"):
                 patch(root)
             self.assertEqual(java.read_text(), before)
 

@@ -68,9 +68,12 @@ pub fn ec_stylus_native_capture(device: i32, key: i32, action: i32, repeat: i32)
 #[cfg(feature = "native-activity")]
 pub fn ec_stylus_native_hover(device: i32, tool: i32, action: i32, x: f32, y: f32) {
     let Ok(mut state) = EC_WHEEL_KEYS.lock() else { return };
-    if !state.allowed.contains(&device) || (tool != 2 && tool != 4) {
-        return;
-    }
+    // MagicOS often reports hover MotionEvents through the touchscreen
+    // device ID, not the separate Magic-Pencil button/keyboard device ID.
+    // For hover ONLY, Android's actual STYLUS/ERASER tool type is the
+    // authority; physical keyboard/button events remain strict-ID gated.
+    let _ = device;
+    if tool != 2 && tool != 4 { return; }
     match action & 255 {
         // Android MotionEvent ACTION_HOVER_MOVE / ACTION_HOVER_ENTER.
         7 | 9 if x.is_finite() && y.is_finite() => state.hover = Some((x, y)),
@@ -95,7 +98,7 @@ pub fn ec_stylus_native_take() -> Vec<i32> {
 '''
 
 INJECT = r'''            if let Some(ndk_event) = queue.pre_dispatch(ndk_event) {
-                // Observe only the verified Magic-Pencil stylus HOVER event
+                // Observe real Android STYLUS/ERASER hover; the source ID may be touchscreen
                 // without consuming it: native winit still gets its original
                 // MotionEvent for drawing, pressure and hover dispatch.
                 if let ndk::event::InputEvent::MotionEvent(ref motion) = ndk_event {
@@ -136,7 +139,7 @@ def patch(root: Path):
         raise RuntimeError("STOP: native input queue ownership changed")
     lib.write_text(a + "\n" + STATE)
     activity.write_text(b.replace(old, INJECT, 1))
-    print("PASS: native-activity pen-only button queue + nonconsuming real stylus hover; keyboard unchanged")
+    print("PASS: native pen-button strict ID gate + tool-typed hover from touchscreen ID; keyboard/touch/mouse unchanged")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2: raise SystemExit("usage: patch_stylus_native.py <vendor/android-activity>")

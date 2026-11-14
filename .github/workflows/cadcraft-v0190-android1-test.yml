@@ -1,4 +1,4 @@
-name: CADCraft v0.19.0 Android.5 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.6 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
@@ -91,6 +91,10 @@ jobs:
           grep -q 'cadWheelEnabled' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q 'CADCRAFT_ISOLATED_PEN_KEY_QUEUE' reference/vendor/android-activity/src/lib.rs
           grep -q 'cad_stylus_capture' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'BEFORE pre_dispatch' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -q 'cadWheelButtonNative' reference/templates/android/SafActivity.java
+          grep -q 'stylus_take_direct' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -q 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
           grep -q 'cadStylusIntercept(event)' reference/templates/android/SafActivity.java
           grep -q 'public int cadStylusPoll()' reference/templates/android/SafActivity.java
           grep -q 'cadWheelPresetVersion' reference/source/cadcraft/crates/ui-egui/src/lib.rs
@@ -99,7 +103,7 @@ jobs:
           grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
           grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
-          grep -q 'android.5' reference/templates/android/UpdateCheck.java
+          grep -q 'android.6' reference/templates/android/UpdateCheck.java
           grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
           echo "Source and Cc menu overlay staged. No production app or key touched."
@@ -116,25 +120,33 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.5-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.6-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.5-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.6-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
           grep -q "package: name='com.artcraft.cadcraft.test'" dist/apk-badging.txt
           apksigner verify --verbose --print-certs "$apk" | tee dist/apk-signing.txt
-          sha256sum "$apk" | tee dist/SHA256SUMS.txt
+          # Ensure Java's validated-pen direct JNI entry really survives the
+          # final release/AAB stripping, and that its Java declaration is in DEX.
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          unzip -p "$apk" lib/arm64-v8a/libcadcraft_android.so > "$tmpdir/cad.so"
+          readelf -Ws "$tmpdir/cad.so" > "$tmpdir/symbols.txt"
+          grep -F 'Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative' "$tmpdir/symbols.txt"
+          : > "$tmpdir/dex-strings.txt"
+          for dex in $(unzip -Z1 "$apk" | grep -E '^classes[0-9]*[.]dex          sha256sum "$apk" | tee dist/SHA256SUMS.txt
           echo "TEST ONLY. No permanent signing. No GitHub Release."
 
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.5-ARM64-TEST
+          name: CADCraft-v0.19.0-android.6-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -144,7 +156,44 @@ jobs:
         shell: bash
         run: |
           {
-            echo '### CADCraft v0.19.0 Android.5 test'
+            echo '### CADCraft v0.19.0 Android.6 test'
+            echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
+            echo '* Isolated package: com.artcraft.cadcraft.test'
+            echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
+            echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
+            echo '* Wheel: PhotoCraft style and default 75%/85%; exact cream Cc enlarged 15%; named-pen key capture before IME predispatch + Java direct JNI callback (device verification pending)'\n            echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'
+            echo '* Test signing: new disposable key; no original key, no release'
+            if test -s dist/SHA256SUMS.txt; then
+              echo '#### APK checksum'
+              cat dist/SHA256SUMS.txt
+            else
+              echo '* Build or verification incomplete: review logs. No APK claimed ready.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+); do
+            unzip -p "$apk" "$dex" > "$tmpdir/current.dex"
+            strings "$tmpdir/current.dex" >> "$tmpdir/dex-strings.txt"
+          done
+          grep -Fq 'cadWheelButtonNative' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusIntercept' "$tmpdir/dex-strings.txt"
+          echo "PASS: Java pen capture and JNI callback are packaged into signed APK"
+          sha256sum "$apk" | tee dist/SHA256SUMS.txt
+          echo "TEST ONLY. No permanent signing. No GitHub Release."
+
+      - name: Upload disposable-signed test APK (no publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CADCraft-v0.19.0-android.6-ARM64-TEST
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report exact test gates
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### CADCraft v0.19.0 Android.6 test'
             echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
             echo '* Isolated package: com.artcraft.cadcraft.test'
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'

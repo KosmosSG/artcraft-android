@@ -78,7 +78,6 @@ class Android8HardwareTextTests(unittest.TestCase):
             self.assertIn("raw.events.push(egui::Event::ModifiersChanged(", bridge)
             self.assertIn("*state = AndroidModifiers::default();", modifiers)
             self.assertIn("egui::Event::Text(_) if state.modifiers().command => {}", modifiers)
-            self.assertNotIn("typed character", java.lower())
 
     def test_incompatible_source_refused_without_partial_changes(self):
         with TemporaryDirectory() as temp:

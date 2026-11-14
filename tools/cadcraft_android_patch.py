@@ -509,6 +509,43 @@ def patch_cadcraft_ui(source: Path) -> None:
     if dest.exists():
         raise SystemExit("CADCraft wheel module exists upstream; refusing overwrite")
     dest.write_bytes(template.read_bytes())
+    # Android-only Save Changes D/S/C shortcuts. Preserve desktop upstream.
+    close_path = source / "crates/ui-egui/src/closing.rs"
+    close_src = close_path.read_text(encoding="utf-8")
+    close_src = replace_once(close_src, 'RichText::new(crate::tl!("Save")).color(t.text)',
+        'RichText::new(format!("{}  [S]", crate::tl!("Save"))).color(t.text)')
+    close_src = replace_once(close_src, 'egui::Button::new(crate::tl!("Cancel")).min_size(size)',
+        'egui::Button::new(format!("{}  [C]", crate::tl!("Cancel"))).min_size(size)')
+    close_src = replace_once(close_src, 'egui::Button::new(crate::tl!("Don\'t Save")).min_size(size)',
+        'egui::Button::new(format!("{}  [D]", crate::tl!("Don\'t Save"))).min_size(size)')
+    close_src = replace_once(close_src, """        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            choice = Some(Choice::Cancel);
+        }
+""", """        // Android tablet's physical keyboard: match other ArtCraft Save
+        // dialogs. Only while this modal is visible, and never with Ctrl/Alt.
+        #[cfg(target_os = "android")]
+        {
+            let picked = ui.input_mut(|i| {
+                if i.modifiers.ctrl || i.modifiers.alt || i.modifiers.command {
+                    return None;
+                }
+                if i.consume_key(egui::Modifiers::NONE, egui::Key::D) {
+                    Some(Choice::Discard)
+                } else if i.consume_key(egui::Modifiers::NONE, egui::Key::S) {
+                    Some(Choice::Save)
+                } else if i.consume_key(egui::Modifiers::NONE, egui::Key::C) {
+                    Some(Choice::Cancel)
+                } else { None }
+            });
+            if picked.is_some() { choice = picked; }
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            choice = Some(Choice::Cancel);
+        }
+""")
+    close_path.write_text(close_src, encoding="utf-8")
+    print("PASS: Android-only Save Changes D/S/C hints and modal-scoped input shortcuts.")
+
     # JNI bridge is compiled only for the Android UI target; no desktop graph changes.
     cargo = source / "crates/ui-egui/Cargo.toml"
     manifest = cargo.read_text(encoding="utf-8")

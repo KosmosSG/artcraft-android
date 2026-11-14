@@ -215,7 +215,7 @@ jobs:
           fi
           "$SDK/zipalign" -P 16 -f 4 "$SRC" "$RUNNER_TEMP/aligned.apk"
           "$SDK/apksigner" sign --ks "$KEY" --ks-key-alias "$KEYALIAS" \
-            --ks-pass env:STOREPASS --key-pass env:KEYPASS \
+            --ks-pass env:STOREPASS --key-pass env:STOREPASS \
             --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
             --out "$OUT" "$RUNNER_TEMP/aligned.apk"
           "$SDK/apksigner" verify --verbose --print-certs "$OUT" > "$RUNNER_TEMP/signed-report.txt"

@@ -41,8 +41,8 @@ jobs:
           assert data.get('approved_for_publication') is True, 'No owner approval; fail closed'
           assert data.get('version')=='0.21.1-android.10'
           assert data.get('package')=='com.artcraft.pdfcraft'
-          assert isinstance(data.get('signed_test_run_id'),int) and data['signed_test_run_id']>0
-          assert re.fullmatch(r'[a-f0-9]{40}',data.get('source_commit',''))
+          assert data.get('signed_test_run_id')==43475526563, 'Wrong owner-tested run'
+          assert data.get('source_commit')=='6e58b1674633b4f5745c308b6c34c0f7ff42e02b', 'Wrong tested source commit'
           assert data.get('signed_apk_sha256')=='CALCULATE_FROM_SIGNED_ARTIFACT'
           assert data.get('signed_artifact_name')=='PDFCraft-v0.21.1-android.10-BORDERED-SLOTS-75-85-UPDATER-SIGNED-TEST'
           with open(os.environ['GITHUB_ENV'],'a') as out:
@@ -51,7 +51,7 @@ jobs:
           print('Owner authorized publication of exact signed artifact bytes')
           PY
 
-      - name: Require completed original-certificate Android.8 workflow and fetch its artifact
+      - name: Require completed original-certificate Android.10 workflow and fetch exact signed artifact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

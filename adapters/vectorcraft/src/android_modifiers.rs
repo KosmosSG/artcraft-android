@@ -374,10 +374,65 @@ pub fn restore_tool_key_text(raw: &mut egui::RawInput, tool_shortcuts_allowed: b
     restored
 }
 
+
+pub fn restore_type_hardware_text(raw: &mut egui::RawInput, editing: bool,
+    field: bool, composing: bool, modal: bool) -> usize {
+    if !editing || field || composing || modal ||
+        raw.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Ime(_))) {
+        return 0;
+    }
+    let mut added=0;
+    let mut out=Vec::with_capacity(raw.events.len()+4);
+    for event in raw.events.drain(..) {
+        let typed=match &event {
+            egui::Event::Key { key, pressed:true, modifiers, .. }
+                if !modifiers.command && !modifiers.ctrl && !modifiers.alt => {
+                let name=key.name();
+                if name.len()==1 && name.as_bytes()[0].is_ascii_alphabetic() {
+                    Some(if modifiers.shift {name.to_ascii_uppercase()} else {name.to_ascii_lowercase()})
+                } else if name.len()==1 && name.as_bytes()[0].is_ascii_digit() {
+                    let shifted=match name {
+                        "1"=>"!", "2"=>"@", "3"=>"#", "4"=>"$", "5"=>"%",
+                        "6"=>"^", "7"=>"&", "8"=>"*", "9"=>"(", "0"=>")", _=>name
+                    };
+                    Some((if modifiers.shift {shifted} else {name}).to_owned())
+                } else if name=="Space" {Some(" ".to_owned())}
+                else {None}
+            }
+            _=>None
+        };
+        out.push(event);
+        if let Some(t)=typed {out.push(egui::Event::Text(t)); added+=1;}
+    }
+    raw.events=out;
+    added
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use egui::{Event, Key, Modifiers, RawInput};
+
+
+    #[test]
+    fn live_type_hardware_text_fallback_is_scoped() {
+        let mut raw=RawInput{events:vec![key(Key::A,true)],..Default::default()};
+        assert_eq!(restore_type_hardware_text(&mut raw,true,false,false,false),1);
+        assert!(matches!(&raw.events[1],Event::Text(s) if s=="a"));
+        let mut raw=RawInput{events:vec![key(Key::A,true),
+            Event::Ime(egui::ImeEvent::Commit("a".into()))],..Default::default()};
+        assert_eq!(restore_type_hardware_text(&mut raw,true,false,false,false),0);
+        assert_eq!(raw.events.len(),2);
+        let mut raw=RawInput{events:vec![key(Key::A,true)],..Default::default()};
+        for args in [(false,false,false,false),(true,true,false,false),
+                     (true,false,true,false),(true,false,false,true)] {
+            assert_eq!(restore_type_hardware_text(&mut raw,args.0,args.1,args.2,args.3),0);
+        }
+        let mods=Modifiers{ctrl:true,command:true,..Modifiers::NONE};
+        let mut raw=RawInput{events:vec![Event::Key{key:Key::Q,physical_key:None,
+           pressed:true,repeat:false,modifiers:mods}],..Default::default()};
+        assert_eq!(restore_type_hardware_text(&mut raw,true,false,false,false),0);
+    }
 
     #[test]
     fn focus_regain_clears_ctrl_even_if_ime_swallowed_key_up() {

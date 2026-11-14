@@ -64,3 +64,30 @@ pub fn stylus_poll() -> Vec<i32> {
         Ok(events)
     })
 }
+
+
+/// Direct Java-to-native event handoff for the *verified* Magic-Pencil
+/// KEYCODE_DPAD_DOWN/UP release. The Activity checks the InputDevice name
+/// BEFORE invoking this method; generic keyboard arrows never reach it.
+/// This is intentionally independent of JVM polling from the render thread.
+static PEN_DIRECT: std::sync::atomic::AtomicI32 =
+    std::sync::atomic::AtomicI32::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_artcraft_cadcraft_test_CadCraftActivity_cadWheelButtonNative(
+    _env: jni::JNIEnv<'_>,
+    _activity: JObject<'_>,
+    code: jni::sys::jint,
+) {
+    if code == 19 || code == 20 {
+        PEN_DIRECT.store(code, std::sync::atomic::Ordering::Release);
+    }
+}
+
+pub fn stylus_take_direct() -> Vec<i32> {
+    match PEN_DIRECT.swap(0, std::sync::atomic::Ordering::AcqRel) {
+        19 => vec![19],
+        20 => vec![20],
+        _ => Vec::new(),
+    }
+}

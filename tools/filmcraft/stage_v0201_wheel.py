@@ -137,14 +137,6 @@ JAVA_STYLUS_BRIDGE = '''    // FilmCraft-only Magic-Pencil 4s input bridge. Neve
         super.onResume();
         fcWheelPrepareEarlyHover();
     }
-    @Override public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) fcWheelPrepareEarlyHover();
-        else {
-            fcWheelHovering=false;
-            fcWheelHover.set(-1L);
-        }
-    }
     @Override public boolean onGenericMotionEvent(android.view.MotionEvent e) {
         if (fcWheelMotion(e)) return true;
         return super.onGenericMotionEvent(e);
@@ -342,7 +334,7 @@ def main() -> None:
             assert (Path(scratch) / "logo.rgba").stat().st_size == 40960
             render_icons(Path(scratch) / "wheel-icons.rgba")
             assert (Path(scratch) / "wheel-icons.rgba").stat().st_size == 72*72*8*4
-        for marker in ("onWindowFocusChanged(boolean hasFocus)",
+        for marker in ("onResume()",
                        "setOnHoverListener(fcWheelSurfaceHover)",
                        "onGenericMotionEvent(android.view.MotionEvent e)",
                        "fcWheelFindSurface", "return false; // ALWAYS"):

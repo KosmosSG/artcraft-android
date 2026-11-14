@@ -204,7 +204,7 @@ jobs:
         test -f output/filmcraft-0.20.1.apk
 
         mv output/filmcraft-0.20.1.apk output/filmcraft-0.20.1-android.6-test.apk
-        printf 'FilmCraft Android.6 APK bytes: '
+        printf "FilmCraft Android.6 APK bytes: "
         stat -c %s output/filmcraft-0.20.1-android.6-test.apk
         unzip -l output/filmcraft-0.20.1-android.6-test.apk | sort -nr | head -n 12 || true
         echo "FilmCraft Android.6 APK size: $(stat -c %s output/filmcraft-0.20.1-android.6-test.apk) bytes (strip=symbols, thin LTO)" >> "$GITHUB_STEP_SUMMARY"

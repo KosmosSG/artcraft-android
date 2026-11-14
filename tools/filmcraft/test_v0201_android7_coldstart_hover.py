@@ -16,9 +16,9 @@ stage=(here/"stage_v0201_wheel.py").read_text()
 subprocess.run([sys.executable,str(here/"test_v0201_android6_hover_icons_size.py")],
                check=True)
 marker="ctx.request_repaint_after(Duration::from_millis(80));"
-capture=wheel.split("pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {",1)
+capture=wheel.split("pub fn capture(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput,\n        document_epoch: u64) {",1)
 if len(capture) != 2: raise SystemExit("STOP: FilmCraft wheel capture entry missing")
-prefix=capture[1].split("if let Some((button, hover)) = self.poll_java()",1)
+prefix=capture[1].split("if let Some((button, hover)) = self.poll_java(document_epoch)",1)
 if len(prefix)!=2 or prefix[0].count(marker)!=1:
     raise SystemExit("STOP: 80ms poll must precede first native hover read")
 if "if !self.enabled" in prefix[0] or "if self.open" in prefix[0]:

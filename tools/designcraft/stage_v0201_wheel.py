@@ -228,7 +228,7 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     }
     public String dcStylusHoverSample() {
         long age = android.os.SystemClock.uptimeMillis() - dcPenHoverAt;
-        if (!dcPenHoverActive || age < 0L || age > 1300L) return "";
+        if (!dcPenHoverActive || age < 0L || age > 5000L) return "";
         return Float.toString(dcPenHoverX) + "," + Float.toString(dcPenHoverY);
     }""",
         "Immediate Android hover entry/move/exit capture")

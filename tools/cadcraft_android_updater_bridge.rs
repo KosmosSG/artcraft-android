@@ -91,3 +91,29 @@ pub fn stylus_take_direct() -> Vec<i32> {
         _ => Vec::new(),
     }
 }
+
+/// Dedicated visual stylus hover channel. Coordinates are Android window pixels.
+/// Never forwards the stylus events as touches or fake mouse clicks.
+static PEN_HOVER: std::sync::Mutex<Option<(f32, f32)>> =
+    std::sync::Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_artcraft_cadcraft_test_CadCraftActivity_cadStylusHoverNative(
+    _env: jni::JNIEnv<'_>,
+    _activity: JObject<'_>,
+    x: jni::sys::jfloat,
+    y: jni::sys::jfloat,
+    action: jni::sys::jint,
+) {
+    if let Ok(mut hover) = PEN_HOVER.lock() {
+        match action {
+            7 | 9 if x.is_finite() && y.is_finite() => *hover = Some((x, y)),
+            0 | 1 | 3 | 10 => *hover = None,
+            _ => {}
+        }
+    }
+}
+
+pub fn stylus_hover_pos() -> Option<(f32, f32)> {
+    PEN_HOVER.lock().ok().and_then(|hover| *hover)
+}

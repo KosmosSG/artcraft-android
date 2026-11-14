@@ -164,7 +164,11 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
             }
             // Visible only in this disposable TEST build, not final CADCraft.
             if ui.button("Pen Input Status (TEST)...").clicked() {
-                cadcraft_android_updater_bridge::show_pen_diagnostics();
+                // Always open native egui diagnostics; if JNI cannot reach the
+                // Java Activity the window still appears and reports the fault.
+                ui.ctx().data_mut(|d| d.insert_temp(
+                    Id::new("cadcraft_pen_test_open"), true));
+                ui.ctx().request_repaint();
                 ui.close();
             }
             if ui.button("Customize Wheel...").clicked() {
@@ -425,6 +429,41 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
         if let Some(result) = response {
             preview_actual_size(app, ctx, result.response.rect);
         }
+    }
+    // Test-only in-app diagnostics, not an Android AlertDialog. This must
+    // remain usable even when every Java->Rust or Rust->Java JNI path fails.
+    let diag_id = Id::new("cadcraft_pen_test_open");
+    if ctx.data(|d| d.get_temp::<bool>(diag_id).unwrap_or(false)) {
+        let mut open = true;
+        egui::Window::new("Pen Input Status (TEST)")
+            .id(Id::new("cadcraft_pen_status_window"))
+            .open(&mut open).resizable(true).collapsible(false)
+            .default_width(430.0).show(ctx, |ui| {
+                ui.label("Hover Magic-Pencil 4s; press the side button once.");
+                ui.label("Counts update here without touching the canvas.");
+                ui.separator();
+                let java = cadcraft_android_updater_bridge::stylus_status();
+                if java.is_empty() {
+                    ui.colored_label(BRAND, "Java Activity bridge unavailable or returned no status.");
+                    ui.label("The native counters below can still reveal received input.");
+                } else {
+                    ui.strong("Java input routes");
+                    for line in java.split('|') {
+                        ui.label(line.trim());
+                    }
+                }
+                ui.separator();
+                ui.strong("Native input queue");
+                for line in android_activity::cad_stylus_native_status().split(" | ") {
+                    ui.label(line);
+                }
+                ui.separator();
+                ui.label("If candidate DPAD increases but accepted stays zero, inspect verified device IDs.");
+                ui.label("If neither count changes, MagicOS may consume the button before CADCraft.");
+                if ui.button("Refresh").clicked() { ui.ctx().request_repaint(); }
+            });
+        ctx.data_mut(|d| d.insert_temp(diag_id, open));
+        if open { ctx.request_repaint_after(Duration::from_millis(250)); }
     }
     show_feedback(ctx);
     draw_hover_pointer(ctx, pen_hover);

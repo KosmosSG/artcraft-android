@@ -14,8 +14,9 @@ def check(root: Path) -> None:
     java = (adapter / "java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
     bridge = (adapter / "src/ime_bridge.rs").read_text()
     host = (adapter / "src/lib.rs").read_text()
-    menu = (root / "source/vectorcraft/crates/ui-egui/src/menus/bar.rs").read_text()
+    menu = (root / "source/vectorcraft/crates/ui-egui/src/menus.rs").read_text()
     updater = (adapter / "java/com/artcraft/vectorcraft/VectorCraftUpdateInstaller.java").read_text()
+    assert "restore_type_hardware_text(raw, editing, field_focused, composing, modal)" in host
     assert "vcPhysicalTypeEditing" in java
     assert "event.getDeviceId()" in java
     assert "Character.isISOControl(unicode)" in java

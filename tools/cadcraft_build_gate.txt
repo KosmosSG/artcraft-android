@@ -1,22 +1,18 @@
-CADCraft v0.19.0-android.6 ARM64 TEST ONLY / stylus-button routing repair
-User verified on HONOR MagicPad 4: Android.5 75% size/85% opacity correct,
-BUT stylus hover + Magic-Pencil 4s side-button still does not open wheel.
-Source-grounded device diagnostic: HONOR Magic-Pencil 4s Mouse, ID often 109,
-KEYCODE_DPAD_DOWN=20 on hover press/release, occasional orphan UP;
-hover motion has a different stylus device ID and does not expose button state.
+CADCraft v0.19.0-android.7 ARM64 TEST ONLY — HONOR Magic-Pencil 4s regression fix
+Device-confirmed Android.6 failure: stylus hover pointer invisible; hover side-button cannot open wheel.
 
-This build adjusts only isolated CADCraft proposal C branch / draft PR #158:
-- Add +15% size to exact launcher Cc glyph in circular wheel hub; no font substitute
-- Capture verified named Magic-Pencil keys BEFORE Android IME pre_dispatch
-- Keep unmatched KEY UP valid, match pen names/IDs, never consume real keyboard arrows
-- Add Java Activity/IME verified pen direct JNI callback into Rust queue (and Java polling fallback)
-- De-duplicate Java+native delivery, keep 100ms enabled-only polling and hover anchor
-- Verify direct JNI callback exported in libcadcraft_android.so and declaration packed in DEX
-- Preserve defaults 75% size / 85% opacity, custom wheel actions, soft shadow,
-  dual-grey sectors, outside-dialog live preview, fading bottom-center feedback
-- Preserve in-app published CADCraft-specific APK updates and SAF DXF/DWG.
-- Verify appId com.artcraft.cadcraft.test, APK ZIP, lib/arm64-v8a, temporary signer,
-  SHA-256 and uploaded artifact before offering user link.
-- Never touch main/other apps, merge PR, permanently sign, or publish.
+This is the ONE focused build trigger after staging and reviewing isolated source:
+- Accept first validated KEYCODE_DPAD_DOWN=20 / DPAD_UP=19 DOWN or UP edge
+  from named HONOR Magic-Pencil device; 550ms duplicate suppression.
+- Keep physical keyboard arrows, regular mouse, touch, and other apps untouched.
+- Bridge actual pen TOOL_TYPE_STYLUS hover coordinates from NativeActivity AInputQueue
+  or Java dispatchGenericMotionEvent; render non-interactive colored hover pointer
+  on canvas even before any touch-down. Clear pointer on stylus exit/touch.
+- Wake native renderer on first Java hover entry and button event.
+- Verify both Java-to-Rust JNI symbols in Android .so and Java DEX after build.
+- Keep exactly the Cc wheel, 75% size / 85% opacity defaults,
+  PhotoCraft-style UI, SAF DXF/DWG, and app-scoped updater.
+- Preserve package com.artcraft.cadcraft.test, disposable signer, checksum and ZIP checks.
+- Test-only draft PR #158. Never merge, publish or use production key.
 
-Final focused gate after restoring valid workflow syntax: verify Java + native Magic-Pencil callback packaged into test APK; no additional project scope.
+Build gate changed exactly once to conserve GitHub Actions minutes.

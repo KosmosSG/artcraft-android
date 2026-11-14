@@ -2,7 +2,7 @@
 
 An **independently installable** native Android dashboard for the 13 Craft apps in the KosmosSG Android suite. This project lives in its own `launcher-android/` subfolder and an isolated feature branch. The existing Rust app builders, main branch, published releases and permanent signing keys are left alone.
 
-## v0.1.0-android.8 scope
+## v0.1.0-android.9 scope
 - Responsive tablet grid with all 13 products (including unreleased placeholders).
 - Detect app packages and launch installed apps without accessing their private data.
 - **Self-updater:** the overflow menu offers manual `Check Launcher Update` plus a separate persisted **OFF-by-default** launcher-startup toggle. It looks for exact `artcraft-launcher-vX.Y.Z-android.N` releases with one signed `ArtCraft-Launcher-vX.Y.Z-android.N-arm64-v8a.apk` asset and `SHA256SUMS.txt`, excludes drafts, honors the Stable/Preview channel, compares versions, and uses the existing in-app download, SHA-256, signer, package, versionCode and user-confirmed installation path. No qualifying published launcher release exists until the owner explicitly publishes one with permanent signing. Existing *disposable debug-signed* tests are not guaranteed in-place compatible.
@@ -31,6 +31,6 @@ The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It i
 - Some older published APKs use noncanonical or reused filename/metadata and will deliberately not appear as eligible one-tap updates; the release page remains available.
 - This prototype is **source-built but not physically device-verified** on a HONOR MagicPad 4. Do not mark it device-verified until user testing.
 
-Android.8 UI contrast pass: dark theme page #15181B, card #30363B, border #717B83, solid neutral hero #353C41, bright text #F7FAFA / #D0D7DB, teal primary buttons and high-contrast teal outlines. The bottom notification bar is near-black. The overflow is a custom black (#050607) scrollable PopupWindow with teal-highlighted update actions, gray section dividers and preserved toggles/release links. This keeps the original Ac icon, 13 real installed app icons, in-app download verification and launcher self-updater unchanged in function.
+Android.9 OLED pure-black dark mode: page, surrounding card gutters, top header, status/navigation bars, bottom notification bar, and overflow menu use #000000. App cards (#30363B), hero (#353C41), high-contrast borders (#717B83), readable text, and teal-only actions remain unchanged. Optional light theme remains available. The original Ac icon, 13 installed app icons, in-app download verification and launcher self-updater remain intact.
 
 Potential follow-up: Update All queue, permanent launcher signing and a truly separate `KosmosSG/artcraft-android-launcher` repository, which requires repository-creation permissions.

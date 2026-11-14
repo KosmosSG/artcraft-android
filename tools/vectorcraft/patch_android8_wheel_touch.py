@@ -223,8 +223,9 @@ pub fn set_android_wheel_enabled(enabled: bool) {
 ''')
     # Android.6 had the raw touch centroid fallback only when egui lacked
     # multi_touch(), but wheel() also includes native/synthetic scrolling.
-    # For consistent finger-following motion use measured raw centroid deltas
-    # when present, native multi_touch translation otherwise; do not add both.
+    # Flip the user's confirmed opposite two-finger on-canvas movement on
+    # both axes. Prefer raw centroid when present, native multi_touch otherwise;
+    # do not double-apply or modify trackpad/pinch/menu input.
     once(ui/'canvas/input.rs',
          'if active && !has_native_multi_touch { translated } else { egui::Vec2::ZERO }',
          'if active { translated } else { egui::Vec2::ZERO }')
@@ -243,10 +244,13 @@ pub fn set_android_wheel_enabled(enabled: bool) {
         let native_canvas_touch = ui.input(|i| i.multi_touch())
             .filter(|t| rect.contains(t.center_pos));
         if early_two_touch_on_canvas || native_canvas_touch.is_some() {
+            // Android.9 touchscreen canvas-only direction correction:
+            // reverse both raw and native two-contact centroid translations.
+            // No trackpad, pinch scale, menu scrolling or stylus changes.
             scroll = if early_pan != egui::Vec2::ZERO {
-                early_pan
+                -early_pan
             } else {
-                native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
+                -native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)
             };
         }
     }''')
@@ -256,7 +260,7 @@ pub fn set_android_wheel_enabled(enabled: bool) {
     sh=root/'lib/build-common.sh'
     anchor='cp -a "$ROOT/vendor/android-activity" "$SRC/vendor/android-activity"\n'
     once(sh, anchor, anchor + 'if [ "$APP" = "vectorcraft" ]; then\n    python3 "$ROOT/tools/patch_android8_wheel_touch.py" "$SRC" --vendor\n    python3 "$ROOT/tools/patch_android8_ime_reset.py" "$SRC" --vendor\nfi\n')
-    print('PASS: Proposal A wheel and same-direction touchscreen pan staged')
+    print('PASS: published Android.9 wheel retained; canvas-only two-finger pan direction reversed')
 
 def vendor(root):
     lib=root/'vendor/android-activity/src/lib.rs'; native=root/'vendor/android-activity/src/native_activity/mod.rs'

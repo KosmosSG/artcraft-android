@@ -144,7 +144,7 @@ def patch(root: Path) -> None:
                     clicked = Some(("android.vectorcraft.startupUpdates".into(), serde_json::json!({})));
                     ui.close();
                 }''',
-        '''                let mut startup = super::ANDROID_STARTUP_ENABLED.load(
+        '''                let mut startup = ANDROID_STARTUP_ENABLED.load(
                     std::sync::atomic::Ordering::Acquire);
                 if ui.checkbox(&mut startup, "Check for updates at startup").changed() {
                     clicked = Some(("android.vectorcraft.startupUpdates".into(), serde_json::json!({})));

@@ -1,0 +1,34 @@
+{
+  "official_version": "0.11.0",
+  "source": {
+    "repository": "storytold/lightcraft",
+    "tag": "v0.11.0",
+    "commit": "ec0cda9a6f320e3b32f659f16718f7bce6c3f12f",
+    "files": {
+      "Cargo.toml": "1a31a8ef7043d35501fcbd1f01a37270b91526ddc67aa40b12a2ecfa9125c4a3",
+      "NOTICE": "ba046cb4c82a1373805e0de9b023dbe33f82e9ea63670a1872bed644c4537007",
+      "crates/ui-egui/src/lib.rs": "d6b4801362e0f96143a147dbee19d1b652be7201b5527319984582bb9d8350fd"
+    }
+  },
+  "builder": {
+    "repository": "MostafaXS1/artcraft-android",
+    "commit": "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
+    "files": {
+      "lib/android_project.py": "9b4bcfb0867df605e0b7efc0a8bd70cdfa244308b3f562aeb93acb540e5b170e",
+      "lib/build-common.sh": "2028603570402b2738ba9992fadcf627c5150d96a186040d62f939d6fabe6d27"
+    }
+  },
+  "android_reference": {
+    "repository": "morte2437/photocraft-android",
+    "commit": "71c919b768c6d70bc8231b92e3de6a81fb949996",
+    "files": {
+      "NOTICE": "25a69f3364a0d7fea0ea486a9def19c3dc1af51608ec1218911a1a24069b4454"
+    }
+  },
+  "icon": {
+    "path": "assets/lightcraft/lc-user-approved.png",
+    "sha256": "8035dcf8bf966875ce4d51fec668581342cc774d69f3dacb977c94225dc997d4"
+  },
+  "version_name_intent": "0.11.0-android.1",
+  "version_code_reservation": null
+}

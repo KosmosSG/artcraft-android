@@ -1,0 +1,46 @@
+name: LightCraft v0.20 — source provenance only (NO APK)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/lightcraft-upstream-20261110
+    paths:
+      - '.github/workflows/lightcraft-v020-source-preflight.yml'
+      - 'tools/lightcraft/patch_v020_android.py'
+      - 'tools/lightcraft/verify_v020_source.py'
+permissions:
+  contents: read
+concurrency:
+  group: lightcraft-v020-preflight
+  cancel-in-progress: true
+jobs:
+  source-preflight:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'integration/lightcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: suite
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storytold/lightcraft
+          ref: 192ff72923c39e6623f2c7ff67ab3a119deb8071
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: fbb4f66fcc868afdd8303d5227aa81db6a21d7fa
+          path: builder
+          persist-credentials: false
+      - name: Verify published baseline and official upstream API
+        run: python3 suite/tools/lightcraft/verify_v020_source.py --suite suite --source source
+      - name: Check v0.20-only Android source and builder patch anchors (read-only)
+        run: python3 suite/tools/lightcraft/patch_v020_android.py --source source --builder builder --suite suite
+      - name: Document source-only scope
+        run: |
+          echo '### LightCraft v0.20 — source preflight only' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No source port, Rust compile, ARM64 APK, signing or publishing in this workflow.' >> "$GITHUB_STEP_SUMMARY"

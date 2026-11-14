@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "application": "lightcraft",
+  "integration_scope": "LIGHTCRAFT ONLY",
+  "baseline": {
+    "latest_published_tag": "lightcraft-v0.11.0-android.8",
+    "latest_published_commit": "7496af6c95e4bf6c1a1be6586838801f193ed749",
+    "last_explicitly_stable_tag": "lightcraft-v0.11.0-android.6",
+    "note": "android.8 is a permanently signed but untested size-optimized preview; retain its approved icon, updater, Android adapter and enhancements, and preserve android.6 for rollback"
+  },
+  "upstream": {
+    "repository": "storytold/lightcraft",
+    "stable_tag": "v0.18.0",
+    "tag_commit": "32d569ad5d19a6b55cf8d5c077127faa0f44a83b",
+    "published_at_utc": "2026-11-03T00:54:20Z",
+    "workspace_version": "0.18.0",
+    "rust_msrv": "1.95",
+    "egui_major_minor": "0.37"
+  },
+  "android_reference": {
+    "repository": "MostafaXS1/artcraft-android",
+    "known_legacy_commit": "ac54d62d9d2d6f663295a4afd8972a7a3e79f9af",
+    "newer_reviewed_candidate": "fbb4f66fcc868afdd8303d5227aa81db6a21d7fa",
+    "note": "Review SAF/Android API compatibility before choosing; never replace the approved LightCraft Android integration wholesale."
+  },
+  "approved_icon": {
+    "path": "assets/lightcraft/lc-user-approved.png",
+    "sha256": "8035dcf8bf966875ce4d51fec668581342cc774d69f3dacb977c94225dc997d4"
+  },
+  "candidate": {
+    "intended_version_name": "0.18.0-android.1",
+    "test_package_name": "com.artcraft.lightcraft.test",
+    "target_abi": "arm64-v8a",
+    "test_signing": "disposable-only",
+    "protect_installed_production_app": true
+  },
+  "gates": {
+    "upstream_provenance_verified_by_manifest_review": true,
+    "android_api_port_complete": false,
+    "android_feature_regression_passed": false,
+    "arm64_candidate_built": false,
+    "candidate_signature_verified": false,
+    "owner_device_test_passed": false,
+    "permanent_signing_authorized": false,
+    "publication_authorized": false
+  },
+  "prohibitions": [
+    "No permanent-signing credentials during development",
+    "Do not publish or auto-publish a release",
+    "Do not overwrite existing published releases, existing app data or the owner-approved icon",
+    "No expensive APK workflow until UI/SAF/updater API port is independently validated"
+  ]
+}

@@ -72,6 +72,21 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
             && !v016_android::wheel_blocks_hover(ui.ctx())
 """, "Suppress pen hover decoration through wheel")
 
+    replace_once(host,
+        "        v016_android::paint_pointer_feedback(ui.ctx());",
+        """        // Java HOVER_ENTER/MOVE is visible before any screen touch.
+        let dc_hover_visible =
+            v016_android::paint_stylus_hover_pointer(ui.ctx(), &self.saf_bridge);
+        if !dc_hover_visible {
+            v016_android::paint_pointer_feedback(ui.ctx());
+        }""",
+        "Draw immediate stylus hover pointer and preserve adaptive cursor")
+    replace_once(host,
+        "        if egui_winit::winit::platform::android::STYLUS_HOVER.load(std::sync::atomic::Ordering::Relaxed)",
+        """        if !dc_hover_visible
+            && egui_winit::winit::platform::android::STYLUS_HOVER.load(std::sync::atomic::Ordering::Relaxed)""",
+        "Avoid double-drawing native pen hover ring")
+
     replace_once(host, "        pub fn dc_dialog_action(&self, active: bool) -> Result<i32, String> {",
         """        pub fn dc_wheel_set_enabled(&self, enabled: bool) -> Result<(), String> {
             self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -116,6 +131,29 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
 
         pub fn dc_dialog_action(&self, active: bool) -> Result<i32, String> {""",
         "DesignCraft stylus wheel JNI bridge")
+
+    replace_once(host,
+        "        pub fn dc_wheel_device_ids(&self) -> Result<Vec<i32>, String> {",
+        """        pub fn dc_stylus_hover_point(&self) -> Result<Option<(f32, f32)>, String> {
+            let sample: String = self.vm.attach_current_thread(
+                |env| -> jni::errors::Result<String> {
+                    let ptr = self.app.activity_as_ptr() as jni::sys::jobject;
+                    let activity = unsafe { env.as_cast_raw::<JObject>(&ptr)? };
+                    let result = env.call_method(&*activity,
+                        jni_str!("dcStylusHoverSample"),
+                        jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+                    if result.is_null() { return Ok(String::new()); }
+                    let value = JString::cast_local(env, result)?;
+                    value.try_to_string(env)
+                }).map_err(|e| e.to_string())?;
+            let coordinates = sample.split_once(',').and_then(|(x, y)|
+                x.parse::<f32>().ok().zip(y.parse::<f32>().ok()))
+                .filter(|(x, y)| x.is_finite() && y.is_finite());
+            Ok(coordinates)
+        }
+
+        pub fn dc_wheel_device_ids(&self) -> Result<Vec<i32>, String> {""",
+        "Magic-Pencil hover JNI, independent of first touch")
 
     activities = list((android / "java").rglob("DesignCraftActivity.java"))
     if len(activities) != 1:

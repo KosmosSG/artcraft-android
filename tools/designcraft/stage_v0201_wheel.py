@@ -218,6 +218,18 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
                 break;
         }
     }
+    // Contact hides the pen-only hover overlay immediately, without
+    // swallowing any touch event or altering editing/gesture behavior.
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event != null && event.getPointerCount() > 0) {
+            int tool = event.getToolType(0);
+            if (tool == android.view.MotionEvent.TOOL_TYPE_STYLUS ||
+                    tool == android.view.MotionEvent.TOOL_TYPE_ERASER) {
+                dcPenHoverActive = false;
+            }
+        }
+        return super.dispatchTouchEvent(event);
+    }
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
         dcTrackPenHover(event);
         return super.dispatchGenericMotionEvent(event);
@@ -319,6 +331,7 @@ pub fn paint_pointer_feedback(ctx: &egui::Context) {
     assert "paint_stylus_hover_pointer" in host.read_text()
     assert "dcStylusHoverSample" in activity.read_text()
     assert "dispatchGenericMotionEvent" in activity.read_text()
+    assert "dispatchTouchEvent" in activity.read_text()
     assert "onGenericMotionEvent" in activity.read_text()
     assert "Dc icon menu" not in bar.read_text() or "Stylus Wheel" in bar.read_text()
     print("PASS: isolated DesignCraft stylus wheel, actual-scale preview, Android rocker, canvas hover guard")

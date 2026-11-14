@@ -51,6 +51,18 @@ class PhysicalTypingPatchTests(unittest.TestCase):
             self.assertEqual(after.count("onKeyUp(int keyCode, KeyEvent event)"),
                              before.count("onKeyUp(int keyCode, KeyEvent event)"))
 
+    def test_additional_preexisting_handler_guard_remains(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            java = fixture(root, with_stylus=True)
+            existing = "                    if (event.getRepeatCount() == -99) return true;"
+            source = java.read_text().replace(STYLUS, STYLUS + "\n" + existing, 1)
+            java.write_text(source)
+            patch(root)
+            output = java.read_text()
+            self.assertEqual(output.count(existing), 1)
+            self.assertLess(output.index(existing), output.index("VC_IME7 physical_text_commit"))
+
     def test_absent_stylus_anchor_is_rejected_without_mutation(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

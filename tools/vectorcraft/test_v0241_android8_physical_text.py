@@ -29,6 +29,20 @@ def fixture(root: Path) -> None:
                             signature + "\n                    if (vcStylusIntercept(event)) return true;", 1)
     source = source.replace("    private EditText imeView;",
                             "    private EditText imeView;\n    private long vcImeFocusEpoch = 0L;", 1)
+    # Android.11 diagnostic and Android.12 shortcut overlays generate these
+    # methods before Android.8; model their exact stable anchors in this cheap
+    # isolated unit test without altering owner release sources.
+    source = source.replace("    private void imeSetup() {", """    private final java.util.concurrent.atomic.AtomicLong vcTraceCommits =
+        new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong vcTraceRejected =
+        new java.util.concurrent.atomic.AtomicLong();
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        return super.dispatchKeyEvent(event);
+    }
+    private String vcDiagnosticSnapshotForTest() {
+        return "test" + "; ime_callback_rejected=" + vcTraceRejected.get();
+    }
+    private void imeSetup() {""", 1)
     java.write_text(source)
     patch_android7(root)
 

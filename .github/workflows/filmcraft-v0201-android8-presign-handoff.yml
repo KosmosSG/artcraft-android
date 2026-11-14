@@ -1,0 +1,280 @@
+name: FilmCraft Android.8 production-package pre-sign handoff (PRIVATE signer only)
+'on':
+  push:
+    branches:
+    - release/filmcraft-v0201-android8-presign-handoff-20261115
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: filmcraft-v0201-android8-presign-handoff
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+      # Optimize binary without lowering the GPU-sensitive release opt-level.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+      CARGO_PROFILE_RELEASE_LTO: thin
+    steps:
+    - name: Checkout FilmCraft-only candidate
+      uses: actions/checkout@v5
+      with:
+        path: suite
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Require same FilmCraft source files as owner-tested Android.8
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        test "$GITHUB_REF" = "refs/heads/release/filmcraft-v0201-android8-presign-handoff-20261115"
+        SRC=46a01ca4c593b452ce5e4fc20a4820a1371bca4e
+        git -C suite cat-file -e "$SRC^{commit}"
+        for file in tools/filmcraft/stage_v0201_wheel.py tools/filmcraft/filmcraft_stylus_wheel.rs tools/filmcraft/stage_upstream_v0201.py tools/filmcraft/stage_upstream_v0201_variant.py tools/filmcraft/render_filmcraft_wheel_icons.py tools/filmcraft/FilmCraftActivity.features.v019.bottom-feedback.java.inc; do
+          test "$(git -C suite rev-parse "$SRC:$file")" = "$(git -C suite rev-parse "HEAD:$file")" || {
+            echo "::error::Source changed since owner-tested FilmCraft Android.8: $file"; exit 1;
+          }
+        done
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/43607946837" | jq -e --arg sha "$SRC" '.conclusion=="success" and .head_sha==$sha'
+        echo "PASS: production rebuild uses exact owner-tested FilmCraft Android.8 input sources"
+    - name: Verify isolated v0.20.1 version staging and baseline preservation
+      run: python3 -m unittest discover -s suite/tools/filmcraft -p 'test_upstream_v019_*.py' -v
+    - name: Validate 4 GiB Java scan boundaries
+      run: cd suite && python3 tools/font_scan_budget_regression.py
+    - name: Validate app-specific keyboard focus handoff
+      run: python3 suite/tools/keyboard/escape_focus_check.py filmcraft
+    - name: Verify PhotoCraft wheel parity, refined eight icons, Fc lettering and simplified secure updater
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -m py_compile suite/tools/filmcraft/stage_v0201_wheel.py suite/tools/filmcraft/render_approved_fc_mark.py suite/tools/filmcraft/render_filmcraft_wheel_icons.py suite/tools/filmcraft/test_v0201_android6_hover_icons_size.py suite/tools/filmcraft/test_v0201_android7_coldstart_hover.py suite/tools/filmcraft/test_v0201_android8_project_hover.py
+        python3 suite/tools/filmcraft/test_v0201_android6_hover_icons_size.py
+        python3 suite/tools/filmcraft/test_v0201_android7_coldstart_hover.py
+        python3 suite/tools/filmcraft/test_v0201_android8_project_hover.py
+        python3 -m pip install Pillow==11.3.0 CairoSVG==2.8.2
+        python3 suite/tools/filmcraft/render_filmcraft_wheel_icons.py --self-test
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s suite/tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout reviewed Android builder at immutable reference
+      uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: filmcraft-builder
+        persist-credentials: false
+    - name: Verify independent builder and official FilmCraft source identity
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C filmcraft-builder rev-parse HEAD)" = ''ac54d62d9d2d6f663295a4afd8972a7a3e79f9af''
+
+        mkdir -p filmcraft-builder/source
+
+        git clone --depth 1 --branch v0.20.1 https://github.com/storytold/filmcraft.git filmcraft-builder/source/filmcraft
+
+        test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = ''cedf0c9bd060eb06a977d532402be2097c9ebe42''
+
+        grep -Fq ''version = "0.20.1"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        grep -Fq ''license = "MIT OR Apache-2.0"'' filmcraft-builder/source/filmcraft/Cargo.toml
+
+        test ! -e filmcraft-builder/keys/artcraft-builder.jks
+
+        test ! -e filmcraft-builder/keys/.keystore-password
+
+        test -f suite/assets/filmcraft/fc-user-approved.png
+
+        echo ''242c40a9c5d508f75a771ece0cb8e4f741c914f7af20e46eb5e06f09e845764d  suite/assets/filmcraft/fc-user-approved.png'' | sha256sum --check
+
+        echo ''Official FilmCraft v0.20.1 (d1af238b) is pinned; protected Android release stays untouched.'' >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Set up Java 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up Rust 1.95 and ARM64 target
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Select Android SDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+        '
+    - name: Install pinned Android build prerequisites
+      shell: bash
+      run: 'set -euo pipefail
+
+        sdkmanager --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Install launcher icon renderer in isolated Python environment
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m venv "$GITHUB_WORKSPACE/.filmcraft-build-python"
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -m pip install --disable-pip-version-check ''Pillow==11.3.0''
+
+        "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -c ''from PIL import Image; print("Pillow PNG renderer available")''
+
+        echo "$GITHUB_WORKSPACE/.filmcraft-build-python/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Stage existing FilmCraft fonts shared folders SAF IME and updater integration
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/filmcraft/stage_runtime_hook.py filmcraft-builder/lib/build-common.sh
+        # FilmCraft v0.19's egui 0.37 IME API requires its matching storyTold winit fork.
+        # Do not overwrite either upstream Git pin with older Android builder vendors.
+        python3 suite/tools/filmcraft/stage_v019_builder_deps.py filmcraft-builder/lib/build-common.sh
+        mkdir -p filmcraft-builder/tools/filmcraft
+        cp suite/tools/filmcraft/filmcraft_features_v019_bottom_feedback.rs suite/tools/filmcraft/FilmCraftActivity.features.v019.bottom-feedback.java.inc suite/tools/filmcraft/port_android_mouse_winit.py filmcraft-builder/tools/filmcraft/
+        cp suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py filmcraft-builder/tools/filmcraft/runtime_patch.py
+        python3 suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py --self-test
+        python3 suite/tools/filmcraft/header_patch_v019.py --self-test
+        python3 suite/tools/filmcraft/port_android_mouse_winit.py --self-test
+        python3 suite/tools/filmcraft/native_menu_patch.py filmcraft-builder/source/filmcraft/crates/ui-egui/src/menus.rs
+        python3 suite/tools/filmcraft/header_patch_v019.py filmcraft-builder/source/filmcraft
+        # Android Program preview: multi-touch pinch zoom and two-axis trackpad/touch panning.
+        # Fail closed on official monitor source drift; no shared editor or desktop changes.
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py --self-test
+        python3 suite/tools/filmcraft/patch_v019_android_program_gestures.py filmcraft-builder/source/filmcraft
+        grep -Fq 'fn android_program_monitor_gesture(' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor_view.rs
+        grep -Fq '!android_program_multitouch' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/monitor.rs
+        # D/C/S methods called by the Android launcher must exist in pinned UI source.
+        # Patch only the temporary checked-out FilmCraft v0.20.1 source.
+        python3 suite/tools/filmcraft/patch_unsaved_dcs_v019.py filmcraft-builder/source/filmcraft
+        grep -Fq 'pub fn android_capture_unsaved_dcs' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        grep -Fq 'pub fn android_unsaved_dcs_active' filmcraft-builder/source/filmcraft/crates/ui-egui/src/panels/clip_dialogs.rs
+        # The pinned Android builder creates a fresh isolated Python venv.
+        # Reinstall CairoSVG there for deterministic, offline-at-runtime icons.
+        python3 -m pip install Pillow==11.3.0 CairoSVG==2.8.2
+        # Add the owner-approved PhotoCraft-style radial wheel, Fc settings and
+        # pointer-isolated foreground UI without changing Android/production source.
+        python3 suite/tools/filmcraft/stage_v0201_wheel.py --self-test
+        python3 suite/tools/filmcraft/stage_v0201_wheel.py filmcraft-builder
+        # The tested v0.20.1 engine exposes document_epoch for project-open
+        # rearming. Confirm the original activity already owns the window
+        # focus callback; never generate a second override.
+        grep -Fq 'self.inner.session.document_epoch' suite/tools/filmcraft/stage_v0201_wheel.py
+        grep -Fq 'fcWheelOnDocumentEpoch(long epoch)' suite/tools/filmcraft/stage_v0201_wheel.py
+        grep -Fq 'fcWheelOnDocumentEpoch' suite/tools/filmcraft/filmcraft_stylus_wheel.rs
+        test "$(grep -c 'public void onWindowFocusChanged(boolean hasFocus)' filmcraft-builder/templates/android/SafActivity.java)" -eq 1
+        test "$(stat -c %s filmcraft-builder/tools/filmcraft/filmcraft_wheel_icons.rgba)" -eq 165888
+        # The existing Activity already overrides onWindowFocusChanged.
+        # Guard the new cold-start hover hook without introducing a duplicate override.
+        grep -Fq 'fcWheelPrepareEarlyHover();' suite/tools/filmcraft/stage_v0201_wheel.py
+        grep -Fq 'setOnHoverListener(fcWheelSurfaceHover)' suite/tools/filmcraft/stage_v0201_wheel.py
+        HEADER=filmcraft-builder/source/filmcraft/crates/ui-egui/src/header.rs
+        grep -Fq 'action(ui, "Check for Updates…", 4);' "$HEADER"
+        ! grep -Fq 'Download & Verify APK in App…' "$HEADER"
+        ! grep -Fq 'Install Verified APK (Android Approval)…' "$HEADER"
+        ! grep -Fq 'Open Official Release Page…' "$HEADER"
+        python3 suite/tools/filmcraft/test_icon_reporting.py filmcraft-builder/lib/build-common.sh
+        python3 -m py_compile suite/tools/filmcraft/stage_variant.py suite/tools/filmcraft/runtime_patch_v019_bottom_feedback.py suite/tools/filmcraft/native_menu_patch.py suite/tools/filmcraft/header_patch_v019.py suite/tools/filmcraft/patch_v019_android_program_gestures.py suite/tools/filmcraft/port_android_mouse_winit.py suite/tools/approved-branding/approved_branding.py
+        bash -n filmcraft-builder/lib/build-common.sh
+    - name: Stage v0.20.1-only build and compiled APK verification metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/filmcraft/stage_upstream_v0201.py suite
+        python3 suite/tools/filmcraft/stage_v0201_android8_production.py --self-test
+        python3 suite/tools/filmcraft/stage_v0201_android8_production.py suite filmcraft-builder
+        python3 -m py_compile suite/tools/filmcraft/stage_upstream_v0201.py suite/tools/filmcraft/stage_upstream_v0201_variant.py suite/tools/filmcraft/stage_v0201_android8_production.py
+        python3 suite/tools/approved-branding/approved_branding.py check
+    - name: Rebuild reviewed FilmCraft Android.8 as production package for permanent signing
+      shell: bash
+      env:
+        FILMCRAFT_ANDROID_VERSION_NAME: 0.20.1-android.8
+        FILMCRAFT_TEST_PACKAGE: com.artcraft.filmcraft
+        FILMCRAFT_EPHEMERAL_VERSION_CODE: '2001008'
+        ARTCRAFT_TARGET_SDK: '35'
+      run: |
+        set -euo pipefail
+        python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
+        python3 suite/tools/filmcraft/stage_upstream_v0201_variant.py filmcraft-builder/lib/android_project.py
+        python3 -m pip install Pillow==11.3.0
+        python3 suite/tools/approved-branding/approved_branding.py install filmcraft-builder filmcraft
+        cd filmcraft-builder
+        bash build.sh -filmcraft -packagename=com.artcraft.filmcraft -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-user-approved.png"
+        test -s output/filmcraft-0.20.1.apk
+        mv -- output/filmcraft-0.20.1.apk output/filmcraft-0.20.1-android.8-presign.apk
+        test -s output/filmcraft-0.20.1-android.8-presign.apk
+        printf 'FilmCraft Android.8 APK bytes: '
+        stat -c %s output/filmcraft-0.20.1-android.8-presign.apk
+        echo "FilmCraft Android.8 APK size: $(stat -c %s output/filmcraft-0.20.1-android.8-presign.apk) bytes (strip=symbols, thin LTO)" >> "$GITHUB_STEP_SUMMARY"
+    - name: Audit production package and pre-sign application payload
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 suite/tools/approved-branding/verify_apk.py filmcraft-builder integrated-candidate
+        python3 suite/tools/filmcraft/verify_android_features_apk_v019.py filmcraft-builder/output/filmcraft-0.20.1-android.8-presign.apk integrated-candidate
+        # The approved-branding verifier already retains a uniquely named
+        # ephemeral APK with SHA256SUMS.txt and compiled package metadata.
+        test -s integrated-candidate/SHA256SUMS.txt
+        (cd integrated-candidate && sha256sum --check SHA256SUMS.txt)
+        printf '%s\n' 'EPHEMERAL TEST SIGNER ONLY - NOT A PRODUCTION UPDATE' > integrated-candidate/NOT-FOR-UPDATE.txt
+    - name: Record exact keyboard candidate source
+      run: |
+        mkdir -p integrated-candidate
+        printf "%s\n" "$GITHUB_SHA" > integrated-candidate/keyboard-source-sha.txt
+        printf "%s\n" "Upstream FilmCraft v0.20.1 @ cedf0c9bd060eb06a977d532402be2097c9ebe42" > integrated-candidate/upstream-pin.txt
+        test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = "cedf0c9bd060eb06a977d532402be2097c9ebe42"
+    - name: Stage untrusted production-package payload for private signing only
+      shell: bash
+      run: |
+        set -euo pipefail
+        SOURCE=filmcraft-builder/output/filmcraft-0.20.1-android.8-presign.apk
+        test -s "$SOURCE"
+        mkdir -p handoff
+        cp "$SOURCE" handoff/FilmCraft-v0.20.1-android.8-arm64-v8a-PRESIGN-NOT-FOR-INSTALL.apk
+        printf '%s\n' 'DO NOT INSTALL - TEMPORARY CI SIGNATURE. Only the private enrolled FilmCraft signer may publish a permanent APK.' > handoff/DO-NOT-INSTALL.txt
+        (cd handoff && sha256sum FilmCraft-v0.20.1-android.8-arm64-v8a-PRESIGN-NOT-FOR-INSTALL.apk > SHA256SUMS.txt)
+        cp integrated-candidate/verification.json handoff/verification-presign.json
+        cp integrated-candidate/android-feature-compiled-audit.json handoff/android-feature-compiled-audit.json
+        printf '%s\n' '46a01ca4c593b452ce5e4fc20a4820a1371bca4e' > handoff/owner-tested-android8-source.txt
+        echo "PASS: production-package handoff built; no permanent signing secrets or public release" >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload untrusted production handoff for PRIVATE signing workflow
+      uses: actions/upload-artifact@v5
+      with:
+        name: FilmCraft-v0201-android8-PRODUCTION-PRESIGN-PRIVATE-HANDOFF
+        path: handoff/
+        retention-days: 10
+        if-no-files-found: error
+    - name: Delete disposable builder signing key
+      if: always()
+      shell: bash
+      run: rm -rf filmcraft-builder/keys

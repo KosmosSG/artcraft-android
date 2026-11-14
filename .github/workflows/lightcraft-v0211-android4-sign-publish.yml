@@ -377,7 +377,7 @@ jobs:
           set -euo pipefail
           SOURCE=candidate/LightCraft-v0.21.1-android.4-arm64-v8a-RESIGN-REQUIRED.apk
           test -s "$SOURCE"
-          (cd candidate && sha256sum -c SHA256SUMS.txt)
+          (cd candidate && sed 's#verified/##g' SHA256SUMS.txt | sha256sum -c -)
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           BUILD="$SDK/build-tools/35.0.0"
           "$BUILD/apksigner" verify --verbose --print-certs "$SOURCE" > candidate-certificate.txt

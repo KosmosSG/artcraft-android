@@ -86,16 +86,26 @@ def main() -> None:
     lines.insert(pos, '        #[cfg(target_os = "android")]\n        crate::android_stylus_wheel::show(self, &ctx);\n')
     new["frame"] = "".join(lines)
 
-    # Keep the existing compact Lc icon, Appearance, updater, About and other
-    # approved menu behavior. Only add this button to the Android branch.
+    # PhotoCraft's hierarchy: Lc > Stylus Wheel >
+    # Enable Stylus Wheel (checkmark) / Stylus Wheel Customization.
+    # Keep approved Appearance, updater and About commands unchanged.
     new["menu"] = once(new["menu"],
         '            if ui.button("About LightCraft").clicked() {',
-        '            if ui.button("Stylus Wheel Customization").clicked() {\n'
-        '                crate::android_stylus_wheel::open_settings(ui.ctx());\n'
-        '                ui.close();\n'
-        '            }\n'
-        '            if ui.button("About LightCraft").clicked() {',
-        "existing Lc top-left menu")
+        '''            ui.menu_button("Stylus Wheel", |ui| {
+                let mut enabled = app.ui.settings.stylus_wheel.enabled;
+                if ui.checkbox(&mut enabled, "Enable Stylus Wheel").changed() {
+                    app.ui.settings.stylus_wheel.enabled = enabled;
+                    crate::android_stylus_wheel::set_enabled_feedback(ui.ctx(), enabled);
+                    ui.close();
+                }
+                if ui.button("Stylus Wheel Customization").clicked() {
+                    crate::android_stylus_wheel::open_settings(ui.ctx());
+                    ui.close();
+                }
+            });
+            ui.separator();
+            if ui.button("About LightCraft").clicked() {''',
+        "PhotoCraft-style Lc Stylus Wheel submenu")
 
     if args.apply:
         for key, file in paths.items():

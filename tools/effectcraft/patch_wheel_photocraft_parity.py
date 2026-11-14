@@ -192,7 +192,7 @@ def patch(root: Path):
     assert len(src) > len(old)
     wheel.write_text(src, encoding="utf-8")
     header.write_text(h, encoding="utf-8")
-    print("PASS: PhotoCraft layout/default 100%/85%, two-tone segments, soft shadow, dialog, Ec submenu and bottom-centered toast")
+    print("PASS: PhotoCraft layout/default 75%/85%, two-tone segments, soft shadow, dialog, Ec submenu and bottom-centered toast")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2: raise SystemExit("Usage: patch_wheel_photocraft_parity.py <builder-root>")

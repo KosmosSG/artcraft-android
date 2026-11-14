@@ -57,13 +57,13 @@ def patch(root: Path) -> None:
         }''',
         "Activity dispatch counter")
     java = once(java,
-        '''            + "\\\\nime_commit_callbacks=" + vcTraceCommits.get()''',
-        '''            + "\\\\nime_commit_callbacks=" + vcTraceCommits.get()
-            + "; activity_physical_down=" + vcTraceActivityKeys.get()
-            + "; physical_text_queued=" + vcTracePhysicalText.get()''',
+        '            + "; ime_callback_rejected=" + vcTraceRejected.get()',
+        '''            + "; activity_physical_down=" + vcTraceActivityKeys.get()
+            + "; physical_text_queued=" + vcTracePhysicalText.get()
+            + "; ime_callback_rejected=" + vcTraceRejected.get()''',
         "copyable diagnostics counters")
     java = once(java, new_physical,
-        'vcTracePhysicalText.incrementAndGet();\\n                            ' + new_physical,
+        'vcTracePhysicalText.incrementAndGet();' + chr(10) + '                            ' + new_physical,
         "physical text enqueue counter")
     java = once(java, '"VC_IME7 physical_text_commit key="',
                 '"VC_IME8 physical_text_application key="', "privacy-safe hardware marker")

@@ -504,6 +504,26 @@
                     }
                 }
                 fcResults.offer(result.toString());
+                // PhotoCraft-style single-entry updater: after the user checks
+                // for updates, offer download/verification inside FilmCraft.
+                // The .test package can verify but can NEVER invoke installation.
+                String updateState = result.optString("status");
+                if ("available".equals(updateState) || "test".equals(updateState)) {
+                    final String shownVersion = latest;
+                    final boolean verifyOnly = testPackage;
+                    runOnUiThread(() -> new android.app.AlertDialog.Builder(
+                            this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                        .setTitle(verifyOnly
+                                ? "FilmCraft test — verify official APK"
+                                : "FilmCraft " + shownVersion + " available")
+                        .setMessage(verifyOnly
+                                ? "This is a separate test app. Download and verify the official APK? Installation is disabled for test builds."
+                                : "Download FilmCraft " + shownVersion + " inside the app and verify its checksum and signing certificate before Android asks to install?")
+                        .setPositiveButton(verifyOnly ? "Download & Verify" : "Download",
+                                (dialog, which) -> fcDownloadVerifiedUpdate())
+                        .setNegativeButton("Later", null)
+                        .show());
+                }
             } catch (Exception error) {
                 fcAnswer("updates", "error",
                         "Could not check FilmCraft releases: " + error.getMessage(), null);

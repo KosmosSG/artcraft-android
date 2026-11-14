@@ -95,7 +95,8 @@ def main(root):
     one(header, """                        // Like GridCraft: one nested Appearance menu, no extra toolbar.""",
         """                        // The same Default eight-segment wheel UI as PhotoCraft:
                         // opt-in, per-app saved choices and a real 1:1 preview.
-                        ui.separator();
+                        // Ec menu already has a separator after App Updates.
+                        // Do not insert a second divider before Stylus Wheel.
                         let wheel_on = app.stylus_wheel.enabled;
                         if ui.button(if wheel_on {
                             "✓ Stylus Wheel ON"

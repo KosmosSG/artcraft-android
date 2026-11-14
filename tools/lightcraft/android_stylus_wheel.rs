@@ -200,6 +200,49 @@ fn icon(p: &egui::Painter, center: Pos2, size: f32, action: WheelAction, color: 
     };
     crate::icons::paint(p, egui::Rect::from_center_size(center, vec2(size, size)), mark, color);
 }
+// The source Lc menu PNG includes a navy SQUARE. Keep its exact cyan
+// launcher letterforms, but remove the background once to make a round-only
+// PhotoCraft-style hub. Cropping to the glyph never stretches its proportions.
+fn lc_glyph(ctx: &Context) -> (egui::TextureHandle, egui::Vec2) {
+    let id = Id::new("lightcraft.wheel.transparent-lc-glyph");
+    if let Some(saved) = ctx.data(|d| d.get_temp::<(egui::TextureHandle, egui::Vec2)>(id)) {
+        return saved;
+    }
+    let mut rgba = image::load_from_memory(include_bytes!("menus/lc-menu.png"))
+        .expect("reviewed LightCraft Lc PNG").to_rgba8();
+    let (width, height) = rgba.dimensions();
+    for pixel in rgba.pixels_mut() {
+        // Both launcher and menu use cyan lettering on a navy background.
+        // The green channel separates them while feathering antialiased edges.
+        let glyph_alpha = ((pixel[1] as i32 - 78) * 255 / 65).clamp(0, 255) as u16;
+        pixel[3] = ((pixel[3] as u16 * glyph_alpha) / 255) as u8;
+    }
+    let (mut left, mut top, mut right, mut bottom) = (width, height, 0u32, 0u32);
+    for (x, y, pixel) in rgba.enumerate_pixels() {
+        if pixel[3] > 5 {
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+    }
+    let (x, y, w, h) = if left < right && top < bottom {
+        (left, top, right - left, bottom - top)
+    } else {
+        // Fail safe if the PNG color scheme changes; leave an empty mark
+        // rather than painting the old dark square inside the round hub.
+        (0, 0, width.max(1), height.max(1))
+    };
+    let cropped = image::imageops::crop_imm(&rgba, x, y, w, h).to_image();
+    let pixels = egui::ColorImage::from_rgba_unmultiplied(
+        [w as usize, h as usize], cropped.as_raw());
+    let texture = ctx.load_texture("lightcraft-wheel-lc-letterforms", pixels,
+        egui::TextureOptions::LINEAR);
+    let glyph_fraction = vec2(w as f32 / width.max(1) as f32,
+        h as f32 / height.max(1) as f32);
+    ctx.data_mut(|d| d.insert_temp(id, (texture.clone(), glyph_fraction)));
+    (texture, glyph_fraction)
+}
 /// This renderer is used without resizing in the pop-out preview.
 fn paint(ui: &mut Ui, p: &WheelPrefs, hover: Option<Pos2>) {
     let k = scale(p);
@@ -243,10 +286,17 @@ fn paint(ui: &mut Ui, p: &WheelPrefs, hover: Option<Pos2>) {
     painter.circle_stroke(c, R * k, Stroke::new(0.8, Color32::from_gray(95)));
     painter.circle_filled(c, (INNER + 2.0) * k, NAVY);
     painter.circle_stroke(c, (INNER + 2.0) * k, Stroke::new(1.4, CYAN));
-    // Preserve the exact LightCraft icon from the app's launcher/menu.
-    let pic = egui::Image::from_bytes("bytes://lightcraft/wheel/lc.png", include_bytes!("menus/lc-menu.png"))
-        .fit_to_exact_size(vec2(39.0, 39.0) * k);
-    ui.put(egui::Rect::from_center_size(c - vec2(0.0, 8.0) * k, vec2(39.0, 39.0) * k), pic);
+    // Only the transparent launcher Lc lettering: no square/tile behind it.
+    // Displayed glyph is exactly 10% larger than the previous 39pt PNG's
+    // visible letter region; cropping removes background, not padding scale.
+    let (texture, glyph_fraction) = lc_glyph(ui.ctx());
+    let glyph_size = glyph_fraction * (39.0 * k * 1.10);
+    painter.image(
+        texture.id(),
+        egui::Rect::from_center_size(c - vec2(0.0, 8.0) * k, glyph_size),
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
     painter.text(c + vec2(0.0, 22.0) * k, Align2::CENTER_CENTER,
         active.map(|idx| p.slots[idx].label()).unwrap_or("Default"),
         FontId::proportional(11.0 * k), Color32::WHITE);

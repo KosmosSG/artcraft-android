@@ -96,6 +96,21 @@ pub fn open_settings(ctx: &Context) {
     ctx.data_mut(|d| { d.insert_temp(Id::new(SETTINGS), true); d.insert_temp(Id::new(OPEN), false); });
     ctx.request_repaint();
 }
+/// Called by the checked Enable Stylus Wheel item in the compact Lc menu.
+/// The actual saved preference is owned by app.ui.settings.stylus_wheel.
+pub fn set_enabled_feedback(ctx: &Context, enabled: bool) {
+    if !enabled {
+        ctx.data_mut(|d| {
+            d.insert_temp(Id::new(OPEN), false);
+            d.insert_temp(Id::new(HOVER), None::<Pos2>);
+        });
+    }
+    notify(ctx, if enabled {
+        "Stylus Wheel ON • hover + press pen button"
+    } else {
+        "Stylus Wheel OFF"
+    });
+}
 pub fn request_stylus_toggle(ctx: &Context) {
     ctx.data_mut(|d| d.insert_temp(Id::new("lightcraft.android.wheel.toggle-request"), true));
     ctx.request_repaint();

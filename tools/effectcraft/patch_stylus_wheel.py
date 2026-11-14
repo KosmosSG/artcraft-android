@@ -157,7 +157,8 @@ def main(root):
         if (event == null || event.getPointerCount() <= 0) return;
         int tool = event.getToolType(0);
         if (tool != android.view.MotionEvent.TOOL_TYPE_STYLUS
-            && tool != android.view.MotionEvent.TOOL_TYPE_ERASER) return;
+            && tool != android.view.MotionEvent.TOOL_TYPE_ERASER
+            && !event.isFromSource(android.view.InputDevice.SOURCE_STYLUS)) return;
         int act = event.getActionMasked();
         if (act == android.view.MotionEvent.ACTION_HOVER_ENTER
             || act == android.view.MotionEvent.ACTION_HOVER_MOVE) {

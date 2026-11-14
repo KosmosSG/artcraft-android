@@ -25,12 +25,14 @@ def assert_backend_connected(root: Path) -> None:
     app = (root / VENDOR_FILES[0]).read_text()
     native = (root / VENDOR_FILES[1]).read_text()
     window = (root / VENDOR_FILES[2]).read_text()
-    assert "pub fn vc_reset_ime(&self, request_id: u64)" in app
+    # The final packaging stage previously inserted these methods twice and
+    # failed native compilation with E0592. Check exact method cardinality.
+    assert app.count("pub fn vc_reset_ime(&self, request_id: u64)") == 1
+    assert native.count("pub fn vc_reset_ime(&self, request_id: u64)") == 1
+    assert window.count("pub fn reset_ime_with_request(&self, request_id: u64)") == 1
     assert "self.inner.read().unwrap().vc_reset_ime(request_id);" in app
     assert 'jni_str!("vcResetIme")' in native
     assert 'jni_sig!("(J)V")' in native
-    assert "pub fn vc_reset_ime(&self, request_id: u64)" in native
-    assert "pub fn reset_ime_with_request(&self, request_id: u64)" in window
     assert "self.app.vc_reset_ime(request_id);" in window
     begin = window.index("    pub fn reset_ime_with_request(&self, request_id: u64) {")
     end = window.index("    pub fn focus_window(&self)", begin)
@@ -77,12 +79,15 @@ def probe(builder: Path) -> None:
             raise AssertionError("Expected pinned unpatched builder to lack the reset transport")
         vendor(temp)
         assert_backend_connected(temp)
-        # Reproduce the actual failed build: the builder previously staged
-        # the winit reset method, but packaging reconstructs fresh activity
-        # glue. Reapplying --vendor must keep that exact winit method and
-        # still wire the newly copied android-activity sources through JNI.
+        # The full builder can invoke --vendor again with ALL sources retained:
+        # the facade, the JNI bridge and winit must remain single definitions.
+        vendor(temp)
+        assert_backend_connected(temp)
+        # Also reproduce mixed staging: winit retained, fresh activity glue.
         for relative in VENDOR_FILES[:2]:
             shutil.copy2(builder / relative, temp / relative)
+        vendor(temp)
+        assert_backend_connected(temp)
         vendor(temp)
         assert_backend_connected(temp)
     print("PASS: Android.10 source-only probe covers fresh and pre-staged winit JNI reset transport, no false ack")

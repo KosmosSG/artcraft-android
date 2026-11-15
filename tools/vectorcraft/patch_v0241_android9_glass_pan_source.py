@@ -86,6 +86,16 @@ def patch_staged(root: Path) -> None:
 '''        // Always consume the native provenance once per frame, even in menus.
         // Do not retain a previous menu gesture for a subsequent canvas wheel.
         let vc_glass_pan_packets = winit::platform::android::vc_glass_pan_take();
+        // A glass two-finger pan emits a synthetic cursor move at its midpoint
+        // so canvas wheel routing works. Hide that cursor until real pointer
+        // motion (mouse, trackpad or stylus hover) arrives without a glass pan.
+        // Never modify mouse events, wheel deltas or stylus hover delivery.
+        let vc_glass_cursor_id = egui::Id::new("vectorcraft-android-glass-pan-hide-cursor");
+        if vc_glass_pan_packets == 0
+            && raw.events.iter().any(|event| matches!(event, egui::Event::PointerMoved(_)))
+        {
+            ctx.data_mut(|data| data.insert_temp(vc_glass_cursor_id, false));
+        }
         self.ime.poll(raw);''',
          "frame-local glass provenance")
     s=once(s,
@@ -114,6 +124,9 @@ def patch_staged(root: Path) -> None:
                             // have the OPPOSITE sign on canvas. Menus untouched.
                             if vc_glass_canvas_pan {
                                 winit::platform::android::vc_glass_canvas_applied_note();
+                                // Input remains available to the canvas, but
+                                // no mouse pointer is painted during glass pan.
+                                ctx.data_mut(|data| data.insert_temp(vc_glass_cursor_id, true));
                             }
                             let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };
                             delta.x *= gain;
@@ -127,12 +140,55 @@ def patch_staged(root: Path) -> None:
                 let report = format!("{report}\\nvc_native_glass_twofinger_pan_packets={vc_glass_total}\\nvc_canvas_glass_remap_events={vc_glass_applied}");
                 match self.bridge.copy_diagnostic_report(&report) {''',
          "existing Copy Diagnostic provenance counter")
+    # Patch only the tool pointer appearance and hover while retaining the
+    # midpoint CursorMoved event required to target the canvas scroll.
+    canvas=root / "source/vectorcraft/crates/ui-egui/src/canvas.rs"
+    canvas_source=canvas.read_text()
+    canvas_source=once(canvas_source,
+'''fn canvas_cursor(app: &mut VectorcraftApp, ui: &Ui, view_info: vectorcraft_engine::ViewInfo, hover_still: bool) {
+    if opening::long_operation_busy(app) {''',
+'''fn canvas_cursor(app: &mut VectorcraftApp, ui: &Ui, view_info: vectorcraft_engine::ViewInfo, hover_still: bool) {
+    #[cfg(target_os = "android")]
+    if ui.ctx().data(|data| data.get_temp::<bool>(
+        egui::Id::new("vectorcraft-android-glass-pan-hide-cursor")
+    ).unwrap_or(false)) {
+        // Synthetic CursorMoved from a two-finger glass pan positions the
+        // wheel target; it is NOT a mouse or stylus cursor request.
+        ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+        return; // No painted tool glyph and no system pointer icon.
+    }
+    if opening::long_operation_busy(app) {''',
+    "hide synthetic glass midpoint cursor only on Android canvas")
+    canvas.write_text(canvas_source)
+    input_path=root / "source/vectorcraft/crates/ui-egui/src/canvas/input.rs"
+    input_source=input_path.read_text()
+    input_source=once(input_source,
+'''    let hover_tool = hover.filter(|p| on_canvas(ui, resp, *p));''',
+'''    let hover_tool = hover.filter(|p| {
+        // Two-finger glass panning must not hover/select artwork behind
+        // its synthetic midpoint cursor. Real pen hover and trackpad
+        // movements are unaffected by the source-tagged guard.
+        #[cfg(target_os = "android")]
+        if ui.ctx().data(|data| data.get_temp::<bool>(
+            egui::Id::new("vectorcraft-android-glass-pan-hide-cursor")
+        ).unwrap_or(false)) {
+            return false;
+        }
+        on_canvas(ui, resp, *p)
+    });''',
+    "do not hover artwork behind synthetic glass cursor")
+    input_path.write_text(input_source)
     for required in ("vc_glass_pan_take()", "vc_glass_pan_packets > 0", "vc_glass_candidate_wheels > 0",
                      "let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };",
-                     'if egui::Popup::is_any_open(ctx)', 'self.inner.canvas_rect'):
+                     'if egui::Popup::is_any_open(ctx)', 'self.inner.canvas_rect',
+                     'ctx.data_mut(|data| data.insert_temp(vc_glass_cursor_id, true));',
+                     'ctx.data_mut(|data| data.insert_temp(vc_glass_cursor_id, false));'):
         assert required in s, required
+    assert 'egui::CursorIcon::None' in canvas_source
+    assert 'return; // No painted tool glyph and no system pointer icon.' in canvas_source
+    assert 'return false;' in input_source
     rust.write_text(s)
-    print("PASS: Android.9 canvas-only glass-wheel reversal with original trackpad/menu routing")
+    print("PASS: Android.9 canvas-only glass pan retains direction; synthetic midpoint cursor hidden")
 
 
 def install_hook(root: Path) -> None:

@@ -166,12 +166,15 @@ def vendor(root):
     lib=root/'vendor/android-activity/src/lib.rs'
     native=root/'vendor/android-activity/src/native_activity/mod.rs'
     winit=root/'vendor/winit/src/platform_impl/android/mod.rs'
-    once(lib,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    #[cfg(feature = "native-activity")]
+    # build.sh stages this same patch on the pinned builder and again on its
+    # newly copied VectorCraft vendor paths. An already-inserted EXACT helper
+    # is valid and must not be inserted twice (Rust E0592).
+    lib_method = '''    #[cfg(feature = "native-activity")]
     pub fn vc_reset_ime(&self, request_id: u64) {
         self.inner.read().unwrap().vc_reset_ime(request_id);
     }
-    pub fn show_soft_input(&self, show_implicit: bool) {''')
-    once(native,'    pub fn show_soft_input(&self, show_implicit: bool) {', '''    pub fn vc_reset_ime(&self, request_id: u64) {
+'''
+    native_method = '''    pub fn vc_reset_ime(&self, request_id: u64) {
         let result = self.jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_method(self.activity.as_ref(), jni::jni_str!("vcResetIme"),
                 jni::jni_sig!("(J)V"), &[jni::objects::JValue::Long(request_id as i64)])?;
@@ -179,7 +182,24 @@ def vendor(root):
         });
         if let Err(error) = result { log::warn!("VectorCraft IME reset not completed: {error:?}"); }
     }
-    pub fn show_soft_input(&self, show_implicit: bool) {''')
+'''
+    def ensure_method(path, method):
+        source = path.read_text()
+        name = '    pub fn vc_reset_ime(&self, request_id: u64) {'
+        anchor = '    pub fn show_soft_input(&self, show_implicit: bool) {'
+        if source.count(name) == 1 and source.count(method) == 1:
+            # Preserve a reviewed, already-forwarding implementation exactly.
+            if source.count(anchor) != 1:
+                raise ValueError(f'{path}: IME host method boundary drifted')
+            return
+        if source.count(name) != 0 or 'pub fn vc_reset_ime(' in source:
+            raise ValueError(f'{path}: unreviewed or duplicate IME reset helper')
+        once(path, anchor, method + anchor)
+        output = path.read_text()
+        assert output.count(name) == output.count(method) == 1
+
+    ensure_method(lib, lib_method)
+    ensure_method(native, native_method)
     # Builder v0.5.0 may normalize its Android reset handler while vendoring
     # Storytold's winit. Match the *semantics* of the two reviewed legacy forms
     # (empty stub, or old set_ime_allowed toggle), not a fragile comment block.

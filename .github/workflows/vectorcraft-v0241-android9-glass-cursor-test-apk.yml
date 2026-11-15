@@ -1,4 +1,4 @@
-name: VectorCraft v0.24.1-android.9 Glass Pan Cursor Isolation ARM64 TEST ONLY
+name: VectorCraft v0.24.1-android.9 Glass Pan Native Null Cursor ARM64 TEST ONLY
 
 # Exact published Android.9 commit 9beff78fd24b59e806f65424f9ee6443943d2901; preserve successful glass pan direction and suppress synthetic cursor only.
 # One-time Android.9 cursor-only trigger-file gated push; no ordinary source push rebuild.
@@ -6,7 +6,7 @@ name: VectorCraft v0.24.1-android.9 Glass Pan Cursor Isolation ARM64 TEST ONLY
 on:
   push:
     branches:
-      - fix/vectorcraft-v0241-android9-glass-cursor-assertion-20261115
+      - fix/vectorcraft-v0241-android9-native-null-cursor-20261115
     paths:
       - .github/vectorcraft-v0241-android9-glass-hide-cursor.trigger
   workflow_dispatch:
@@ -20,14 +20,14 @@ concurrency:
 
 jobs:
   disposable-test-apk:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android9-glass-cursor-assertion-20261115'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android9-native-null-cursor-20261115'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
       UPSTREAM_SHA: f4922aa7ac99a4f6d56fc68a83a44945207ec610
       BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
       VERSION_NAME: 0.24.1-android.9
-      VERSION_CODE: '16784915'
+      VERSION_CODE: '16784916'
       LAST_PUBLISHED_CODE: '16784908'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -67,6 +67,7 @@ jobs:
           test "$VERSION_CODE" -gt "$LAST_PUBLISHED_CODE"
           python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py
           python3 android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py --source android-port
+          python3 android-port/tools/vectorcraft/test_vc_android8_adaptive_cursor.py
           python3 android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py builder/vendor/winit --probe
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks
@@ -729,8 +730,8 @@ jobs:
           p=Path("builder/adapters/vectorcraft/Cargo.toml")
           s=p.read_text()
           assert s.count('label = "VectorCraft Test"')==2
-          p.write_text(s.replace('label = "VectorCraft Test"', 'label = "VectorCraft Pan Cursor Test"'))
-          print("PASS: separate launcher label VectorCraft Pan Cursor Test")
+          p.write_text(s.replace('label = "VectorCraft Test"', 'label = "VectorCraft Pan Cursor Test 2"'))
+          print("PASS: separate launcher label VectorCraft Pan Cursor Test 2")
           PY
           python3 - <<'PY'
           from pathlib import Path
@@ -738,7 +739,7 @@ jobs:
           s=p.read_text()
           old="applicationId '{_groovy(namespace)}.test'"
           assert s.count(old)==1
-          p.write_text(s.replace(old,"applicationId '{_groovy(namespace)}.candidate_v0241a9cursor'",1))
+          p.write_text(s.replace(old,"applicationId '{_groovy(namespace)}.candidate_v0241a9cursor2'",1))
           PY
           python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
           # Owner supplied a NEW flat Vc artwork; the previous glossy approved
@@ -825,7 +826,7 @@ jobs:
           badging=Path("private-test/badging.txt").read_text()
           resources=Path("private-test/resources.txt").read_text()
           match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
-          assert match and match.groups()==("com.artcraft.vectorcraft.candidate_v0241a9cursor",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
+          assert match and match.groups()==("com.artcraft.vectorcraft.candidate_v0241a9cursor2",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
           assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
           sig=Path("private-test/signature.txt").read_text()
           fingerprints=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
@@ -847,7 +848,7 @@ jobs:
           Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
           print("PASS: separate-install temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and version")
           PY
-          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-GLASS-PAN-HIDE-CURSOR-ARM64-DISPOSABLE-TEST-SIGNED.apk"
+          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-GLASS-PAN-NATIVE-NULL-CURSOR-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
           # Compare against prior test APK (163407944 bytes); this candidate
           # compresses native code in the package, extracting once on install.
@@ -875,7 +876,7 @@ jobs:
       - name: Upload test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.24.1-android.9-GLASS-PAN-HIDE-CURSOR-ARM64-TEST-ONLY
+          name: VectorCraft-v0.24.1-android.9-GLASS-PAN-NATIVE-NULL-CURSOR-ARM64-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

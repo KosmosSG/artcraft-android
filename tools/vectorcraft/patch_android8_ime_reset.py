@@ -180,16 +180,42 @@ def vendor(root):
         if let Err(error) = result { log::warn!("VectorCraft IME reset not completed: {error:?}"); }
     }
     pub fn show_soft_input(&self, show_implicit: bool) {''')
-    once(winit,'''    pub fn reset_ime_with_request(&self, _request_id: u64) {
-        // On NativeActivity the IME is driven by the system input method framework; asking the
-        // IME to reset its state is done by toggling `set_ime_allowed` off and on again.
-        self.set_ime_allowed(false);
-        self.set_ime_allowed(true);
-    }''','''    pub fn reset_ime_with_request(&self, request_id: u64) {
-        // Java clears the old composition, invalidates old InputConnections,
-        // restarts the IME, then queues this exact ID for the adapter to deliver.
+    # Builder v0.5.0 may normalize its Android reset handler while vendoring
+    # Storytold's winit. Match the *semantics* of the two reviewed legacy forms
+    # (empty stub, or old set_ime_allowed toggle), not a fragile comment block.
+    # A missing stub is also valid when build-common.sh removes a no-op method.
+    # Never overwrite an unfamiliar handler or silently duplicate the API.
+    import re
+    source = winit.read_text()
+    replacement = '''    pub fn reset_ime_with_request(&self, request_id: u64) {
+        // Java invalidates old InputConnections, restarts composition and
+        // reports the exact editor-owned request ID after the restart.
         self.app.vc_reset_ime(request_id);
-    }''')
+    }'''
+    matches = list(re.finditer(
+        r'(?m)^    pub fn reset_ime_with_request\\(&self, _?request_id: u64\\) \\{(?P<body>[^{}]*)\\}',
+        source,
+    ))
+    if len(matches) == 1:
+        match = matches[0]
+        body = re.sub(r'(?m)^\\s*//[^\\n]*$', '', match.group('body'))
+        legacy = ''.join(body.split())
+        if legacy not in ('', 'self.set_ime_allowed(false);self.set_ime_allowed(true);'):
+            raise ValueError(f'{winit}: unexpected reset implementation: {body.strip()[:160]!r}')
+        source = source[:match.start()] + replacement + source[match.end():]
+    elif (not matches and 'pub fn reset_ime_with_request(' not in source
+          and source.count('    pub fn focus_window(&self) {}') == 1
+          and 'pub fn set_ime_purpose(' in source):
+        # The builder's compatibility shim can remove a single-line stub.
+        # Insert at the reviewed Android Window method boundary only.
+        source = source.replace('    pub fn focus_window(&self) {}',
+                                replacement + '\\n\\n    pub fn focus_window(&self) {}', 1)
+    else:
+        raise ValueError(f'{winit}: unexpected Android IME reset method count '
+                         f'{len(matches)}; refuse unsafe replacement')
+    assert source.count('self.app.vc_reset_ime(request_id);') == 1
+    assert source.count('pub fn reset_ime_with_request(&self, request_id: u64)') == 1
+    winit.write_text(source)
     print('PASS: native reset request forwarded with its ID; no synthetic success')
 
 if __name__=='__main__':

@@ -200,9 +200,17 @@ def vendor(root):
         match = matches[0]
         body = re.sub(r'(?m)^\s*//[^\n]*$', '', match.group('body'))
         legacy = ''.join(body.split())
-        if legacy not in ('', 'self.set_ime_allowed(false);self.set_ime_allowed(true);'):
+        if legacy == 'self.app.vc_reset_ime(request_id);':
+            # The upstream compatibility shim or another reviewed build
+            # stage already installed exactly the required JNI forwarding.
+            # Preserve it rather than patching a second time.
+            if '_request_id: u64)' in match.group(0):
+                raise ValueError(f'{winit}: forwarded reset uses stale parameter name')
+            print('PASS: native winit IME reset forwarding already present')
+        elif legacy in ('', 'self.set_ime_allowed(false);self.set_ime_allowed(true);'):
+            source = source[:match.start()] + replacement + source[match.end():]
+        else:
             raise ValueError(f'{winit}: unexpected reset implementation: {body.strip()[:160]!r}')
-        source = source[:match.start()] + replacement + source[match.end():]
     elif (not matches and 'pub fn reset_ime_with_request(' not in source
           and source.count('    pub fn focus_window(&self) {}') == 1
           and 'pub fn set_ime_purpose(' in source):

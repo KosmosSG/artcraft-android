@@ -518,11 +518,13 @@ jobs:
           python3 android-port/tools/vectorcraft/patch_android6_touch_canvas.py builder
           python3 android-port/tools/vectorcraft/patch_android7_trackpad_relaunch.py builder
           python3 android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py builder --staged
-          python3 android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py --staged builder
           python3 android-port/tools/vectorcraft/patch_android1_native_trackpad.py builder --install-hook
           python3 android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py builder --install-hook
           python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py
           python3 android-port/tools/vectorcraft/patch_android8_wheel_touch.py builder
+          # Check after the Android.8 wheel canvas patch, not before it.
+          # The earlier placement ran before the early_pan code existed.
+          python3 android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py --staged builder
           python3 android-port/tools/vectorcraft/patch_android8_ime_reset.py builder
           python3 android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py builder
           # Run after Android.8 selected-text fallback; fail before NDK/ARM64 compile.

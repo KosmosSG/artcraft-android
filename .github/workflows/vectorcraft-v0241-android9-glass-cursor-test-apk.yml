@@ -6,7 +6,7 @@ name: VectorCraft v0.24.1-android.9 Glass Pan Cursor Isolation ARM64 TEST ONLY
 on:
   push:
     branches:
-      - fix/vectorcraft-v0241-android9-glass-pan-hide-cursor-20261115
+      - fix/vectorcraft-v0241-android9-glass-cursor-assertion-20261115
     paths:
       - .github/vectorcraft-v0241-android9-glass-hide-cursor.trigger
   workflow_dispatch:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   disposable-test-apk:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android9-glass-pan-hide-cursor-20261115'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/vectorcraft-v0241-android9-glass-cursor-assertion-20261115'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

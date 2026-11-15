@@ -44,8 +44,10 @@ jobs:
             [.artifacts[] | select(.name==$artifact and .expired==false)] | length==1
           ' artifacts.json
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Release tag already exists. Never overwrite or mutate it."
-            exit 1
+            echo "RELEASE_ALREADY_EXISTS=true" >> "$GITHUB_ENV"
+            echo "Release exists: verify only, never overwrite or mutate."
+          else
+            echo "RELEASE_ALREADY_EXISTS=false" >> "$GITHUB_ENV"
           fi
           mkdir -p signed
           gh run download "$SIGNED_RUN" -R "$GITHUB_REPOSITORY" -n "$SIGNED_ARTIFACT" -D signed
@@ -125,17 +127,26 @@ jobs:
 
           For Google Play Protect review, consult the [official appeal process](https://support.google.com/googleplay/android-developer/contact/protectappeals).
           EOF
-          gh release create "$TAG" \
-            "signed/$APK_NAME" \
-            signed/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
-            --title "ArtCraft Launcher v0.1.0-android.12 — Prerelease (Play Protect warning)" \
-            --notes-file signed/RELEASE_NOTES.md \
-            --prerelease --latest=false
-          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,isPrerelease,isLatest,assets > release-check.json
-          cat release-check.json
-          jq -e '.isPrerelease==true and .isLatest==false' release-check.json
-          jq -e --arg name "$APK_NAME" '.assets | any(.name==$name)' release-check.json
+          if [[ "$RELEASE_ALREADY_EXISTS" == "false" ]]; then
+            gh release create "$TAG" \
+              "signed/$APK_NAME" \
+              signed/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+              --title "ArtCraft Launcher v0.1.0-android.12 — Prerelease (Play Protect warning)" \
+              --notes-file signed/RELEASE_NOTES.md \
+              --prerelease --latest=false
+          else
+            echo "Existing Android.12 prerelease retained unchanged; verifying same uploaded bytes."
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release-check.json
+          jq -e --arg sha "$EXPECTED_SHA256" --arg name "$APK_NAME" '
+            .prerelease==true and .draft==false and
+            (.assets | any(.name==$name and .digest==("sha256:"+$sha)))
+          ' release-check.json
+          cat release-check.json | jq '{name,tag_name,prerelease,draft,assets:[.assets[] | {name,size,digest}]}'
+          # Prereleases are ineligible for automatic latest-stable selection.
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          test "$latest" != "$TAG"
           mkdir -p published
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$APK_NAME" -D published
           test "$(sha256sum "published/$APK_NAME" | awk '{print $1}')" = "$EXPECTED_SHA256"

@@ -88,7 +88,7 @@ jobs:
               "vendor/android-activity/src/native_activity/mod.rs",
               "vendor/winit/src/platform_impl/android/mod.rs",
           )
-          for variant in ("published", "one-line-stub", "builder-removed-stub"):
+          for variant in ("published", "one-line-stub", "builder-removed-stub", "already-forwarded"):
               with tempfile.TemporaryDirectory(prefix="vc-ime-reset-probe-") as directory:
                   root = Path(directory)
                   for relative in files:
@@ -103,10 +103,17 @@ jobs:
                   matches = list(expression.finditer(source))
                   assert len(matches) == 1, "Unexpected pinned winit IME reset source"
                   if variant != "published":
-                      replacement = (
-                          '    pub fn reset_ime_with_request(&self, _request_id: u64) {}'
-                          if variant == "one-line-stub" else ""
-                      )
+                      if variant == "one-line-stub":
+                          replacement = '    pub fn reset_ime_with_request(&self, _request_id: u64) {}'
+                      elif variant == "builder-removed-stub":
+                          replacement = ""
+                      else:
+                          replacement = (
+                              '    pub fn reset_ime_with_request(&self, request_id: u64) {\n'
+                              '        // Already installed by a reviewed compatibility shim.\n'
+                              '        self.app.vc_reset_ime(request_id);\n'
+                              '    }'
+                          )
                       source = source[:matches[0].start()] + replacement + source[matches[0].end():]
                       native.write_text(source)
                   vendor(root)

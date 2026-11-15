@@ -18,7 +18,7 @@
     <package android:name="com.artcraft.figcraft" />
   </queries>
   <application
-      android:label="ArtCraft Launcher"
+      android:label="${launcherLabel}"
       android:icon="@drawable/ac_brand_icon"
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="false"
@@ -31,7 +31,7 @@
     </activity>
     <provider
         android:name=".ApkProvider"
-        android:authorities="com.artcraft.launcher.apks"
+        android:authorities="${applicationId}.apks"
         android:exported="false"
         android:grantUriPermissions="true" />
   </application>

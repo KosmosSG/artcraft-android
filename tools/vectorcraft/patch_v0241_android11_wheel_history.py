@@ -132,20 +132,38 @@ def patch(root: Path) -> None:
     # both DOWN and UP, sends exactly one coded action on the first DOWN,
     # and wakes Rust. Native egui fallback remains active when Java does not
     # receive the event, including inside a live Type editor.
+    # Own a separate history-key queue rather than depending on the optional
+    # Android.12 fallback's Rust poll method (not staged at this build stage).
+    j = once(j,
+        '    private boolean vcIsMagicPencil(android.view.InputDevice device) {',
+        '''    private volatile boolean vcAndroid11HistoryEnabled = false;
+    private final ConcurrentLinkedQueue<Integer> vcAndroid11HistoryKeys = new ConcurrentLinkedQueue<>();
+    public void vcAndroid11HistoryMode(boolean enabled) {
+        vcAndroid11HistoryEnabled = enabled;
+        if (!enabled) vcAndroid11HistoryKeys.clear();
+    }
+    public int vcAndroid11PollHistoryShortcut() {
+        Integer key = vcAndroid11HistoryKeys.poll();
+        return key == null ? 0 : key.intValue();
+    }
+    private boolean vcIsMagicPencil(android.view.InputDevice device) {''',
+        "Java independent history queue")
     j = once(j,
         '''        final int mode = hardwareShortcutMode;
         final boolean plain =''',
         '''        final int mode = hardwareShortcutMode;
-        // VC_ANDROID11_CTRL_Z_REDO: scoped to idle editor canvas.
-        if (mode == 1 && !imeWanted && key == KeyEvent.KEYCODE_Z
+        // VC_ANDROID11_CTRL_Z_REDO: native document history only.
+        // Gate by native canvas/document/IME state, not Activity focus alone.
+        if (vcAndroid11HistoryEnabled && !imeWanted && key == KeyEvent.KEYCODE_Z
                 && event.isCtrlPressed() && !event.isAltPressed()
                 && !event.isMetaPressed()) {
             if (event.getAction() == KeyEvent.ACTION_DOWN
                     && event.getRepeatCount() == 0
-                    && physicalShortcutKeys.size() < 32) {
-                physicalShortcutKeys.offer(event.isShiftPressed() ? -91 : -90);
+                    && vcAndroid11HistoryKeys.size() < 32) {
+                vcAndroid11HistoryKeys.offer(event.isShiftPressed() ? -91 : -90);
                 vcWakeNativeLoop();
             }
+            // Consume DOWN and UP so native does not undo/redo twice.
             return true;
         }
         final boolean plain =''',
@@ -205,21 +223,70 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
         }
         // Treat Ctrl+Q as a native application quit request (not merely a''',
         "native Redo engine dispatch")
+    # Android.11 history JNI calls are isolated from existing cursor, IME,
+    # and keyboard fallback state. Call the history command directly, never
+    # manufacture a second egui Key event.
     h = once(h,
-        '''            let key = match (code, hardware_mode) {''',
-        '''            // Java-only physical chord receipt: never send a fake
-            // Ctrl+Z to egui (which could execute history twice). Run the
-            // same document command, one per accepted key-down.
-            if hardware_mode == 1 && (code == -90 || code == -91) {
-                let command = if code == -91 { "edit.redo" } else { "edit.undo" };
+        '    fn end_type_editing(&self) -> Result<(), String> {',
+        '''    fn vc_android11_set_history_enabled(&self, enabled: bool) -> Result<(), String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcAndroid11HistoryMode"),
+                jni_sig!("(Z)V"), &[JValue::Bool(u8::from(enabled))])?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    }
+    fn vc_android11_poll_history(&self) -> Result<i32, String> {
+        self.vm.attach_current_thread(|env| -> jni::errors::Result<i32> {
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            env.call_method(&*activity, jni_str!("vcAndroid11PollHistoryShortcut"),
+                jni_sig!("()I"), &[])?.i()
+        }).map_err(|error| error.to_string())
+    }
+    fn end_type_editing(&self) -> Result<(), String> {''',
+        "history JNI bridge on owner AndroidFileBridge")
+    h = once(h,
+        '        let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;',
+        '''        let modal = self.inner.ui.dialog.is_some() || self.inner.ui.palette_open;
+        // Android.11 hardware Ctrl+Z/Shift+Z fallback: only while a document
+        // is active on the idle canvas. Existing native egui keys remain
+        // responsible for Type editing; do not intercept its IME/composition.
+        let history_allowed = self.inner.session.active().is_some()
+            && !modal && !editing && !field_focused && !composing;
+        let history_gate_id = egui::Id::new("vc-android11-history-gate");
+        let last_history_gate = ctx.data(|data|
+            data.get_temp::<bool>(history_gate_id));
+        if last_history_gate != Some(history_allowed) {
+            match self.bridge.vc_android11_set_history_enabled(history_allowed) {
+                Ok(()) => ctx.data_mut(|data|
+                    data.insert_temp(history_gate_id, history_allowed)),
+                Err(error) => log::warn!("Android.11 history key gate: {error}"),
+            }
+        }
+        if history_allowed {
+            for _ in 0..8 {
+                let code = match self.bridge.vc_android11_poll_history() {
+                    Ok(0) => break,
+                    Ok(code) => code,
+                    Err(error) => {
+                        log::warn!("Android.11 history key poll: {error}");
+                        break;
+                    }
+                };
+                let command = match code {
+                    -90 => "edit.undo",
+                    -91 => "edit.redo",
+                    _ => continue,
+                };
                 match self.inner.run(command, serde_json::json!({})) {
                     Ok(_) => ctx.request_repaint(),
-                    Err(error) => log::warn!("VectorCraft Android history {command}: {error}"),
+                    Err(error) => log::warn!("Android.11 history {command}: {error}"),
                 }
-                continue;
             }
-            let key = match (code, hardware_mode) {''',
-        "hardware Java-to-Rust undo redo delivery")
+        }''',
+        "Android.11 direct history queue in native raw input hook")
     for expected in (
         'pub fn has_android_redo_chord(', 'pub fn consume_android_redo_chord(',
     ):
@@ -228,6 +295,9 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
     assert 'VC_ANDROID11_CTRL_Z_REDO' in j
     assert 'VC_ANDROID11_CTRL_SHIFT_Z' in h
     assert 'getBoolean("enabled", true)' in j
+    assert 'vcAndroid11PollHistoryShortcut' in j
+    assert 'vc_android11_poll_history' in h
+    assert 'vc_android11_set_history_enabled' in h
     assert 'self.inner.run("edit.redo"' in h
     assert 'self.inner.run("edit.undo"' in h
     assert 'vcResetIme(long requestId)' in j  # Android.10 IME transport retained

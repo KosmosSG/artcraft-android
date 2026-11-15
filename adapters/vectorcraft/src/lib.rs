@@ -748,6 +748,11 @@ fn persist_load(app: &mut VectorcraftApp, dir: &Path) {
         app.ui = ui.sanitized();
     }
     vectorcraft_ui_egui::prefs_dialog::restore(app);
+    // MostafaXS1 v0.6.0 recovery integration: the upstream VectorCraft UI
+    // already schedules recovery heartbeat/copies and offers its restore dialog.
+    // Without a default store this Android host silently disables both.
+    let recovery = dir.join("Data Recovery").to_string_lossy().to_string();
+    app.session.recovery.set_default_folder(Some(recovery));
 }
 
 /// Save the UI state and engine preferences, as the desktop app does on exit.
@@ -954,6 +959,14 @@ impl VectorCraftAndroidApp {
     fn persist_now(&mut self) {
         if let Some(dir) = self.persist.clone() {
             persist_save(&mut self.inner, &dir);
+            // When Android backgrounds this Activity (or Ctrl+Q exits),
+            // request recovery for dirty documents immediately. The normal
+            // time-based timer remains handled by VectorCraft's own UI logic;
+            // this does not force a large save every 2-second settings tick.
+            if self.inner.session.documents().iter().any(|doc| doc.is_dirty()) {
+                vectorcraft_ui_egui::recovery::tick(&mut self.inner, 0.0);
+                vectorcraft_ui_egui::recovery::tick(&mut self.inner, 1e9);
+            }
         }
     }
 }
@@ -1505,6 +1518,8 @@ impl eframe::App for VectorCraftAndroidApp {
 
     fn on_exit(&mut self) {
         self.persist_now();
+        // On a deliberate exit do not abandon an in-flight recovery write.
+        vectorcraft_ui_egui::background::wait_all(&mut self.inner);
     }
 }
 

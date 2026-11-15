@@ -5,3 +5,5 @@ DO NOT bypass stale guards, synthesize acknowledgements, clear data or change .a
 Build separate com.artcraft.vectorcraft.candidate_v0241a10typing ARM64 APK, launcher VectorCraft AI Typing Test, versionCode 16784917, disposable signing only.
 Test on HONOR MagicPad 4: fresh document typing; imported .ai Type tool; .ai->new document; close/reopen; Ctrl+Q/relaunch 10x; real reset_requested/java ime_resets/reset_matched and stale input counters. Device PASS not yet claimed.
 No merge, release, published APK overwrite or permanent production signing.
+
+Android.10 follow-up: review and fix vendored native winit reset handler compatibility; preflight original, one-line stub, and builder-removed stub before SDK/NDK. This push triggers a NEW disposable ARM64 test run; never rerun #43708099999 or modify a published release.

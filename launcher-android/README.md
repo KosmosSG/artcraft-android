@@ -2,8 +2,11 @@
 
 An **independently installable** native Android dashboard for the 13 Craft apps in the KosmosSG Android suite. This project lives in its own `launcher-android/` subfolder and an isolated feature branch. The existing Rust app builders, main branch, published releases and permanent signing keys are left alone.
 
-## v0.1.0-android.10 scope
+## v0.1.0-android.11 scope
 - Responsive tablet grid with all 13 products (including unreleased placeholders).
+- **Android.11 menu polish:** the two update menu items now have compact black outlined rows with discrete teal badges, readable sublabels and right-side chevrons instead of broad solid teal surfaces. No changes to approved dark mode, Craft app release routing, or in-app checks.
+- **Explicit install consent:** returning from Android settings never launches an APK installer automatically. The owner must deliberately tap **Install** after a verified download. The APK still uses Android's normal installation confirmation and integrity checks.
+- **Play Protect review:** Google's "Harmful app blocked" classification was observed on the official permanently signed Android.10 install. This remains unresolved and is not a routine unknown-app popup. Do not tell users to disable Play Protect or force installation; follow Google's official Play Protect review/appeal process after security investigation. No changes were made to disguise the app or circumvent detection.
 - **App-specific downloads:** uninstalled app cards always show **Download**, even before the manual release catalog has been checked. Tapping Download performs an on-demand GitHub release lookup for the correct app, then invokes the existing in-app SHA-256, package/signature-verified download workflow. **Details** opens the chosen app's exact release page, not the repository-wide releases page. If no release qualifies or GitHub is unreachable, the fallback button opens that app's specific section at the ArtCraft Android download website. Never misrepresent an unchecked catalog as "No eligible published APK".
 - Detect app packages and launch installed apps without accessing their private data.
 - **Self-updater:** the overflow menu offers manual `Check Launcher Update` plus a separate persisted **OFF-by-default** launcher-startup toggle. It looks for exact `artcraft-launcher-vX.Y.Z-android.N` releases with one signed `ArtCraft-Launcher-vX.Y.Z-android.N-arm64-v8a.apk` asset and `SHA256SUMS.txt`, excludes drafts, honors the Stable/Preview channel, compares versions, and uses the existing in-app download, SHA-256, signer, package, versionCode and user-confirmed installation path. No qualifying published launcher release exists until the owner explicitly publishes one with permanent signing. Existing *disposable debug-signed* tests are not guaranteed in-place compatible.
@@ -34,6 +37,6 @@ The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It i
 
 Android.9 OLED pure-black dark mode: page, surrounding card gutters, top header, status/navigation bars, bottom notification bar, and overflow menu use #000000. App cards (#30363B), hero (#353C41), high-contrast borders (#717B83), readable text, and teal-only actions remain unchanged. Optional light theme remains available. The original Ac icon, 13 installed app icons, in-app download verification and launcher self-updater remain intact.
 
-Android.10 only changes app-specific release lookup and parallel test packaging; it does not change the visual dark theme or the official permanent signing. User device validation is pending.
+Android.11 is a side-by-side TEST build with only menu polish and explicit install-consent handling. The official Android.10 remains unchanged. The current Play Protect classification must be reviewed before a new public release.
 
 Potential follow-up: Update All queue, a production-signed Android.10 candidate after validation and a truly separate `KosmosSG/artcraft-android-launcher` repository, which requires repository-creation permissions.

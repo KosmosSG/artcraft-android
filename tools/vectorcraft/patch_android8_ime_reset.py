@@ -193,12 +193,12 @@ def vendor(root):
         self.app.vc_reset_ime(request_id);
     }'''
     matches = list(re.finditer(
-        r'(?m)^    pub fn reset_ime_with_request\\(&self, _?request_id: u64\\) \\{(?P<body>[^{}]*)\\}',
+        r'(?m)^    pub fn reset_ime_with_request\(&self, _?request_id: u64\) \{(?P<body>[^{}]*)\}',
         source,
     ))
     if len(matches) == 1:
         match = matches[0]
-        body = re.sub(r'(?m)^\\s*//[^\\n]*$', '', match.group('body'))
+        body = re.sub(r'(?m)^\s*//[^\n]*$', '', match.group('body'))
         legacy = ''.join(body.split())
         if legacy not in ('', 'self.set_ime_allowed(false);self.set_ime_allowed(true);'):
             raise ValueError(f'{winit}: unexpected reset implementation: {body.strip()[:160]!r}')
@@ -209,7 +209,7 @@ def vendor(root):
         # The builder's compatibility shim can remove a single-line stub.
         # Insert at the reviewed Android Window method boundary only.
         source = source.replace('    pub fn focus_window(&self) {}',
-                                replacement + '\\n\\n    pub fn focus_window(&self) {}', 1)
+                                replacement + '\n\n    pub fn focus_window(&self) {}', 1)
     else:
         raise ValueError(f'{winit}: unexpected Android IME reset method count '
                          f'{len(matches)}; refuse unsafe replacement')

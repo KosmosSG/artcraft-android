@@ -76,6 +76,47 @@ jobs:
           test ! -e android-port/keys/artcraft-builder.jks
           grep -q '^version = "0.24.1"' builder/source/vectorcraft/Cargo.toml
           python3 -m py_compile android-port/tools/vectorcraft/patch_android7_trackpad_relaunch.py android-port/tools/vectorcraft/patch_android6_touch_canvas.py android-port/tools/vectorcraft/patch_android5_first_pinch_menu.py android-port/tools/vectorcraft/patch_android4_quit_trace.py android-port/tools/vectorcraft/patch_android2_native_quit.py android-port/tools/vectorcraft/patch_android1_native_trackpad.py android-port/tools/vectorcraft/patch_stability_v021.py android-port/tools/vectorcraft/patch_vc_icon_menu_v021.py android-port/tools/vectorcraft/patch_smooth_menu_scroll_v021.py android-port/tools/vectorcraft/patch_android12_keyboard.py android-port/tools/vectorcraft/patch_android12_startup.py android-port/tools/vectorcraft/patch_android12_menu_scroll.py android-port/tools/vectorcraft/patch_android13_recovery.py android-port/tools/vectorcraft/patch_android13_menu_scroll.py android-port/tools/vectorcraft/patch_android14_diagnostic_session.py android-port/tools/vectorcraft/patch_android15_modal_keys.py android-port/tools/vectorcraft/patch_android16_modal_frame.py android-port/tools/vectorcraft/patch_android17_reference_adoption.py android-port/tools/vectorcraft/patch_android18_modal_and_gestures.py android-port/tools/vectorcraft/patch_android19_reference_ime.py android-port/tools/vectorcraft/patch_android20_native_keyboard_splash.py android-port/tools/vectorcraft/patch_android21_photocraft_parity.py android-port/tools/vectorcraft/patch_android22_high_refresh.py android-port/tools/vectorcraft/patch_android23_input_boot.py android-port/tools/vectorcraft/patch_android23_font_fastpath.py android-port/tools/vectorcraft/patch_android24_startup_menu.py android-port/tools/vectorcraft/patch_android25_reference_gestures.py android-port/tools/vectorcraft/patch_android8_wheel_touch.py android-port/tools/vectorcraft/patch_android8_ime_reset.py
+          # Validate the native IME transport before downloading Android SDK/NDK.
+          # Exercise the pinned handler and builder compatibility variants.
+          python3 - <<'PY'
+          import re, shutil, sys, tempfile
+          from pathlib import Path
+          sys.path.insert(0, "android-port/tools/vectorcraft")
+          from patch_android8_ime_reset import vendor
+          from patch_android8_wheel_touch import once
+          files = (
+              "vendor/android-activity/src/lib.rs",
+              "vendor/android-activity/src/native_activity/mod.rs",
+              "vendor/winit/src/platform_impl/android/mod.rs",
+          )
+          for variant in ("published", "one-line-stub", "builder-removed-stub"):
+              with tempfile.TemporaryDirectory(prefix="vc-ime-reset-probe-") as directory:
+                  root = Path(directory)
+                  for relative in files:
+                      destination = root / relative
+                      destination.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copyfile(Path("builder") / relative, destination)
+                  native = root / files[-1]
+                  source = native.read_text()
+                  expression = re.compile(
+                      r'(?m)^    pub fn reset_ime_with_request\\(&self, _request_id: u64\\) \\{[^{}]*\\}'
+                  )
+                  matches = list(expression.finditer(source))
+                  assert len(matches) == 1, "Unexpected pinned winit IME reset source"
+                  if variant != "published":
+                      replacement = (
+                          '    pub fn reset_ime_with_request(&self, _request_id: u64) {}'
+                          if variant == "one-line-stub" else ""
+                      )
+                      source = source[:matches[0].start()] + replacement + source[matches[0].end():]
+                      native.write_text(source)
+                  vendor(root)
+                  outcome = native.read_text()
+                  assert outcome.count("self.app.vc_reset_ime(request_id);") == 1
+                  assert outcome.count("pub fn reset_ime_with_request(&self, request_id: u64)") == 1
+                  assert "jni_str!(\\"vcResetIme\\")" in (root / files[1]).read_text()
+                  print("PASS: native IME reset forwarding source preflight", variant)
+          PY
           python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py android-port/tools/vectorcraft/test_android9_ime_guard.py
           python3 android-port/tools/vectorcraft/test_android9_ime_guard.py
           python3 android-port/tools/vectorcraft/test_android9_wheel_preferences.py

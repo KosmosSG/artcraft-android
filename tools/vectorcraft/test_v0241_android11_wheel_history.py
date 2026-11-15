@@ -24,8 +24,20 @@ def verify(root: Path) -> None:
     assert 'vcWheelKeys.offer("S")' in j
     assert 'return super.dispatchGenericMotionEvent(motion);' in j
     assert 'event.isCtrlPressed() && !event.isAltPressed()' in j
-    assert 'physicalShortcutKeys.offer(event.isShiftPressed() ? -91 : -90)' in j
-    assert h.count('if hardware_mode == 1 && (code == -90 || code == -91)') == 1
+    assert 'vcAndroid11HistoryKeys.offer(event.isShiftPressed() ? -91 : -90)' in j
+    assert 'vcAndroid11HistoryMode(boolean enabled)' in j
+    assert 'vcAndroid11PollHistoryShortcut()' in j
+    assert 'vcAndroid11HistoryEnabled && !imeWanted && key == KeyEvent.KEYCODE_Z' in j
+    assert 'if (!enabled) vcAndroid11HistoryKeys.clear();' in j
+    assert h.count('vc_android11_poll_history(&self)') == 1
+    assert h.count('vc_android11_set_history_enabled(&self, enabled: bool)') == 1
+    assert 'let history_allowed = self.inner.session.active().is_some()' in h
+    assert '!modal && !editing && !field_focused && !composing' in h
+    assert 'match self.bridge.vc_android11_poll_history()' in h
+    assert 'ctx.data_mut(|data|' in h
+    assert 'JValue::Bool(u8::from(enabled))' in h
+    assert 'let command = match code {' in h
+    assert '-90 => "edit.undo"' in h and '-91 => "edit.redo"' in h
     assert 'self.inner.run("edit.undo", serde_json::json!({}))' in h
     assert 'self.inner.run("edit.redo", serde_json::json!({}))' in h
     assert 'has_android_redo_chord(' in h

@@ -80,14 +80,21 @@ jobs:
               return match.groups()
           assert pkg('signed/package.txt')==('com.artcraft.launcher','12','0.1.0-android.12'), 'wrong Android.12 package/version'
           assert pkg('prior/package.txt')==('com.artcraft.launcher','10','0.1.0-android.10'), 'wrong stable baseline'
-          def cert(path):
-              text=pathlib.Path(path).read_text()
-              match=re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})",text)
-              if not match:raise ValueError('Missing signer certificate')
-              return match.group(1).replace(':','').lower()
-          assert cert('signed/signer.txt')==cert('prior/signer.txt'), 'Signing identity changed'
-          print('PASS: Android.12 official package, version, and SAME permanent signer as Android.10')
+          print('PASS: Android.12 official package and version match the intended production identity')
           PY
+          # Use the exact certificate extraction already verified by the prior
+          # successful Android.12 production-signer workflow. This is not
+          # the release hash and cannot be treated as proof of Play Protect clearance.
+          new_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signed/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          old_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' prior/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          if [[ ! "$new_cert" =~ ^[0-9a-f]{64}$ || ! "$old_cert" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Unable to parse one or both permanent certificate fingerprints"
+            echo "Android.12 certificate line count: $(grep -c 'certificate SHA-256 digest' signed/signer.txt || true)"
+            echo "Android.10 certificate line count: $(grep -c 'certificate SHA-256 digest' prior/signer.txt || true)"
+            exit 1
+          fi
+          test "$new_cert" = "$old_cert" || { echo "::error::Permanent certificate changed"; exit 1; }
+          echo "PASS: Same original permanent signing certificate as stable Android.10" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish exact signed bytes as clearly warned PRERELEASE, never latest stable
         shell: bash

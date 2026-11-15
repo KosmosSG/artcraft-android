@@ -26,13 +26,20 @@ ANDROID_API = '''
 // never stores pointer positions, device identifiers, text or document data.
 static VC_GLASS_PAN_PENDING: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
+static VC_GLASS_PAN_TOTAL: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 pub(crate) fn vc_glass_pan_note() {
     VC_GLASS_PAN_PENDING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    VC_GLASS_PAN_TOTAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn vc_glass_pan_take() -> usize {
     VC_GLASS_PAN_PENDING.swap(0, std::sync::atomic::Ordering::AcqRel)
+}
+
+pub fn vc_glass_pan_total() -> usize {
+    VC_GLASS_PAN_TOTAL.load(std::sync::atomic::Ordering::Relaxed)
 }
 '''
 
@@ -97,6 +104,13 @@ def patch_staged(root: Path) -> None:
                             delta.x *= gain;
                             delta.y *= gain;''',
         "glass vs trackpad canvas wheel sign")
+    s=once(s,
+'''                match self.bridge.copy_diagnostic_report(&report) {''',
+'''                // Diagnostic counts only: no positions, documents or input text.
+                let vc_glass_total = winit::platform::android::vc_glass_pan_total();
+                let report = format!("{report}\\nvc_native_glass_twofinger_pan_packets={vc_glass_total}");
+                match self.bridge.copy_diagnostic_report(&report) {''',
+         "existing Copy Diagnostic provenance counter")
     for required in ("vc_glass_pan_take()", "vc_glass_pan_packets == vc_glass_candidate_wheels",
                      "let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };",
                      'if egui::Popup::is_any_open(ctx)', 'self.inner.canvas_rect'):
@@ -133,6 +147,7 @@ def probe(root: Path) -> None:
         api=(temp/"src/platform/android.rs").read_text()
         assert source.count(GLASS_MARKER)==1
         assert api.count("pub fn vc_glass_pan_take() -> usize")==1
+        assert api.count("pub fn vc_glass_pan_total() -> usize")==1
         assert "GestureStep::Pinch(factor)" in source
         assert "PadGesture::Scroll" in source
         print("PASS: source probe proves actual glass wheel path tagged, native touchpad and pinch preserved")

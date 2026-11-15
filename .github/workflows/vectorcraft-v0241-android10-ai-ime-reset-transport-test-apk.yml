@@ -83,7 +83,6 @@ jobs:
           from pathlib import Path
           sys.path.insert(0, "android-port/tools/vectorcraft")
           from patch_android8_ime_reset import vendor
-          from patch_android8_wheel_touch import once
           files = (
               "vendor/android-activity/src/lib.rs",
               "vendor/android-activity/src/native_activity/mod.rs",
@@ -99,7 +98,7 @@ jobs:
                   native = root / files[-1]
                   source = native.read_text()
                   expression = re.compile(
-                      r'(?m)^    pub fn reset_ime_with_request\\(&self, _request_id: u64\\) \\{[^{}]*\\}'
+                      r'(?m)^    pub fn reset_ime_with_request\(&self, _request_id: u64\) \{[^{}]*\}'
                   )
                   matches = list(expression.finditer(source))
                   assert len(matches) == 1, "Unexpected pinned winit IME reset source"
@@ -114,7 +113,7 @@ jobs:
                   outcome = native.read_text()
                   assert outcome.count("self.app.vc_reset_ime(request_id);") == 1
                   assert outcome.count("pub fn reset_ime_with_request(&self, request_id: u64)") == 1
-                  assert "jni_str!(\\"vcResetIme\\")" in (root / files[1]).read_text()
+                  assert "jni_str!(\"vcResetIme\")" in (root / files[1]).read_text()
                   print("PASS: native IME reset forwarding source preflight", variant)
           PY
           python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py android-port/tools/vectorcraft/test_android9_ime_guard.py

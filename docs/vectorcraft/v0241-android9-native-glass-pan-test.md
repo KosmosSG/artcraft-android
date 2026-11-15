@@ -32,6 +32,12 @@ Open a document and test two-finger swipe up/down/left/right directly on
 the canvas. The artwork should follow the finger direction. Also test
 trackpad pans, trackpad pinch, glass pinch, single-finger selection and
 touch scrolling in long menus, including the stylus wheel configuration.
+For a repeatable diagnosis if the movement is still unchanged, copy the
+existing VectorCraft Diagnostic Session after several canvas swipes and check
+`vc_native_glass_twofinger_pan_packets` and
+`vc_canvas_glass_remap_events`. Both are aggregate counts; no coordinates
+or document data are collected.
+
 The presence of the source tag and passing build gates does NOT prove
 the HONOR MagicPad 4 behavior until you confirm it.
 

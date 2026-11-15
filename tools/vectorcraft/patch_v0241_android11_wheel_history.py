@@ -206,7 +206,8 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
         'has_android_undo_chord, consume_android_undo_chord, has_android_redo_chord, consume_android_redo_chord',
         "import history helpers")
     h = once(h,
-        '''        // Treat Ctrl+Q as a native application quit request (not merely a''',
+        '''        if has_android_undo_chord(
+''',
         '''        // VC_ANDROID11_CTRL_SHIFT_Z: direct Redo mirrors the Android
         // document Undo path, never reroutes IME composition or modal keys.
         if has_android_redo_chord(
@@ -221,7 +222,8 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
                 Err(error) => log::warn!("VectorCraft Ctrl+Shift+Z redo failed: {error}"),
             }
         }
-        // Treat Ctrl+Q as a native application quit request (not merely a''',
+        if has_android_undo_chord(
+''',
         "native Redo engine dispatch")
     # Android.11 history JNI calls are isolated from existing cursor, IME,
     # and keyboard fallback state. Call the history command directly, never

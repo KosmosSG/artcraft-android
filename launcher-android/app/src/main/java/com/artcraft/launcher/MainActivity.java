@@ -105,11 +105,9 @@ public final class MainActivity extends Activity {
             updateCards(); inspectDownload(); updateDownloadProgress();
             ui.removeCallbacks(progressPoll); ui.postDelayed(progressPoll,750);
         }
-        if(readyInstall!=null && (Build.VERSION.SDK_INT<26 || getPackageManager().canRequestPackageInstalls())) {
-            File file=readyInstall; String pkg=readyPackage;
-            readyInstall=null; readyPackage=null;
-            openInstaller(file,pkg);
-        }
+        // Do not start an APK installer merely because the launcher resumes.
+        // After permission settings, the user must explicitly press Install again.
+        // This preserves consent and avoids unexpected installation prompts.
     }
 
     @Override protected void onDestroy() {
@@ -481,8 +479,10 @@ public final class MainActivity extends Activity {
         popup.setElevation(dp(16));
 
         menuGroup(content,"UPDATES");
-        menuItem(content,popup,"Check App Updates",true,this::refreshCatalog);
-        menuItem(content,popup,"Check Launcher Update",true,()->checkLauncherUpdate(false));
+        menuUpdateAction(content,popup,"Check app updates",
+            "Check the 13 Craft apps","A",this::refreshCatalog);
+        menuUpdateAction(content,popup,"Check launcher update",
+            "Check official Launcher releases","Ac",()->checkLauncherUpdate(false));
         menuItem(content,popup,"Downloads",false,()->{
             updateDownloadProgress();
             if(downloadPanel.getVisibility()==View.GONE)
@@ -519,7 +519,7 @@ public final class MainActivity extends Activity {
         menuItem(content,popup,"About ArtCraft Launcher",false,()->{
             new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.10  •  ARM64 TEST ONLY\\n\\n"+
+                .setMessage("v0.1.0-android.11  •  ARM64 TEST ONLY\\n\\n"+
                     "Standalone hub for 13 ArtCraft apps. APK installs require your approval. "+
                     "Published launcher updates must use a compatible signing certificate.")
                 .setPositiveButton("OK",null).show();
@@ -539,6 +539,42 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));
         lp.setMargins(dp(11),dp(7),dp(11),dp(7));
         content.addView(line,lp);
+    }
+
+    /** Lightweight update commands with small teal icons, not oversized teal bars. */
+    private void menuUpdateAction(LinearLayout content,PopupWindow popup,
+                                  String title,String subtitle,String letters,
+                                  Runnable onSelect) {
+        LinearLayout actionRow=horizontal();
+        actionRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionRow.setPadding(dp(11),dp(7),dp(12),dp(7));
+        actionRow.setMinimumHeight(dp(56));
+        actionRow.setBackground(shape(Color.BLACK,Color.parseColor("#3E5153"),11));
+
+        TextView badge=text(letters,letters.length()>1?12:15,
+            Color.parseColor("#7CF0E3"),true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(shape(Color.parseColor("#103432"),
+            Color.parseColor("#2F8B84"),9));
+        actionRow.addView(badge,new LinearLayout.LayoutParams(dp(34),dp(34)));
+
+        LinearLayout labels=vertical();
+        labels.setPadding(dp(11),0,0,0);
+        labels.addView(text(title,13,Color.parseColor("#F6F9F9"),true));
+        labels.addView(text(subtitle,11,Color.parseColor("#ADBFC0"),false));
+        actionRow.addView(labels,new LinearLayout.LayoutParams(0,-2,1f));
+
+        TextView chevron=text("›",23,Color.parseColor("#8EDCD3"),false);
+        chevron.setGravity(Gravity.CENTER);
+        actionRow.addView(chevron,new LinearLayout.LayoutParams(dp(16),dp(32)));
+
+        actionRow.setContentDescription(title);
+        actionRow.setClickable(true);
+        actionRow.setFocusable(true);
+        actionRow.setOnClickListener(view->{popup.dismiss();onSelect.run();});
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(56));
+        lp.setMargins(dp(3),dp(3),dp(3),dp(3));
+        content.addView(actionRow,lp);
     }
 
     private void menuItem(LinearLayout content,PopupWindow popup,String title,

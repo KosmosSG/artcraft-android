@@ -11,11 +11,11 @@ import java.io.FileNotFoundException;
 
 /** Read-only content URI grant for a verified, app-owned downloaded APK. */
 public final class ApkProvider extends ContentProvider {
-    static final String AUTHORITY="com.artcraft.launcher.apks";
+    // Per-variant authority: works for both official and side-by-side TEST APKs.
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) { return "application/vnd.android.package-archive"; }
     @Override public ParcelFileDescriptor openFile(Uri uri,String mode) throws FileNotFoundException {
-        if(!"r".equals(mode) || !AUTHORITY.equals(uri.getAuthority()))
+        if(!"r".equals(mode) || !getContext().getPackageName().concat(".apks").equals(uri.getAuthority()))
             throw new FileNotFoundException("Read-only APK URI");
         String name=uri.getLastPathSegment();
         if(name==null || !name.matches("ArtCraft-[A-Za-z0-9.-]+\\.apk"))

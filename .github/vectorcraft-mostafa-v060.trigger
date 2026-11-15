@@ -1,1 +1,2 @@
 Build a separate ARM64 VectorCraft test APK from MostafaXS1/artcraft-android v0.6.0 (immutable daf23557be278ad36d2df1fb206c67dbe54e3652) and official VectorCraft 0.24.1. Selectively restore KosmosSG Vc branded icon, compact menu, wheel with customization, Save Changes D/S/C scoped routing, secure in-app updater. Preserve Mostafa native touch/IME/cursor/brush recovery. Disposable signing only. No permanent signing, merge or release. Trigger created 2026-11-15.
+Retry 2026-11-15: Java updater message escaped newlines; source anchor validation passed. No native input changes.

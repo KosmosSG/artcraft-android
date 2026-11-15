@@ -5,3 +5,5 @@ Fix unwanted painted/OS mouse arrow between touchscreen finger contacts by sourc
 Test-only separate candidate com.artcraft.vectorcraft.candidate_v0241a9cursor and launcher 'VectorCraft Pan Cursor Test', versionCode 16784915.
 No typing/IME or .ai import changes, no Android.10 reset transport, no production signing, merge, publication, or release asset replacement.
 Retest: corrected staged wheel-provenance regression assertion in commit 81d1ccda911757ea0a06efb8f3d11f40b4ffd992; exact native glass cursor change only. Disposable ARM64 test APK; no permanent signing/release.
+
+Native pointer v2 test: Android TYPE_NULL arrow suppression, forced by source-tagged glass-pan flag; real pointer recovery preserved. Unique candidate_v0241a9cursor2 package, no changes to stable or typing/IME. GitHub Actions test only.

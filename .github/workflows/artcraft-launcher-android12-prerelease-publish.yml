@@ -85,8 +85,8 @@ jobs:
           # Use the exact certificate extraction already verified by the prior
           # successful Android.12 production-signer workflow. This is not
           # the release hash and cannot be treated as proof of Play Protect clearance.
-          new_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signed/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
-          old_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' prior/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          new_cert="$(sed -n 's/^.*certificate SHA-256 digest: //p' signed/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          old_cert="$(sed -n 's/^.*certificate SHA-256 digest: //p' prior/signer.txt | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
           echo "Certificate fingerprints from Android.12 and Android.10 (public certificate metadata):"
           grep -i 'certificate SHA-256 digest' signed/signer.txt || true
           grep -i 'certificate SHA-256 digest' prior/signer.txt || true

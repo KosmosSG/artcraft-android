@@ -68,6 +68,8 @@ jobs:
           python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py
           python3 android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py --source android-port
           python3 android-port/tools/vectorcraft/test_vc_android8_adaptive_cursor.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_android11_pointer_retry.py android-port/tools/vectorcraft/test_v0241_android9_pointer_retry.py
+          PYTHONPATH=android-port/tools/vectorcraft python3 android-port/tools/vectorcraft/test_v0241_android9_pointer_retry.py android-port builder/source/vectorcraft
           python3 android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py builder/vendor/winit --probe
           test ! -e builder/keys/artcraft-builder.jks
           test ! -e android-port/keys/artcraft-builder.jks

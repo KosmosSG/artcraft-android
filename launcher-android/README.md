@@ -2,8 +2,9 @@
 
 An **independently installable** native Android dashboard for the 13 Craft apps in the KosmosSG Android suite. This project lives in its own `launcher-android/` subfolder and an isolated feature branch. The existing Rust app builders, main branch, published releases and permanent signing keys are left alone.
 
-## v0.1.0-android.9 scope
+## v0.1.0-android.10 scope
 - Responsive tablet grid with all 13 products (including unreleased placeholders).
+- **App-specific downloads:** uninstalled app cards always show **Download**, even before the manual release catalog has been checked. Tapping Download performs an on-demand GitHub release lookup for the correct app, then invokes the existing in-app SHA-256, package/signature-verified download workflow. **Details** opens the chosen app's exact release page, not the repository-wide releases page. If no release qualifies or GitHub is unreachable, the fallback button opens that app's specific section at the ArtCraft Android download website. Never misrepresent an unchecked catalog as "No eligible published APK".
 - Detect app packages and launch installed apps without accessing their private data.
 - **Self-updater:** the overflow menu offers manual `Check Launcher Update` plus a separate persisted **OFF-by-default** launcher-startup toggle. It looks for exact `artcraft-launcher-vX.Y.Z-android.N` releases with one signed `ArtCraft-Launcher-vX.Y.Z-android.N-arm64-v8a.apk` asset and `SHA256SUMS.txt`, excludes drafts, honors the Stable/Preview channel, compares versions, and uses the existing in-app download, SHA-256, signer, package, versionCode and user-confirmed installation path. No qualifying published launcher release exists until the owner explicitly publishes one with permanent signing. Existing *disposable debug-signed* tests are not guaranteed in-place compatible.
 - Manual and opt-in startup update checks using the **public** `KosmosSG/artcraft-android` GitHub Releases API. Startup checking is **off by default**.
@@ -20,7 +21,7 @@ Use the one-off GitHub Actions test workflow `.github/workflows/artcraft-launche
 gradle -p launcher-android testDebugUnitTest assembleDebug
 ```
 
-The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It is **Android debug-key signed, TEST ONLY** and must not be distributed as a production release or upgraded to a different key without a deliberate migration.
+The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It is **Android debug-key signed, TEST ONLY** and uses the separate package `com.artcraft.launcher.test` (display name **ArtCraft Launcher TEST**), so it can be installed alongside the official permanent-signed Android.9 without uninstalling that version. The installer provider authority follows the applicationId. The TEST app's own launcher-update checking is disabled. This test build must not be distributed as a production release. Permanent publication requires a separate verified signing flow using the existing official production certificate.
 
 ## Security and release policy
 - Never install a package unless the user approves the Android system installer.
@@ -33,4 +34,6 @@ The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It i
 
 Android.9 OLED pure-black dark mode: page, surrounding card gutters, top header, status/navigation bars, bottom notification bar, and overflow menu use #000000. App cards (#30363B), hero (#353C41), high-contrast borders (#717B83), readable text, and teal-only actions remain unchanged. Optional light theme remains available. The original Ac icon, 13 installed app icons, in-app download verification and launcher self-updater remain intact.
 
-Potential follow-up: Update All queue, permanent launcher signing and a truly separate `KosmosSG/artcraft-android-launcher` repository, which requires repository-creation permissions.
+Android.10 only changes app-specific release lookup and parallel test packaging; it does not change the visual dark theme or the official permanent signing. User device validation is pending.
+
+Potential follow-up: Update All queue, a production-signed Android.10 candidate after validation and a truly separate `KosmosSG/artcraft-android-launcher` repository, which requires repository-creation permissions.

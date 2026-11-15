@@ -33,7 +33,11 @@ def staged(root: Path) -> None:
     adapter=(root/"adapters/vectorcraft/src/lib.rs").read_text()
     canvas=(root/"source/vectorcraft/crates/ui-egui/src/canvas.rs").read_text()
     input_=(root/"source/vectorcraft/crates/ui-egui/src/canvas/input.rs").read_text()
-    assert adapter.count(f'egui::Id::new("{MARKER}")') == 1
+    # One marker is used by the native pan packet guard and one by the
+    # final adaptive pointer override (TYPE_NULL). Both are deliberate.
+    assert adapter.count(f'egui::Id::new("{MARKER}")') == 2
+    assert 'let vc_glass_cursor_id = egui::Id::new("' + MARKER + '");' in adapter
+    assert 'let vc_glass_cursor_suppressed = ctx.data(' in adapter
     assert adapter.count("vc_glass_pan_packets == 0") == 1
     assert adapter.count("egui::Event::PointerMoved(_)") >= 1
     assert adapter.count("data.insert_temp(vc_glass_cursor_id, true)") == 1

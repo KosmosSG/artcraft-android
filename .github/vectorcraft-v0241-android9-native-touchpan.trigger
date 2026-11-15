@@ -4,3 +4,5 @@ Root cause: native winit emits MouseWheel PixelDelta for two fingers and suppres
 Diagnostics: vc_native_glass_twofinger_pan_packets and vc_canvas_glass_remap_events.
 No Android.10 JNI typing experiment. No new text edits.
 Disposable builder-signed ARM64 APK, separate label VectorCraft Glass Test and candidate application ID; no permanent signing, publishing, overwrites or merge.
+
+Retry #2: fix stale CI assertion expecting `delta.x *= -1.15` and `delta.y *= -1.15` after new source-verified conditional canvas gain. Native glass is +1.15, original trackpad -1.15. No typing changes; disposable-signed ARM64 TEST only.

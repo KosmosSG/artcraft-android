@@ -58,7 +58,8 @@ public final class MainActivity extends Activity {
     private ProgressBar downloadProgress;
     private LinearLayout downloadPanel;
     private ScrollView scroller;
-    private boolean dark,checking,checkingDownload,checkingLauncher,receiverRegistered;
+    private boolean dark,checking,checkingDownload,checkingLauncher,receiverRegistered,catalogLoaded;
+    private final Set<String> activeAppLookups=new HashSet<>();
     private File readyInstall;
     private String readyPackage;
     /** UI-only poll while a system DownloadManager transfer is active. */
@@ -342,7 +343,9 @@ public final class MainActivity extends Activity {
         title.addView(text(app.name,16,foreground,true));
         title.addView(text(installed!=null?"Installed":"Not installed",11,muted,false));
         String note;
-        if(remote==null)note="No eligible published APK";
+        if(remote==null)
+            note=catalogLoaded?"No verified APK in selected channel":
+                installed==null?"Tap Download to check latest APK":"Tap Info to check releases";
         else note=(remote.preview?"Preview ":"Release ")+"v"+remote.version;
         TextView detail=text(note,12,muted,false);
         detail.setMaxLines(2);
@@ -358,16 +361,17 @@ public final class MainActivity extends Activity {
         LinearLayout buttons=horizontal();
         buttons.setPadding(0,dp(12),0,0);
         card.addView(buttons);
-        String label=needsUpdate?"Update":installed!=null?"Open":remote!=null?"Install":"Releases";
+        String label=ReleaseRules.primaryAction(installed!=null,needsUpdate);
         Runnable onPrimary;
         if(needsUpdate || (installed==null && remote!=null))
             onPrimary=()->confirmDownload(app,remote);
         else if(installed!=null)onPrimary=()->openApp(app);
-        else onPrimary=()->openReleases();
+        else onPrimary=()->lookupAppRelease(app,true);
         TextView primary=action(label,true,accent,onPrimary);
         buttons.addView(primary,new LinearLayout.LayoutParams(0,dp(40),1f));
         TextView secondary=action(installed!=null?"Info":"Details",false,accent,
-            ()->{ if(remote==null) openReleases(); else openUrl(remote.notesUrl); });
+            ()->{ if(remote==null) lookupAppRelease(app,false);
+                else openUrl(remote.notesUrl); });
         LinearLayout.LayoutParams secondLp=new LinearLayout.LayoutParams(0,dp(40),1f);
         secondLp.setMargins(dp(6),0,0,0);
         buttons.addView(secondary,secondLp);
@@ -396,6 +400,59 @@ public final class MainActivity extends Activity {
     }
     private void openReleases() {
         startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/KosmosSG/artcraft-android/releases")));
+    }
+
+    /** App-specific website section, never the unrelated repository-wide releases page. */
+    private void openAppDownloads(CatalogClient.App app) {
+        Uri uri=Uri.parse("https://kosmossg.github.io/artcraft-android/#"+app.key);
+        startActivity(new Intent(Intent.ACTION_VIEW,uri));
+    }
+
+    /**
+     * When an app is missing, load its published release on demand.
+     * The default startup setting is manual, so a missing cached catalog
+     * must not disable Download or route to the unrelated all-app page.
+     */
+    private void lookupAppRelease(CatalogClient.App app,boolean download) {
+        if(!activeAppLookups.add(app.key)) {
+            notice("Already checking "+app.name+" releases…");return;
+        }
+        notice("Finding official "+app.name+" APK…");
+        final boolean includePreviews=settings.getBoolean("preview",true);
+        worker.execute(()->{
+            try {
+                Map<String,CatalogClient.Release> found=CatalogClient.fetch(includePreviews);
+                ui.post(()->{
+                    activeAppLookups.remove(app.key);
+                    available.clear();available.putAll(found);
+                    catalogLoaded=true;
+                    updateCards();
+                    CatalogClient.Release release=found.get(app.key);
+                    if(release!=null) {
+                        if(download)confirmDownload(app,release);
+                        else openUrl(release.notesUrl);
+                    } else showAppDownloadFallback(app,false);
+                });
+            } catch(Exception e) {
+                ui.post(()->{
+                    activeAppLookups.remove(app.key);
+                    notice(app.name+" release lookup unavailable: "+e.getMessage());
+                    showAppDownloadFallback(app,true);
+                });
+            }
+        });
+    }
+
+    private void showAppDownloadFallback(CatalogClient.App app,boolean offline) {
+        String message=offline
+            ?"The release check could not finish. Open the "+app.name+
+              " section on the ArtCraft downloads website instead?"
+            :"No APK passed the release filename and SHA-256 checks for "+
+              app.name+" on the selected channel. You can still browse "+
+              app.name+"'s published downloads.";
+        new AlertDialog.Builder(this).setTitle(app.name+" downloads")
+            .setMessage(message).setNegativeButton("Cancel",null)
+            .setPositiveButton("Browse "+app.name,(d,w)->openAppDownloads(app)).show();
     }
 
     /**
@@ -462,7 +519,7 @@ public final class MainActivity extends Activity {
         menuItem(content,popup,"About ArtCraft Launcher",false,()->{
             new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.9  •  ARM64 TEST ONLY\\n\\n"+
+                .setMessage("v0.1.0-android.10  •  ARM64 TEST ONLY\\n\\n"+
                     "Standalone hub for 13 ArtCraft apps. APK installs require your approval. "+
                     "Published launcher updates must use a compatible signing certificate.")
                 .setPositiveButton("OK",null).show();
@@ -508,7 +565,8 @@ public final class MainActivity extends Activity {
             try {
                 Map<String,CatalogClient.Release> result=CatalogClient.fetch(includePreviews);
                 ui.post(()->{
-                    checking=false;available.clear();available.putAll(result);
+                    checking=false;catalogLoaded=true;
+                    available.clear();available.putAll(result);
                     updateCards();notice("Found matching releases for "+result.size()+" apps");
                 });
             } catch(Exception e) {
@@ -518,6 +576,11 @@ public final class MainActivity extends Activity {
     }
 
     private void checkLauncherUpdate(boolean startup) {
+        // The side-by-side TEST package cannot receive production launcher updates.
+        if(BuildConfig.DEBUG) {
+            if(!startup)notice("Launcher self-update is disabled in the parallel TEST app");
+            return;
+        }
         if(checkingLauncher)return;
         checkingLauncher=true;
         if(!startup)notice("Checking published launcher updates…");
@@ -839,7 +902,7 @@ public final class MainActivity extends Activity {
 
     private void openInstaller(File file,String pkg) {
         try {
-            Uri uri=new Uri.Builder().scheme("content").authority(ApkProvider.AUTHORITY)
+            Uri uri=new Uri.Builder().scheme("content").authority(getPackageName()+".apks")
                 .appendPath(file.getName()).build();
             Intent intent=new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(uri,"application/vnd.android.package-archive");

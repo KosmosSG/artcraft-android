@@ -68,6 +68,7 @@ jobs:
           python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android9_glass_pan_source.py android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py
           python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android10_ime_reset_delivery.py
           python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android11_wheel_history.py android-port/tools/vectorcraft/test_v0241_android11_wheel_history.py
+          python3 -m py_compile android-port/tools/vectorcraft/patch_v0241_android11_photocraft_update_toast.py android-port/tools/vectorcraft/test_v0241_android11_photocraft_update_toast.py
           python3 android-port/tools/vectorcraft/test_v0241_android9_glass_cursor.py --source android-port
           python3 android-port/tools/vectorcraft/test_vc_android8_adaptive_cursor.py
           python3 -m py_compile android-port/tools/vectorcraft/patch_android11_pointer_retry.py android-port/tools/vectorcraft/test_v0241_android9_pointer_retry.py
@@ -734,6 +735,11 @@ jobs:
           # Fast idempotent source and IME preservation checks occur before ARM64 compilation.
           python3 android-port/tools/vectorcraft/patch_v0241_android11_wheel_history.py builder
           python3 android-port/tools/vectorcraft/test_v0241_android11_wheel_history.py builder
+          # PhotoCraft v0.23.1-android.5 uses an Android-native bottom app-icon
+          # Toast when manually checking updates. Preserve VectorCraft's
+          # verified downloader and secure PackageInstaller consent flow.
+          python3 android-port/tools/vectorcraft/patch_v0241_android11_photocraft_update_toast.py builder
+          python3 android-port/tools/vectorcraft/test_v0241_android11_photocraft_update_toast.py builder
 
           # Android.3 Ctrl+Z: the real adapter must call document Undo once.
           # This is checked before expensive native ARM64 compilation.
@@ -950,7 +956,9 @@ jobs:
           3. Test pen single, double press and no accidental wheel activation from finger/mouse/trackpad.
           4. Make a canvas change and use physical Ctrl+Z (Undo) then Ctrl+Shift+Z (Redo). Repeat after .ai import.
           5. Confirm typing in a new document, imported .ai and after Ctrl+Q/relaunch 10x. No Android.10 typing regression is acceptable.
-          6. Confirm 2-finger canvas pan directions, trackpad pan, dialogs, and in-app updater remain usable.
+          6. From Vc > Check for Updates and About VectorCraft > Updates, confirm Android's bottom app-icon notification "Checking for updates…" and final result toast; startup update checks remain quiet.
+          7. In-app Download & Install must retain verified GitHub APK download progress, Android's install approval, and signature/package security gates. Disposable test package must never replace production VectorCraft.
+          8. Confirm 2-finger canvas pan directions, trackpad pan, dialogs and imported .ai typing remain usable.
           Device testing is pending; automated build success alone is not a PASS for hover or typing.
           EOF
       - name: Upload test artifact only — never publish a GitHub Release

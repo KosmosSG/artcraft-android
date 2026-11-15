@@ -7,12 +7,21 @@ android {
         applicationId 'com.artcraft.launcher'
         minSdk 26
         targetSdk 34
-        versionCode 9
-        versionName '0.1.0-android.9'
+        versionCode 10
+        versionName '0.1.0-android.10'
     }
     buildTypes {
-        debug { minifyEnabled false }
-        release { minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt') }
+        debug {
+            minifyEnabled false
+            // Install alongside the official permanent-signed v0.1.0-android.9.
+            applicationIdSuffix '.test'
+            manifestPlaceholders = [launcherLabel: 'ArtCraft Launcher TEST']
+        }
+        release {
+            minifyEnabled true
+            manifestPlaceholders = [launcherLabel: 'ArtCraft Launcher']
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

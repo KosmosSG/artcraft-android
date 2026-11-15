@@ -9,3 +9,4 @@ Retest: corrected staged wheel-provenance regression assertion in commit 81d1ccd
 Native pointer v2 test: Android TYPE_NULL arrow suppression, forced by source-tagged glass-pan flag; real pointer recovery preserved. Unique candidate_v0241a9cursor2 package, no changes to stable or typing/IME. GitHub Actions test only.
 
 Retry gate-only fix: glass cursor marker occurs twice by design (native glass-pan tag + final Android TYPE_NULL override). Source guard checked; unchanged gestures and typing. Triggered for a disposable ARM64 APK, not a release.
+Retest native-null cursor v3: fix staged two-marker assertion and pointer-retry compatibility; add pre-SDK smoke test. Cursor only, temporary ARM64 signing, no .ai typing or production release changes.

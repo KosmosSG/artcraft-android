@@ -22,7 +22,8 @@ class VectorCraftAndroid8AdaptiveCursor(unittest.TestCase):
             "C::Move | C::AllScroll => 1015",
             "C::ResizeNwSe | C::ResizeNorthWest",
             "C::ResizeNeSw | C::ResizeNorthEast",
-            "C::None | C::Progress | C::Wait => return None",
+            "C::None => 0",
+            "C::Progress | C::Wait => return None",
         ):
             self.assertIn(snippet,rust)
 
@@ -36,7 +37,8 @@ class VectorCraftAndroid8AdaptiveCursor(unittest.TestCase):
             "runOnUiThread(() ->",
             "SurfaceView nativeSurface = findNativeSurface(getWindow().getDecorView());",
             "nativeSurface.setPointerIcon(",
-            "PointerIcon.getSystemIcon(this, nativePointerIconType)",
+            "PointerIcon.getSystemIcon(this, requestedPointerType)",
+            "final int requestedPointerType = pointerType;",
             "nativePointerIconType = -1;",
         ):
             self.assertIn(marker,java)

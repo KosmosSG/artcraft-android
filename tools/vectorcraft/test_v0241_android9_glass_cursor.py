@@ -43,8 +43,9 @@ def staged(root: Path) -> None:
     assert '#[cfg(target_os = "android")]' in canvas
     assert '#[cfg(target_os = "android")]' in input_
     # Keep the proven canvas wheel semantics and native source tagging.
-    assert "scroll = if early_pan != egui::Vec2::ZERO" in input_
-    assert "native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)" in input_
+    # Native glass pan is delivered as a tagged wheel event, not early_pan or native_canvas_touch.
+    assert "let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };" in adapter
+    assert "vc_glass_pan_packets > 0" in adapter
     print("PASS: staged Android.9 glass-pan cursor suppression, wheel direction and real-pointer recovery")
 
 if __name__=="__main__":

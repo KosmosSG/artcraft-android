@@ -1491,8 +1491,20 @@ impl eframe::App for VectorCraftAndroidApp {
         // Android adapter or keyboard/trackpad handling. Resolved AFTER all
         // VectorCraft panels, dialogs and canvas have set their egui cursor.
         // A pointerless touchscreen is unaffected by Android PointerIcon.
+        // Native two-finger glass pans synthesize a cursor move for wheel
+        // routing. The canvas marks it as glass-sourced; override even if
+        // other UI layers subsequently choose Arrow. Android TYPE_NULL hides
+        // the OS pointer until real mouse, trackpad or pen motion clears it.
+        let vc_glass_cursor_suppressed = ctx.data(|data| data.get_temp::<bool>(
+            egui::Id::new("vectorcraft-android-glass-pan-hide-cursor")
+        ).unwrap_or(false));
+        let vc_resolved_cursor = if vc_glass_cursor_suppressed {
+            egui::CursorIcon::None
+        } else {
+            ctx.output(|out| out.cursor_icon)
+        };
         if let Some(pointer_type) =
-            adaptive_cursor::native_pointer_icon(ctx.output(|out| out.cursor_icon))
+            adaptive_cursor::native_pointer_icon(vc_resolved_cursor)
         {
             if self.last_adaptive_pointer_type != Some(pointer_type) {
                 match self.bridge.set_adaptive_pointer_icon(pointer_type) {

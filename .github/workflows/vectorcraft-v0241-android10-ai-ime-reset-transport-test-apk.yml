@@ -886,7 +886,7 @@ jobs:
       - name: Upload test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.24.1-android.9-AI-IME-RESET-TRANSPORT-ARM64-TEST-ONLY
+          name: VectorCraft-v0.24.1-android.10-AI-IME-RESET-TRANSPORT-ARM64-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

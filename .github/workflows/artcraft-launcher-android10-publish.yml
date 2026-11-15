@@ -55,6 +55,11 @@ jobs:
             exit 1
           fi
           echo 'Persistent launcher signer and backup prerequisites present.'
+      - name: Checkout exact device-tested source (not a moving branch)
+        uses: actions/checkout@v4
+        with:
+          ref: 6adc2d9168338c3d879ecee422cd79bebe41bf01
+          persist-credentials: false
       - name: Validate immutable tested candidate workflow run and artifact
         shell: bash
         run: |
@@ -75,11 +80,6 @@ jobs:
           [[ "$expected" =~ ^[0-9a-fA-F]{64}$ && "$actual" == "$expected" ]] ||
             { echo "::error::Candidate SHA-256 mismatch"; exit 1; }
           echo "Verified owner-tested source, run, artifact, and SHA-256."
-      - name: Checkout exact device-tested source (not a moving branch)
-        uses: actions/checkout@v4
-        with:
-          ref: 6adc2d9168338c3d879ecee422cd79bebe41bf01
-          persist-credentials: false
       - name: Prepare Java 17 and Gradle 8.10.2
         uses: actions/setup-java@v4
         with:

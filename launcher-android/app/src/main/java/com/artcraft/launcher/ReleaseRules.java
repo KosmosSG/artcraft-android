@@ -39,6 +39,12 @@ public final class ReleaseRules {
         return false;
     }
 
+    /** Never show a repository-wide Releases button for an uninstalled app. */
+    public static String primaryAction(boolean installed,boolean needsUpdate) {
+        if(needsUpdate)return "Update";
+        return installed?"Open":"Download";
+    }
+
     public static int compareVersions(String a, String b) {
         Matcher ma = VERSION.matcher(a == null ? "" : a);
         Matcher mb = VERSION.matcher(b == null ? "" : b);

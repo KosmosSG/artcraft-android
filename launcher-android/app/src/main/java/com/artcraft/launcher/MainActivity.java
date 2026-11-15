@@ -577,7 +577,7 @@ public final class MainActivity extends Activity {
 
     private void checkLauncherUpdate(boolean startup) {
         // The side-by-side TEST package cannot receive production launcher updates.
-        if(BuildConfig.DEBUG) {
+        if(getPackageName().endsWith(".test")) {
             if(!startup)notice("Launcher self-update is disabled in the parallel TEST app");
             return;
         }

@@ -480,9 +480,9 @@ public final class MainActivity extends Activity {
 
         menuGroup(content,"UPDATES");
         menuUpdateAction(content,popup,"Check app updates",
-            "Check the 13 Craft apps","A",this::refreshCatalog);
+            "Check the 13 Craft apps",R.drawable.ic_apps_grid,this::refreshCatalog);
         menuUpdateAction(content,popup,"Check launcher update",
-            "Check official Launcher releases","Ac",()->checkLauncherUpdate(false));
+            "Check official Launcher releases",R.drawable.ic_launcher_layers,()->checkLauncherUpdate(false));
         menuItem(content,popup,"Downloads",false,()->{
             updateDownloadProgress();
             if(downloadPanel.getVisibility()==View.GONE)
@@ -519,7 +519,7 @@ public final class MainActivity extends Activity {
         menuItem(content,popup,"About ArtCraft Launcher",false,()->{
             new AlertDialog.Builder(this)
                 .setTitle("ArtCraft Android Launcher")
-                .setMessage("v0.1.0-android.11  •  ARM64 TEST ONLY\\n\\n"+
+                .setMessage("v0.1.0-android.12  •  ARM64 TEST ONLY\\n\\n"+
                     "Standalone hub for 13 ArtCraft apps. APK installs require your approval. "+
                     "Published launcher updates must use a compatible signing certificate.")
                 .setPositiveButton("OK",null).show();
@@ -543,7 +543,7 @@ public final class MainActivity extends Activity {
 
     /** Lightweight update commands with small teal icons, not oversized teal bars. */
     private void menuUpdateAction(LinearLayout content,PopupWindow popup,
-                                  String title,String subtitle,String letters,
+                                  String title,String subtitle,int iconResource,
                                   Runnable onSelect) {
         LinearLayout actionRow=horizontal();
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -551,12 +551,18 @@ public final class MainActivity extends Activity {
         actionRow.setMinimumHeight(dp(56));
         actionRow.setBackground(shape(Color.BLACK,Color.parseColor("#3E5153"),11));
 
-        TextView badge=text(letters,letters.length()>1?12:15,
-            Color.parseColor("#7CF0E3"),true);
-        badge.setGravity(Gravity.CENTER);
-        badge.setBackground(shape(Color.parseColor("#103432"),
-            Color.parseColor("#2F8B84"),9));
-        actionRow.addView(badge,new LinearLayout.LayoutParams(dp(34),dp(34)));
+        // Proposal 1: simple monochrome vector symbols with a restrained teal detail.
+        // The icon is not a label or text initial; both actions use the same 22dp
+        // pictogram scale inside small neutral dark tiles.
+        LinearLayout tile=horizontal();
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(shape(Color.parseColor("#191D20"),
+            Color.parseColor("#383F43"),9));
+        ImageView symbol=new ImageView(this);
+        symbol.setImageResource(iconResource);
+        symbol.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tile.addView(symbol,new LinearLayout.LayoutParams(dp(22),dp(22)));
+        actionRow.addView(tile,new LinearLayout.LayoutParams(dp(34),dp(34)));
 
         LinearLayout labels=vertical();
         labels.setPadding(dp(11),0,0,0);

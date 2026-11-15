@@ -2,8 +2,10 @@
 
 An **independently installable** native Android dashboard for the 13 Craft apps in the KosmosSG Android suite. This project lives in its own `launcher-android/` subfolder and an isolated feature branch. The existing Rust app builders, main branch, published releases and permanent signing keys are left alone.
 
-## v0.1.0-android.11 scope
+## v0.1.0-android.12 scope
 - Responsive tablet grid with all 13 products (including unreleased placeholders).
+- **Android.12 Option 1 refinement:** compact four-square line-vector icon for **Check app updates**; understated stacked/layered outline icon with a subtle teal accent for **Check launcher update**. Both use neutral dark 34dp tiles and consistent 22dp icon sizing; no more A/Ac letter icons in the update dropdown. All update actions and the existing menu appearance remain unchanged.
+- **Google Play Protect:** past official Android.10 production APK received a "Harmful app blocked" dialog, while the separately signed Android.11 TEST showed "This app looks safe". These results are not equivalent. Android.12 TEST is not claimed to pass the production-app classification; a production-certificate-signed Android.12 candidate must be scanned by Play Protect on the device before any publication. Play Protect must not be disabled or bypassed.
 - **Android.11 menu polish:** the two update menu items now have compact black outlined rows with discrete teal badges, readable sublabels and right-side chevrons instead of broad solid teal surfaces. No changes to approved dark mode, Craft app release routing, or in-app checks.
 - **Explicit install consent:** returning from Android settings never launches an APK installer automatically. The owner must deliberately tap **Install** after a verified download. The APK still uses Android's normal installation confirmation and integrity checks.
 - **Play Protect review:** Google's "Harmful app blocked" classification was observed on the official permanently signed Android.10 install. This remains unresolved and is not a routine unknown-app popup. Do not tell users to disable Play Protect or force installation; follow Google's official Play Protect review/appeal process after security investigation. No changes were made to disguise the app or circumvent detection.
@@ -37,6 +39,6 @@ The output is `launcher-android/app/build/outputs/apk/debug/app-debug.apk`. It i
 
 Android.9 OLED pure-black dark mode: page, surrounding card gutters, top header, status/navigation bars, bottom notification bar, and overflow menu use #000000. App cards (#30363B), hero (#353C41), high-contrast borders (#717B83), readable text, and teal-only actions remain unchanged. Optional light theme remains available. The original Ac icon, 13 installed app icons, in-app download verification and launcher self-updater remain intact.
 
-Android.11 is a side-by-side TEST build with only menu polish and explicit install-consent handling. The official Android.10 remains unchanged. The current Play Protect classification must be reviewed before a new public release.
+Android.12 is a side-by-side TEST build with only the Option 1 icon refinement. It inherits Android.11 explicit install-consent handling. The official Android.10 remains unchanged. Since the actual Play Protect production classification is unresolved, keep future signed production candidates unpublished pending device verification and any necessary Google review.
 
 Potential follow-up: Update All queue, a production-signed Android.10 candidate after validation and a truly separate `KosmosSG/artcraft-android-launcher` repository, which requires repository-creation permissions.

@@ -13,7 +13,7 @@ android {
     buildTypes {
         debug {
             minifyEnabled false
-            // Install alongside the official permanent-signed v0.1.0-android.9.
+            // Install alongside the official permanent-signed v0.1.0-android.10.
             applicationIdSuffix '.test'
             manifestPlaceholders = [launcherLabel: 'ArtCraft Launcher TEST']
         }

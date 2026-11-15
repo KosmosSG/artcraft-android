@@ -9,3 +9,5 @@ No merge, release, published APK overwrite or permanent production signing.
 Android.10 follow-up: review and fix vendored native winit reset handler compatibility; preflight original, one-line stub, and builder-removed stub before SDK/NDK. This push triggers a NEW disposable ARM64 test run; never rerun #43708099999 or modify a published release.
 
 Android.10 follow-up run 3: avoid double-patching an already-correct native winit reset_ime_with_request -> self.app.vc_reset_ime(request_id) path. Preflight includes already-forwarded method. Disposable ARM64 test only. No published release modifications.
+
+Android.10 run #4: fix Rust E0592 duplicate vc_reset_ime from builder and final vendor staging. Probe double vendor application before compilation; build only separate disposable-signed VectorCraft ARM64 test. No published release changes.

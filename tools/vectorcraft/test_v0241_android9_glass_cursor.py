@@ -18,6 +18,12 @@ def source(root: Path) -> None:
     assert "let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };" in code
     assert "vc_glass_canvas_applied_note();" in code
     assert "vc_glass_pan_note();" in code
+    assert "C::None => 0" in (root/"adapters/vectorcraft/src/adaptive_cursor.rs").read_text()
+    native=(root/"adapters/vectorcraft/src/lib.rs").read_text()
+    assert "let vc_glass_cursor_suppressed = ctx.data(" in native
+    assert "egui::CursorIcon::None" in native
+    assert "native_pointer_icon(vc_resolved_cursor)" in native
+    assert "PointerIcon.getSystemIcon(this, requestedPointerType)" in (root/"adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
     assert "if ui.ctx().data(" in code
     assert "return false;" in code
     assert "return; // No painted tool glyph" in code
@@ -35,6 +41,9 @@ def staged(root: Path) -> None:
     assert adapter.count("let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };") == 1
     assert adapter.count("delta.x *= gain;") == 1
     assert adapter.count("delta.y *= gain;") == 1
+    assert "let vc_glass_cursor_suppressed = ctx.data(" in adapter
+    assert "native_pointer_icon(vc_resolved_cursor)" in adapter
+    assert "egui::CursorIcon::None" in adapter
     assert f'egui::Id::new("{MARKER}")' in canvas
     assert f'egui::Id::new("{MARKER}")' in input_
     assert "egui::CursorIcon::None" in canvas

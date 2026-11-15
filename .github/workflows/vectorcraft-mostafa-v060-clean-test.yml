@@ -1,0 +1,239 @@
+name: VectorCraft Mostafa v0.6.0 Clean Rebase ARM64 TEST ONLY
+
+# Pin the upstream builder and app, add only approved VectorCraft UI in a
+# separate disposable app. No production signing, release, or merge.
+on:
+  push:
+    branches:
+      - integration/vectorcraft-mostafa-v060-clean-20261115
+    paths:
+      - .github/vectorcraft-mostafa-v060.trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-mostafa-v060-clean-test
+  cancel-in-progress: true
+
+jobs:
+  disposable-test-apk:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/vectorcraft-mostafa-v060-clean-20261115'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BUILDER_SHA: daf23557be278ad36d2df1fb206c67dbe54e3652
+      UPSTREAM_SHA: f4922aa7ac99a4f6d56fc68a83a44945207ec610
+      ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
+      TEST_PACKAGE: com.artcraft.vectorcraft.mostafav060
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: 35.0.0
+      ARTCRAFT_NDK_VERSION: 27.2.12479018
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      - name: Check out owner features (read-only)
+        uses: actions/checkout@v5
+        with:
+          path: android-port
+          persist-credentials: false
+      - name: Check out immutable MostafaXS1 v0.6.0 builder
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: daf23557be278ad36d2df1fb206c67dbe54e3652
+          path: builder
+          persist-credentials: false
+      - name: Check out official VectorCraft v0.24.1
+        uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: f4922aa7ac99a4f6d56fc68a83a44945207ec610
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Preserve native Mostafa input and stage approved VectorCraft-only features
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$BUILDER_SHA"
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          grep -q 'ARTCRAFT_ANDROID_NATIVE_IME_V1' builder/adapters/vectorcraft/src/lib.rs
+          grep -q 'mod touch_gestures;' builder/adapters/vectorcraft/src/lib.rs
+          test -s android-port/tools/approved-branding/assets/VectorCraft.png
+          python3 -m py_compile android-port/tools/vectorcraft/mostafa_v060_rebase.py
+          python3 android-port/tools/vectorcraft/mostafa_v060_rebase.py builder android-port
+          # Generated Android namespace / Java class remain com.artcraft.vectorcraft.
+          # Only Gradle application ID is distinct; stable installs/data are untouched.
+          python3 android-port/tools/vectorcraft/patch_test_package_v021.py builder
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("builder/lib/android_project.py")
+          old="applicationId '{_groovy(namespace)}.test'"
+          new="applicationId '{_groovy(namespace)}.mostafav060'"
+          text=p.read_text()
+          assert text.count(old)==1
+          p.write_text(text.replace(old,new,1))
+          meta=Path("builder/adapters/vectorcraft/Cargo.toml")
+          text=meta.read_text()
+          assert text.count('label = "VectorCraft Test"')==2
+          meta.write_text(text.replace('label = "VectorCraft Test"','label = "VectorCraft Mostafa Test"'))
+          java=Path("builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftActivity.java").read_text()
+          rust=Path("builder/adapters/vectorcraft/src/lib.rs").read_text()
+          oldrust=Path("android-port/adapters/vectorcraft/src/lib.rs").read_text()
+          assert "ARTCRAFT_ANDROID_NATIVE_IME_V1" in rust
+          assert "touch_gestures::process_raw_input(ctx, raw);" in rust
+          assert "mod stylus_wheel;" in rust
+          assert "vcWheelPoll" in java and "vcCheckUpdates" in java
+          assert "ui.dialog.confirm" in rust and '"saveChanges"' in rust
+          assert "ime_bridge::ime::ImeBridge" not in rust
+          assert rust != oldrust
+          assert "vc_stylus_native_take" not in rust
+          print("PASS: fresh Mostafa native touch + IME preserved, user Vc menu/wheel/D-S-C/updater staged, isolated package")
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # Reuse only an official, SHA-256 verified Gradle ZIP; avoid another
+      # 20-minute Rust compile ending in a Gradle download HTTP 504.
+      - name: Restore Gradle 8.11.1 distribution cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vectorcraft-gradle/gradle-8.11.1-bin.zip
+          key: vectorcraft-gradle-8.11.1-bin-f397b287-v1
+      - name: Prefetch and verify Gradle 8.11.1 before ARM64 compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_SHA="f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
+          CACHE="$HOME/.cache/vectorcraft-gradle"
+          ZIP="$CACHE/gradle-8.11.1-bin.zip"
+          mkdir -p "$CACHE"
+          if ! (test -s "$ZIP" && echo "$GRADLE_SHA  $ZIP" | sha256sum --check --status); then
+            rm -f "$ZIP" "$ZIP.part"
+            ok=0
+            for source in \
+              "https://downloads.gradle.org/distributions/gradle-8.11.1-bin.zip" \
+              "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"; do
+              for attempt in 1 2 3; do
+                echo "Gradle 8.11.1 fetch attempt $attempt: $source"
+                if curl --fail --location --silent --show-error \
+                    --retry 2 --retry-all-errors --retry-delay 3 \
+                    --connect-timeout 20 --max-time 300 \
+                    --output "$ZIP.part" "$source" \
+                    && echo "$GRADLE_SHA  $ZIP.part" | sha256sum --check --status; then
+                  mv "$ZIP.part" "$ZIP"
+                  ok=1
+                  break 2
+                fi
+                rm -f "$ZIP.part"
+              done
+            done
+            if [[ "$ok" -ne 1 ]]; then
+              echo "::error::Pinned Gradle ZIP unavailable/mismatched; aborting before expensive Rust compilation"
+              exit 1
+            fi
+          fi
+          echo "$GRADLE_SHA  $ZIP" | sha256sum --check
+          # Pinned builder copies templates/gradle to the generated launcher.
+          # Modify only this disposable checkout; no permanent release changes.
+          python3 - "$ZIP" "$GRADLE_SHA" <<'PY'
+          from pathlib import Path
+          import sys
+          zip_path=Path(sys.argv[1]).resolve()
+          expected=sys.argv[2]
+          props=Path("builder/templates/gradle/gradle/wrapper/gradle-wrapper.properties")
+          original=props.read_text()
+          remote=r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+          assert original.count(remote)==1, "Unreviewed Gradle wrapper template; refuse modification"
+          uri=zip_path.as_uri().replace(":",r"\:")
+          updated=original.replace(remote,"distributionUrl="+uri)
+          assert "distributionSha256Sum=" not in updated
+          updated+="distributionSha256Sum="+expected+"\n"
+          props.write_text(updated)
+          assert "distributionUrl=file\:///" in updated
+          print("PASS: official SHA-256 Gradle 8.11.1 ZIP; local wrapper URL; no late remote download")
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android 35, tools and NDK 27.2 once
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Compile optimized ARM64 Mostafa-based VectorCraft test APK (disposable signing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd builder
+          # The update installer refuses production installs from this separate test package.
+          bash build.sh -vectorcraft --noupdate -appname="VectorCraft Mostafa Test" \
+            "-appicon=$GITHUB_WORKSPACE/android-port/tools/approved-branding/assets/VectorCraft.png"
+      - name: Verify test APK, ARM64, isolated identity, signing and size
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p private-test
+          APK="$(find builder/output -maxdepth 1 -type f -name 'vectorcraft-*.apk' -print -quit)"
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$SIGNER" verify --verbose --print-certs "$APK" > private-test/VALIDATION.txt
+          "$AAPT" dump badging "$APK" >> private-test/VALIDATION.txt
+          python3 - "$APK" "$TEST_PACKAGE" "$ORIGINAL_CERT" <<'PY'
+          import hashlib,re,sys,zipfile,json,pathlib
+          apk=pathlib.Path(sys.argv[1]); expected=sys.argv[2]; original=sys.argv[3]
+          log=pathlib.Path('private-test/VALIDATION.txt').read_text()
+          match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",log,re.M)
+          assert match, 'Missing Android package badging'
+          assert match.group(1)==expected,(match.group(1),expected)
+          assert match.group(3).startswith("0.24.1"),match.group(3)
+          certificate=re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)",log)
+          assert certificate,'APK missing signing cert'
+          assert certificate.group(1).lower()!=original.lower(),'Production certificate forbidden'
+          with zipfile.ZipFile(apk) as z:
+              native=[x for x in z.namelist() if x.startswith('lib/') and x.endswith('.so')]
+              assert native and all(x.startswith('lib/arm64-v8a/') for x in native),native
+              assert any(x.endswith('libvectorcraft_android.so') for x in native),native
+              assert 'classes.dex' in z.namelist(),'Android Activity missing'
+          size=apk.stat().st_size
+          report={'package':match.group(1),'version_code':int(match.group(2)),
+              'version_name':match.group(3),'source_builder':'MostafaXS1/artcraft-android@v0.6.0',
+              'upstream_vectorcraft':'storytold/vectorcraft v0.24.1',
+              'signing':'disposable test-only, not production key',
+              'signing_sha256':certificate.group(1),'apk_bytes':size,
+              'apk_sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'device_validation':'pending','protected_release':'unchanged'}
+          pathlib.Path('private-test/BUILD-REPORT.json').write_text(json.dumps(report,indent=2))
+          print('PASS: separate-install Mostafa baseline APK, ARM64-only, disposable signature, app version and size',size)
+          PY
+          cp "$APK" private-test/VectorCraft-Mostafa-v060-v0241-ARM64-DISPOSABLE-TEST.apk
+          cat > private-test/DEVICE-TEST-NOTES.txt <<'TXT'
+          This APK is a separate package. It does not replace published VectorCraft.
+          First verify new document typing and imported .ai typing BEFORE testing:
+          - synthetic cursor during two-finger canvas pan
+          - two-finger tap Undo, three-finger tap Redo
+          - stylus wheel via Magic-Pencil button / Vc > Stylus Wheel
+          - D/S/C on Save Changes only, Ctrl+Q relaunch, File > Save As
+          - brush add/save persistence, app recovery, update checker UI
+          No device behavior was verified by CI. Permanent signing/release forbidden.
+          TXT
+      - name: Upload disposable test APK (never publish)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VectorCraft-Mostafa-v060-FreshRebase-ARM64-TEST-ONLY
+          path: private-test/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Destroy ephemeral signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys

@@ -1,0 +1,131 @@
+name: Publish ArtCraft Launcher Android.12 permanently signed PRE-RELEASE (Play Protect warning)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/artcraft-launcher-android12-prerelease-publish.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: artcraft-launcher-android12-prerelease-publish-once
+  cancel-in-progress: false
+
+jobs:
+  publish-unchanged-signed-apk:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SIGNED_RUN: '43681411603'
+      SIGNED_RUN_SHA: 'ca7703f6709dd773c0f37e5756e6f15b300f0de3'
+      SOURCE_SHA: '6d908f1982a9c1907745e879e48414512c432e79'
+      SIGNED_ARTIFACT: 'ArtCraft-Launcher-v0.1.0-android.12-PERMANENT-SIGNED-REVIEW-ONLY'
+      APK_NAME: 'ArtCraft-Launcher-v0.1.0-android.12-arm64-v8a.apk'
+      EXPECTED_SHA256: '58aff54322dc8e4faa9f80f7eddef242c5f58d1c4be4fe0801a949f9e4eda01b'
+      TAG: 'artcraft-launcher-v0.1.0-android.12'
+    steps:
+      - name: Verify original signed review run, exact artifact, and existing tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SIGNED_RUN" > run.json
+          jq -e --arg sha "$SIGNED_RUN_SHA" '
+            .status=="completed" and .conclusion=="success" and
+            .head_sha==$sha and .head_branch=="main" and
+            .path==".github/workflows/artcraft-launcher-android12-signed-candidate.yml" and
+            .head_repository.full_name=="KosmosSG/artcraft-android"
+          ' run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SIGNED_RUN/artifacts" > artifacts.json
+          jq -e --arg artifact "$SIGNED_ARTIFACT" '
+            [.artifacts[] | select(.name==$artifact and .expired==false)] | length==1
+          ' artifacts.json
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists. Never overwrite or mutate it."
+            exit 1
+          fi
+          mkdir -p signed
+          gh run download "$SIGNED_RUN" -R "$GITHUB_REPOSITORY" -n "$SIGNED_ARTIFACT" -D signed
+          test -s "signed/$APK_NAME"
+          test -s signed/SHA256SUMS.txt
+          (cd signed && sha256sum -c SHA256SUMS.txt)
+          test "$(sha256sum "signed/$APK_NAME" | awk '{print $1}')" = "$EXPECTED_SHA256"
+          test "$(awk 'NF>=2{print $1}' signed/SHA256SUMS.txt)" = "$EXPECTED_SHA256"
+          unzip -t "signed/$APK_NAME" >/dev/null
+          echo "PASS: exact SHA-256 and archive of the previously signed, device-blocked Android.12 APK." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Independently verify package, version and original Android.10 signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          TOOLS="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$TOOLS/apksigner"
+          test -x "$TOOLS/aapt"
+          "$TOOLS/apksigner" verify --verbose --print-certs "signed/$APK_NAME" > signed/signer.txt
+          "$TOOLS/aapt" dump badging "signed/$APK_NAME" > signed/package.txt
+          mkdir -p prior
+          gh release download artcraft-launcher-v0.1.0-android.10 -R "$GITHUB_REPOSITORY" -p ArtCraft-Launcher-v0.1.0-android.10-arm64-v8a.apk -D prior
+          "$TOOLS/apksigner" verify --verbose --print-certs prior/ArtCraft-Launcher-v0.1.0-android.10-arm64-v8a.apk > prior/signer.txt
+          "$TOOLS/aapt" dump badging prior/ArtCraft-Launcher-v0.1.0-android.10-arm64-v8a.apk > prior/package.txt
+          python3 - <<'PY'
+          import re,pathlib
+          def pkg(path):
+              data=pathlib.Path(path).read_text()
+              match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",data,re.M)
+              if not match:raise ValueError('Missing package identity')
+              return match.groups()
+          assert pkg('signed/package.txt')==('com.artcraft.launcher','12','0.1.0-android.12'), 'wrong Android.12 package/version'
+          assert pkg('prior/package.txt')==('com.artcraft.launcher','10','0.1.0-android.10'), 'wrong stable baseline'
+          def cert(path):
+              text=pathlib.Path(path).read_text()
+              match=re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})",text)
+              if not match:raise ValueError('Missing signer certificate')
+              return match.group(1).replace(':','').lower()
+          assert cert('signed/signer.txt')==cert('prior/signer.txt'), 'Signing identity changed'
+          print('PASS: Android.12 official package, version, and SAME permanent signer as Android.10')
+          PY
+
+      - name: Publish exact signed bytes as clearly warned PRERELEASE, never latest stable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > signed/RELEASE_NOTES.md <<'EOF'
+          # ArtCraft Launcher v0.1.0-android.12 — PRE-RELEASE
+
+          > **SECURITY WARNING — GOOGLE PLAY PROTECT BLOCKED THIS EXACT PRODUCTION-SIGNED APK.**
+          >
+          > On 15 November 2026, Google Play Protect displayed **“Harmful app blocked”** and **“Installing this app may put your device at risk”** for this production-signed Android.12 file. The specific reason is unknown, and a developer appeal was submitted but no clearance has been confirmed. **Do not disable or override Play Protect to install it.** This is a public preview for transparency and development review, **not a recommended stable installation**.
+
+          ## Changes
+          - Replaces the 'A' and 'Ac' letters in the black update popup with Option 1 vector icons: four outlined app squares and restrained layered launcher icon.
+          - Keeps the ArtCraft 13-app dashboard, manually initiated update checks and in-app verified APK downloads, with Android user confirmation for installation.
+          - Uses `com.artcraft.launcher`, versionCode 12, and the **same permanent signer** as Android.10.
+
+          ## Provenance and release safeguards
+          - This release publishes **the exact SHA-256-verified Android.12 production-signed APK** from prior successful GitHub Actions signing run [43681411603](https://github.com/KosmosSG/artcraft-android/actions/runs/43681411603). It is **not rebuilt or re-signed** during publication.
+          - APK SHA-256: `58aff54322dc8e4faa9f80f7eddef242c5f58d1c4be4fe0801a949f9e4eda01b`.
+          - Original Android.12 source commit: `6d908f1982a9c1907745e879e48414512c432e79`.
+          - The separate `com.artcraft.launcher.test` Android.12 installed on one device without showing a Play Protect warning; that does not establish safety of the production APK.
+          - Published as a **prerelease**, not the latest stable; the existing official Android.10 remains untouched.
+
+          For Google Play Protect review, consult the [official appeal process](https://support.google.com/googleplay/android-developer/contact/protectappeals).
+          EOF
+          gh release create "$TAG" \
+            "signed/$APK_NAME" \
+            signed/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "ArtCraft Launcher v0.1.0-android.12 — Prerelease (Play Protect warning)" \
+            --notes-file signed/RELEASE_NOTES.md \
+            --prerelease --latest=false
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url,isPrerelease,isLatest,assets > release-check.json
+          cat release-check.json
+          jq -e '.isPrerelease==true and .isLatest==false' release-check.json
+          jq -e --arg name "$APK_NAME" '.assets | any(.name==$name)' release-check.json
+          mkdir -p published
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$APK_NAME" -D published
+          test "$(sha256sum "published/$APK_NAME" | awk '{print $1}')" = "$EXPECTED_SHA256"
+          echo "PASS: released APK bytes verified identical to owner-approved signing run. PRE-RELEASE ONLY; Play Protect warning persists." >> "$GITHUB_STEP_SUMMARY"

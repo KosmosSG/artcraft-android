@@ -31,6 +31,14 @@ public final class ReleaseRulesTest {
         assertFalse(ReleaseRules.isLauncherApkFor("0.1.0-android.7","unknown.apk"));
     }
 
+    @Test public void missingAppOffersDownloadWithoutLoadedCatalog() {
+        assertEquals("Download",ReleaseRules.primaryAction(false,false));
+        assertEquals("Update",ReleaseRules.primaryAction(true,true));
+        assertEquals("Open",ReleaseRules.primaryAction(true,false));
+        assertTrue(ReleaseRules.isApkFor("VectorCraft","vectorcraft",
+            "0.24.1-android.9","VectorCraft-v0.24.1-android.9-arm64-v8a.apk"));
+    }
+
     @Test public void increasingVersions() {
         assertTrue(ReleaseRules.compareVersions("0.24.1-android.1","0.23.0-android.99")>0);
         assertTrue(ReleaseRules.compareVersions("0.24.1-android.10","0.24.1-android.9")>0);

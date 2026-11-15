@@ -625,7 +625,11 @@ jobs:
           assert '#[cfg(target_os = "android")]\n    {\n        // This whole block is Android-only' in canvas
           assert 'native_canvas_touch.map_or(egui::Vec2::ZERO, |t| t.translation_delta)' in canvas
           assert 'scroll.y -= 2.0 * native_pan.y' not in canvas
-          assert 'delta.x *= -1.15;' in host and 'delta.y *= -1.15;' in host
+          # Android.9 original -1.15 gain is now a conditional. The staged
+          # native glass wheel must use +1.15 while trackpad keeps -1.15.
+          assert 'let gain = if vc_glass_canvas_pan { 1.15 } else { -1.15 };' in host
+          assert 'delta.x *= gain;' in host and 'delta.y *= gain;' in host
+          assert 'vc_glass_canvas_applied_note();' in host
           # Android.9: imported .ai → close → new blank document must not
           # inherit an asynchronous IME hide/reset from the previous document.
           assert 'com.artcraft.vectorcraft.test' in Path("builder/lib/android_project.py").read_text() or 'com.artcraft.vectorcraft.test' in Path("builder/adapters/vectorcraft/src/lib.rs").read_text() or 'com.artcraft.vectorcraft.test' in Path("android-port/tools/vectorcraft/patch_test_package_v021.py").read_text()

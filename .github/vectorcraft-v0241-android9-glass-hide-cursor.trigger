@@ -4,3 +4,4 @@ Working glass pan direction commit: 60fd9d797f9cf282db609fa5ddde8d73522cc319, ru
 Fix unwanted painted/OS mouse arrow between touchscreen finger contacts by source-tagged suppression during native glass pan; retain wheel target, sign, pointer input and stylus hover.
 Test-only separate candidate com.artcraft.vectorcraft.candidate_v0241a9cursor and launcher 'VectorCraft Pan Cursor Test', versionCode 16784915.
 No typing/IME or .ai import changes, no Android.10 reset transport, no production signing, merge, publication, or release asset replacement.
+Retest: corrected staged wheel-provenance regression assertion in commit 81d1ccda911757ea0a06efb8f3d11f40b4ffd992; exact native glass cursor change only. Disposable ARM64 test APK; no permanent signing/release.

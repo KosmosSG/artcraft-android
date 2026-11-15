@@ -34,8 +34,12 @@ pub fn native_pointer_icon(cursor: egui::CursorIcon) -> Option<i32> {
         C::ResizeSouthEast => 1022,
         C::ResizeNeSw | C::ResizeNorthEast |
         C::ResizeSouthWest => 1023,
-        // No Android framework equivalent: preserve the current pointer.
-        C::None | C::Progress | C::Wait => return None,
+        // Android TYPE_NULL = 0 hides the OS arrow while egui intentionally
+        // suppresses the synthetic pointer during glass two-finger panning.
+        // The real mouse/trackpad/pen icon is restored on their next event.
+        C::None => 0,
+        // Preserve existing pointer for non-cursor states with no equivalent.
+        C::Progress | C::Wait => return None,
     })
 }
 
@@ -65,7 +69,8 @@ mod tests {
 
     #[test]
     fn no_equivalent_does_not_change_native_pointer() {
-        for cursor in [C::None, C::Wait, C::Progress] {
+        assert_eq!(map(C::None), Some(0)); // Android PointerIcon.TYPE_NULL
+        for cursor in [C::Wait, C::Progress] {
             assert_eq!(map(cursor), None);
         }
     }

@@ -192,12 +192,16 @@ public final class VectorCraftActivity extends NativeActivity {
         if (android.os.Build.VERSION.SDK_INT < 24 || pointerType < 0) return;
         if (pointerType == nativePointerIconType) return;
         nativePointerIconType = pointerType;
+        final int requestedPointerType = pointerType;
         runOnUiThread(() -> {
             try {
                 SurfaceView nativeSurface = findNativeSurface(getWindow().getDecorView());
                 if (nativeSurface != null) {
+                    // TYPE_NULL (0) is an actual transparent OS pointer, not
+                    // "ignore this request". Capture the requested type to
+                    // avoid asynchronous UI dispatch applying a later type.
                     nativeSurface.setPointerIcon(
-                        PointerIcon.getSystemIcon(this, nativePointerIconType));
+                        PointerIcon.getSystemIcon(this, requestedPointerType));
                 } else {
                     // Native surface is not ready yet; allow a later frame
                     // to retry rather than caching a change that never applied.

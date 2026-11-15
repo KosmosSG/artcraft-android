@@ -123,8 +123,8 @@ def apply(builder: Path, owner: Path):
                 android.app.AlertDialog.Builder dialog = new android.app.AlertDialog.Builder(this)
                     .setTitle("VectorCraft App Updates")
                     .setMessage(display + (getPackageName().equals("com.artcraft.vectorcraft")
-                        ? "\nVerified in-app download is available only for matching published APK signatures."
-                        : "\nTEST BUILD: production installer disabled; your stable VectorCraft is safe."))
+                        ? "\\nVerified in-app download is available only for matching published APK signatures."
+                        : "\\nTEST BUILD: production installer disabled; your stable VectorCraft is safe."))
                     .setNegativeButton("Close",null)
                     .setNeutralButton("View Releases",(d,w) -> {
                         try {startActivity(new Intent(Intent.ACTION_VIEW,

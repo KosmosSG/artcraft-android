@@ -116,12 +116,19 @@ jobs:
                           )
                       source = source[:matches[0].start()] + replacement + source[matches[0].end():]
                       native.write_text(source)
+                  # Stage once on the builder and again after build.sh vendors
+                  # Android-activity; both invocations must preserve ONE helper.
+                  vendor(root)
                   vendor(root)
                   outcome = native.read_text()
                   assert outcome.count("self.app.vc_reset_ime(request_id);") == 1
                   assert outcome.count("pub fn reset_ime_with_request(&self, request_id: u64)") == 1
-                  assert "jni_str!(\"vcResetIme\")" in (root / files[1]).read_text()
-                  print("PASS: native IME reset forwarding source preflight", variant)
+                  lib_source = (root / files[0]).read_text()
+                  native_source = (root / files[1]).read_text()
+                  assert lib_source.count("pub fn vc_reset_ime(&self, request_id: u64)") == 1
+                  assert native_source.count("pub fn vc_reset_ime(&self, request_id: u64)") == 1
+                  assert "jni_str!(\"vcResetIme\")" in native_source
+                  print("PASS: native IME reset double-vendoring source preflight", variant)
           PY
           python3 -m py_compile android-port/tools/vectorcraft/patch_android9_ime_hover_menu.py android-port/tools/vectorcraft/test_android9_ime_guard.py
           python3 android-port/tools/vectorcraft/test_android9_ime_guard.py

@@ -1,0 +1,201 @@
+name: Produce ArtCraft Launcher Android.12 permanent-signed Play Protect review APK (NO RELEASE)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/artcraft-launcher-android12-signed-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: artcraft-launcher-android12-permanent-signed-review
+  cancel-in-progress: false
+
+jobs:
+  sign-candidate:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_RUN: '43681267298'
+      CANDIDATE_SHA: '6d908f1982a9c1907745e879e48414512c432e79'
+      CANDIDATE_ARTIFACT: 'ArtCraft-Launcher-v0.1.0-android.12-PARALLEL-TEST-ONLY'
+      EXPECTED_PACKAGE: 'com.artcraft.launcher'
+      EXPECTED_VERSION: '0.1.0-android.12'
+      EXPECTED_VERSION_CODE: '12'
+      KEYSTORE_BASE64: ${{ secrets.ARTCRAFT_LAUNCHER_KEYSTORE_BASE64 }}
+      STORE_PASSWORD: ${{ secrets.ARTCRAFT_LAUNCHER_STORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.ARTCRAFT_LAUNCHER_KEY_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ARTCRAFT_LAUNCHER_KEY_ALIAS }}
+      CERT_SHA256: ${{ secrets.ARTCRAFT_LAUNCHER_CERT_SHA256 }}
+      BACKUP_VERIFIED: ${{ secrets.ARTCRAFT_LAUNCHER_BACKUP_VERIFIED }}
+    steps:
+      - name: Fail closed if persistent launcher signing key or verified backup is missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD KEY_ALIAS CERT_SHA256; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing production signing prerequisite: $name. Do not publish debug test APK."
+              exit 1
+            fi
+          done
+          if [[ "$BACKUP_VERIFIED" != 'YES' ]]; then
+            echo "::error::Permanent keystore backup is not verified (LAUNCHER_KEY_BACKUP_VERIFIED=YES required)."
+            exit 1
+          fi
+          if [[ ! "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Expected certificate SHA-256 must be exactly 64 hex characters."
+            exit 1
+          fi
+          echo 'Persistent launcher signer and backup prerequisites present.'
+      - name: Checkout exact device-tested source (not a moving branch)
+        uses: actions/checkout@v4
+        with:
+          ref: 6d908f1982a9c1907745e879e48414512c432e79
+          persist-credentials: false
+      - name: Validate immutable tested candidate workflow run and artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > "$RUNNER_TEMP/candidate.json"
+          jq -e --arg sha "$CANDIDATE_SHA" '
+            .conclusion=="success" and .event=="push" and .head_sha==$sha and
+            .head_branch=="feature/artcraft-android-launcher-android12-option1-20261115" and
+            .path==".github/workflows/artcraft-launcher-test-apk.yml" and
+            .head_repository.full_name=="KosmosSG/artcraft-android"
+          ' "$RUNNER_TEMP/candidate.json"
+          mkdir -p candidate
+          gh run download "$CANDIDATE_RUN" -R "$GITHUB_REPOSITORY" -n "$CANDIDATE_ARTIFACT" -D candidate
+          test -s candidate/app-debug.apk
+          test -s candidate/SHA256SUMS.txt
+          expected="$(awk 'NF>=2{print $1}' candidate/SHA256SUMS.txt)"
+          actual="$(sha256sum candidate/app-debug.apk | awk '{print $1}')"
+          [[ "$expected" =~ ^[0-9a-fA-F]{64}$ && "$actual" == "$expected" ]] ||
+            { echo "::error::Candidate SHA-256 mismatch"; exit 1; }
+          echo "Verified owner-tested source, run, artifact, and SHA-256."
+      - name: Prepare Java 17 and Gradle 8.10.2
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install exact Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -path "*/bin/sdkmanager" -type f | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+      - name: Build production release APK from precisely tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          grep -Fq "applicationId 'com.artcraft.launcher'" launcher-android/app/build.gradle
+          grep -Fq "applicationIdSuffix '.test'" launcher-android/app/build.gradle
+          grep -Fq "versionCode 12" launcher-android/app/build.gradle
+          grep -Fq "versionName '0.1.0-android.12'" launcher-android/app/build.gradle
+          gradle -p launcher-android --no-daemon testDebugUnitTest assembleRelease
+          test -s launcher-android/app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Verify test APK and production package identities, and prior permanent certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          "$TOOLS/apksigner" verify --verbose candidate/app-debug.apk
+          "$TOOLS/aapt" dump badging candidate/app-debug.apk > "$RUNNER_TEMP/test-badging.txt"
+          "$TOOLS/aapt" dump badging launcher-android/app/build/outputs/apk/release/app-release-unsigned.apk > "$RUNNER_TEMP/unsigned-badging.txt"
+          python3 - "$RUNNER_TEMP/test-badging.txt" "$RUNNER_TEMP/unsigned-badging.txt" <<'PY'
+          import sys,re
+          def ident(path):
+              s=open(path,encoding='utf8').read()
+              m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",s,re.M)
+              if not m:raise SystemExit("Missing package identity")
+              return m.groups()
+          test,production=ident(sys.argv[1]),ident(sys.argv[2])
+          if test!=('com.artcraft.launcher.test','12','0.1.0-android.12'):
+              raise SystemExit('Owner-tested APK identity mismatch: '+str(test))
+          if production!=('com.artcraft.launcher','12','0.1.0-android.12'):
+              raise SystemExit('Unsigned production package/version mismatch: '+str(production))
+          print('Verified production package separate from parallel test package')
+          PY
+          mkdir -p prior
+          gh release download artcraft-launcher-v0.1.0-android.10 -R "$GITHUB_REPOSITORY" -p ArtCraft-Launcher-v0.1.0-android.10-arm64-v8a.apk -D prior
+          OLD=prior/ArtCraft-Launcher-v0.1.0-android.10-arm64-v8a.apk
+          "$TOOLS/apksigner" verify --verbose --print-certs "$OLD" > "$RUNNER_TEMP/old-signer.txt"
+          "$TOOLS/aapt" dump badging "$OLD" > "$RUNNER_TEMP/old-badging.txt"
+          python3 - "$RUNNER_TEMP/old-badging.txt" <<'PY'
+          import re,sys
+          s=open(sys.argv[1],encoding='utf8').read()
+          m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",s,re.M)
+          if not m or m.groups()!=('com.artcraft.launcher','10','0.1.0-android.10'):
+              raise SystemExit('Existing official Android.10 APK identity mismatch')
+          print('Verified published stable Android.9 baseline')
+          PY
+          old_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/old-signer.txt" | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          expected_cert="$(printf '%s' "$CERT_SHA256" | tr '[:upper:]' '[:lower:]')"
+          [[ -n "$old_cert" && "$old_cert" == "$expected_cert" ]] ||
+            { echo "::error::Permanent signing certificate differs from published Android.10"; exit 1; }
+      - name: Permanently sign Android.12 candidate and inspect unchanged app payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          ORIGINAL=launcher-android/app/build/outputs/apk/release/app-release-unsigned.apk
+          mkdir -p release
+          KEYSTORE="$RUNNER_TEMP/artcraft-launcher-permanent.p12"
+          ALIGNED="$RUNNER_TEMP/artcraft-launcher-aligned.apk"
+          trap 'rm -f "$KEYSTORE" "$ALIGNED"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          TARGET="release/ArtCraft-Launcher-v0.1.0-android.12-arm64-v8a.apk"
+          "$TOOLS/zipalign" -f 4 "$ORIGINAL" "$ALIGNED"
+          "$TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "$TARGET" "$ALIGNED"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$TARGET" > "$RUNNER_TEMP/verified-signer.txt"
+          signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/verified-signer.txt" | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n1)"
+          expected_cert="$(printf '%s' "$CERT_SHA256" | tr '[:upper:]' '[:lower:]')"
+          [[ -n "$signer" && "$signer" == "$expected_cert" ]] ||
+            { echo "::error::Final certificate not equal to original permanent signer"; exit 1; }
+          "$TOOLS/aapt" dump badging "$TARGET" > "$RUNNER_TEMP/signed-badging.txt"
+          cmp "$RUNNER_TEMP/unsigned-badging.txt" "$RUNNER_TEMP/signed-badging.txt"
+          python3 - "$ORIGINAL" "$TARGET" <<'PY'
+          import hashlib,zipfile,sys
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  return {n:hashlib.sha256(z.read(n)).digest() for n in z.namelist()
+                          if not n.upper().startswith('META-INF/') and not n.endswith('/')}
+          if payload(sys.argv[1]) != payload(sys.argv[2]):
+              raise SystemExit('APK payload was modified during signing')
+          print('PASS: exact resource and class payload unchanged by signing')
+          PY
+          (cd release && sha256sum ArtCraft-Launcher-v0.1.0-android.12-arm64-v8a.apk > SHA256SUMS.txt)
+          echo "Certified permanent Android.10 signer: $signer"
+      - name: Upload Android.12 production-signed candidate for Play Protect review, NOT a release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArtCraft-Launcher-v0.1.0-android.12-PERMANENT-SIGNED-REVIEW-ONLY
+          path: |
+            release/ArtCraft-Launcher-v0.1.0-android.12-arm64-v8a.apk
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Record review-only status
+        shell: bash
+        run: |
+          echo "### ArtCraft Launcher Android.12 permanent-signed review candidate (NOT PUBLISHED)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Same permanent signing certificate as official Android.10; package com.artcraft.launcher, versionCode 12." >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow has no GitHub Releases write access; it cannot publish." >> "$GITHUB_STEP_SUMMARY"
+          echo "Google Play Protect must evaluate this exact APK on the device. This workflow cannot claim a Play Protect pass." >> "$GITHUB_STEP_SUMMARY"

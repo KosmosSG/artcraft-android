@@ -1,0 +1,1 @@
+VectorCraft v0.24.1-android.15 adaptive small-pan canvas tile redraw ARM64 test-only build. Keep source v0.24.1 pinned, preserve Android.13 overlay and Android.14 in-place pan, no permanent signing, no GitHub release. Verify Rust and staged source guard tests, separate test package, APK artifact only.

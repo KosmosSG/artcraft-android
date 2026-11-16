@@ -103,7 +103,7 @@ def install_pen_button(reference: Path) -> None:
     // A direct JNI callback bridges the pen's verified release even when
     // querying Java from the Rust render thread is temporarily unavailable.
     private native void cadWheelButtonNative(int code);
-    private native void cadStylusHoverNative(float x, float y, int action);
+    private native void cadStylusHoverNative(float x, float y, int action, int deviceId);
     private final java.util.concurrent.ConcurrentLinkedQueue<Integer> cadWheelKeys =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
     private long cadWheelLastButtonMs = 0L;
@@ -241,7 +241,7 @@ def install_pen_button(reference: Path) -> None:
                 || action == MotionEvent.ACTION_HOVER_EXIT || action == MotionEvent.ACTION_DOWN
                 || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             try {
-                cadStylusHoverNative(event.getX(), event.getY(), action);
+                cadStylusHoverNative(event.getX(), event.getY(), action, event.getDeviceId());
                 boolean inRange = action == MotionEvent.ACTION_HOVER_MOVE
                     || action == MotionEvent.ACTION_HOVER_ENTER;
                 if (inRange != cadHadHover) {
@@ -339,6 +339,9 @@ struct CadStylusKeys {
     // Explicit user-triggered calibration, per running Activity session.
     // Numeric Android device IDs are ephemeral: do not persist across restart.
     paired_id: Option<i32>,
+    // Native or Java motion confirms this very device produced stylus hover.
+    hover_attested: Option<(i32, std::time::Instant)>,
+    auto_paired_id: Option<i32>,
     pairing_until: Option<std::time::Instant>,
     raw_mouse_button_count: u32,
     last_mouse_button: Option<(i32, i32, i32)>,
@@ -348,7 +351,8 @@ static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
     std::sync::Mutex::new(CadStylusKeys {
         enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None,
         candidate_count: 0, accepted_count: 0, last_candidate: None,
-        paired_id: None, pairing_until: None,
+        paired_id: None, hover_attested: None, auto_paired_id: None,
+        pairing_until: None,
         raw_mouse_button_count: 0, last_mouse_button: None
     });
 
@@ -360,7 +364,12 @@ pub fn cad_stylus_configure(enabled: bool, ids: &[i32]) {
             state.events.clear();
             state.last = None;
         }
-        if !enabled { state.paired_id = None; state.pairing_until = None; }
+        if !enabled {
+            state.paired_id = None;
+            state.auto_paired_id = None;
+            state.hover_attested = None;
+            state.pairing_until = None;
+        }
         state.enabled = enabled;
         state.allowed_ids = new_ids;
     }
@@ -379,6 +388,23 @@ pub fn cad_stylus_arm_pairing() {
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_pairing_id() -> Option<i32> {
     CAD_STYLUS_KEYS.lock().ok().and_then(|state| state.paired_id)
+}
+// Automatic session-only authorization from a verified stylus HOVER source.
+// Never trust an observed DPAD device ID by itself; no persisted/hardcoded IDs.
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_observe_hover_device(device: i32, action: i32) {
+    if device <= 0 { return; }
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        match action {
+            7 | 9 => state.hover_attested = Some((device, std::time::Instant::now())),
+            10 | 3 => {
+                if state.hover_attested.is_some_and(|(id, _)| id == device) {
+                    state.hover_attested = None;
+                }
+            }
+            _ => {}
+        }
+    }
 }
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> bool {
@@ -401,7 +427,23 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
         state.last = None;
         log::info!("CADCraft: user paired pen input device {device}");
     }
-    if !state.allowed_ids.contains(&device) && state.paired_id != Some(device) {
+    // Auto-recognize only an exact same-device pen button RELEASE observed
+    // within 8 seconds of a real TOOL_TYPE_STYLUS hover. This excludes
+    // generic keyboard DPAD and avoids authorizing device IDs by number alone.
+    if device > 0 && code == 20 && action == 1 && repeat == 0
+        && state.hover_attested.is_some_and(|(id, when)|
+            id == device && now.duration_since(when) <= std::time::Duration::from_secs(8))
+    {
+        if state.auto_paired_id != Some(device) {
+            state.auto_paired_id = Some(device);
+            state.last = None;
+            log::info!("CADCraft: hover-attested pen input device {device} auto-paired for session");
+        }
+    }
+    if !state.allowed_ids.contains(&device)
+        && state.paired_id != Some(device)
+        && state.auto_paired_id != Some(device)
+    {
         return false;
     }
     // Accept first press/release edge from the named pen, even if the paired
@@ -430,8 +472,9 @@ pub fn cad_stylus_observe_mouse(device: i32, action: i32, buttons: i32) {
 pub fn cad_stylus_native_status() -> String {
     if let Ok(state) = CAD_STYLUS_KEYS.lock() {
         format!(
-            "Native enabled: {} | Verified IDs: {:?} | Paired input ID (this session): {:?} | Pairing armed: {} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
+            "Native enabled: {} | Verified IDs: {:?} | Paired input ID (this session): {:?} | Auto-paired ID (this session): {:?} | Recent stylus hover ID: {:?} | Pairing armed: {} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
             state.enabled, state.allowed_ids, state.paired_id,
+            state.auto_paired_id, state.hover_attested.map(|(id, _)| id),
             state.pairing_until.is_some_and(|deadline| deadline >= std::time::Instant::now()),
             state.candidate_count, state.accepted_count, state.last_candidate,
             state.raw_mouse_button_count, state.last_mouse_button
@@ -510,9 +553,11 @@ pub fn cad_stylus_hover_current() -> Option<(f32, f32)> {
                 let ptr = motion.ptr().as_ptr();
                 let action = unsafe { ndk_sys::AMotionEvent_getAction(ptr) } & 0xff;
                 if unsafe { ndk_sys::AMotionEvent_getToolType(ptr, 0) } == 2 {
+                    let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
                     let x = unsafe { ndk_sys::AMotionEvent_getX(ptr, 0) };
                     let y = unsafe { ndk_sys::AMotionEvent_getY(ptr, 0) };
                     crate::cad_stylus_hover_capture(x, y, action);
+                    crate::cad_stylus_observe_hover_device(device, action);
                 }
             }
 """
@@ -662,7 +707,7 @@ android-activity = { version = "0.6", default-features = false, features = ["nat
     bridge_src.mkdir(parents=True, exist_ok=True)
     (bridge / "Cargo.toml").write_text(
         '[package]\nname = "cadcraft-android-updater-bridge"\nversion = "0.1.0"\nedition = "2021"\n'
-        '[dependencies]\njni = "0.21"\nndk-context = "0.1"\n', encoding="utf-8")
+        '[dependencies]\njni = "0.21"\nndk-context = "0.1"\nandroid-activity = { version = "0.6", default-features = false, features = ["native-activity"] }\n', encoding="utf-8")
     (bridge_src / "lib.rs").write_text(
         Path(__file__).with_name("cadcraft_android_updater_bridge.rs").read_text(encoding="utf-8"),
         encoding="utf-8")
@@ -729,12 +774,12 @@ def patch_test_apk_version(reference: Path) -> None:
         'PY\n)"\n'
         '# CADCraft isolated TEST APK versionName; keep upstream source at v0.19.0.\n'
         'if [[ "$APP" == "cadcraft" && "$PACKAGENAME" == "com.artcraft.cadcraft.test" ]]; then\n'
-        '  APP_VERSION="0.19.0-android.12"\n'
+        '  APP_VERSION="0.19.0-android.13"\n'
         'fi\n\n'
         '# The shared craft-fonts'
     )
     builder.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
-    print("PASS: isolated Android test versionName 0.19.0-android.12 (App Info).")
+    print("PASS: isolated Android test versionName 0.19.0-android.13 (App Info).")
 
 
 def main() -> None:

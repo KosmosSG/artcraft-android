@@ -492,8 +492,8 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
                     ui.label(line);
                 }
                 ui.separator();
-                ui.label("Pair Pen Button (TEST) → hover and press the pen button within 15s.");
-                ui.label("Paired input IDs last only for this app session, not across relaunches.");
+                ui.label("Auto-detect: hover then press the side button. If needed, use Pair Pen Button (TEST) within 15s.");
+                ui.label("Manual and hover-attested pen IDs last only for this app session.");
                 ui.label("Open Wheel Manually (TEST) verifies wheel rendering separately.");
                 ui.label("If candidate DPAD increases but accepted stays zero, inspect verified device IDs.");
                 ui.label("If neither Java nor native count changes, Android may route the button outside the app.");

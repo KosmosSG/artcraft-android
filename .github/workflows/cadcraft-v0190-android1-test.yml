@@ -1,10 +1,10 @@
-name: CADCraft v0.19.0 Android.12 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.13 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
   push:
     branches:
-      - feature/cadcraft-v0190-android1-test-20261111
+      - feature/cadcraft-v0190-android13-auto-pen-20261116
     paths:
       # Explicit, focused completion gate. Interim edits do not burn Actions minutes.
       - 'tools/cadcraft_build_gate.txt'
@@ -106,6 +106,10 @@ jobs:
           grep -Fq 'cad_stylus_observe_mouse' reference/vendor/android-activity/src/native_activity/mod.rs
           grep -Fq 'raw_mouse_button_count' reference/vendor/android-activity/src/lib.rs
           grep -Fq 'cad_stylus_arm_pairing' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cad_stylus_observe_hover_device' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'Auto-paired ID' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cad_stylus_observe_hover_device(device, action)' reference/vendor/android-activity/src/native_activity/mod.rs
+          grep -Fq 'cadStylusHoverNative(event.getX(), event.getY(), action, event.getDeviceId())' reference/templates/android/SafActivity.java
           grep -Fq 'cad_stylus_pairing_id' reference/vendor/android-activity/src/lib.rs
           grep -Fq 'paired_id: Option<i32>' reference/vendor/android-activity/src/lib.rs
           grep -Fq 'state.paired_id = Some(device)' reference/vendor/android-activity/src/lib.rs
@@ -137,9 +141,9 @@ jobs:
           grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
           grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
-          grep -q 'android.12' reference/templates/android/UpdateCheck.java
+          grep -q 'android.13' reference/templates/android/UpdateCheck.java
           # Build script must set Android's *installed* versionName, not just the ZIP filename.
-          grep -Fq 'APP_VERSION="0.19.0-android.12"' reference/lib/build-common.sh
+          grep -Fq 'APP_VERSION="0.19.0-android.13"' reference/lib/build-common.sh
           grep -Fq '"$PACKAGENAME" == "com.artcraft.cadcraft.test"' reference/lib/build-common.sh
           grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
@@ -157,19 +161,19 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.12-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.13-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.12-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.13-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
           grep -q "package: name='com.artcraft.cadcraft.test'" dist/apk-badging.txt
-          grep -Fq "versionName='0.19.0-android.12'" dist/apk-badging.txt
-          echo "PASS: Android App Info versionName is 0.19.0-android.12"
+          grep -Fq "versionName='0.19.0-android.13'" dist/apk-badging.txt
+          echo "PASS: Android App Info versionName is 0.19.0-android.13"
           apksigner verify --verbose --print-certs "$apk" | tee dist/apk-signing.txt
           # Catch JNI bridge stripping and missing Java declaration before
           # offering a signed test artifact to the HONOR device user.
@@ -190,6 +194,8 @@ jobs:
           grep -Fq 'cadStylusMouseButton' "$tmpdir/dex-strings.txt"
           grep -Fq 'cadStylusShowInputStatus' "$tmpdir/dex-strings.txt"
           grep -Fq 'cadStylusSnapshot' "$tmpdir/dex-strings.txt"
+          grep -Fq 'cadStylusHoverNative' "$tmpdir/dex-strings.txt"
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' dist/apk-signing.txt
           echo "PASS: Android Java pen capture and exported JNI callback packaged"
           sha256sum "$apk" | tee dist/SHA256SUMS.txt
           echo "TEST ONLY. No permanent signing. No GitHub Release."
@@ -197,7 +203,7 @@ jobs:
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.12-ARM64-TEST
+          name: CADCraft-v0.19.0-android.13-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -207,15 +213,15 @@ jobs:
         shell: bash
         run: |
           {
-            echo '### CADCraft v0.19.0 Android.6 test'
+            echo '### CADCraft v0.19.0 Android.13 test'
             echo '* Source: official Storytold v0.19.0, Android reference: MostafaXS1 pinned 52308fb'
             echo '* Isolated package: com.artcraft.cadcraft.test'
             echo '* Cc icon: exact user-branded #D13153/#F3E4E7 layers; no themed monochrome tint'
             echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
             echo '* Wheel: 75%/85%, cream Cc +15%, verified pen DOWN/UP first edge, native/Java JNI and 550ms duplicate filter (device test pending)'
             echo '* Hover: stylus motion forwarded to non-interactive pointer; real device verification pending'
-            echo '* Android.12: Android App Info versionName 0.19.0-android.12, verified with aapt (not just APK filename)'
-            echo '* Working 15s native stylus-button pairing and per-session device authorization retained'
+            echo '* Android.13: Android App Info versionName 0.19.0-android.13, verified with aapt (not just APK filename)'
+            echo '* Working 15s native stylus-button pairing preserved as fallback; auto-pair only upon matching same-device stylus hover and DPAD_DOWN release (hardware device test pending)'
             echo '* Manual wheel renderer test, native pen status with verified vs paired IDs, expanded Java JNI error report; preserve other app keyboard and hover'
             echo '* Save Changes D/S/C dialog hints and modal-only keyboard controls, native Pen Input Status window preserved'
             echo '* PhotoCraft-style pen pre-IME, named Magic-Pencil routing, hover pointer, updater and SAF retained'

@@ -148,7 +148,11 @@ pub extern "system" fn Java_com_artcraft_cadcraft_test_CadCraftActivity_cadStylu
     x: jni::sys::jfloat,
     y: jni::sys::jfloat,
     action: jni::sys::jint,
+    device_id: jni::sys::jint,
 ) {
+    // Java has already verified TOOL_TYPE_STYLUS; pass its transient device
+    // ID to the native input gate without ever trusting ordinary key presses.
+    android_activity::cad_stylus_observe_hover_device(device_id, action);
     if let Ok(mut hover) = PEN_HOVER.lock() {
         match action {
             7 | 9 if x.is_finite() && y.is_finite() => *hover = Some((x, y)),

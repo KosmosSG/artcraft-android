@@ -21,3 +21,6 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local encrypted CADCraft signer backup (never commit to Git)
+.cadcraft-signing-backup/

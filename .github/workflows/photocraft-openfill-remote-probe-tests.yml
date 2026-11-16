@@ -45,13 +45,16 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import py_compile
+          py_compile.compile("tools/photocraft_v022_vc_style_menu.py", doraise=True)
           p = Path("tools/photocraft_v022_vc_style_menu.py").read_text()
           for code, name in ((37, "Fill with Prompt"), (38, "Remove Object"),
                              (39, "Generative Expand"), (40, "Create · Text to Image")):
               assert f'openfill_action(ui, "{name}…", {code});' in p
           assert 'pc_openfill_direct_menu_action' in p
           assert 'ui.ctx().request_repaint();' in p
-          assert '37..=40 => self.ai_menu.open_openfill_operation(pc_action)' in p
+          assert '37..=40 => {' in p
+          assert 'self.ai_menu.open_openfill_operation(pc_action);' in p
           assert """assert output.count('ui.menu_button("Diagnostics", |ui| {') == 0""" in p
           host = Path("adapters/photocraft/src/ai_menu.rs").read_text()
           assert 'fn start_fill_generation(' in host

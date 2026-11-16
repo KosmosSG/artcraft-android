@@ -265,6 +265,68 @@ impl AndroidAiMenu {
             self.show_background_setup = open;
         }
 
+        if self.show_openfill_setup {
+            let mut open = self.show_openfill_setup;
+            egui::Window::new("PhotoCraft · OpenFill Remote GPU Preview")
+                .id(egui::Id::new("photocraft_android_openfill_remote_gpu"))
+                .open(&mut open)
+                .resizable(true)
+                .collapsible(false)
+                .show(&ctx, |ui| {
+                    ui.heading("OpenFill · Remote GPU");
+                    ui.label("Connection test only. Generative Fill, Remove Object, Expand and Create are not yet enabled.");
+                    ui.label("Install OpenFill's GPU server on a separate computer with ComfyUI and connect both devices through Tailscale.");
+                    ui.label("Paste its complete pairing code (a password). It is kept in memory, never saved.");
+                    if ui.add(egui::TextEdit::singleline(&mut self.openfill_code)
+                        .password(true)
+                        .hint_text("ofgpu://TOKEN@100.x.y.z:8390")).changed() {
+                        self.openfill_session = None;
+                        self.openfill_status = "Pairing details changed. Test again.".into();
+                    }
+                    ui.checkbox(&mut self.openfill_consent,
+                        "Tailscale is connected; I permit sending this pairing token to that GPU server");
+                    ui.label("A 100.x address alone does not prove a VPN is active. Never paste a code for a stranger's server.");
+                    let pending = self.openfill_result.is_some();
+                    if ui.add_enabled(!pending && self.openfill_consent,
+                        egui::Button::new("Check Paired GPU (No Image Upload)")).clicked() {
+                        self.openfill_session = None;
+                        // The connection code is validated before any network activity.
+                        match OpenFillPairing::parse(&self.openfill_code) {
+                            Ok(pair) => {
+                                self.openfill_code.clear();
+                                self.openfill_consent = false;
+                                let (tx, rx) = mpsc::channel();
+                                self.openfill_result = Some(rx);
+                                self.openfill_status = "Checking authenticated /system_stats on your remote GPU…".into();
+                                std::thread::spawn(move || {
+                                    let outcome = pair.probe_system_stats();
+                                    let _ = tx.send(outcome.map(|()| pair));
+                                });
+                                ctx.request_repaint_after(Duration::from_millis(200));
+                            }
+                            Err(error) => {
+                                self.openfill_status = format!("Invalid pairing: {error}");
+                            }
+                        }
+                    }
+                    if pending {
+                        ui.label("Remote GPU handshake in progress…");
+                    }
+                    ui.separator();
+                    ui.label(&self.openfill_status);
+                    ui.label("No image, mask, selection, prompt or document leaves the tablet in this preview.");
+                    ui.label("OpenFill image-generation backend and model licenses need separate implementation and validation.");
+                });
+            if !open {
+                // Closing revokes the connection. Discard late results.
+                self.openfill_code.clear();
+                self.openfill_consent = false;
+                self.openfill_result = None;
+                self.openfill_session = None;
+            }
+            self.show_openfill_setup = open;
+        }
+
         if self.show_connection {
             // open() borrows a local variable rather than self, so inputs in
             // this UI can be edited without conflicting mutable borrows.

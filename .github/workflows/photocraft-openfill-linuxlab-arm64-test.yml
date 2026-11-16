@@ -30,7 +30,7 @@ jobs:
       # Keep upstream opt-level defaults to protect graphics and AI performance.
       CARGO_PROFILE_RELEASE_DEBUG: "1"
       CARGO_PROFILE_RELEASE_STRIP: "none"
-      PHOTOCRAFT_OVERRIDE_VERSION: "0.23.1-android.6"
+      PHOTOCRAFT_OVERRIDE_VERSION: "0.23.1-android.7"
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.23.1"
@@ -284,6 +284,7 @@ jobs:
           done
           grep -Fq '37..=40 => {' adapters/photocraft/src/lib.rs
           grep -Fq 'pc_openfill_direct_menu_action' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'self.open_openfill_operation(direct_action);' adapters/photocraft/src/ai_menu.rs
           grep -Fq 'pc_openfill_direct_menu_action' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'ui.ctx().request_repaint();' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'mod ai_openfill_editor;' adapters/photocraft/src/lib.rs
@@ -305,9 +306,9 @@ jobs:
           text = p.read_text()
           old = 'version = "0.23.1-android.3"'
           assert text.count(old) == 1, "Unexpected integration version"
-          p.write_text(text.replace(old, 'version = "0.23.1-android.6"'))
+          p.write_text(text.replace(old, 'version = "0.23.1-android.7"'))
           PY
-          grep -Fq 'version = "0.23.1-android.6"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.23.1-android.7"' adapters/photocraft/Cargo.toml
           python3 - <<'PY'
           from pathlib import Path
           wheel = Path("adapters/photocraft/src/stylus_wheel.rs").read_text()
@@ -399,7 +400,7 @@ jobs:
           print("PASS: Window duplicate theme UI hidden on Android while commands remain live")
           PY
           # Trackpad produces .2, brush scroll produces .3, then manifest gets .1.
-          grep -Fq 'version = "0.23.1-android.6"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.23.1-android.7"' adapters/photocraft/Cargo.toml
           python3 - <<'PY'
           from pathlib import Path
           brush = Path("source/photocraft/crates/ui-egui/src/panels/brushes_tab.rs").read_text()
@@ -419,7 +420,7 @@ jobs:
           grep -Fq 'pcTrackpadPinchPoll' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           grep -Fq 'pub fn pc_pad_gesture_take()' vendor/android-activity/src/lib.rs
           grep -Fq 'pub(crate) fn trackpad_view(' adapters/photocraft/src/canvas_gesture.rs
-          grep -Fq '0.23.1-android.6' adapters/photocraft/Cargo.toml
+          grep -Fq '0.23.1-android.7' adapters/photocraft/Cargo.toml
           grep -Fq 'pc_keyboard_diag.show' adapters/photocraft/src/lib.rs
           grep -Fq 'pcKeyDiagSetEnabled' adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java
           # The diagnostic backend remains intact, but its old Pc-menu entry
@@ -458,7 +459,7 @@ jobs:
           grep -Fq 'help.artcraftCheckUpdates' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'file.artcraftImportFonts' source/photocraft/crates/ui-egui/src/menus/items.rs
           grep -Fq 'register_font_paths' source/photocraft/crates/text/src/fonts.rs
-          grep -Fq 'version = "0.23.1-android.6"' adapters/photocraft/Cargo.toml
+          grep -Fq 'version = "0.23.1-android.7"' adapters/photocraft/Cargo.toml
           echo 'Only disposable-runner source files were patched. Published release, Android.3 and Android.4 remain untouched.'
 
       - name: Set up JDK 21
@@ -586,7 +587,7 @@ jobs:
           "$NDK_LLVM/llvm-readelf" -n "$SO" > diagnostics/native-elf-notes.txt
           echo "commit=$GITHUB_SHA" > diagnostics/native-source-identity.txt
           echo "package=com.artcraft.photocraft.candidate.openfill" >> diagnostics/native-source-identity.txt
-          echo "version=0.23.1-android.6" >> diagnostics/native-source-identity.txt
+          echo "version=0.23.1-android.7" >> diagnostics/native-source-identity.txt
           zstd -6 -T2 -q -f diagnostics/libphotocraft_android.so.debug -o diagnostics/libphotocraft_android.so.debug.zst
           rm diagnostics/libphotocraft_android.so.debug
           sha256sum diagnostics/libphotocraft_android.so.debug.zst > diagnostics/SHA256SUMS.txt
@@ -638,7 +639,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
           "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.openfill'"
-          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.23.1-android.6'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.23.1-android.7'"
           # Enforce isolated-package architecture, non-production signer, and realistic size report.
           SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
           test -n "$SIGNER_SHA"

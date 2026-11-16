@@ -235,7 +235,7 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
             let raw = self.app.activity_as_ptr() as jni::sys::jobject;
             let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
             env.call_method(&*activity, jni_str!("vcAndroid11HistoryMode"),
-                jni_sig!("(Z)V"), &[JValue::Bool(u8::from(enabled))])?;
+                jni_sig!("(Z)V"), &[JValue::Bool(enabled)])?;
             Ok(())
         }).map_err(|error| error.to_string())
     }
@@ -262,8 +262,11 @@ pub fn consume_android_redo_chord(raw: &mut egui::RawInput) {
             data.get_temp::<bool>(history_gate_id));
         if last_history_gate != Some(history_allowed) {
             match self.bridge.vc_android11_set_history_enabled(history_allowed) {
-                Ok(()) => ctx.data_mut(|data|
-                    data.insert_temp(history_gate_id, history_allowed)),
+                Ok(()) => {
+                    ctx.data_mut(|data| {
+                        data.insert_temp(history_gate_id, history_allowed);
+                    });
+                }
                 Err(error) => log::warn!("Android.11 history key gate: {error}"),
             }
         }

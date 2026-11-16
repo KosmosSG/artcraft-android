@@ -211,6 +211,10 @@ impl AndroidAiMenu {
                             self.show_connection = true;
                             ui.close();
                         }
+                        if ui.button("OpenFill Remote GPU (Preview)…").clicked() {
+                            self.show_openfill_setup = true;
+                            ui.close();
+                        }
                         if ui.button("About AI Tools…").clicked() {
                             self.show_about = true;
                             ui.close();

@@ -1,0 +1,120 @@
+# PhotoCraft Android v0.23.1 — OpenFill integration
+
+**Status: Phase 0/1 source work only. NOT an AI feature release, NOT a working Generative Fill APK.**
+
+## Sources and immutable starting point
+
+- User's published stable tag: [photocraft-v0.23.1-android.5](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.23.1-android.5), published 2026-11-13. Work starts on a new branch, leaving the tag, certificate, and existing APK unchanged.
+- Third-party source: [beckettharriman/openfill](https://github.com/beckettharriman/openfill), **Apache-2.0** for the OpenFill code.
+- OpenFill for desktop PhotoCraft **v0.2.6** supports desktop PhotoCraft **0.12–0.20**, **not Android** or this fork's 0.23.1 editor; a direct ZIP install cannot work.
+- OpenFill's local inference path uses **Python/ComfyUI and GPU models**. Its documented Android-compatible approach is not on-device inference: use a **separate GPU computer** running its **paired OpenFill GPU server** over a verified, encrypted Tailscale network, or build a separately consented cloud adapter.
+- No third-party models, data, or OpenFill package have been bundled. Model licenses are independent of the code license.
+
+## User-requested integration targets
+
+1. **Fill with a prompt:** selected region and feathered mask → prompt + model → new editable layer.
+2. **Remove Object:** selected/painted mask → LaMa or equivalent inpainting → new editable layer; empty/no mask must fail safely.
+3. **Generative Expand:** set target canvas ratio or dragged expansion margins → full-resolution outpaint job → new layer and one undoable canvas resize after all data is ready.
+4. **Create:** prompt → new document or new raster layer; size/aspect ratio choices.
+5. **Remove Background:** inspect and reuse existing experimental U2NetP background-removal path from draft PR #93 where compatible. Never replace a working path with an unverified model, claim it exists in published stable, or ship disputed weights automatically.
+
+UI target: native **Pc → AI Tools** integration with selection-based controls, progress, cancel/discard, model availability and engine configuration. Preserve existing top-left Pc icon, stylus hover and wheel, keyboard shortcuts, trackpad/touch gestures, in-app updater, font library, SAF, production application ID and code signing.
+
+## Phase 1 in this branch: secure connection foundation
+
+- Added an **OpenFill Remote GPU (Preview)** entry to the existing Android AI Tools menu, a **masked pairing-code input**, per-handshake consent, asynchronous authenticated read-only GET **/system_stats**, bounded response/timeouts and a clear status.
+- The pairing code is **in RAM only** and is cleared when the dialog closes; it is never written to disk, logged or sent without a user click. No automatic network call at startup.
+- Only numeric addresses in **100.64.0.0/10** are accepted, matching a common Tailscale IPv4 endpoint. This is NOT proof that Tailscale is active. The user must confirm VPN connectivity explicitly; an insecure network route remains a risk. Before shipping, verify VPN connection through an Android platform network capability or require an authenticated TLS transport. Do not add unrestricted plain HTTP access to ComfyUI.
+- No file, mask, image, prompt or document name is transferred in Phase 1. All editing commands remain deliberately disabled. The connection probe must never be presented as completed AI generation.
+- No production workflow, signing secret, tag or APK is changed.
+
+## Work required before a functional test APK
+
+- **Editor snapshot/selection mask:** add read-only capture of visible raster + exact selection/paint mask, with bounds, feathering, DPI dimensions and color-mode conversion. Check source identity and revision before and after each job.
+- **OpenFill backend:** investigate OpenFill's existing workflow builder, ComfyUI graph schemas and model catalog for v0.2.6. Port the *job composition* and response handling, not the Python/Tk desktop launcher. Enforce the GPU server's pairing token, allowlisted routes and encrypted route; do not expose raw ComfyUI on the internet. Provide explicit per-image upload consent. Avoid adding a Windows/Linux Python interpreter or gigabytes of models to the Android APK.
+- **UI:** implement four modes, prompt history only if opt-in, selection/brush mask, before/after, variations, cancel, model selection and error reporting; use PhotoCraft's touch/trackpad-friendly egui controls. A backend-offline status is not a successful generation.
+- **Output:** validate full decoded pixels, dimensions, alpha/masks, colorspace, file sizes and destination document revision; insert into a separate undoable masked raster layer. For Expand, commit the canvas resize as the same undo transaction; never overwrite original pixels, modified documents or the clipboard.
+- **Existing Remove Background:** reconcile draft PR #93 U2NetP CPU code against the latest stable; if owner-tested implementation is preserved, show it once rather than two indistinguishable menu commands.
+- **Model licenses/rights:** Apache-2.0 covers OpenFill code, not all model weights. For instance FLUX.1 Fill dev and MAT carry non-commercial restrictions; do not auto-bundle them for a commercial-use tool without approval.
+- **Device/CI:** require unit tests for parser/security/limits, adapter compile test, Android package+signing verification, 5 cold starts, Ctrl+Q x10, V/T/H/ESC, Undo/Redo, fonts, updater, stylus wheel/hover, touch/trackpad gestures, and all five operations using sample images on HONOR MagicPad 4. Distinguish **source verified**, **APK artifact verified**, **device verified**.
+- Create a distinct, *disposable-signed* ARM64 **test** package and use a lightweight Actions workflow until the integration compiles. Never auto-merge, permanently sign, publish or replace PhotoCraft v0.23.1-android.5 without specific approval.
+
+## Current pass/fail statement
+
+- **Phase 1 connector source:** staged for compile/unit validation; it is *not yet tested on a tablet*.
+- **AI generation/removal/expansion/create:** **not implemented by this branch yet**.
+- **Remove Background:** owner-tested in the earlier separate PR #93 preview; compatibility with published v0.23.1-android.5 has not yet been verified.
+
+
+## High-resolution prototype (2026-11-16)
+
+The owner-tested <=4 MP Linux Lab U2NetP + new layer + Ctrl+Z path is retained. This branch now tests an experimental <=20MP full-resolution output route: the CPU model processes an RGB proxy capped at a 1536-pixel long edge, then upsamples only its transparency mask and multiplies any existing alpha against original full-resolution RGB pixels. Neither the document dimensions nor its RGB values are resampled. The 4167 x 4167 owner image is under the new 20MP limit. Input PNGs stay bounded to 64MiB, results to 96MiB; Python and Rust validators remain mandatory. Large masks can lose hair/edge detail compared to true full-resolution inference. This is not a device-tested feature yet. Already-installed Linux Lab sidecar helpers must be explicitly refreshed after verification; the launcher does not update automatically. No models are bundled or downloaded.
+
+## Remove Object LaMa readiness
+
+The bundled read-only Linux Lab readiness helper only checks for a verified 205669692-byte LaMa checkpoint (SHA-256 344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9) under ComfyUI/models/inpaint and the existing comfyui-inpaint-nodes folder. Nothing is installed, downloaded or executed. The Remove Object menu remains disabled until inpainting nodes, model licensing, masked selection export and full Undo-safe layer insertion have been verified on-device.
+
+
+## Masked Fill offline handoff (next guarded step)
+
+A pure Rust source+mask handoff prototype now lives in
+`adapters/photocraft/src/ai_masked_fill_snapshot.rs`.
+It requires explicit consent, an 8-bit RGBA immutable source snapshot, an
+exactly matching nonempty 8-bit feathered selection mask and a source document
+identity/revision. The output adapter masks a fully decoded RGBA result into
+a separate transparent pixel buffer, zeroes everything outside the selection,
+and refuses stale document revisions. The Rust unit tests exercise rejection
+of missing consent, empty/wrong-size masks, stale revisions, out-of-mask
+leakage, invalid results, and feathered alpha.
+
+**Not wired to the live editor, not network-enabled and not functional AI Fill.**
+PhotoCraft selection extraction, real PNG encoding/decoding, backend job
+submission, cancellation, and Undo-safe insertion still require implementation
+and tablet testing. This commit deliberately skips CI to avoid cancelling the
+already-running ARM64 workflow for the earlier passed source change; the
+new tests must pass on a subsequent CI run before a test APK is described
+as validating this module.
+
+
+## Real PhotoCraft selection capture (source-only milestone)
+
+The Android adapter adds an offline, worker-thread-only masked Fill source capture
+function. It reads the actual v0.23.1 Document.selection GRAY8 coverage,
+including feathered edges, and refuses missing/empty masks, unexpected formats,
+uncommitted Quick Mask mode, oversized/non-RGB8 images, and changed document
+identity. It uses the existing PhotoCraft composite PNG exporter and a complete
+PNG importer decode, then prepares the immutable source-plus-mask snapshot.
+
+This function is NOT called by the AI Tools UI, sends no image/prompt/selection,
+does not execute inference, and cannot insert an editor layer. Later integration
+must run it off the UI thread, recheck source document revision after the job,
+and insert validated output using a single undoable Session edit. Building the
+new code does not mean generative Fill works on the tablet.
+
+
+## Four-mode OpenFill request and output contract (source-only)
+
+Added `adapters/photocraft/src/ai_openfill_operations.rs` with isolated offline validation for **Fill, Remove Object, Generative Expand, and Create**. Fill and Remove Object demand an actual nonempty mask and unchanged canvas; Remove Object is distinct from Remove Background. Expand validates margins, preserves the entire original image rectangle, and builds an outpaint-only mask with zero coverage over original pixels; the eventual canvas resize and new layer must happen in **one Undo transaction**. Create requires no source document and will open a new document. All modes require explicit user consent, bounded output (20 MP), sanitized prompts/model identifiers, and source revision checks for edited documents.
+
+Tests cover every mode plus invalid input, missing consent, bad model identifier, stale document, exact output size, and expansion masks. This is **a pure source contract, not an enabled inference workflow**. The backend must have an installed and license-approved model, authenticated encrypted transport and strict OpenFill graph allowlisting, progress/cancel, and full pixel decoding and Undo-safe insertion before UI buttons are enabled. Do not confuse native local U2NetP Remove Background (device tested) with OpenFill Remove Object (not implemented).
+
+
+## Four visible AI entries and shorter repeat builds
+
+Owner requests visible `Pc > AI Tools` actions for **Fill with Prompt**, **Remove Object**, **Generative Expand** and **Create / Text to Image**. The candidate runner-only Pc menu overlay now routes action codes 37–40 to the Android AI adapter and hides the visible Diagnostics submenu while retaining its internal diagnostic handler. Do not claim inference works until that transport and result-commit layer exists. The isolated ARM64 Actions workflow now attempts Rust target reuse via Swatinem/rust-cache and saves already-compressed APK ZIP artifacts with zero extra compression. Speedups depend on cache hits and still require verification; neither step affects production signing, tags or APKs.
+
+
+## Runnable local OpenFill Linux Lab service — candidate android.6
+
+A new source-only sidecar, `tools/photocraft_ai_cpu/openfill_local_server.py`, exposes the four generation requests on **127.0.0.1:18794** using one temporary bearer token per server start and **per-request consent**. Only local ComfyUI at 127.0.0.1:8188 is allowed. It imports the official OpenFill Python catalog/ComfyBackend to build approved workflows, checks model files and required nodes, and refuses missing or gated models. It neither downloads models nor contacts cloud services. Python offline protocol tests simulate all four requests and auth failures without inference.
+
+To run on the same Linux Lab tablet, first install official OpenFill's required Python dependencies and compatible ComfyUI model files from their official instructions. Then execute (adjust paths to your Linux Lab):
+
+```bash
+PYTHONPATH="$HOME/openfill/gimp-openfill" python3 tools/photocraft_ai_cpu/openfill_local_server.py \\
+  --catalog "$HOME/openfill/models/catalog.json" \\
+  --models-root "$HOME/ComfyUI/models" \\
+  --custom-nodes "$HOME/ComfyUI/custom_nodes"
+```
+
+Read the ephemeral token from Linux Lab's terminal and paste it into the operation dialog. Keep Linux Lab and ComfyUI running while generating. You must install a model with the capability (fill, remove, expand, txt2img) and enter its exact OpenFill catalog ID, and comply with its license. OpenFill does **not** install or accept licenses automatically. Generation is not verified on the owner's device until a real model runs and the full output/Undo behavior passes device tests. Expand currently supports **right/bottom only**; source left/top must be zero so old layers remain untouched. All source changes are scoped to the candidate app; production signed package/tag/keys remain untouched.

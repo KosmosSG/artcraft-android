@@ -7,8 +7,8 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-pub const MAX_INPUT: usize = 24 * 1024 * 1024;
-pub const MAX_OUTPUT: usize = 32 * 1024 * 1024;
+pub const MAX_INPUT: usize = 64 * 1024 * 1024;
+pub const MAX_OUTPUT: usize = 96 * 1024 * 1024;
 
 pub fn remove_background(
     endpoint: SocketAddr, token: &str, png: &[u8], consent: bool,
@@ -166,7 +166,7 @@ pub fn parse_response(response: &[u8]) -> Result<Vec<u8>, String> {
     }
     let width = u32::from_be_bytes(body[16..20].try_into().unwrap());
     let height = u32::from_be_bytes(body[20..24].try_into().unwrap());
-    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 4_000_000 {
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 20_000_000 {
         return Err("U2NetP output dimensions exceed preview safety limit".into());
     }
     Ok(body.to_vec())

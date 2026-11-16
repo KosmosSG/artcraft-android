@@ -38,6 +38,11 @@ mod ai_u2netp_transport;
 mod ai_background_job;
 mod ai_output_validation;
 mod ai_background_editor;
+mod ai_masked_fill_snapshot;
+mod ai_openfill_operations;
+mod ai_openfill_editor;
+mod ai_openfill_local_transport;
+mod openfill_remote;
 
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.
@@ -675,11 +680,13 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
-        // Native menu; unimplemented actions remain disabled until backend verification.
+        // Render the upstream Pc menu first: its OpenFill action is dispatched
+        // during inner.ui. Render Android AI dialogs afterwards in this same
+        // frame, so a click cannot be lost behind the prior-frame AI pass.
+        self.inner.ui(ui, _frame);
         if self.ai_menu.show(ui, &mut self.inner.session) {
             self.inner.sync_views();
         }
-        self.inner.ui(ui, _frame);
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

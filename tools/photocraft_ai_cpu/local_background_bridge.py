@@ -9,14 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from highres_u2netp import process_high_resolution
 import subprocess
 import sys
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 BENCHMARK = HERE / "benchmark_u2netp.py"
-MAX_INPUT_BYTES = 24 * 1024 * 1024
-MAX_PIXELS = 4_000_000
+MAX_INPUT_BYTES = 64 * 1024 * 1024
+MAX_PIXELS = 20_000_000
 
 def run(input_path: Path, output_path: Path, consent: bool) -> None:
     if not consent:
@@ -56,19 +57,20 @@ def run(input_path: Path, output_path: Path, consent: bool) -> None:
         decoded.load()
         if decoded.size != (width, height):
             raise ValueError("Decoded PNG dimensions changed")
-    # Use the already-verified U2NetP model only; never pass download consent.
-    # Do not capture the image or raw result in logs.
-    completed = subprocess.run(
-        [sys.executable, str(BENCHMARK), "--run",
-         "--input", str(source), "--output", str(destination)],
-        # No output is consumed; capturing a verbose or failing inference
-        # process into RAM could exhaust the Linux Lab CPU sidecar.
-        check=False, timeout=180,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    if completed.returncode != 0:
-        # The benchmark may have produced an incomplete output; never import it.
-        raise RuntimeError("U2NetP subprocess failed; inspect isolated benchmark logs")
+    def infer(working_source: Path, working_output: Path) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(BENCHMARK), "--run",
+             "--input", str(working_source), "--output", str(working_output)],
+            check=False, timeout=180, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError("U2NetP CPU subprocess failed")
+
+    if width * height > 4_000_000:
+        process_high_resolution(source, destination, infer)
+    else:
+        # Owner-tested direct <=4 MP path remains intact.
+        infer(source, destination)
     from validate_output_png import inspect
     try:
         alpha = inspect(destination, width, height)

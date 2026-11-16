@@ -21,9 +21,9 @@ import threading
 import time
 from PIL import Image
 
-MAX_BYTES = 24 * 1024 * 1024
-MAX_PIXELS = 4_000_000
-MAX_RESULT = 32 * 1024 * 1024
+MAX_BYTES = 64 * 1024 * 1024
+MAX_PIXELS = 20_000_000
+MAX_RESULT = 96 * 1024 * 1024
 # A client that does not finish uploading must never monopolize inference.
 REQUEST_READ_TIMEOUT = 15
 # Cap unauthenticated sockets as well as the single CPU inference worker.

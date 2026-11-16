@@ -231,7 +231,7 @@ class LoopbackHTTPTests(unittest.TestCase):
         ).encode()
         with patch.object(self.httpd, "handle_error") as unexpected:
             with patch.object(server.subprocess, "run") as inference:
-                for length in (b"9" * 5000, b"0" * 5000, b"25165825", b"+1", b"0"):
+                for length in (b"9" * 5000, b"0" * 5000, str(server.MAX_BYTES + 1).encode(), b"+1", b"0"):
                     with self.subTest(length=length[:16]):
                         response = self.raw_request(
                             head + b"Content-Length: " + length + b"\r\n\r\n"

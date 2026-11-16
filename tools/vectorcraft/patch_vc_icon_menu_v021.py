@@ -18,7 +18,7 @@ def patch_sources(menus: str, bar: str, chrome: str) -> tuple[str, str, str]:
 
 // Compact Android top-left Vc menu, arranged like GridCraft's grouped launcher.
 // Keep upstream's entire menu tree and the same action IDs. No duplicate About
-// or diagnostics entries inside this launcher; native desktop menus stay intact.
+// or diagnostic controls inside this launcher; native desktop menus stay intact.
 #[cfg(target_os = "android")]
 pub(crate) fn android_vc_menu(app: &mut VectorcraftApp, response: &egui::Response) {
     let tree = tree::menu_tree_named(app.session.prefs.font_names_in_english);
@@ -43,7 +43,8 @@ pub(crate) fn android_vc_menu(app: &mut VectorcraftApp, response: &egui::Respons
                     clicked = Some(("android.vectorcraft.updates".into(), serde_json::json!({})));
                     ui.close();
                 }
-                if ui.button("Check at Startup").clicked() {
+                let mut startup_checked = ANDROID_STARTUP_ENABLED.load(std::sync::atomic::Ordering::Acquire);
+                if ui.checkbox(&mut startup_checked, "Check at Startup").changed() {
                     clicked = Some(("android.vectorcraft.startupUpdates".into(), serde_json::json!({})));
                     ui.close();
                 }
@@ -72,16 +73,6 @@ pub(crate) fn android_vc_menu(app: &mut VectorcraftApp, response: &egui::Respons
                 clicked = Some(("edit.keyboardShortcuts".into(), serde_json::json!({})));
                 ui.close();
             }
-            ui.menu_button("Diagnostics", |ui| {
-                if ui.button("Keyboard Diagnostics…").clicked() {
-                    clicked = Some(("android.vectorcraft.keyboardDiagnostics".into(), serde_json::json!({})));
-                    ui.close();
-                }
-                if ui.button("Graphics Diagnostics…").clicked() {
-                    clicked = Some(("android.vectorcraft.diagnostics".into(), serde_json::json!({})));
-                    ui.close();
-                }
-            });
             ui.separator();
             if ui.button("About VectorCraft").clicked() {
                 clicked = Some(("help.about".into(), serde_json::json!({})));

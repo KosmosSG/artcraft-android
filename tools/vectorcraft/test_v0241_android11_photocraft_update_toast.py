@@ -13,6 +13,7 @@ def verify(root: Path) -> None:
     extras=(a/"java/com/artcraft/vectorcraft/VectorCraftExtras.java").read_text()
     installer=(a/"java/com/artcraft/vectorcraft/VectorCraftUpdateInstaller.java").read_text()
     about=(root/"source/vectorcraft/crates/ui-egui/src/dialogs/about.rs").read_text()
+    menu_source=(root/"source/vectorcraft/crates/ui-egui/src/menus.rs").read_text()
     assert java.count('VC_ANDROID11_PHOTOCRAFT_UPDATE_TOAST') == 1
     assert java.count('vcShowUpdateToast(String message)') == 1
     assert 'runOnUiThread(() -> {' in java
@@ -44,7 +45,25 @@ def verify(root: Path) -> None:
     assert 'Download & Install VectorCraft' in about
     assert 'Check for Updates' in about
     assert 'getBoolean("enabled", true)' in java
-    print("PASS: PhotoCraft-style bottom-center native Toast and safe update download/installer, preserved Android.10 typing and Android.11 wheel/keyboard")
+    # Device-requested Vc menu: checked startup toggle, no diagnostics row.
+    start=menu_source.index('pub(crate) fn android_vc_menu(')
+    end=menu_source.index('if let Some((id, params)) = clicked', start)
+    menu=menu_source[start:end]
+    assert 'ANDROID_STARTUP_ENABLED.load(std::sync::atomic::Ordering::Acquire)' in menu
+    assert 'ui.checkbox(&mut startup_checked, "Check at Startup").changed()' in menu
+    assert '("android.vectorcraft.startupUpdates".into()' in menu
+    assert 'ui.menu_button("Diagnostics"' not in menu
+    assert 'ui.button("Keyboard Diagnostics' not in menu
+    assert 'ui.button("Graphics Diagnostics' not in menu
+    # Menu update checks never take the canvas into About > Updates.
+    check_start=host.index('        if check_updates {')
+    checking_start=host.index('            if !self.updates.checking {', check_start)
+    check_prefix=host[check_start:checking_start]
+    assert 'self.inner.ui.about = true;' not in check_prefix
+    assert 'about_tab' not in check_prefix
+    assert 'self.manual_update_toast_pending = true;' in host
+    assert 'startup_updates.enabled' in host
+    print("PASS: checked Vc startup toggle, notification-only update check, hidden diagnostics, verified installer and preserved Android.10 typing")
 
 if __name__=="__main__":
     verify(Path(sys.argv[1]))

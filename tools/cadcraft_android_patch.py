@@ -336,6 +336,10 @@ struct CadStylusKeys {
     candidate_count: u32,
     accepted_count: u32,
     last_candidate: Option<(i32, i32, i32)>,
+    // Explicit user-triggered calibration, per running Activity session.
+    // Numeric Android device IDs are ephemeral: do not persist across restart.
+    paired_id: Option<i32>,
+    pairing_until: Option<std::time::Instant>,
     raw_mouse_button_count: u32,
     last_mouse_button: Option<(i32, i32, i32)>,
 }
@@ -344,6 +348,7 @@ static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
     std::sync::Mutex::new(CadStylusKeys {
         enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None,
         candidate_count: 0, accepted_count: 0, last_candidate: None,
+        paired_id: None, pairing_until: None,
         raw_mouse_button_count: 0, last_mouse_button: None
     });
 
@@ -355,9 +360,25 @@ pub fn cad_stylus_configure(enabled: bool, ids: &[i32]) {
             state.events.clear();
             state.last = None;
         }
+        if !enabled { state.paired_id = None; state.pairing_until = None; }
         state.enabled = enabled;
         state.allowed_ids = new_ids;
     }
+}
+// Arm only following a tap on "Pair Pen Button (TEST)". The next pen
+// DPAD_DOWN release within 15 seconds authorizes that one device ID for
+// this Activity session; unrelated arrow keys are never intercepted otherwise.
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_arm_pairing() {
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        if !state.enabled { return; }
+        state.pairing_until = Some(std::time::Instant::now()
+            + std::time::Duration::from_secs(15));
+    }
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_pairing_id() -> Option<i32> {
+    CAD_STYLUS_KEYS.lock().ok().and_then(|state| state.paired_id)
 }
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> bool {
@@ -368,8 +389,21 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
         state.candidate_count = state.candidate_count.saturating_add(1);
         state.last_candidate = Some((device, code, action));
     }
-    if !state.enabled || !state.allowed_ids.contains(&device) ||
-        (code != 19 && code != 20) { return false; }
+    if !state.enabled || (code != 19 && code != 20) { return false; }
+    // Device ID 11 was observed on HONOR hardware, but IDs are not stable
+    // or trusted by themselves. Authorize only a freshly captured candidate
+    // following an explicit tap of Pair Pen Button, never by hardcoded ID.
+    let now = std::time::Instant::now();
+    if state.pairing_until.is_some_and(|until| now <= until)
+        && device > 0 && code == 20 && action == 1 && repeat == 0 {
+        state.paired_id = Some(device);
+        state.pairing_until = None;
+        state.last = None;
+        log::info!("CADCraft: user paired pen input device {device}");
+    }
+    if !state.allowed_ids.contains(&device) && state.paired_id != Some(device) {
+        return false;
+    }
     // Accept first press/release edge from the named pen, even if the paired
     // edge is lost by MagicOS. Never swallow physical keyboard arrows.
     if (action == 0 || action == 1) && repeat == 0 {
@@ -396,9 +430,10 @@ pub fn cad_stylus_observe_mouse(device: i32, action: i32, buttons: i32) {
 pub fn cad_stylus_native_status() -> String {
     if let Ok(state) = CAD_STYLUS_KEYS.lock() {
         format!(
-            "Native enabled: {} | Verified IDs: {:?} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
-            state.enabled, state.allowed_ids, state.candidate_count,
-            state.accepted_count, state.last_candidate,
+            "Native enabled: {} | Verified IDs: {:?} | Paired input ID (this session): {:?} | Pairing armed: {} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
+            state.enabled, state.allowed_ids, state.paired_id,
+            state.pairing_until.is_some_and(|deadline| deadline >= std::time::Instant::now()),
+            state.candidate_count, state.accepted_count, state.last_candidate,
             state.raw_mouse_button_count, state.last_mouse_button
         )
     } else { "Native input state lock unavailable".to_owned() }

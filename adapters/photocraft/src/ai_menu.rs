@@ -6,6 +6,7 @@ use crate::ai_tools::{AiAction, ComfyEndpoint};
 use crate::ai_background_editor;
 use crate::ai_background_job::{Job, JobId};
 use crate::ai_u2netp_transport;
+use crate::openfill_remote::OpenFillPairing;
 use photocraft_doc::Layer;
 use photocraft_engine::Session;
 use std::net::SocketAddr;
@@ -20,6 +21,12 @@ use std::time::Duration;
 pub(crate) struct AndroidAiMenu {
     show_about: bool,
     show_connection: bool,
+    show_openfill_setup: bool,
+    openfill_code: String,
+    openfill_status: String,
+    openfill_consent: bool,
+    openfill_result: Option<Receiver<Result<OpenFillPairing, String>>>,
+    openfill_session: Option<OpenFillPairing>,
     show_background_setup: bool,
     cpu_token: String,
     cpu_consent: bool,
@@ -50,6 +57,12 @@ impl AndroidAiMenu {
         Self {
             show_about: false,
             show_connection: false,
+            show_openfill_setup: false,
+            openfill_code: String::new(),
+            openfill_status: "Remote GPU has not been paired.".into(),
+            openfill_consent: false,
+            openfill_result: None,
+            openfill_session: None,
             show_background_setup: false,
             cpu_token: String::new(),
             cpu_consent: false,

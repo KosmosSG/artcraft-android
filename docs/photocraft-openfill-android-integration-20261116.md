@@ -44,3 +44,12 @@ UI target: native **Pc → AI Tools** integration with selection-based controls,
 - **Phase 1 connector source:** staged for compile/unit validation; it is *not yet tested on a tablet*.
 - **AI generation/removal/expansion/create:** **not implemented by this branch yet**.
 - **Remove Background:** owner-tested in the earlier separate PR #93 preview; compatibility with published v0.23.1-android.5 has not yet been verified.
+
+
+## High-resolution prototype (2026-11-16)
+
+The owner-tested <=4 MP Linux Lab U2NetP + new layer + Ctrl+Z path is retained. This branch now tests an experimental <=20MP full-resolution output route: the CPU model processes an RGB proxy capped at a 1536-pixel long edge, then upsamples only its transparency mask and multiplies any existing alpha against original full-resolution RGB pixels. Neither the document dimensions nor its RGB values are resampled. The 4167 x 4167 owner image is under the new 20MP limit. Input PNGs stay bounded to 64MiB, results to 96MiB; Python and Rust validators remain mandatory. Large masks can lose hair/edge detail compared to true full-resolution inference. This is not a device-tested feature yet. Already-installed Linux Lab sidecar helpers must be explicitly refreshed after verification; the launcher does not update automatically. No models are bundled or downloaded.
+
+## Remove Object LaMa readiness
+
+The bundled read-only Linux Lab readiness helper only checks for a verified 205669692-byte LaMa checkpoint (SHA-256 344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9) under ComfyUI/models/inpaint and the existing comfyui-inpaint-nodes folder. Nothing is installed, downloaded or executed. The Remove Object menu remains disabled until inpainting nodes, model licensing, masked selection export and full Undo-safe layer insertion have been verified on-device.

@@ -253,7 +253,12 @@ impl AndroidAiMenu {
                     ui.heading("Remove Background · U2NetP CPU");
                     ui.label("Experimental: only a local Linux Lab server at 127.0.0.1:18793 is accepted.");
                     ui.label("The active RGB 8-bit image is sent to that server only after consent.");
-                    ui.label("Maximum 4 million pixels / 24 MiB input. Result is a new undoable pixel layer.");
+                    ui.label("Up to 20 megapixels / 64 MiB input (experimental). Above 4 MP, CPU AI analyzes a smaller copy; a full-resolution alpha result preserves original RGB pixels. New undoable layer.");
+                    if let Some(active) = session.active() {
+                        let w = active.doc.size.width;
+                        let h = active.doc.size.height;
+                        ui.label(format!("Current document: {w} x {h} ({:.2} MP)", f64::from(w) * f64::from(h) / 1_000_000.0));
+                    }
                     ui.label("Do not send private documents without reviewing this processing route.");
                     ui.separator();
                     ui.label("Paste the temporary bearer token displayed by the Linux Lab server.");

@@ -10,7 +10,7 @@ use crate::ai_background_job::DocumentRevision;
 use crate::ai_output_validation::{validate_alpha_png, ImageShape};
 use crate::ai_u2netp_transport::{MAX_INPUT, MAX_OUTPUT};
 
-pub const MAX_PIXELS: u64 = 4_000_000;
+pub const MAX_PIXELS: u64 = 20_000_000; // experimental full-size alpha, 4167-square supported
 
 pub fn active_snapshot(session: &Session) -> Result<(Arc<Document>, DocumentRevision), String> {
     let state = session.active().ok_or("Open a PhotoCraft document first")?;
@@ -31,7 +31,7 @@ pub fn current_revision(session: &Session) -> Option<DocumentRevision> {
 fn check_document(doc: &Document) -> Result<(), String> {
     if doc.size.width == 0 || doc.size.height == 0 ||
         u64::from(doc.size.width) * u64::from(doc.size.height) > MAX_PIXELS {
-        return Err("This preview supports images of up to 4 million pixels".into());
+        return Err("This experimental preview supports images up to 20 million pixels".into());
     }
     // Preserve other colour spaces and deep-colour images until a deliberate
     // conversion implementation is tested; never insert mismatched raster data.

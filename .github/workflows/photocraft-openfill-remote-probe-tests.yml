@@ -39,6 +39,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile tools/photocraft_ai_cpu/linux_lab_comfy_probe.py tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py
+      - name: Test full-resolution alpha and LaMa readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --only-binary=:all: "Pillow==12.3.0"
+          python3 -m unittest discover -s tools/photocraft_ai_cpu -p 'test_highres_u2netp.py' -v
+          python3 -m unittest discover -s tools/photocraft_ai_cpu -p 'test_lama_readiness.py' -v
+          rustc --edition=2021 --test adapters/photocraft/src/ai_output_validation.rs -o "$RUNNER_TEMP/alpha-tests"
+          "$RUNNER_TEMP/alpha-tests"
+          rustc --edition=2021 --test adapters/photocraft/src/ai_u2netp_transport.rs -o "$RUNNER_TEMP/transport-tests"
+          "$RUNNER_TEMP/transport-tests"
       - name: Verify no production release or signer was touched
         shell: bash
         run: |
@@ -48,7 +59,7 @@ jobs:
           printf '%s\n' "$changed"
           printf '%s\n' "$changed" | while IFS= read -r f; do
             case "$f" in
-              adapters/photocraft/src/openfill_remote.rs|adapters/photocraft/src/lib.rs|adapters/photocraft/src/ai_menu.rs|docs/photocraft-openfill-android-integration-20261116.md|tools/photocraft_ai_cpu/linux_lab_comfy_probe.py|tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py|.github/workflows/photocraft-openfill-remote-probe-tests.yml|.github/workflows/photocraft-openfill-linuxlab-arm64-test.yml) ;;
+              adapters/photocraft/src/openfill_remote.rs|adapters/photocraft/src/lib.rs|adapters/photocraft/src/ai_menu.rs|docs/photocraft-openfill-android-integration-20261116.md|tools/photocraft_ai_cpu/linux_lab_comfy_probe.py|tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py|adapters/photocraft/src/ai_background_editor.rs|adapters/photocraft/src/ai_u2netp_transport.rs|adapters/photocraft/src/ai_output_validation.rs|tools/photocraft_ai_cpu/local_background_bridge.py|tools/photocraft_ai_cpu/loopback_u2netp_server.py|tools/photocraft_ai_cpu/validate_output_png.py|tools/photocraft_ai_cpu/test_loopback_u2netp_http.py|tools/photocraft_ai_cpu/highres_u2netp.py|tools/photocraft_ai_cpu/test_highres_u2netp.py|tools/photocraft_ai_cpu/lama_readiness.py|tools/photocraft_ai_cpu/test_lama_readiness.py|.github/workflows/photocraft-openfill-remote-probe-tests.yml|.github/workflows/photocraft-openfill-linuxlab-arm64-test.yml) ;;
               *) echo "Unexpected change outside OpenFill preview: $f" >&2; exit 1 ;;
             esac
           done

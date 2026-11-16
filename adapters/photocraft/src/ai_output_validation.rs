@@ -4,8 +4,8 @@
 //! undoable layer; these checks alone never authorize enabling the menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageShape { pub width: u32, pub height: u32 }
-pub const MAX_PIXELS: u64 = 16_777_216; // 4096 x 4096 equivalent
-pub const MAX_PNG_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_PIXELS: u64 = 20_000_000; // bounded full-resolution alpha
+pub const MAX_PNG_BYTES: usize = 96 * 1024 * 1024;
 
 pub fn validate_alpha_png(encoded: &[u8], expected: ImageShape) -> Result<(), &'static str> {
     if expected.width == 0 || expected.height == 0 ||
@@ -49,6 +49,7 @@ mod tests {
     #[test] fn valid_alpha_header(){assert!(validate_alpha_png(&header(32,32,6),ImageShape{width:32,height:32}).is_ok());}
     #[test] fn rejects_wrong_size(){assert!(validate_alpha_png(&header(32,31,6),ImageShape{width:32,height:32}).is_err());}
     #[test] fn rejects_rgb_without_alpha(){assert!(validate_alpha_png(&header(32,32,2),ImageShape{width:32,height:32}).is_err());}
+    #[test] fn accepts_owner_4167_square_alpha_header(){assert!(validate_alpha_png(&header(4167,4167,6),ImageShape{width:4167,height:4167}).is_ok());}
     #[test] fn rejects_oversized_input(){assert!(validate_alpha_png(&header(1,1,6),ImageShape{width:5000,height:5000}).is_err());}
     #[test] fn rejects_non_png(){assert!(validate_alpha_png(&[0;33],ImageShape{width:1,height:1}).is_err());}
 }

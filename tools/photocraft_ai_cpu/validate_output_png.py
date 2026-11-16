@@ -8,8 +8,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-MAX_BYTES = 24 * 1024 * 1024
-MAX_PIXELS = 4_000_000
+MAX_BYTES = 96 * 1024 * 1024
+MAX_PIXELS = 20_000_000
 
 def inspect(path: Path, width: int, height: int) -> tuple[int, int]:
     if width < 1 or height < 1 or width * height > MAX_PIXELS:

@@ -57,6 +57,17 @@ jobs:
               "docs/photocraft-openfill-android-integration-20261116.md",
               "tools/photocraft_ai_cpu/linux_lab_comfy_probe.py",
               "tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py",
+              "adapters/photocraft/src/ai_background_editor.rs",
+              "adapters/photocraft/src/ai_u2netp_transport.rs",
+              "adapters/photocraft/src/ai_output_validation.rs",
+              "tools/photocraft_ai_cpu/local_background_bridge.py",
+              "tools/photocraft_ai_cpu/loopback_u2netp_server.py",
+              "tools/photocraft_ai_cpu/validate_output_png.py",
+              "tools/photocraft_ai_cpu/test_loopback_u2netp_http.py",
+              "tools/photocraft_ai_cpu/highres_u2netp.py",
+              "tools/photocraft_ai_cpu/test_highres_u2netp.py",
+              "tools/photocraft_ai_cpu/lama_readiness.py",
+              "tools/photocraft_ai_cpu/test_lama_readiness.py",
           }
           changed = set(Path("/tmp/openfill-preview-diff.txt").read_text().splitlines())
           assert changed and changed <= allowed, sorted(changed - allowed)

@@ -1,0 +1,44 @@
+name: PhotoCraft OpenFill Remote GPU Preview — offline parser/unit tests
+
+# Lightweight source tests only. Never builds/signs/publishes an APK.
+on:
+  push:
+    branches:
+      - feature/photocraft-v0231-openfill-android-20261116
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-openfill-remote-probe
+  cancel-in-progress: true
+
+jobs:
+  probe-unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out only the test branch
+        uses: actions/checkout@v4
+      - name: Install Rust stable for isolated native test
+        uses: dtolnay/rust-toolchain@stable
+      - name: Compile and run isolated pairing/security tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 --test adapters/photocraft/src/openfill_remote.rs -o "$RUNNER_TEMP/openfill-probe-tests"
+          "$RUNNER_TEMP/openfill-probe-tests" --nocapture
+      - name: Verify no production release or signer was touched
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin photocraft-v0.23.1-android.5
+          changed="$(git diff --name-only FETCH_HEAD HEAD)"
+          printf '%s\n' "$changed"
+          printf '%s\n' "$changed" | while IFS= read -r f; do
+            case "$f" in
+              adapters/photocraft/src/openfill_remote.rs|adapters/photocraft/src/lib.rs|adapters/photocraft/src/ai_menu.rs|docs/photocraft-openfill-android-integration-20261116.md|.github/workflows/photocraft-openfill-remote-probe-tests.yml) ;;
+              *) echo "Unexpected change outside OpenFill preview: $f" >&2; exit 1 ;;
+            esac
+          done

@@ -70,8 +70,17 @@ class GuardedPatchTests(unittest.TestCase):
 def validate_staged(root: Path):
     for name, before, after in REPLACEMENTS:
         contents = (root / name).read_text()
-        assert MARKER in contents and after in contents, name
-        assert (contents.count(before) == 1 if name.endswith("canvas/outline.rs") else before not in contents), name
+        if name.endswith("canvas/outline.rs") and "VC_ANDROID16_HEAVY_SELECTION_UI" in contents:
+            # Android.16 deliberately reduces only the Android overlay budget.
+            assert MARKER in contents, name
+            assert '#[cfg(target_os = "android")]' in contents, name
+            assert 'pub(super) const OVERLAY_MAX_ANCHORS: usize = 2_048;' in contents, name
+            assert '#[cfg(not(target_os = "android"))]' in contents, name
+            assert 'pub(super) const OVERLAY_MAX_ANCHORS: usize = 100_000;' in contents, name
+            assert before not in contents, name
+        else:
+            assert MARKER in contents and after in contents, name
+            assert (contents.count(before) == 1 if name.endswith("canvas/outline.rs") else before not in contents), name
     # Keep upstream's cache and worker; do not replace them.
     canvas = (root / "source/vectorcraft/crates/ui-egui/src/canvas.rs").read_text()
     assert "crate::render_worker::Worker::spawn" in canvas

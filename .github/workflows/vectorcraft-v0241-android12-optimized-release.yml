@@ -992,12 +992,23 @@ jobs:
           printf '%s' "$KEY_DATA" | base64 --decode > "$RUNNER_TEMP/vectorcraft-original.jks"
           test -s "$RUNNER_TEMP/vectorcraft-original.jks"
           SOURCE="$(find builder/output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          # Keep every original resource and native ELF intact. Only remove
+          # the temporary builder signature files, then DEFLATE-compress the
+          # unsigned APK at maximum lossless level before zipalign/original sign.
+          # The previous default zlib repack grew the already-optimized APK
+          # beyond the old published 90,808,525-byte size cap.
           python3 - "$SOURCE" "$RUNNER_TEMP/unsigned.apk" <<'PY'
-          import sys,zipfile
+          import os,sys,zipfile
           with zipfile.ZipFile(sys.argv[1]) as old, zipfile.ZipFile(sys.argv[2],'w') as new:
               for info in old.infolist():
-                  if info.filename.upper().startswith('META-INF/'): continue
-                  new.writestr(info,old.read(info.filename))
+                  if info.filename.upper().startswith('META-INF/'):
+                      continue
+                  # Retain the original storage mode (incl. ZIP_STORED), entry
+                  # names/attributes and exact uncompressed contents.
+                  level = 9 if info.compress_type == zipfile.ZIP_DEFLATED else None
+                  new.writestr(info, old.read(info.filename),
+                               compress_type=info.compress_type, compresslevel=level)
+          print("PASS: lossless max-DEFLATE unsigned APK bytes:", os.stat(sys.argv[2]).st_size)
           PY
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -f 4 \
             "$RUNNER_TEMP/unsigned.apk" "$RUNNER_TEMP/zipaligned.apk"
@@ -1028,7 +1039,11 @@ jobs:
               assert z.getinfo('lib/arm64-v8a/libvectorcraft_android.so').compress_type==zipfile.ZIP_DEFLATED, "Lost optimized native compression"
               assert any(x.endswith('.dex') for x in entries), "Missing Android DEX"
           size=apk.stat().st_size
-          assert size<90808525, 'Optimized release must be smaller than published v0.24.1-android.9 APK'
+          previous_bytes=90808525
+          print(f"Signed APK size: {size:,} bytes; previous release: {previous_bytes:,}; difference: {size-previous_bytes:+,}",flush=True)
+          assert size<previous_bytes, (
+              f"Signed APK {size:,} B is not smaller than published Android.9 "
+              f"{previous_bytes:,} B. Do not publish; inspect compression delta.")
           digest=hashlib.sha256(apk.read_bytes()).hexdigest()
           verification={
               'package':'com.artcraft.vectorcraft',
@@ -1044,7 +1059,12 @@ jobs:
               'tested_candidate':'VectorCraft v0.24.1-android.12 separate-install APK, run 43795753005'
           }
           Path('signed/verification.json').write_text(json.dumps(verification,indent=2)+'\n')
-          Path('signed/size-report.json').write_text(Path('pre-sign/size-report.json').read_text())
+          size_report=json.loads(Path('pre-sign/size-report.json').read_text())
+          size_report['signed_apk_bytes']=size
+          size_report['previous_published_apk_bytes']=previous_bytes
+          size_report['published_apk_bytes_saved']=previous_bytes-size
+          size_report['signed_lossless_deflate_level']=9
+          Path('signed/size-report.json').write_text(json.dumps(size_report,indent=2)+'\\n')
           print('PASS: ORIGINAL VectorCraft signer, production package, upgrade code and optimized size:',size)
           PY
           (cd signed && sha256sum "VectorCraft-v$VERSION_NAME-arm64-v8a.apk" > SHA256SUMS.txt)

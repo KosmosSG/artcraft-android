@@ -132,7 +132,7 @@ impl AndroidAiMenu {
         self.fill_model.clear();
         self.fill_consent = false;
         self.fill_preflight = None;
-        self.fill_status = "Enter the request, then validate offline. No image upload.".into();
+        self.fill_status = "Enter the request and choose Validate (offline) or Generate (Linux Lab).".into();
     }
 
     fn persist_visibility(&mut self, visible: bool) {
@@ -310,7 +310,7 @@ impl AndroidAiMenu {
                 .resizable(true).collapsible(false)
                 .show(&ctx, |ui| {
                     ui.heading(caption);
-                    ui.label("Request preview only — AI inference is not connected in this candidate.");
+                    ui.label("Generate only through your tablet-local Linux Lab OpenFill service and a licensed installed model.");
                     if operation != FillOperation::Create {
                         if let Some(active) = session.active() {
                             ui.label(format!("Current canvas: {} × {} px",
@@ -350,7 +350,7 @@ impl AndroidAiMenu {
                         ui.label("Expand must preserve every original image pixel.");
                     }
                     ui.checkbox(&mut self.fill_consent,
-                        "Allow local request preparation for this image (no upload)");
+                        "I permit this operation to send my image/mask and prompt to my tablet-local Linux Lab (never cloud)");
                     let busy = self.fill_preflight.is_some() || self.fill_running.is_some();
                     if ui.add_enabled(!busy && self.fill_consent,
                         egui::Button::new("Validate Request (Offline)")).clicked() {
@@ -818,7 +818,7 @@ impl AndroidAiMenu {
             Some(Ok(Ok((draft, layer)))) => {
                 self.fill_running = None;
                 self.fill_cancel = None;
-                let result = ai_openfill_editor::validate_live(session, &draft, b"decoded");
+                let result = ai_openfill_editor::validate_live(session, &draft);
                 if let Err(error) = result {
                     self.fill_status = format!("Generation discarded: {error}");
                     return false;

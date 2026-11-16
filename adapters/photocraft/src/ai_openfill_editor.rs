@@ -20,13 +20,15 @@ fn rect(size: Dimensions) -> Result<Rect, String> {
 
 /// Fully decode an RGBA PNG with PhotoCraft's own importer, then read
 /// straight RGBA8 pixels. Header-only checks are never trusted.
-pub fn decode_output_png(png: &[u8], size: Dimensions) -> Result<Vec<u8>, String> {
+fn decode_rgba_png(png: &[u8], size: Dimensions, require_alpha: bool) -> Result<Vec<u8>, String> {
     let expected = size.rgba_len().map_err(str::to_owned)?;
     if png.is_empty() || png.len() > MAX_OUTPUT {
         return Err("OpenFill PNG exceeds the image output limit".into());
     }
-    validate_alpha_png(png, ImageShape { width: size.width, height: size.height })
-        .map_err(str::to_owned)?;
+    if require_alpha {
+        validate_alpha_png(png, ImageShape { width: size.width, height: size.height })
+            .map_err(str::to_owned)?;
+    }
     let imported = photocraft_io::import("ai-openfill-output.png", png)
         .map_err(|_| "OpenFill PNG could not be fully decoded")?;
     let doc = imported.document;
@@ -52,6 +54,11 @@ pub fn decode_output_png(png: &[u8], size: Dimensions) -> Result<Vec<u8>, String
     Ok(rgba)
 }
 
+/// Untrusted AI output is required to be 8-bit PNG with an alpha channel.
+pub fn decode_output_png(png: &[u8], size: Dimensions) -> Result<Vec<u8>, String> {
+    decode_rgba_png(png, size, true)
+}
+
 /// Snapshot visible composite into immutable RGBA bytes. This is expensive;
 /// run in a worker after explicit opt-in, never on the Android UI thread.
 pub fn capture_source_rgba(doc: &Document, version: DocumentRevision)
@@ -61,9 +68,9 @@ pub fn capture_source_rgba(doc: &Document, version: DocumentRevision)
         return Err("OpenFill source document identity mismatch".into());
     }
     let png = ai_background_editor::capture_png(doc)?;
-    decode_output_png(&png, Dimensions {
+    decode_rgba_png(&png, Dimensions {
         width: doc.size.width, height: doc.size.height,
-    })
+    }, false)
 }
 
 /// Produce an isolated new RGB8 raster layer; never paint into an old layer.
@@ -179,7 +186,7 @@ pub fn commit_create(
 
 /// Determine the required result shape and reject stale documents in the UI
 /// before irreversible canvas edits or insertion.
-pub fn validate_live(session: &Session, draft: &JobDraft, png: &[u8])
+pub fn validate_live(session: &Session, draft: &JobDraft)
     -> Result<(), String>
 {
     let current = if draft.operation == Operation::Create { None }
@@ -187,6 +194,5 @@ pub fn validate_live(session: &Session, draft: &JobDraft, png: &[u8])
             DocVersion { document: v.document, revision: v.revision }) };
     draft.validate_result(true, current, draft.output, draft.output.rgba_len()
         .map_err(str::to_owned)?).map_err(str::to_owned)?;
-    if png.is_empty() { return Err("OpenFill returned no image".into()); }
     Ok(())
 }

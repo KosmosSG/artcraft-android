@@ -102,3 +102,19 @@ Tests cover every mode plus invalid input, missing consent, bad model identifier
 ## Four visible AI entries and shorter repeat builds
 
 Owner requests visible `Pc > AI Tools` actions for **Fill with Prompt**, **Remove Object**, **Generative Expand** and **Create / Text to Image**. The candidate runner-only Pc menu overlay now routes action codes 37–40 to the Android AI adapter and hides the visible Diagnostics submenu while retaining its internal diagnostic handler. Do not claim inference works until that transport and result-commit layer exists. The isolated ARM64 Actions workflow now attempts Rust target reuse via Swatinem/rust-cache and saves already-compressed APK ZIP artifacts with zero extra compression. Speedups depend on cache hits and still require verification; neither step affects production signing, tags or APKs.
+
+
+## Runnable local OpenFill Linux Lab service — candidate android.6
+
+A new source-only sidecar, `tools/photocraft_ai_cpu/openfill_local_server.py`, exposes the four generation requests on **127.0.0.1:18794** using one temporary bearer token per server start and **per-request consent**. Only local ComfyUI at 127.0.0.1:8188 is allowed. It imports the official OpenFill Python catalog/ComfyBackend to build approved workflows, checks model files and required nodes, and refuses missing or gated models. It neither downloads models nor contacts cloud services. Python offline protocol tests simulate all four requests and auth failures without inference.
+
+To run on the same Linux Lab tablet, first install official OpenFill's required Python dependencies and compatible ComfyUI model files from their official instructions. Then execute (adjust paths to your Linux Lab):
+
+```bash
+PYTHONPATH="$HOME/openfill/gimp-openfill" python3 tools/photocraft_ai_cpu/openfill_local_server.py \\
+  --catalog "$HOME/openfill/models/catalog.json" \\
+  --models-root "$HOME/ComfyUI/models" \\
+  --custom-nodes "$HOME/ComfyUI/custom_nodes"
+```
+
+Read the ephemeral token from Linux Lab's terminal and paste it into the operation dialog. Keep Linux Lab and ComfyUI running while generating. You must install a model with the capability (fill, remove, expand, txt2img) and enter its exact OpenFill catalog ID, and comply with its license. OpenFill does **not** install or accept licenses automatically. Generation is not verified on the owner's device until a real model runs and the full output/Undo behavior passes device tests. Expand currently supports **right/bottom only**; source left/top must be zero so old layers remain untouched. All source changes are scoped to the candidate app; production signed package/tag/keys remain untouched.

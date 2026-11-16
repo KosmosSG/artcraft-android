@@ -94,6 +94,7 @@ def decode_request(body: bytes) -> tuple[dict, Image.Image | None, Image.Image |
             raise ValueError("Expanded canvas must be bigger")
         if x > output[0] - source[0] or y > output[1] - source[1]:
             raise ValueError("The original image would be cropped")
+        header["_source_image"] = source_png.copy()
         full = Image.new("RGBA", output, (0, 0, 0, 0))
         full.paste(source_png, (x, y))
         source_png = full

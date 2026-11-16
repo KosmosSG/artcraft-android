@@ -123,10 +123,17 @@ def install_pen_button(reference: Path) -> None:
             + "|Java pen key events: " + cadKeyEvents
             + "|Java pen mouse-button events: " + cadMouseEvents
             + "|Last Java route: " + cadLastButtonRoute
+            + "|Java raw DPAD 19/20 candidates: " + cadRawDpadCandidates
+            + "|Last raw DPAD route/device: " + cadLastRawDpad
+            + "|Named pen non-DPAD keys: " + cadNamedPenOtherKeys
+            + "|Last pen non-DPAD key: " + cadLastNamedPenKey
             + "|Magic-Pencil device IDs: " + cadStylusDeviceIds();
     }
     // Diagnostics are disposable-test-only and are removed before production.
     private int cadKeyEvents = 0, cadMouseEvents = 0;
+    private int cadRawDpadCandidates = 0, cadNamedPenOtherKeys = 0;
+    private String cadLastRawDpad = "None";
+    private String cadLastNamedPenKey = "None";
     private String cadLastButtonRoute = "No button detected";
     public void cadStylusShowInputStatus() {
         runOnUiThread(() -> new android.app.AlertDialog.Builder(this)
@@ -159,10 +166,26 @@ def install_pen_button(reference: Path) -> None:
     private boolean cadStylusIntercept(KeyEvent event, String route) {
         if (!cadWheelEnabled || event == null) return false;
         int code = event.getKeyCode();
-        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
         InputDevice device = event.getDevice() != null
             ? event.getDevice() : InputDevice.getDevice(event.getDeviceId());
-        if (!cadIsMagicPencil(device)) return false;
+        boolean isPen = cadIsMagicPencil(device);
+        if (event.getRepeatCount() == 0 &&
+                (event.getAction() == KeyEvent.ACTION_DOWN ||
+                 event.getAction() == KeyEvent.ACTION_UP)) {
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_UP) {
+                // Observe without consuming unknown devices or physical keyboard keys.
+                cadRawDpadCandidates++;
+                cadLastRawDpad = route + " id=" + event.getDeviceId()
+                    + " name=" + (device == null ? "(null)" : device.getName())
+                    + " action=" + event.getAction();
+            } else if (isPen) {
+                cadNamedPenOtherKeys++;
+                cadLastNamedPenKey = route + " code=" + code
+                    + " action=" + event.getAction();
+            }
+        }
+        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return false;
+        if (!isPen) return false;
         if ((event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)
                 && event.getRepeatCount() == 0) {
             cadKeyEvents++;

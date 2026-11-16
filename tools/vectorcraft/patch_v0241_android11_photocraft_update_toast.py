@@ -159,6 +159,21 @@ def patch(root: Path) -> None:
         }''',
         "JNI reply failure notification")
 
+    # Vc > App Updates > Check for Updates must not summon About.
+    # The user gets the native bottom notification instead. Keep the real
+    # About > Updates tab and its verified downloader available separately.
+    src_h = replace_one(src_h,
+        '''            // The native About dialog owns the Updates tab, just like
+            // LightCraft. In particular, no bottom panel is drawn after the
+            // central editor (which made the old status nearly invisible).
+            self.inner.ui.about = true;
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("about_tab"), 3u8));
+''',
+        '''            // Vc menu update checks stay on the current canvas.
+            // PhotoCraft-style system notification reports check and result.
+''',
+        "suppress About dialog on menu update check")
+
     # One manual-check entry point covers both tapped top-left Vc menu and
     # About VectorCraft > Updates. Show system toast immediately on success.
     src_h = replace_one(src_h,

@@ -17,7 +17,7 @@ import argparse
 
 MARKER = "VC_ANDROID14_INPLACE_PAN"
 
-ANCHOR_FUNC = """/// The frame of \`job\` from \`pixels\`, the last frame's moved by the pan, and the exposed \`parts\`"""
+ANCHOR_FUNC = """/// The frame of """
 ANCHOR_COPY = """    let copied = kept.as_ref().and_then(|k| {
         let pan = whole_pixel_pan(k, job)?;
         let parts = exposed_parts(job.w, job.h, pan)?;

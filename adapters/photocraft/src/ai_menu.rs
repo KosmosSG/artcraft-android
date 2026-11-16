@@ -211,6 +211,21 @@ impl AndroidAiMenu {
                             self.show_connection = true;
                             ui.close();
                         }
+                        if ui.button("Linux Lab · Local ComfyUI (Preview)…").clicked() {
+                            // Running Linux Lab on this tablet normally shares
+                            // Android's loopback namespace with PhotoCraft.
+                            // Configure localhost only; never silently switch
+                            // an existing private-LAN endpoint to a local one.
+                            self.endpoint_text = "http://127.0.0.1:8188".into();
+                            self.allow_private_lan = false;
+                            self.connection_ok = false;
+                            self.connection_status = "Linux Lab selected. Start ComfyUI there and tap Test Connection.".into();
+                            self.model_status = "No local models checked yet.".into();
+                            self.model_result = None;
+                            self.connection_result = None;
+                            self.show_connection = true;
+                            ui.close();
+                        }
                         if ui.button("OpenFill Remote GPU (Preview)…").clicked() {
                             self.show_openfill_setup = true;
                             ui.close();
@@ -337,7 +352,7 @@ impl AndroidAiMenu {
                 .resizable(true)
                 .collapsible(false)
                 .show(&ctx, |ui| {
-                    ui.label("Optional local ComfyUI server — connection diagnostics only.");
+                    ui.label("Linux Lab / ComfyUI — read-only connection diagnostics. Generative jobs remain disabled.");
                     ui.label("Enter the computer's private Wi-Fi IP address, e.g. http://192.168.1.20:8188");
                     ui.label("127.0.0.1 means this tablet, not your Mac or PC.");
                     if ui.add(egui::TextEdit::singleline(&mut self.endpoint_text)

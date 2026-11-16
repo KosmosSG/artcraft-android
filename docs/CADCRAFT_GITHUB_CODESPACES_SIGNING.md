@@ -15,6 +15,36 @@ The production attempt
 was safely blocked before compilation because `CADCRAFT_KEYSTORE_BASE64`
 was not configured. **No stable CADCraft release was published.**
 
+## One-command guided setup (recommended)
+
+Open [the CADCraft Android.15 branch](https://github.com/KosmosSG/artcraft-android/tree/feature/cadcraft-v0190-android15-production-20261116) and choose **Code → Codespaces → Create codespace on this branch**.
+
+In the Codespaces terminal, run this **one** command:
+
+```bash
+bash tools/cadcraft_one_command_release.sh
+```
+
+This interactive wizard runs preparation, encrypted key backup and recovery verification,
+secret activation, and the approved release trigger automatically. It stops at
+the **three essential human security checkpoints**: choose two different
+passwords, download the encrypted backup plus public fingerprint **outside
+Codespaces**, and explicitly confirm the backup and publication. The script
+will **not** bypass these checkpoints. You must personally ensure the downloaded
+backup is safely stored; the Codespace cannot prove off-GitHub storage.
+
+After the wizard reports a **publication gate commit**, GitHub Actions starts
+the signed release workflow. Publication is **not** confirmed until the
+[release workflow](https://github.com/KosmosSG/artcraft-android/actions)
+passes and the exact tag exists. If GitHub authentication or write
+permissions prevent the trigger, leave the key and backup intact and tell
+ChatGPT what stage failed. Never paste passwords or key material.
+
+The manual prepare/activate procedure below remains available if you prefer
+to run each step separately.
+
+---
+
 ## 1. Create a private GitHub Codespace
 
 On GitHub, open the

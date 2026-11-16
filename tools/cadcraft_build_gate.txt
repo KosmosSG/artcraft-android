@@ -4,3 +4,5 @@ Actual Android App Info versionName MUST be 0.19.0-android.15. Package on dispos
 Try stripping debugging symbols only, preserving exported JNI, GPU performance and full native functionality. Compare size to Android.14 (~47.24MB artifact); avoid functional regressions.
 Test-only build with per-run disposable signer and APK v2 signature; verify ZIP, ARM64 ABI, package/version, JNI, SHA256 and uploaded artifact. No production signing/publish from this test workflow.
 Production signing/publish is separately gated on CADCraft-only backed-up signing credentials and successful final APK checks. Never merge main or alter other apps.
+
+CI corrected: Android.15 wheel no longer exposes Pen Input Status or other test UI. Retry exactly once after obsolete UI grep removal.

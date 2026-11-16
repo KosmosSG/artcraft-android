@@ -4,3 +4,6 @@ Publish only when a dedicated backed-up CADCraft permanent keystore and fingerpr
 Release tag cadcraft-v0.19.0-android.15; new official package com.artcraft.cadcraft; installed versionName 0.19.0-android.15; code 16782095.
 Preflight must validate signer and backup before compiling; build must verify APK, native JNI, package, version, v2 cert, checksum before release.
 No merge to main or any other Craft app modifications. Do not overwrite existing releases. Stop on any failed gate and report exact blocker.
+
+Owner downloaded and confirmed encrypted CADCraft key backup outside GitHub.
+Owner authorized one-time stable release after GitHub Actions signer and APK verification.

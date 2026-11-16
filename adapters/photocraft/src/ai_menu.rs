@@ -121,6 +121,8 @@ impl AndroidAiMenu {
     /// Actual Generate is NOT enabled until a verified local AI transport exists.
     pub(crate) fn open_openfill_operation(&mut self, code: u8) {
         self.cancel_fill_generation();
+        // A Pc menu operation must open even if AI Tools were previously hidden.
+        photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(true);
         self.fill_operation = match code {
             37 => Some(FillOperation::Fill),
             38 => Some(FillOperation::RemoveObject),

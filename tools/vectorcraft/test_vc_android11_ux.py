@@ -47,7 +47,8 @@ class VectorCraftAndroid11Guards(unittest.TestCase):
         for marker in (
             'ui.set_min_width(272.0)', 'ui.menu_button("App Updates"',
             'ui.menu_button("Appearance"', '"uiBrightness"',
-            'ui.menu_button("Diagnostics"', 'ui.button("About VectorCraft")',
+            'ui.checkbox(&mut startup_checked, "Check at Startup")',
+            'ui.button("About VectorCraft")',
         ):
             self.assertIn(marker, source)
         menus = "pub use bar::menu_bar;\n"

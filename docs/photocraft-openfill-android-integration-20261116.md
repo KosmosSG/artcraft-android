@@ -53,3 +53,24 @@ The owner-tested <=4 MP Linux Lab U2NetP + new layer + Ctrl+Z path is retained. 
 ## Remove Object LaMa readiness
 
 The bundled read-only Linux Lab readiness helper only checks for a verified 205669692-byte LaMa checkpoint (SHA-256 344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9) under ComfyUI/models/inpaint and the existing comfyui-inpaint-nodes folder. Nothing is installed, downloaded or executed. The Remove Object menu remains disabled until inpainting nodes, model licensing, masked selection export and full Undo-safe layer insertion have been verified on-device.
+
+
+## Masked Fill offline handoff (next guarded step)
+
+A pure Rust source+mask handoff prototype now lives in
+`adapters/photocraft/src/ai_masked_fill_snapshot.rs`.
+It requires explicit consent, an 8-bit RGBA immutable source snapshot, an
+exactly matching nonempty 8-bit feathered selection mask and a source document
+identity/revision. The output adapter masks a fully decoded RGBA result into
+a separate transparent pixel buffer, zeroes everything outside the selection,
+and refuses stale document revisions. The Rust unit tests exercise rejection
+of missing consent, empty/wrong-size masks, stale revisions, out-of-mask
+leakage, invalid results, and feathered alpha.
+
+**Not wired to the live editor, not network-enabled and not functional AI Fill.**
+PhotoCraft selection extraction, real PNG encoding/decoding, backend job
+submission, cancellation, and Undo-safe insertion still require implementation
+and tablet testing. This commit deliberately skips CI to avoid cancelling the
+already-running ARM64 workflow for the earlier passed source change; the
+new tests must pass on a subsequent CI run before a test APK is described
+as validating this module.

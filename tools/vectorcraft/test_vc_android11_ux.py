@@ -51,6 +51,8 @@ class VectorCraftAndroid11Guards(unittest.TestCase):
             'ui.button("About VectorCraft")',
         ):
             self.assertIn(marker, source)
+        self.assertNotIn('ui.menu_button("Diagnostics"', source)
+        self.assertNotIn('ui.button("Keyboard Diagnostics', source)
         menus = "pub use bar::menu_bar;\n"
         bar = '.filter(|(title, _)| *title != "VectorCraft").collect();'
         chrome = (

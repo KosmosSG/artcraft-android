@@ -163,6 +163,18 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
                 ui.close();
             }
             // Visible only in this disposable TEST build, not final CADCraft.
+            if ui.button("Pair Pen Button (TEST)").clicked() {
+                // A named-device query currently fails on MagicOS. Do not
+                // whitelist a guessed numeric ID or steal keyboard arrows;
+                // explicitly capture the next DPAD_DOWN key release instead.
+                app.ui.cad_wheel_enabled = true;
+                app.ui.cad_wheel_customize = false;
+                android_activity::cad_stylus_configure(true, &[]);
+                android_activity::cad_stylus_arm_pairing();
+                notify(ui.ctx(), "Pairing for 15s • hover pen and press side button");
+                ui.ctx().request_repaint();
+                ui.close();
+            }
             if ui.button("Open Wheel Manually (TEST)").clicked() {
                 app.ui.cad_wheel_customize = false;
                 app.ui.cad_wheel_enabled = true;
@@ -477,7 +489,9 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
                     ui.label(line);
                 }
                 ui.separator();
-                ui.label("Use Open Wheel Manually (TEST) in the Cc menu to verify wheel rendering.");
+                ui.label("Pair Pen Button (TEST) → hover and press the pen button within 15s.");
+                ui.label("Paired input IDs last only for this app session, not across relaunches.");
+                ui.label("Open Wheel Manually (TEST) verifies wheel rendering separately.");
                 ui.label("If candidate DPAD increases but accepted stays zero, inspect verified device IDs.");
                 ui.label("If neither Java nor native count changes, Android may route the button outside the app.");
                 if ui.button("Refresh").clicked() { ui.ctx().request_repaint(); }

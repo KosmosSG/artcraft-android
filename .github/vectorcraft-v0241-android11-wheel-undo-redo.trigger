@@ -15,3 +15,5 @@ Android.11 isolated run #3: fix moved Ctrl+Q source-comment anchor by injecting 
 Android.11 follow-up run #4 (PhotoCraft v0.23.1-android.5 update notifications): preserve the established Android.10 imported .ai typing fix and Android.11 stylus side-button + Ctrl+Z/Shift+Z source. Add native Android Toast check/download/status messages with the VectorCraft app icon at the bottom, keeping existing verified in-app GitHub release APK download + PackageInstaller identity/digest/signer/user-consent gates unchanged. Disposable ARM64 APK only; never merge, sign permanently or publish release.
 
 Android.11 isolated run #5: rebuild corrected Rust JNI bool and history match-arm types from commit 85cd7a5b459316e2a42b3fa90de93da9db7da835. Preserve all test-only gates and Android.10 typing baseline. Never rerun failed run #43777179844, publish or permanently sign.
+
+Android.11 isolated run #6: corrected source-only JNI Boolean assertion to match jni-0.22.4 JValue::Bool(enabled), after failed run 43783016563. Continue through full Rust build and APK test-only checks. No release or permanent signing.

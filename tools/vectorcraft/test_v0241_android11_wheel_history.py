@@ -35,7 +35,7 @@ def verify(root: Path) -> None:
     assert '!modal && !editing && !field_focused && !composing' in h
     assert 'match self.bridge.vc_android11_poll_history()' in h
     assert 'ctx.data_mut(|data|' in h
-    assert 'JValue::Bool(u8::from(enabled))' in h
+    assert 'JValue::Bool(enabled)' in h
     assert 'let command = match code {' in h
     assert '-90 => "edit.undo"' in h and '-91 => "edit.redo"' in h
     assert 'self.inner.run("edit.undo", serde_json::json!({}))' in h

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Targeted CADCraft v0.19.0 Android-only UI compatibility overlay.
+"""Targeted CADCraft v0.20.1 Android-only UI compatibility overlay.
 
 Apply only to a separately checked-out official Storytold CADCraft release.
 Fail closed on upstream code changes; never modify other Craft apps.
@@ -621,7 +621,7 @@ def patch_cadcraft_ui(source: Path) -> None:
 
     def replace_once(text: str, needle: str, replacement: str) -> str:
         if text.count(needle) != 1:
-            raise SystemExit("CADCraft v0.19.0 UI anchor changed; refusing unreviewed patch: " + needle[:70])
+            raise SystemExit("CADCraft v0.20.1 UI anchor changed; refusing unreviewed patch: " + needle[:70])
         return text.replace(needle, replacement, 1)
 
     src = replace_once(src, "pub mod menus;\n",
@@ -820,14 +820,14 @@ def patch_test_apk_version(reference: Path) -> None:
         raise SystemExit("CADCraft Android APP_VERSION builder anchor changed; refuse version override")
     replacement = (
         'PY\n)"\n'
-        '# CADCraft isolated TEST APK versionName; keep upstream source at v0.19.0.\n'
+        '# CADCraft isolated TEST APK versionName; keep upstream source at v0.20.1.\n'
         'if [[ "$APP" == "cadcraft" && ( "$PACKAGENAME" == "com.artcraft.cadcraft.test" || "$PACKAGENAME" == "com.artcraft.cadcraft" ) ]]; then\n'
-        '  APP_VERSION="0.19.0-android.15"\n'
+        '  APP_VERSION="0.20.1-android.1"\n'
         'fi\n\n'
         '# The shared craft-fonts'
     )
     builder.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
-    print("PASS: isolated Android test versionName 0.19.0-android.15 (App Info).")
+    print("PASS: isolated Android test versionName 0.20.1-android.1 (App Info).")
 
 
 def main() -> None:

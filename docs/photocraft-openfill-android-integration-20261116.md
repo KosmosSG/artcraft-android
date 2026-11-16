@@ -90,3 +90,10 @@ does not execute inference, and cannot insert an editor layer. Later integration
 must run it off the UI thread, recheck source document revision after the job,
 and insert validated output using a single undoable Session edit. Building the
 new code does not mean generative Fill works on the tablet.
+
+
+## Four-mode OpenFill request and output contract (source-only)
+
+Added `adapters/photocraft/src/ai_openfill_operations.rs` with isolated offline validation for **Fill, Remove Object, Generative Expand, and Create**. Fill and Remove Object demand an actual nonempty mask and unchanged canvas; Remove Object is distinct from Remove Background. Expand validates margins, preserves the entire original image rectangle, and builds an outpaint-only mask with zero coverage over original pixels; the eventual canvas resize and new layer must happen in **one Undo transaction**. Create requires no source document and will open a new document. All modes require explicit user consent, bounded output (20 MP), sanitized prompts/model identifiers, and source revision checks for edited documents.
+
+Tests cover every mode plus invalid input, missing consent, bad model identifier, stale document, exact output size, and expansion masks. This is **a pure source contract, not an enabled inference workflow**. The backend must have an installed and license-approved model, authenticated encrypted transport and strict OpenFill graph allowlisting, progress/cancel, and full pixel decoding and Undo-safe insertion before UI buttons are enabled. Do not confuse native local U2NetP Remove Background (device tested) with OpenFill Remove Object (not implemented).

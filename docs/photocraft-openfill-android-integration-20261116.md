@@ -74,3 +74,19 @@ and tablet testing. This commit deliberately skips CI to avoid cancelling the
 already-running ARM64 workflow for the earlier passed source change; the
 new tests must pass on a subsequent CI run before a test APK is described
 as validating this module.
+
+
+## Real PhotoCraft selection capture (source-only milestone)
+
+The Android adapter adds an offline, worker-thread-only masked Fill source capture
+function. It reads the actual v0.23.1 Document.selection GRAY8 coverage,
+including feathered edges, and refuses missing/empty masks, unexpected formats,
+uncommitted Quick Mask mode, oversized/non-RGB8 images, and changed document
+identity. It uses the existing PhotoCraft composite PNG exporter and a complete
+PNG importer decode, then prepares the immutable source-plus-mask snapshot.
+
+This function is NOT called by the AI Tools UI, sends no image/prompt/selection,
+does not execute inference, and cannot insert an editor layer. Later integration
+must run it off the UI thread, recheck source document revision after the job,
+and insert validated output using a single undoable Session edit. Building the
+new code does not mean generative Fill works on the tablet.

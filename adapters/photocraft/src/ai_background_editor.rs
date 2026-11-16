@@ -57,6 +57,84 @@ pub fn capture_png(doc: &Document) -> Result<Vec<u8>, String> {
     Ok(result.bytes)
 }
 
+
+/// Capture PhotoCraft's real canvas selection and flattened source image.
+/// Call on a worker with the immutable document returned by active_snapshot().
+/// Before future insertion, recheck the live Session document and revision.
+/// Offline only: this function never sends data or changes the editor.
+pub fn capture_masked_fill(
+    doc: &Document,
+    origin: DocumentRevision,
+    consent: bool,
+) -> Result<crate::ai_masked_fill_snapshot::MaskedFillSnapshot, String> {
+    use crate::ai_masked_fill_snapshot::{MaskedFillSnapshot, SourceRevision};
+    use photocraft_doc::{PixelFormat, Rect};
+
+    if !consent {
+        return Err("Explicit per-image consent required for masked Fill".into());
+    }
+    check_document(doc)?;
+    if doc.id.0 != origin.document {
+        return Err("Fill source document identity changed".into());
+    }
+    if doc.quick_mask.is_some() {
+        return Err("Exit Quick Mask and commit the selection first".into());
+    }
+    let selection = doc.selection.as_ref()
+        .ok_or("Select a region first; never assume the whole canvas")?;
+    // Current PhotoCraft selection coverage is native GRAY8. Never interpret
+    // a different surface or layer mask as a selection by guessing.
+    if selection.format() != PixelFormat::GRAY8 {
+        return Err("Selection is not PhotoCraft grayscale 8-bit coverage".into());
+    }
+    let width = doc.size.width;
+    let height = doc.size.height;
+    let w = i32::try_from(width).map_err(|_| "Fill width is unsupported")?;
+    let h = i32::try_from(height).map_err(|_| "Fill height is unsupported")?;
+    let area = Rect::new(0, 0, w, h);
+    let mask = selection.try_to_interleaved(area)
+        .map_err(|_| "Could not read PhotoCraft selection coverage")?;
+    if !mask.iter().any(|&v| v != 0) {
+        return Err("Selection contains no pixels".into());
+    }
+
+    // Existing PhotoCraft compositor creates a canvas-sized PNG; the normal
+    // importer FULLY decodes it locally before accepting the source pixels.
+    let png = capture_png(doc)?;
+    let imported = photocraft_io::import("ai-fill-source-capture.png", &png)
+        .map_err(|_| "Could not fully decode the flattened Fill PNG")?;
+    let flattened = imported.document;
+    if flattened.size != doc.size || flattened.mode != ColorMode::Rgb ||
+        flattened.depth != SampleType::U8 || flattened.layers.len() != 1 {
+        return Err("Flattened Fill image differs from source RGB8 canvas".into());
+    }
+    let surface = match &flattened.layers[0].content {
+        LayerContent::Raster(surface) => surface,
+        _ => return Err("Flattened Fill image is not a raster layer".into()),
+    };
+    let pixels = usize::try_from(u64::from(width) * u64::from(height))
+        .map_err(|_| "Fill dimensions exceed addressable memory")?;
+    if mask.len() != pixels {
+        return Err("Selection coverage must match the exact canvas dimensions".into());
+    }
+    surface.region_health(area).map_err(|_| "Fill source tiles are unreadable")?;
+    let mut rgba_pixels = Vec::<[u8; 4]>::new();
+    rgba_pixels.try_reserve_exact(pixels)
+        .map_err(|_| "Not enough memory for Fill source capture")?;
+    rgba_pixels.resize(pixels, [0; 4]);
+    surface.read_rgba8_into(area, &mut rgba_pixels);
+    surface.region_health(area).map_err(|_| "Fill source pixels failed to decode")?;
+    let mut rgba = Vec::<u8>::new();
+    rgba.try_reserve_exact(pixels.checked_mul(4).ok_or("Fill pixel length overflow")?)
+        .map_err(|_| "Not enough memory for immutable Fill pixels")?;
+    for pixel in rgba_pixels { rgba.extend_from_slice(&pixel); }
+
+    MaskedFillSnapshot::prepare(
+        SourceRevision { document: origin.document, revision: origin.revision },
+        width, height, &rgba, &mask, true,
+    ).map_err(str::to_owned)
+}
+
 /// Full PNG decoder and trusted-layer constructor. Header-only validation is
 /// never sufficient: PhotoCraft's normal PNG importer must decode the pixels.
 pub fn decode_layer(output: &[u8], source: &Document) -> Result<Layer, String> {

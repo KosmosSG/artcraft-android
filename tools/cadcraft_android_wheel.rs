@@ -371,6 +371,24 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
         cadcraft_android_updater_bridge::stylus_set_enabled(app.ui.cad_wheel_enabled);
         ctx.data_mut(|d| d.insert_temp(device_scan_id, Instant::now()));
     }
+    // Source-verified native keys are accepted instantly. If Android marks the
+    // key as DPAD rather than STYLUS, check its registered device metadata in
+    // this UI thread only once per candidate event; no hardcoded IDs.
+    if app.ui.cad_wheel_enabled {
+        if let Some((serial, device, code, action)) = android_activity::cad_stylus_candidate_snapshot() {
+            let marker = Id::new("cadcraft-input-metadata-candidate");
+            let changed = ctx.data(|d| d.get_temp::<u32>(marker)) != Some(serial);
+            if changed {
+                ctx.data_mut(|d| d.insert_temp(marker, serial));
+                if device > 0 && code == 20 && action == 1 {
+                    if let Some((true, _)) =
+                        cadcraft_android_updater_bridge::stylus_input_device_info(device) {
+                        android_activity::cad_stylus_metadata_authorize(device);
+                    }
+                }
+            }
+        }
+    }
     let native_events = android_activity::cad_stylus_native_take();
     let java_events = cadcraft_android_updater_bridge::stylus_poll();
     // The Java Activity can also push a validated Magic-Pencil release directly
@@ -487,13 +505,27 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
                     }
                 }
                 ui.separator();
+                if let Some((_serial, device, _code, _action)) =
+                    android_activity::cad_stylus_candidate_snapshot() {
+                    if let Some((verified, info)) =
+                        cadcraft_android_updater_bridge::stylus_input_device_info(device) {
+                        ui.separator();
+                        ui.strong("Android InputDevice metadata (no Activity bridge)");
+                        ui.label(info);
+                        if !verified {
+                            ui.label("Not independently verified as pen; manual pairing remains required.");
+                        }
+                    } else {
+                        ui.label("InputDevice metadata unavailable (see bridge error).");
+                    }
+                }
                 ui.strong("Native input queue");
                 for line in android_activity::cad_stylus_native_status().split(" | ") {
                     ui.label(line);
                 }
                 ui.separator();
                 ui.label("Auto-detect: hover then press the side button. If needed, use Pair Pen Button (TEST) within 15s.");
-                ui.label("Manual and hover-attested pen IDs last only for this app session.");
+                ui.label("Manual, hover-attested and metadata-verified pen IDs last only for this app session.");
                 ui.label("Open Wheel Manually (TEST) verifies wheel rendering separately.");
                 ui.label("If candidate DPAD increases but accepted stays zero, inspect verified device IDs.");
                 ui.label("If neither Java nor native count changes, Android may route the button outside the app.");

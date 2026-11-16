@@ -38,8 +38,17 @@ fn with_activity<R: Default>(f: impl FnOnce(&mut jni::JNIEnv<'_>, &JObject<'_>)
     // Do not drop the borrowed Activity as if it were a local JNI reference.
     let result = f(&mut env, &activity);
     if env.exception_check().unwrap_or(false) {
-        let _ = env.exception_clear();
-        jni_failure("Java exception invoking CADCraft Activity (possibly wrong Context class)".into());
+        if let Ok(cause) = env.exception_occurred() {
+            let _ = env.exception_clear();
+            let detail = env.call_method(&cause, "toString", "()Ljava/lang/String;", &[])
+                .and_then(|v| v.l())
+                .and_then(|v| env.get_string(&JString::from(v)).map(String::from))
+                .unwrap_or_else(|_| "unavailable".into());
+            jni_failure(format!("Activity Java exception: {detail}"));
+        } else {
+            let _ = env.exception_clear();
+            jni_failure("Activity Java exception (details unavailable)".into());
+        }
     }
     match result {
         Ok(value) => value,
@@ -164,4 +173,54 @@ pub extern "system" fn Java_com_artcraft_cadcraft_test_CadCraftActivity_cadStylu
 
 pub fn stylus_hover_pos() -> Option<(f32, f32)> {
     PEN_HOVER.lock().ok().and_then(|hover| *hover)
+}
+
+
+// Device metadata probe uses ONLY system android.view.InputDevice methods,
+// avoiding the failing CADCraftActivity JNI route. Never stores numeric IDs.
+pub fn stylus_input_device_info(device_id: i32) -> Option<(bool, String)> {
+    if device_id <= 0 { return None; }
+    let ctx = ndk_context::android_context();
+    let vm = match unsafe { JavaVM::from_raw(ctx.vm() as *mut _) } {
+        Ok(vm) => vm,
+        Err(err) => { jni_failure(format!("InputDevice VM: {err}")); return None; }
+    };
+    let mut env = match vm.attach_current_thread() {
+        Ok(env) => env,
+        Err(err) => { jni_failure(format!("InputDevice attach: {err}")); return None; }
+    };
+    let result = (|| -> jni::errors::Result<(bool, String)> {
+        let device = env.call_static_method("android/view/InputDevice", "getDevice",
+            "(I)Landroid/view/InputDevice;", &[JValue::Int(device_id)])?.l()?;
+        if device.is_null() { return Ok((false, "Device not registered with Android".into())); }
+        let name_obj = env.call_method(&device, "getName", "()Ljava/lang/String;", &[])?.l()?;
+        let name: String = if name_obj.is_null() { String::new() }
+            else { env.get_string(&JString::from(name_obj))?.into() };
+        let sources = env.call_method(&device, "getSources", "()I", &[])?.i()?;
+        let vendor = env.call_method(&device, "getVendorId", "()I", &[])?.i()?;
+        let product = env.call_method(&device, "getProductId", "()I", &[])?.i()?;
+        let name_lower = name.to_ascii_lowercase();
+        // Strict source/name checks: no generic keyboard names or DPAD buttons
+        // are trusted, even when they share device numbers with a pen.
+        let magic_pencil = name_lower.contains("magic-pencil")
+            || name_lower.contains("magic pencil");
+        let named_stylus = name_lower.contains("stylus")
+            || name_lower.contains("pencil") || name_lower.contains("honor pen")
+            || name_lower.contains("huawei pen");
+        let stylus_capable = (sources & 0x0000c000) != 0;
+        let verified = magic_pencil || (named_stylus && stylus_capable);
+        Ok((verified, format!(
+            "ID {device_id}: name={name:?}, sources={sources:#x}, vendor={vendor}, product={product}, pen_verified={verified}"
+        )))
+    })();
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+    match result {
+        Ok(value) => Some(value),
+        Err(err) => {
+            jni_failure(format!("Android InputDevice metadata probe: {err}"));
+            None
+        }
+    }
 }

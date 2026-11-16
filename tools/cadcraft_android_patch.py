@@ -336,6 +336,8 @@ struct CadStylusKeys {
     candidate_count: u32,
     accepted_count: u32,
     last_candidate: Option<(i32, i32, i32)>,
+    candidate_seen: Option<std::time::Instant>,
+    last_key_source: Option<(i32, i32)>,
     // Explicit user-triggered calibration, per running Activity session.
     // Numeric Android device IDs are ephemeral: do not persist across restart.
     paired_id: Option<i32>,
@@ -351,6 +353,7 @@ static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
     std::sync::Mutex::new(CadStylusKeys {
         enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None,
         candidate_count: 0, accepted_count: 0, last_candidate: None,
+        candidate_seen: None, last_key_source: None,
         paired_id: None, hover_attested: None, auto_paired_id: None,
         pairing_until: None,
         raw_mouse_button_count: 0, last_mouse_button: None
@@ -406,6 +409,47 @@ pub fn cad_stylus_observe_hover_device(device: i32, action: i32) {
         }
     }
 }
+// The Android event SOURCE is stronger than the device's capabilities list.
+// This accepts a pen release only when the *event itself* says STYLUS or
+// BLUETOOTH_STYLUS. A keyboard DPAD source never matches.
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_note_key_source(device: i32, code: i32, action: i32, repeat: i32, source: i32) {
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        state.last_key_source = Some((device, source));
+        if state.enabled && device > 0 && code == 20 && action == 1 && repeat == 0
+            && (source & 0x0000c000) != 0
+        {
+            state.auto_paired_id = Some(device);
+            state.last = None;
+            log::info!("CADCraft: source-verified stylus key device={device} source={source:#x}");
+        }
+    }
+}
+// UI-side JNI validation is allowed only when Android's InputDevice metadata
+// explicitly identifies the same candidate as a pen (not a generic keyboard).
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_candidate_snapshot() -> Option<(u32, i32, i32, i32)> {
+    CAD_STYLUS_KEYS.lock().ok().and_then(|state|
+        state.last_candidate.map(|(device, code, action)|
+            (state.candidate_count, device, code, action)))
+}
+#[cfg(feature = "native-activity")]
+pub fn cad_stylus_metadata_authorize(device: i32) -> bool {
+    let Ok(mut state) = CAD_STYLUS_KEYS.lock() else { return false };
+    if !state.enabled || device <= 0 { return false; }
+    if state.last_candidate != Some((device, 20, 1))
+        || !state.candidate_seen.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(3))
+    { return false; }
+    if state.auto_paired_id == Some(device) { return false; }
+    state.auto_paired_id = Some(device);
+    if state.events.len() < 16 && state.last.is_none_or(|at| at.elapsed() >= std::time::Duration::from_millis(550)) {
+        state.events.push(20);
+        state.accepted_count = state.accepted_count.saturating_add(1);
+        state.last = Some(std::time::Instant::now());
+    }
+    log::info!("CADCraft: Android InputDevice metadata verified pen device {device}");
+    true
+}
 #[cfg(feature = "native-activity")]
 pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> bool {
     let Ok(mut state) = CAD_STYLUS_KEYS.lock() else { return false };
@@ -414,6 +458,7 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
     if code == 19 || code == 20 {
         state.candidate_count = state.candidate_count.saturating_add(1);
         state.last_candidate = Some((device, code, action));
+        state.candidate_seen = Some(std::time::Instant::now());
     }
     if !state.enabled || (code != 19 && code != 20) { return false; }
     // Device ID 11 was observed on HONOR hardware, but IDs are not stable
@@ -472,9 +517,10 @@ pub fn cad_stylus_observe_mouse(device: i32, action: i32, buttons: i32) {
 pub fn cad_stylus_native_status() -> String {
     if let Ok(state) = CAD_STYLUS_KEYS.lock() {
         format!(
-            "Native enabled: {} | Verified IDs: {:?} | Paired input ID (this session): {:?} | Auto-paired ID (this session): {:?} | Recent stylus hover ID: {:?} | Pairing armed: {} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
+            "Native enabled: {} | Verified IDs: {:?} | Paired input ID (this session): {:?} | Auto-paired ID (this session): {:?} | Recent stylus hover ID: {:?} | Last key input source (device, hex): {:?} | Pairing armed: {} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
             state.enabled, state.allowed_ids, state.paired_id,
             state.auto_paired_id, state.hover_attested.map(|(id, _)| id),
+            state.last_key_source.map(|(id, src)| format!("{id}, {src:#x}")),
             state.pairing_until.is_some_and(|deadline| deadline >= std::time::Instant::now()),
             state.candidate_count, state.accepted_count, state.last_candidate,
             state.raw_mouse_button_count, state.last_mouse_button
@@ -528,6 +574,8 @@ pub fn cad_stylus_hover_current() -> Option<(f32, f32)> {
                 let code = unsafe { ndk_sys::AKeyEvent_getKeyCode(ptr) };
                 let action = unsafe { ndk_sys::AKeyEvent_getAction(ptr) };
                 let repeat = unsafe { ndk_sys::AKeyEvent_getRepeatCount(ptr) };
+                let source = unsafe { ndk_sys::AInputEvent_getSource(ptr) } as i32;
+                crate::cad_stylus_note_key_source(device, code, action, repeat, source);
                 if crate::cad_stylus_capture(device, code, action, repeat) {
                     queue.finish_event(ndk_event, true);
                     return true;
@@ -774,12 +822,12 @@ def patch_test_apk_version(reference: Path) -> None:
         'PY\n)"\n'
         '# CADCraft isolated TEST APK versionName; keep upstream source at v0.19.0.\n'
         'if [[ "$APP" == "cadcraft" && "$PACKAGENAME" == "com.artcraft.cadcraft.test" ]]; then\n'
-        '  APP_VERSION="0.19.0-android.13"\n'
+        '  APP_VERSION="0.19.0-android.14"\n'
         'fi\n\n'
         '# The shared craft-fonts'
     )
     builder.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
-    print("PASS: isolated Android test versionName 0.19.0-android.13 (App Info).")
+    print("PASS: isolated Android test versionName 0.19.0-android.14 (App Info).")
 
 
 def main() -> None:

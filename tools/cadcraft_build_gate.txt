@@ -1,9 +1,7 @@
-CADCraft v0.19.0-android.13 — isolated ARM64 TEST only.
-HONOR MagicPad 4 confirmed Android.11 manual pen pairing works; keep it as fallback.
-Do NOT infer pen device from hardcoded ID 11, unverified DPAD keys, or saved settings.
-Auto-authorization: actual TOOL_TYPE_STYLUS hover (Java or NativeActivity), same transient input device ID, then DPAD_DOWN key release (20/action 1/repeat 0) within 8 seconds. Session-only; no persistent IDs.
-Preserve 15-second manual Pair Pen Button (TEST) and native diagnostics showing hover-attested and auto-paired IDs. Protect physical keyboard arrows.
-Also fix actual installed Android Settings > App Info versionName: 0.19.0-android.13; assert with aapt dump badging before artifact upload, not only the filename.
-Keep all prior tested wheel, hover, SAF DXF/DWG, Cc icon, 75% size / 85% opacity, keyboard D/S/C, updater, JNI, no main or other apps.
-Optimize ARM64 test APK and verify ZIP, arm64-v8a, appId com.artcraft.cadcraft.test, v2 disposable signature, JNI pen+hover symbols and SHA256.
-DO NOT permanently sign, merge, or publish. Device must verify no-manual-pairing and post-relaunch behavior.
+CADCraft v0.19.0-android.14 TEST ONLY — fix device-reported automatic pen pairing failure from Android.13.
+HONOR screenshot: candidate DPAD (device=11,key=20,action=1), Native Verified IDs [], hover ID None, auto-paired None, manual paired ID Some(11) works; Java Activity bridge throws exception.
+Add strong fallback checks: native key event SOURCE_STYLUS / SOURCE_BLUETOOTH_STYLUS; independent JNI Android framework InputDevice.getDevice(device ID) name/source/vendor/product metadata for exact observed DPAD_DOWN release; only auto-authenticate a verified named pen or pen-source event. DO NOT authorize generic keyboard arrows; no hardcoded ID 11; no saved device IDs. Preserve previous safe same-device hover verification and 15s manual pairing.
+Improve Java Activity bridge diagnostics with throwable string, and show InputDevice probe results in in-app Pen Input Status; no forced assumption if pen is generic/unidentifiable.
+Correct Android App Info versionName 0.19.0-android.14 via aapt, and retain appId com.artcraft.cadcraft.test.
+Preserve user-approved Cc wheel, 75% size/85% opacity, updater, SAF, D/S/C, mouse/trackpad and other apps unchanged.
+Disposable-sign ARM64 test only. Verify ZIP, JNI symbols, native ARM64, APK v2 signer, checksum; no main changes, permanent signing, merge or publish.

@@ -2,6 +2,19 @@
 //! Resolve Java methods through the Activity instance, not FindClass from Rust.
 use jni::{JavaVM, objects::{JObject, JString, JValue}};
 
+// The old JNI bridge returned empty Vec/string on all failures, obscuring
+// the real MagicOS problem. Keep a short diagnostic visible in the TEST UI.
+static JNI_LAST_FAILURE: std::sync::Mutex<Option<String>> =
+    std::sync::Mutex::new(None);
+fn jni_failure(reason: String) {
+    if let Ok(mut slot) = JNI_LAST_FAILURE.lock() {
+        if slot.as_ref() != Some(&reason) { *slot = Some(reason); }
+    }
+}
+pub fn stylus_bridge_failure() -> Option<String> {
+    JNI_LAST_FAILURE.lock().ok().and_then(|slot| slot.clone())
+}
+
 fn with_activity<R: Default>(f: impl FnOnce(&mut jni::JNIEnv<'_>, &JObject<'_>)
     -> jni::errors::Result<R>) -> R
 {
@@ -9,20 +22,32 @@ fn with_activity<R: Default>(f: impl FnOnce(&mut jni::JNIEnv<'_>, &JObject<'_>)
     // SAF Activity is owned by Android for the entire native application lifetime.
     let vm = match unsafe { JavaVM::from_raw(context.vm() as *mut _) } {
         Ok(vm) => vm,
-        Err(_) => return R::default(),
+        Err(err) => {
+            jni_failure(format!("JavaVM unavailable: {err}"));
+            return R::default();
+        }
     };
     let mut env = match vm.attach_current_thread() {
         Ok(env) => env,
-        Err(_) => return R::default(),
+        Err(err) => {
+            jni_failure(format!("Thread attach failed: {err}"));
+            return R::default();
+        }
     };
     let activity = std::mem::ManuallyDrop::new(unsafe { JObject::from_raw(context.context() as jni::sys::jobject) });
     // Do not drop the borrowed Activity as if it were a local JNI reference.
     let result = f(&mut env, &activity);
     if env.exception_check().unwrap_or(false) {
-        let _ = env.exception_describe();
         let _ = env.exception_clear();
+        jni_failure("Java exception invoking CADCraft Activity (possibly wrong Context class)".into());
     }
-    result.unwrap_or_default()
+    match result {
+        Ok(value) => value,
+        Err(err) => {
+            jni_failure(format!("Activity method unavailable: {err}"));
+            R::default()
+        }
+    }
 }
 
 pub fn check_updates() {

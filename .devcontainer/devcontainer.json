@@ -1,0 +1,17 @@
+{
+  "name": "CADCraft signing setup — GitHub Codespaces",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21"
+    }
+  },
+  "postCreateCommand": "bash -lc 'command -v keytool >/dev/null && command -v openssl >/dev/null && command -v gh >/dev/null'",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

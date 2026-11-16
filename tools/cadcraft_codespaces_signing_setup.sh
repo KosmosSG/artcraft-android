@@ -20,7 +20,7 @@ cd "$root"
 [[ -f tools/cadcraft_codespaces_signing_setup.sh ]] || {
   echo "Open the CADCraft Android.15 branch in GitHub Codespaces first." >&2; exit 1;
 }
-dir="$root/.cadcraft-signing-backup"
+dir="$root/CADCraft-signing-backup"
 encrypted="$dir/CADCraft-PERMANENT-KEY.p12.enc"
 fingerprint="$dir/CADCraft-CERT-SHA256.txt"
 mkdir -p "$dir"
@@ -92,7 +92,7 @@ if [[ "$mode" == "prepare" ]]; then
   echo "PREPARE COMPLETE: encrypted, locally decrypted, and byte-verified."
   echo "PRIVATE KEY IS NOT IN THE REPOSITORY OR ANY ACTIONS ARTIFACT."
   echo "NEXT: In Codespaces Explorer, right-click the file below and choose Download:"
-  echo "  .cadcraft-signing-backup/CADCraft-PERMANENT-KEY.p12.enc"
+  echo "  CADCraft-signing-backup/CADCraft-PERMANENT-KEY.p12.enc"
   echo "Save it outside GitHub (secure offline/encrypted device backup)."
   echo "Save BOTH passwords separately; neither is recoverable from GitHub Secrets."
   echo "Then run: bash tools/cadcraft_codespaces_signing_setup.sh activate"

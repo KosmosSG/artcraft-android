@@ -1,4 +1,4 @@
-name: CADCraft v0.19.0 Android.10 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
+name: CADCraft v0.19.0 Android.11 ARM64 TEST ONLY (PhotoCraft-style wheel, Cc icon)
 
 # Only this isolated feature branch. No publication, merge or production signing.
 on:
@@ -105,6 +105,12 @@ jobs:
           grep -Fq 'cad_stylus_native_status' reference/vendor/android-activity/src/lib.rs
           grep -Fq 'cad_stylus_observe_mouse' reference/vendor/android-activity/src/native_activity/mod.rs
           grep -Fq 'raw_mouse_button_count' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cad_stylus_arm_pairing' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'cad_stylus_pairing_id' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'paired_id: Option<i32>' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'state.paired_id = Some(device)' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'Pair Pen Button (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          grep -Fq 'stylus_bridge_failure' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -Fq 'cadRawDpadCandidates' reference/templates/android/SafActivity.java
           grep -Fq 'cadNamedPenOtherKeys' reference/templates/android/SafActivity.java
           grep -Fq 'Open Wheel Manually (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
@@ -131,7 +137,7 @@ jobs:
           grep -q 'const DEFAULT_OPACITY: f32 = 0.85' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -q 'public void cadCheckUpdates' reference/templates/android/SafActivity.java
           grep -q 'public String cadStylusDeviceIds' reference/templates/android/SafActivity.java
-          grep -q 'android.10' reference/templates/android/UpdateCheck.java
+          grep -q 'android.11' reference/templates/android/UpdateCheck.java
           grep -q 'cadcraft_android_wheel::show' reference/source/cadcraft/crates/ui-egui/src/lib.rs
           grep -q "color=\"#D13153\"" reference/lib/app_icons.py || grep -q '#D13153' reference/lib/app_icons.py
           echo "Source and Cc menu overlay staged. No production app or key touched."
@@ -148,13 +154,13 @@ jobs:
           mkdir -p dist
           src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
           test -s "$src"
-          cp "$src" dist/CADCraft-v0.19.0-android.10-ARM64-TEST.apk
+          cp "$src" dist/CADCraft-v0.19.0-android.11-ARM64-TEST.apk
 
       - name: Verify APK ZIP, ARM64 library, isolated package, signature and checksum
         shell: bash
         run: |
           set -Eeuo pipefail
-          apk="dist/CADCraft-v0.19.0-android.10-ARM64-TEST.apk"
+          apk="dist/CADCraft-v0.19.0-android.11-ARM64-TEST.apk"
           unzip -t "$apk" | tail -n 1
           unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
           aapt dump badging "$apk" | tee dist/apk-badging.txt
@@ -186,7 +192,7 @@ jobs:
       - name: Upload disposable-signed test APK (no publishing)
         uses: actions/upload-artifact@v4
         with:
-          name: CADCraft-v0.19.0-android.10-ARM64-TEST
+          name: CADCraft-v0.19.0-android.11-ARM64-TEST
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -203,7 +209,8 @@ jobs:
             echo '* Cc menu: Appearance / App Updates status / Stylus Wheel / Keyboard Shortcuts / About CADCraft'
             echo '* Wheel: 75%/85%, cream Cc +15%, verified pen DOWN/UP first edge, native/Java JNI and 550ms duplicate filter (device test pending)'
             echo '* Hover: stylus motion forwarded to non-interactive pointer; real device verification pending'
-            echo '* Android.10: Manual wheel renderer test button, expanded read-only Java raw-key / native raw-mouse tracing, still guarded to exact Magic-Pencil device'
+            echo '* Android.11: user-triggered, time-limited (15s) native stylus-button pairing; recognized device ID is session-only, never persisted or guessed'
+            echo '* Manual wheel renderer test, native pen status with verified vs paired IDs, expanded Java JNI error report; preserve other app keyboard and hover'
             echo '* Save Changes D/S/C dialog hints and modal-only keyboard controls, native Pen Input Status window preserved'
             echo '* PhotoCraft-style pen pre-IME, named Magic-Pencil routing, hover pointer, updater and SAF retained'
             echo '* Native SAF Open and Save, CAD DXF/DWG I/O via reference Android builder'

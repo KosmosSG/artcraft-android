@@ -1,7 +1,6 @@
-CADCraft v0.19.0-android.14 TEST ONLY — fix device-reported automatic pen pairing failure from Android.13.
-HONOR screenshot: candidate DPAD (device=11,key=20,action=1), Native Verified IDs [], hover ID None, auto-paired None, manual paired ID Some(11) works; Java Activity bridge throws exception.
-Add strong fallback checks: native key event SOURCE_STYLUS / SOURCE_BLUETOOTH_STYLUS; independent JNI Android framework InputDevice.getDevice(device ID) name/source/vendor/product metadata for exact observed DPAD_DOWN release; only auto-authenticate a verified named pen or pen-source event. DO NOT authorize generic keyboard arrows; no hardcoded ID 11; no saved device IDs. Preserve previous safe same-device hover verification and 15s manual pairing.
-Improve Java Activity bridge diagnostics with throwable string, and show InputDevice probe results in in-app Pen Input Status; no forced assumption if pen is generic/unidentifiable.
-Correct Android App Info versionName 0.19.0-android.14 via aapt, and retain appId com.artcraft.cadcraft.test.
-Preserve user-approved Cc wheel, 75% size/85% opacity, updater, SAF, D/S/C, mouse/trackpad and other apps unchanged.
-Disposable-sign ARM64 test only. Verify ZIP, JNI symbols, native ARM64, APK v2 signer, checksum; no main changes, permanent signing, merge or publish.
+CADCraft 0.19.0-android.15 — owner-approved clean ARM64 release candidate.
+Use tested Android.14 automatic HONOR Magic-Pencil 4s pen recognition without modifications to native gate or JNI metadata checks. Hide/remove all TEST-only wheel UI: Pair Pen Button (TEST), Open Wheel Manually (TEST), and Pen Input Status (TEST). Keep minimal optional Pair Stylus Button 15s fallback as regular menu action, no diagnostic UI. Preserve Cc wheel branding, customization, size 75%, opacity 85%, SAF DXF/DWG, keyboard D/S/C, Android updater, reliable hover.
+Actual Android App Info versionName MUST be 0.19.0-android.15. Package on disposable test candidate remains com.artcraft.cadcraft.test; do not confuse with the final production app com.artcraft.cadcraft, which requires its OWN persistent signing key and release workflow. Preserve JNI exports for working test package.
+Try stripping debugging symbols only, preserving exported JNI, GPU performance and full native functionality. Compare size to Android.14 (~47.24MB artifact); avoid functional regressions.
+Test-only build with per-run disposable signer and APK v2 signature; verify ZIP, ARM64 ABI, package/version, JNI, SHA256 and uploaded artifact. No production signing/publish from this test workflow.
+Production signing/publish is separately gated on CADCraft-only backed-up signing credentials and successful final APK checks. Never merge main or alter other apps.

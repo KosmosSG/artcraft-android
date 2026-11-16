@@ -822,12 +822,12 @@ def patch_test_apk_version(reference: Path) -> None:
         'PY\n)"\n'
         '# CADCraft isolated TEST APK versionName; keep upstream source at v0.19.0.\n'
         'if [[ "$APP" == "cadcraft" && "$PACKAGENAME" == "com.artcraft.cadcraft.test" ]]; then\n'
-        '  APP_VERSION="0.19.0-android.14"\n'
+        '  APP_VERSION="0.19.0-android.15"\n'
         'fi\n\n'
         '# The shared craft-fonts'
     )
     builder.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
-    print("PASS: isolated Android test versionName 0.19.0-android.14 (App Info).")
+    print("PASS: isolated Android test versionName 0.19.0-android.15 (App Info).")
 
 
 def main() -> None:

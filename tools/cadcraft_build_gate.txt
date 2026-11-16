@@ -1,28 +1,27 @@
-CADCraft v0.19.0-android.11 ARM64 disposable TEST ONLY — screenshot-grounded pen-button authorization repair.
-HONOR MagicPad 4 Android.10 screenshot on 2026-11-16:
-- Open Wheel Manually: PASS (actual wheel renders).
-- Hover Magic-Pencil 4s button: FAIL.
-- Native input: enabled true; Verified IDs []; Candidate DPAD 84; accepted pen buttons 0;
-  Last candidate (device,key,action)=Some((11,20,1)).
-- Java Activity bridge unavailable / returned no status.
-Diagnosis: native event queue RECEIVES the key, but it is discarded by an empty
-verified-device allowlist; numeric input IDs are arbitrary and must never be hardcoded.
+CADCraft v0.19.0-android.12 — isolated disposable ARM64 TEST only.
+User tested v0.19.0-android.11 on HONOR MagicPad 4:
+- Native per-session Pair Pen Button (TEST): WORKING.
+- Pen Input Status showed paired input ID 11, accepted pen buttons 5.
+- Main defect now: Android Settings > App Info shows Version 0.19.0 (missing -android.N).
+Preserve the confirmed button pairing behavior and all previously approved features.
 
-Isolated Android.11 mitigation:
-- Add explicit Cc > Stylus Wheel > Pair Pen Button (TEST) action.
-- Only after the user taps Pair, during 15 seconds, authorize device ID of the NEXT
-  observed physical DPAD_DOWN=20 key release (action 1, repeat 0, positive device ID).
-- Native pairing is an additional verified-for-this-session allowlist, distinct from
-  the broken JNI Java InputDevice IDs. Not persisted across sessions.
-- Normal pen button on paired device must trigger the existing wheel and 550ms
-  dedup; no general keyboard or mouse interception and no numeric-ID hardcoding.
-- Keep manual wheel test and Pen Input Status TEST window; report current paired
-  device ID, pairing armed boolean, accepted event counters, Java bridge errors.
-- Preserve D/S/C modal shortcuts, native hover pointer, PhotoCraft wheel design,
-  size 75%, opacity 85%, CAD-specific in-app updater, DXF/DWG SAF.
-- Build only com.artcraft.cadcraft.test ARM64 disposable-signed. Verify APK ZIP,
-  arm64 library, correct app id, v2 signature, JNI pen/hover exports, SHA256,
-  uploaded artifact and existence of pairing source and test UI.
-- Only feature/cadcraft-v0190-android1-test-20261111/draft PR #158. Do NOT
-  merge, touch main/other apps/production key or publish.
-- One focused workflow run to conserve minutes. Physical pen test still required.
+Only change requested: consistent ArtCraft-style display version.
+- Patch reference/lib/build-common.sh in the disposable CI checkout, scoped only to
+  APP=cadcraft and PACKAGENAME=com.artcraft.cadcraft.test,
+  to override APP_VERSION to 0.19.0-android.12 after reading upstream
+  [workspace.package].version. This is the actual version passed to
+  lib/android_project.py -> Android Gradle versionName.
+- Do NOT change upstream v0.19.0 CADCraft source version or other app builders.
+- Update isolated updater version constant to cadcraft-v0.19.0-android.12.
+- Keep APK artifact filename CADCraft-v0.19.0-android.12-ARM64-TEST.apk.
+- CI must verify with aapt dump badging that the packaged APK has
+  versionName='0.19.0-android.12' and appId com.artcraft.cadcraft.test,
+  plus ZIP integrity, arm64-v8a, APK v2 disposable signature, Java pen/hover JNI symbols,
+  sha256, uploaded artifact.
+- Preserve tested 15-second user-triggered Magic-Pencil side-button pairing,
+  75% wheel/85% opacity, Cc icons, in-app updater, SAF DXF/DWG,
+  keyboard D/S/C dialog hints and test input status.
+- No main changes, no merge or release, no permanent signing.
+- Isolated branch feature/cadcraft-v0190-android1-test-20261111, draft PR #158.
+
+One focused Actions workflow trigger only. Ask for device verification of App Info.

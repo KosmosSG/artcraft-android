@@ -1,0 +1,256 @@
+name: CADCraft v0.19.0-android.15 permanent signed release (owner approved)
+
+on:
+  push:
+    branches:
+      - feature/cadcraft-v0190-android15-production-20261116
+    paths:
+      - tools/cadcraft_publish_gate.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cadcraft-v0190-android15-one-time-production-release
+  cancel-in-progress: false
+
+jobs:
+  sign-and-publish:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    env:
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.2.12479018
+      ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.2.12479018
+      ARTCRAFT_TARGET_SDK: '35'
+      CARGO_PROFILE_RELEASE_STRIP: 'debuginfo'
+      CADCRAFT_KEYSTORE_BASE64: ${{ secrets.CADCRAFT_KEYSTORE_BASE64 }}
+      CADCRAFT_KEYSTORE_PASSWORD: ${{ secrets.CADCRAFT_KEYSTORE_PASSWORD }}
+      CADCRAFT_KEY_ALIAS: ${{ secrets.CADCRAFT_KEY_ALIAS }}
+      CADCRAFT_KEY_PASSWORD: ${{ secrets.CADCRAFT_KEY_PASSWORD }}
+      CADCRAFT_CERT_SHA256: ${{ secrets.CADCRAFT_CERT_SHA256 }}
+      CADCRAFT_BACKUP_VERIFIED: ${{ secrets.CADCRAFT_BACKUP_VERIFIED }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: KosmosSG/artcraft-android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Preflight existing CADCraft-only persistent signer and backup before costly build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REF_NAME" = "feature/cadcraft-v0190-android15-production-20261116"
+          for name in CADCRAFT_KEYSTORE_BASE64 CADCRAFT_KEYSTORE_PASSWORD CADCRAFT_KEY_ALIAS CADCRAFT_KEY_PASSWORD CADCRAFT_CERT_SHA256; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub Actions secret: $name — cannot publish disposable-signed CADCraft as stable."
+              exit 1
+            fi
+          done
+          [[ "$CADCRAFT_BACKUP_VERIFIED" == "YES" ]] || {
+            echo "::error::CADCRAFT_BACKUP_VERIFIED secret must be YES: offline recovery backup of the permanent signer required."
+            exit 1
+          }
+          [[ "$CADCRAFT_CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || {
+            echo "::error::Invalid CADCRAFT_CERT_SHA256"; exit 1;
+          }
+          if gh release view cadcraft-v0.19.0-android.15 >/dev/null 2>&1; then
+            echo "::error::CADCraft v0.19.0-android.15 release already exists; refusing to overwrite."
+            exit 1
+          fi
+          [[ "$(git rev-parse HEAD:tools/cadcraft_android_wheel.rs)" == "6127661e7123403345293cbf9af7496a255091a6" ]] || {
+            echo "::error::Unreviewed CADCraft wheel source changed. Stop before release."
+            exit 1
+          }
+          test ! -e tools/production_keystore.jks
+          echo "CADCraft-only signing prerequisites present (actual certificate checked after Java setup)."
+
+      - name: Checkout read-only pinned MostafaXS1 Android builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
+          path: reference
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Validate permanent certificate before compiling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p reference/keys
+          chmod 700 reference/keys
+          printf '%s' "$CADCRAFT_KEYSTORE_BASE64" | base64 --decode > reference/keys/artcraft-builder.jks
+          printf '%s\n' "$CADCRAFT_KEYSTORE_PASSWORD" > reference/keys/.keystore-password
+          chmod 600 reference/keys/artcraft-builder.jks reference/keys/.keystore-password
+          test -s reference/keys/artcraft-builder.jks
+          keytool -list -v -keystore reference/keys/artcraft-builder.jks \
+            -storepass "$CADCRAFT_KEYSTORE_PASSWORD" -alias "$CADCRAFT_KEY_ALIAS" \
+            > "$RUNNER_TEMP/cadcraft-signer-cert-info.txt"
+          actual="$(sed -n 's/^[[:space:]]*SHA256: //p' "$RUNNER_TEMP/cadcraft-signer-cert-info.txt" | head -1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          [[ -n "$actual" && "$actual" == "${CADCRAFT_CERT_SHA256,,}" ]] || {
+            echo "::error::CADCraft production signing certificate mismatch"; exit 1
+          }
+          echo "PASS: CADCraft permanent signing certificate matches backed-up expected SHA-256."
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Prepare Android SDK, NDK and icon tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          if [[ ! -f "$SDK_ROOT/platforms/android-35/android.jar" ||
+                ! -d "$SDK_ROOT/build-tools/35.0.0" ||
+                ! -d "$SDK_ROOT/ndk/27.2.12479018" ]]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null || true
+            "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          fi
+          echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+          python3 -m pip install --user --disable-pip-version-check "Pillow>=10,<13"
+
+      - name: Stage CADCraft Android.15 production source and release-only packaging fixes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 --branch v0.19.0 https://github.com/storytold/cadcraft.git reference/source/cadcraft
+          python3 -m py_compile tools/cadcraft_android_patch.py tools/cadcraft_icon_fix.py
+          python3 tools/cadcraft_android_patch.py --source reference/source/cadcraft --reference reference
+          java -Djava.awt.headless=true tools/CadCraftIcon.java assets/cadcraft/Cc-launcher-icon.svg reference/assets/cadcraft/cc-icon-1024.png
+          python3 - <<'PY'
+          from pathlib import Path
+          bridge = Path("reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs")
+          text = bridge.read_text()
+          old = "Java_com_artcraft_cadcraft_test_CadCraftActivity_"
+          assert text.count(old) == 2, "CADCraft JNI bridge changed; reject release"
+          bridge.write_text(text.replace(old, "Java_com_artcraft_cadcraft_CadCraftActivity_"))
+          shell = Path("reference/lib/build-common.sh")
+          s = shell.read_text()
+          old_alias = 'ARTCRAFT_KEY_ALIAS="artcraftbuilder"'
+          old_password = 'ARTCRAFT_KEY_PASSWORD="$KEY_PASSWORD"'
+          assert s.count(old_alias) == s.count(old_password) == 1, "Builder signer anchors changed"
+          s = s.replace(old_alias, 'ARTCRAFT_KEY_ALIAS="${CADCRAFT_KEY_ALIAS}"')
+          s = s.replace(old_password, 'ARTCRAFT_KEY_PASSWORD="${CADCRAFT_KEY_PASSWORD}"')
+          shell.write_text(s)
+          android_project = Path("reference/lib/android_project.py")
+          s = android_project.read_text()
+          anchor = "    code = version_code(version)\n"
+          assert s.count(anchor) == 1, "versionCode calculation changed"
+          s = s.replace(anchor, anchor +
+              '    if app == "cadcraft" and android_meta["package"] == "com.artcraft.cadcraft":\n'
+              '        assert version == "0.19.0-android.15", "release version mismatch"\n'
+              '        code += 15  # first published revision; future .16 must increment\n')
+          android_project.write_text(s)
+          PY
+          grep -Fq 'APP_VERSION="0.19.0-android.15"' reference/lib/build-common.sh
+          grep -Fq 'Java_com_artcraft_cadcraft_CadCraftActivity_cadWheelButtonNative' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'Java_com_artcraft_cadcraft_CadCraftActivity_cadStylusHoverNative' reference/source/cadcraft/crates/cadcraft-android-updater-bridge/src/lib.rs
+          grep -Fq 'cad_stylus_metadata_authorize' reference/vendor/android-activity/src/lib.rs
+          grep -Fq 'Pair Stylus Button' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          ! grep -Fq 'Pen Input Status (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          ! grep -Fq 'Open Wheel Manually (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          test -s reference/assets/cadcraft/cc-icon-1024.png
+          echo "PASS: native auto-recognition preserved, production JNI exports, correct Cc icon and clean UI."
+
+      - name: Compile optimized ARM64 production APK signed with backed-up CADCraft key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash reference/build.sh -cadcraft -tag=v0.19.0 --noupdate \
+            -appname=CADCraft -packagename=com.artcraft.cadcraft \
+            -appicon="$GITHUB_WORKSPACE/reference/assets/cadcraft/cc-icon-1024.png"
+          mkdir -p release
+          src="$(find reference/output -maxdepth 1 -name 'cadcraft-*.apk' -type f -print -quit)"
+          test -s "$src"
+          cp "$src" release/CADCraft-v0.19.0-android.15-arm64-v8a.apk
+
+      - name: Verify exact package, version, ABI, JNI and permanent signing certificate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apk="release/CADCraft-v0.19.0-android.15-arm64-v8a.apk"
+          unzip -t "$apk" | tee release/zip-verification.txt | tail -1
+          unzip -Z1 "$apk" | grep -E '^lib/arm64-v8a/.*[.]so$'
+          aapt dump badging "$apk" | tee release/apk-badging.txt
+          grep -Fq "package: name='com.artcraft.cadcraft' versionCode='16782095' versionName='0.19.0-android.15'" release/apk-badging.txt
+          apksigner verify --verbose --print-certs "$apk" | tee release/apk-signing.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' release/apk-signing.txt
+          cert="$(sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' release/apk-signing.txt | head -1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          [[ -n "$cert" && "$cert" == "${CADCRAFT_CERT_SHA256,,}" ]] || {
+            echo "::error::Production APK signed with wrong certificate"; exit 1;
+          }
+          mkdir -p "$RUNNER_TEMP/cadcraft-native"
+          unzip -p "$apk" lib/arm64-v8a/libcadcraft_android.so > "$RUNNER_TEMP/cadcraft-native/libcadcraft_android.so"
+          readelf -Ws "$RUNNER_TEMP/cadcraft-native/libcadcraft_android.so" > "$RUNNER_TEMP/cadcraft-native/symbols"
+          grep -F 'Java_com_artcraft_cadcraft_CadCraftActivity_cadWheelButtonNative' "$RUNNER_TEMP/cadcraft-native/symbols"
+          grep -F 'Java_com_artcraft_cadcraft_CadCraftActivity_cadStylusHoverNative' "$RUNNER_TEMP/cadcraft-native/symbols"
+          : > "$RUNNER_TEMP/cadcraft-native/dex-strings"
+          while read -r dex; do
+            unzip -p "$apk" "$dex" > "$RUNNER_TEMP/cadcraft-native/current.dex"
+            strings "$RUNNER_TEMP/cadcraft-native/current.dex" >> "$RUNNER_TEMP/cadcraft-native/dex-strings"
+          done < <(unzip -Z1 "$apk" | grep -E '^classes[0-9]*[.]dex$')
+          for symbol in cadWheelButtonNative cadStylusHoverNative cadStylusIntercept; do
+            grep -Fq "$symbol" "$RUNNER_TEMP/cadcraft-native/dex-strings"
+          done
+          (cd release && sha256sum CADCraft-v0.19.0-android.15-arm64-v8a.apk > SHA256SUMS.txt)
+          cat > release/RELEASE-NOTES.md <<'NOTES'
+          # CADCraft v0.19.0-android.15
+          First stable Android ARM64 CADCraft release from official Storytold v0.19.0, using the pinned Android builder.
+          - Official app package: com.artcraft.cadcraft
+          - Installed versionName: 0.19.0-android.15; monotonic first release versionCode: 16782095
+          - HONOR Magic-Pencil 4s: automatic session-only pen recognition (Android.14 tested on device).
+          - Clean Cc Stylus Wheel interface, no manual wheel renderer or diagnostic windows.
+          - Optional Pair Stylus Button fallback, 75% wheel size / 85% opacity defaults.
+          - Cc icon, SAF DXF/DWG opening/saving, modal D/S/C keyboard hints, in-app CADCraft updater.
+          - ARM64-only, optimized release build, signed with CADCraft's backed-up permanent certificate.
+          - This new production package installs separately from earlier .test builds.
+          - Hardware testing of this exact Android.15 release build remains user-dependent.
+          NOTES
+          echo "PASS: official CADCraft release package, versionCode/name, ABI, JNI and original signer."
+          cat release/SHA256SUMS.txt
+
+      - name: Upload signed release APK and checksums for retention
+        uses: actions/upload-artifact@v4
+        with:
+          name: CADCraft-v0.19.0-android.15-PERMANENT-SIGNED-ARM64
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish official CADCraft GitHub Release once, without touching main or other apps
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag="cadcraft-v0.19.0-android.15"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release already exists; never overwrite another release."; exit 1
+          fi
+          sha256sum --check release/SHA256SUMS.txt --ignore-missing || {
+            (cd release && sha256sum --check SHA256SUMS.txt)
+          }
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "CADCraft v0.19.0-android.15 — Stable ARM64" \
+            --notes-file release/RELEASE-NOTES.md \
+            release/CADCraft-v0.19.0-android.15-arm64-v8a.apk \
+            release/SHA256SUMS.txt
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" --json url,tagName,assets
+          echo "Release publication complete for CADCraft only."
+
+      - name: Delete signing key material from runner workspace
+        if: always()
+        shell: bash
+        run: |
+          rm -f reference/keys/artcraft-builder.jks reference/keys/.keystore-password
+          rm -f "$RUNNER_TEMP/cadcraft-signer-cert-info.txt"

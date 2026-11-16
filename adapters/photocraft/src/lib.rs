@@ -40,6 +40,7 @@ mod ai_output_validation;
 mod ai_background_editor;
 mod ai_masked_fill_snapshot;
 mod ai_openfill_operations;
+mod ai_openfill_editor;
 mod openfill_remote;
 
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —

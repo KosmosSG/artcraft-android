@@ -3,6 +3,8 @@
 //! No upstream PhotoCraft crates, Android manifest, or signing files are changed.
 
 use crate::ai_tools::{AiAction, ComfyEndpoint};
+use crate::ai_openfill_editor;
+use crate::ai_openfill_local_transport;
 use crate::ai_openfill_operations::{
     Dimensions as FillSize, DocVersion as FillDocVersion,
     JobDraft as FillDraft, Operation as FillOperation,
@@ -37,6 +39,9 @@ pub(crate) struct AndroidAiMenu {
     fill_consent: bool,
     fill_status: String,
     fill_preflight: Option<Receiver<Result<(String, Option<FillDocVersion>), String>>>,
+    fill_token: String,
+    fill_running: Option<Receiver<Result<(FillDraft, Layer), String>>>,
+    fill_cancel: Option<Arc<AtomicBool>>,
     openfill_code: String,
     openfill_status: String,
     openfill_consent: bool,
@@ -84,6 +89,9 @@ impl AndroidAiMenu {
             fill_consent: false,
             fill_status: "No generation requested.".into(),
             fill_preflight: None,
+            fill_token: String::new(),
+            fill_running: None,
+            fill_cancel: None,
             openfill_code: String::new(),
             openfill_status: "Remote GPU has not been paired.".into(),
             openfill_consent: false,
@@ -112,6 +120,7 @@ impl AndroidAiMenu {
     /// Pc launcher menu actions 37–40 open operation-specific inputs.
     /// Actual Generate is NOT enabled until a verified local AI transport exists.
     pub(crate) fn open_openfill_operation(&mut self, code: u8) {
+        self.cancel_fill_generation();
         self.fill_operation = match code {
             37 => Some(FillOperation::Fill),
             38 => Some(FillOperation::RemoveObject),
@@ -150,7 +159,9 @@ impl AndroidAiMenu {
             self.cancel_cpu_job();
             self.cpu_consent = false;
         }
-        let layer_changed = self.poll_cpu_result(session, ui.ctx());
+        let background_changed = self.poll_cpu_result(session, ui.ctx());
+        let fill_changed = self.poll_fill_generation(session, ui.ctx());
+        let layer_changed = background_changed || fill_changed;
         self.poll_fill_preflight(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
         match received {
@@ -318,6 +329,9 @@ impl AndroidAiMenu {
                     ui.label("OpenFill model identifier (backend/model license not verified)");
                     ui.add(egui::TextEdit::singleline(&mut self.fill_model)
                         .hint_text("Installed model ID"));
+                    ui.label("Linux Lab OpenFill token (from local server at 127.0.0.1:18794)");
+                    ui.add(egui::TextEdit::singleline(&mut self.fill_token)
+                        .password(true).hint_text("Temporary session token"));
                     if matches!(operation, FillOperation::GenerativeExpand | FillOperation::Create) {
                         ui.horizontal(|ui| {
                             ui.label("Output width");
@@ -337,20 +351,28 @@ impl AndroidAiMenu {
                     }
                     ui.checkbox(&mut self.fill_consent,
                         "Allow local request preparation for this image (no upload)");
-                    let busy = self.fill_preflight.is_some();
+                    let busy = self.fill_preflight.is_some() || self.fill_running.is_some();
                     if ui.add_enabled(!busy && self.fill_consent,
                         egui::Button::new("Validate Request (Offline)")).clicked() {
                         self.start_fill_preflight(operation, session, &ctx);
                     }
+                    if ui.add_enabled(!busy && self.fill_consent && self.fill_token.len() >= 32,
+                        egui::Button::new("Generate in Linux Lab…")).clicked() {
+                        self.start_fill_generation(operation, session, &ctx);
+                    }
+                    if self.fill_running.is_some() && ui.button("Cancel Generation").clicked() {
+                        self.cancel_fill_generation();
+                    }
                     if busy { ui.spinner(); }
                     ui.label(&self.fill_status);
-                    ui.add_enabled(false, egui::Button::new("Generate · backend not connected"));
-                    ui.weak("A successful validation is not a generated image. No pixels, mask or prompt leaves PhotoCraft.");
+                    ui.weak("Generates only through your token-protected tablet-local Linux Lab OpenFill server. An installed compatible model is required. A model result is never applied after source changes.");
                 });
             if !open {
                 self.fill_operation = None;
                 self.fill_preflight = None;
                 self.fill_consent = false;
+                self.cancel_fill_generation();
+                self.fill_token.clear();
             }
         }
 
@@ -667,6 +689,169 @@ impl AndroidAiMenu {
             Some(Err(TryRecvError::Empty)) => ctx.request_repaint_after(Duration::from_millis(200)),
             None => {}
         }
+    }
+
+
+    fn cancel_fill_generation(&mut self) {
+        if let Some(cancel) = self.fill_cancel.take() {
+            cancel.store(true, Ordering::Release);
+            self.fill_status = "Cancelled. AI output will be discarded.".into();
+        }
+        self.fill_running = None;
+    }
+
+    fn start_fill_generation(
+        &mut self, operation: FillOperation, session: &Session, ctx: &egui::Context,
+    ) {
+        if self.fill_running.is_some() || self.fill_preflight.is_some() { return; }
+        let consent = std::mem::take(&mut self.fill_consent);
+        if !consent {
+            self.fill_status = "Explicit consent is required for this generation.".into();
+            return;
+        }
+        let snapshot = if operation == FillOperation::Create {
+            None
+        } else {
+            match ai_background_editor::active_snapshot(session) {
+                Ok(value) => Some(value),
+                Err(error) => { self.fill_status = error; return; }
+            }
+        };
+        let parse = |s: &str| s.parse::<u32>();
+        let shape = if matches!(operation, FillOperation::Create | FillOperation::GenerativeExpand) {
+            match (parse(&self.fill_width), parse(&self.fill_height),
+                   parse(&self.fill_left), parse(&self.fill_top)) {
+                (Ok(width), Ok(height), Ok(left), Ok(top)) =>
+                    Ok((FillSize { width, height }, left, top)),
+                _ => Err("Output dimensions or offsets are invalid"),
+            }
+        } else {
+            match snapshot.as_ref() {
+                Some((doc, _)) => Ok((FillSize {
+                    width: doc.size.width, height: doc.size.height,
+                }, 0, 0)),
+                None => Err("Open an image first"),
+            }
+        };
+        let (output, offset_x, offset_y) = match shape {
+            Ok(value) => value,
+            Err(error) => { self.fill_status = error.into(); return; }
+        };
+        // Right/bottom expansion is non-destructive with no changes to any
+        // existing layers. Shifting all existing layers for top/left expansion
+        // is intentionally refused until its own full geometry tests pass.
+        if operation == FillOperation::GenerativeExpand && (offset_x != 0 || offset_y != 0) {
+            self.fill_status = "Expand currently supports right/bottom only (left=0, top=0).".into();
+            return;
+        }
+        let prompt = if operation == FillOperation::RemoveObject {
+            String::new()
+        } else { self.fill_prompt.clone() };
+        let model_id = self.fill_model.clone();
+        let token = self.fill_token.clone();
+        let (tx, rx) = mpsc::channel();
+        let cancellation = Arc::new(AtomicBool::new(false));
+        self.fill_cancel = Some(Arc::clone(&cancellation));
+        self.fill_running = Some(rx);
+        self.fill_status = "Capturing image locally; waiting for Linux Lab inference…".into();
+        std::thread::spawn(move || {
+            let result = (|| -> Result<(FillDraft, Layer), String> {
+                let source = snapshot.as_ref().map(|(_, rev)| FillDocVersion {
+                    document: rev.document, revision: rev.revision,
+                });
+                let input = snapshot.as_ref().map(|(doc, _)| FillSize {
+                    width: doc.size.width, height: doc.size.height,
+                });
+                let selected = if matches!(operation,
+                    FillOperation::Fill | FillOperation::RemoveObject)
+                {
+                    let (doc, rev) = snapshot.as_ref().ok_or("No source image selected")?;
+                    Some(ai_background_editor::capture_masked_fill(doc, *rev, true)?)
+                } else { None };
+                let draft = FillDraft {
+                    operation, source, input, output, offset_x, offset_y,
+                    selected_pixels: selected.as_ref().map(|s| s.selected_pixels()).unwrap_or(0),
+                    prompt, model_id,
+                };
+                draft.validate_intent(true).map_err(str::to_owned)?;
+                if cancellation.load(Ordering::Acquire) {
+                    return Err("Generation cancelled".into());
+                }
+                let flat = if operation == FillOperation::GenerativeExpand {
+                    let (doc, rev) = snapshot.as_ref().ok_or("Missing Expand image")?;
+                    ai_openfill_editor::capture_source_rgba(doc, *rev)?
+                } else { Vec::new() };
+                let source_rgba = selected.as_ref()
+                    .map(|s| s.immutable_source_rgba()).unwrap_or(flat.as_slice());
+                let mask_alpha = selected.as_ref()
+                    .map(|s| s.immutable_mask_alpha()).unwrap_or(&[]);
+                let png = ai_openfill_local_transport::generate(
+                    &draft, source_rgba, mask_alpha, &token, true, &cancellation,
+                )?;
+                if cancellation.load(Ordering::Acquire) {
+                    return Err("Generation cancelled".into());
+                }
+                let layer = match operation {
+                    FillOperation::Fill | FillOperation::RemoveObject => {
+                        ai_openfill_editor::prepare_masked_layer(
+                            &draft, selected.as_ref().ok_or("Selection missing")?, &png
+                        )?
+                    }
+                    FillOperation::GenerativeExpand => {
+                        ai_openfill_editor::prepare_expand_layer(&draft, &png)?
+                    }
+                    FillOperation::Create => {
+                        let rgba = ai_openfill_editor::decode_output_png(&png, draft.output)?;
+                        ai_openfill_editor::new_layer("AI · Create", draft.output, &rgba)?
+                    }
+                };
+                Ok((draft, layer))
+            })();
+            let _ = tx.send(result);
+        });
+        ctx.request_repaint_after(Duration::from_millis(200));
+    }
+
+    fn poll_fill_generation(&mut self, session: &mut Session, ctx: &egui::Context) -> bool {
+        let received = self.fill_running.as_ref().map(|rx| rx.try_recv());
+        match received {
+            Some(Ok(Ok((draft, layer)))) => {
+                self.fill_running = None;
+                self.fill_cancel = None;
+                let result = ai_openfill_editor::validate_live(session, &draft, b"decoded");
+                if let Err(error) = result {
+                    self.fill_status = format!("Generation discarded: {error}");
+                    return false;
+                }
+                let inserted = if draft.operation == FillOperation::Create {
+                    ai_openfill_editor::commit_create(session, &draft, layer)
+                } else {
+                    ai_openfill_editor::commit_layer(session, &draft, layer)
+                };
+                match inserted {
+                    Ok(()) => {
+                        self.fill_status = "OpenFill generated an undoable result. Use Undo/Redo to review.".into();
+                        return true;
+                    }
+                    Err(error) => {
+                        self.fill_status = format!("Result was not applied: {error}");
+                    }
+                }
+            }
+            Some(Ok(Err(error))) => {
+                self.fill_running = None;
+                self.fill_cancel = None;
+                self.fill_status = format!("OpenFill generation failed: {error}");
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.fill_running = None;
+                self.fill_cancel = None;
+                self.fill_status = "OpenFill worker disconnected; no editor change.".into();
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint_after(Duration::from_millis(200)),
+            None => {}
+        }
+        false
     }
 
     fn cancel_cpu_job(&mut self) {

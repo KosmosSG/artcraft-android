@@ -12,7 +12,7 @@ from pathlib import Path
 
 MARKER = "VC_ANDROID15_ADAPTIVE_PAN"
 
-ORIGINAL_SPAN = """    // How much of 0..n a move by \`d\` exposes, at the start for a positive \`d\`, else at the end.
+ORIGINAL_SPAN = """    // How much of 0..n a move by `d` exposes, at the start for a positive `d`, else at the end.
     let span = |d: i64, n: u32| {
         let len = u32::try_from(d.unsigned_abs()).ok()?.min(n);
         Some(in_steps(if d > 0 { 0 } else { n - len }, if d > 0 { len } else { n }, n))
@@ -92,7 +92,7 @@ mod android15_pan_span_tests {
 
 """
 
-ANCHOR_HELPER = """/// The parts \`[x0, y0, x1, y1]\` of a \`w\`×\`h\` frame that a pan by \`(dx, dy)\` device pixels exposes,"""
+ANCHOR_HELPER = """/// The parts `[x0, y0, x1, y1]` of a `w`×`h` frame that a pan by `(dx, dy)` device pixels exposes,"""
 
 # Android.14's render_job body is left unchanged except a low-rate timing
 # probe. Keep frame statistics opaque: no source document names, coordinates,
@@ -137,7 +137,7 @@ def patch(root: Path) -> None:
         (ANCHOR_HELPER, 1),
         (PROFILE_START_OLD, 1),
         (PROFILE_END_OLD, 1),
-        ("VC_ANDROID14_INPLACE_PAN", 3),  # multiple occurrences accepted below
+        ("VC_ANDROID14_INPLACE_PAN", 2),  # multiple occurrences accepted below
     )
     for needle, expected_count in expected:
         count = source.count(needle)

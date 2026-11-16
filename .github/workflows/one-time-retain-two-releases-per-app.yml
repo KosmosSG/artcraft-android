@@ -1,0 +1,128 @@
+name: One-time retain two published releases per ArtCraft app
+on:
+  push:
+    branches:
+      - maintenance/retain-two-releases-per-app-20261116
+permissions:
+  contents: write
+jobs:
+  release-cleanup:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify exact release inventory and remove 31 older releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os, sys, json, urllib.request, urllib.error, re
+          expected = {
+            "artcraft-launcher-v0.1.0-android.10": 445817695,
+            "artcraft-launcher-v0.1.0-android.12": 446163930,
+            "wordcraft-v0.17.0-android.11": 444977687,
+            "vectorcraft-v0.24.1-android.9": 445334324,
+            "lightcraft-v0.21.1-android.4": 445015991,
+            "gridcraft-v0.19.1-android.8": 444983286,
+            "filmcraft-v0.20.1-android.8": 445436952,
+            "effectcraft-v0.24.1-android.6": 445218994,
+            "designcraft-v0.20.1-android.8": 444988175,
+            "designcraft-v0.20.1-android.10": 445035513,
+            "deckcraft-v0.18.1-android.8": 445011180,
+            "artcraft-launcher-v0.1.0-android.9": 445449515,
+            "photocraft-v0.23.1-android.5": 443779112,
+            "pdfcraft-v0.21.1-android.8": 444083986,
+            "pdfcraft-v0.21.1-android.10": 444991093,
+            "pdfcraft-v0.21.1-android.1": 443897053,
+            "pdfcraft-v0.20.0-android.5": 443245815,
+            "photocraft-v0.22.0-android.3": 441604686,
+            "wordcraft-v0.17.0-android.1": 440185357,
+            "vectorcraft-v0.23.0-android.7": 440150996,
+            "pdfcraft-v0.20.0-android.4": 440598753,
+            "pdfcraft-v0.20.0-android.1": 440204974,
+            "lightcraft-v0.20.0-android.1": 440183094,
+            "gridcraft-v0.18.0-android.1": 440217681,
+            "filmcraft-v0.19.0-android.1": 441578212,
+            "effectcraft-v0.23.1-android.1": 440167597,
+            "designcraft-v0.19.0-android.1": 440080280,
+            "deckcraft-v0.17.0-android.3": 440606477,
+            "photocraft-v0.21.0-android.5": 438999997,
+            "lightcraft-v0.18.0-android.1": 438823151,
+            "wordcraft-v0.15.2-android.11": 438376838,
+            "pdfcraft-v0.19.0-android.6": 438404103,
+            "effectcraft-v0.21.0-android.15": 438380395,
+            "designcraft-v0.17.2-android.5": 438655461,
+            "wordcraft-v0.15.2-android.6": 437634328,
+            "gridcraft-v0.16.1-android.4": 437430367,
+            "deckcraft-v0.16.0-android.3": 437662096,
+            "photocraft-v0.20.2-android.2": 436037275,
+            "gridcraft-v0.16.1-android.3": 436756161,
+            "filmcraft-v0.17.0-android.1": 434065970,
+            "deckcraft-v0.15.0-android.1": 433413098,
+            "filmcraft-v0.10.0-android.5": 431135824,
+            "designcraft-v0.12.0-android.9": 430939950,
+            "vectorcraft-v0.14.0-android.13": 430139882,
+            "effectcraft-v0.16.0-android.8": 430164420,
+            "designcraft-v0.12.0-android.5": 426806814,
+            "vectorcraft-v0.14.0-android.11": 424421424,
+            "designcraft-v0.12.0-android.4": 425268772,
+            "lightcraft-v0.11.0-android.8": 423280051,
+            "designcraft-v0.12.0-android.3": 423114230,
+            "wordcraft-v0.9.0-android.3": 422466548,
+            "designcraft-v0.12.0-android.2": 421594358,
+            "photocraft-v0.10.0-android.2": 419318616
+          }
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          base = f"https://api.github.com/repos/{repository}"
+          headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}", "X-GitHub-Api-Version":"2022-11-28", "User-Agent":"artcraft-release-retention"}
+          def request(path, method="GET"):
+              req = urllib.request.Request(base + path, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      data = response.read()
+                      return json.loads(data) if data else None
+              except urllib.error.HTTPError as exc:
+                  print(f"API failed: {method} {path} / {exc.code}: {exc.read()[:500]!r}", flush=True)
+                  raise
+          def list_releases():
+              result = []
+              page = 1
+              while True:
+                  page_items = request(f"/releases?per_page=100&page={page}")
+                  result.extend(page_items)
+                  if len(page_items) < 100: break
+                  page += 1
+              return [v for v in result if not v["draft"]]
+          current = list_releases()
+          actual = {r["tag_name"]:r["id"] for r in current}
+          if actual != expected:
+              print("ABORTED: Published release inventory changed since user-approved audit.", flush=True)
+              print("New or changed:", sorted(set(actual.items()) - set(expected.items())), flush=True)
+              print("Gone or changed:", sorted(set(expected.items()) - set(actual.items())), flush=True)
+              sys.exit(2)
+          groups = {}
+          for item in current:
+              match = re.fullmatch(r"(.+)-v(\d+)\.(\d+)\.(\d+)-android\.(\d+)",item["tag_name"])
+              if not match: raise RuntimeError("Unknown tag, refusing deletion: "+item["tag_name"])
+              groups.setdefault(match[1],[]).append((tuple(int(v) for v in match.groups()[1:]),item))
+          keep = []
+          remove = []
+          for app, versions in groups.items():
+              versions.sort(key=lambda p:(p[0],p[1]["published_at"]),reverse=True)
+              keep += [x[1] for x in versions[:2]]
+              remove += [x[1] for x in versions[2:]]
+          if len(groups)!=11 or len(keep)!=22 or len(remove)!=31:
+              raise RuntimeError(f"Refusing unexpected plan apps={len(groups)}, keep={len(keep)}, delete={len(remove)}")
+          print("KEEP", len(keep), [x["tag_name"] for x in keep],flush=True)
+          print("DELETE",len(remove),[x["tag_name"] for x in remove],flush=True)
+          for i,release in enumerate(remove,1):
+              request(f"/releases/{release['id']}",method="DELETE")
+              print(f"Deleted {i}/{len(remove)}: {release['tag_name']}",flush=True)
+          remaining = list_releases()
+          if {x["id"] for x in remaining} != {x["id"] for x in keep}:
+              raise RuntimeError("Post-cleanup verification failed")
+          print("SUCCESS: latest two published releases retained for all 11 applications; 31 old releases deleted; tags preserved.",flush=True)
+          
+          PY

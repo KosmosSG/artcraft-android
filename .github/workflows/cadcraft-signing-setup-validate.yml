@@ -1,0 +1,35 @@
+name: CADCraft Codespaces signing helper syntax validation (NO SECRETS)
+
+on:
+  push:
+    branches:
+      - feature/cadcraft-v0190-android15-production-20261116
+    paths:
+      - tools/cadcraft_codespaces_signing_setup.sh
+      - .devcontainer/devcontainer.json
+      - .github/workflows/cadcraft-signing-setup-validate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate owner-only signing helper WITHOUT generating any keys
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n tools/cadcraft_codespaces_signing_setup.sh
+          python3 -m json.tool .devcontainer/devcontainer.json >/dev/null
+          grep -Fq 'CADCraft-signing-backup/' .gitignore
+          grep -Fq 'OFFLINE BACKUP VERIFIED' tools/cadcraft_codespaces_signing_setup.sh
+          grep -Fq 'openssl enc -d -aes-256-cbc -pbkdf2' tools/cadcraft_codespaces_signing_setup.sh
+          grep -Fq 'CADCRAFT_BACKUP_VERIFIED' tools/cadcraft_codespaces_signing_setup.sh
+          grep -Fq 'No private keys/passwords are printed' tools/cadcraft_codespaces_signing_setup.sh
+          echo 'PASS: GitHub Codespaces signing helper syntax, isolated backup ignore and recovery gate.'

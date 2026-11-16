@@ -680,11 +680,13 @@ impl eframe::App for PhotoCraftAndroidApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
-        // Native menu; unimplemented actions remain disabled until backend verification.
+        // Render the upstream Pc menu first: its OpenFill action is dispatched
+        // during inner.ui. Render Android AI dialogs afterwards in this same
+        // frame, so a click cannot be lost behind the prior-frame AI pass.
+        self.inner.ui(ui, _frame);
         if self.ai_menu.show(ui, &mut self.inner.session) {
             self.inner.sync_views();
         }
-        self.inner.ui(ui, _frame);
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

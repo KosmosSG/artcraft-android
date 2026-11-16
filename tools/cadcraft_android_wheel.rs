@@ -476,7 +476,10 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
                 let java = cadcraft_android_updater_bridge::stylus_status();
                 if java.is_empty() {
                     ui.colored_label(BRAND, "Java Activity bridge unavailable or returned no status.");
-                    ui.label("The native counters below can still reveal received input.");
+                    if let Some(error) = cadcraft_android_updater_bridge::stylus_bridge_failure() {
+                        ui.label(format!("Bridge error: {error}"));
+                    }
+                    ui.label("Native button pairing works independently of this Java bridge.");
                 } else {
                     ui.strong("Java input routes");
                     for line in java.split('|') {

@@ -55,6 +55,27 @@ impl MaskedFillSnapshot {
     pub fn source_revision(&self) -> SourceRevision { self.origin }
     pub fn dimensions(&self) -> (u32, u32) { (self.width, self.height) }
     pub fn selected_pixels(&self) -> usize { self.selected_pixels }
+
+    /// Smallest canvas-space rectangle containing every nonzero selection alpha.
+    /// End coordinates are exclusive. Feathered pixels count as selected.
+    /// This is metadata only; it never crops or transmits the source image.
+    pub fn selection_bounds(&self) -> Option<(u32, u32, u32, u32)> {
+        let mut left = self.width;
+        let mut top = self.height;
+        let mut right = 0u32;
+        let mut bottom = 0u32;
+        for (index, &alpha) in self.mask_alpha.iter().enumerate() {
+            if alpha == 0 { continue; }
+            let x = (index as u64 % u64::from(self.width)) as u32;
+            let y = (index as u64 / u64::from(self.width)) as u32;
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+        if left >= right || top >= bottom { None }
+        else { Some((left, top, right, bottom)) }
+    }
     pub fn immutable_source_rgba(&self) -> &[u8] { &self.source_rgba }
     pub fn immutable_mask_alpha(&self) -> &[u8] { &self.mask_alpha }
 
@@ -124,6 +145,17 @@ mod tests {
         assert_eq!(&layer[4..8], &[201, 202, 203, 128]);
         assert_eq!(&layer[8..12], &[204, 205, 206, 128]);
         assert_eq!(snapshot.immutable_source_rgba(), src.as_slice());
+        assert_eq!(snapshot.immutable_mask_alpha(), mask.as_slice());
+    }
+    #[test]
+    fn selection_bounds_are_exclusive_and_include_feathered_pixels() {
+        let src = vec![0u8; 5 * 4 * 4];
+        let mut mask = vec![0u8; 5 * 4];
+        mask[1 * 5 + 2] = 1;
+        mask[2 * 5 + 4] = 255;
+        let snapshot = MaskedFillSnapshot::prepare(REV, 5, 4, &src, &mask, true).unwrap();
+        assert_eq!(snapshot.selection_bounds(), Some((2, 1, 5, 3)));
+        assert_eq!(snapshot.selected_pixels(), 2);
         assert_eq!(snapshot.immutable_mask_alpha(), mask.as_slice());
     }
     #[test]

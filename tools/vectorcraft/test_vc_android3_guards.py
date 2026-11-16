@@ -24,17 +24,18 @@ class VectorCraftAndroid3Guards(unittest.TestCase):
         for required in (
             'ui.menu_button("App Updates"',
             'ui.menu_button("Appearance"',
-            'ui.menu_button("Diagnostics"',
+            'ui.checkbox(&mut startup_checked, "Check at Startup")',
             'ui.button("About VectorCraft")',
             '"android.vectorcraft.fontImport"',
             '"android.vectorcraft.fontFolder"',
             '"android.vectorcraft.fontRefresh"',
             '"android.vectorcraft.updates"',
             '"android.vectorcraft.startupUpdates"',
-            '"android.vectorcraft.keyboardDiagnostics"',
             '"edit.keyboardShortcuts"',
         ):
             self.assertIn(required, menu)
+        self.assertNotIn('ui.menu_button("Diagnostics"', menu)
+        self.assertNotIn('ui.button("Keyboard Diagnostics', menu)
         self.assertIn('&& *title != "Vc"', bar)
         self.assertIn('menus::android_vc_menu(app, &mark);', chrome)
         self.assertIn('crate::brand::paint_mark(ui, r);', chrome)

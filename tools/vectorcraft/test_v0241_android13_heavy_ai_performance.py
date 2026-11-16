@@ -77,7 +77,8 @@ def validate_staged(root: Path):
             assert 'pub(super) const OVERLAY_MAX_ANCHORS: usize = 2_048;' in contents, name
             assert '#[cfg(not(target_os = "android"))]' in contents, name
             assert 'pub(super) const OVERLAY_MAX_ANCHORS: usize = 100_000;' in contents, name
-            assert before not in contents, name
+            # The original 100000-anchor literal remains intentionally in the desktop cfg.
+            assert contents.count(before) == 1, name
         else:
             assert MARKER in contents and after in contents, name
             assert (contents.count(before) == 1 if name.endswith("canvas/outline.rs") else before not in contents), name

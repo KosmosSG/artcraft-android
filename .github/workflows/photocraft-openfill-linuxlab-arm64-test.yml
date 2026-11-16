@@ -283,6 +283,15 @@ jobs:
             grep -Fq "$label" source/photocraft/crates/ui-egui/src/panels/brand.rs
           done
           grep -Fq '37..=40 => self.ai_menu.open_openfill_operation(pc_action)' adapters/photocraft/src/lib.rs
+          grep -Fq 'mod ai_openfill_editor;' adapters/photocraft/src/lib.rs
+          grep -Fq 'mod ai_openfill_local_transport;' adapters/photocraft/src/lib.rs
+          grep -Fq 'fn start_fill_generation(' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'fn poll_fill_generation(' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'pub fn commit_create(' adapters/photocraft/src/ai_openfill_editor.rs
+          grep -Fq 'pub fn prepare_expand_layer(' adapters/photocraft/src/ai_openfill_editor.rs
+          grep -Fq 'POST /v1/openfill' adapters/photocraft/src/ai_openfill_local_transport.rs
+          python3 -m py_compile tools/photocraft_ai_cpu/openfill_local_server.py
+          echo 'PASS: all four OpenFill UI, transport and undoable-result modules are staged before APK compilation'
           echo 'PASS: Android.7 input preserved; Android.8 hover/canvas modifications excluded'
           grep -Fq '"edit.keyboardShortcuts"' adapters/photocraft/src/lib.rs
           # Baseline adapter integration yields android.3 until we bump the

@@ -1064,7 +1064,7 @@ jobs:
           size_report['previous_published_apk_bytes']=previous_bytes
           size_report['published_apk_bytes_saved']=previous_bytes-size
           size_report['signed_lossless_deflate_level']=9
-          Path('signed/size-report.json').write_text(json.dumps(size_report,indent=2)+'\\n')
+          Path('signed/size-report.json').write_text(json.dumps(size_report,indent=2)+'\n')
           print('PASS: ORIGINAL VectorCraft signer, production package, upgrade code and optimized size:',size)
           PY
           (cd signed && sha256sum "VectorCraft-v$VERSION_NAME-arm64-v8a.apk" > SHA256SUMS.txt)

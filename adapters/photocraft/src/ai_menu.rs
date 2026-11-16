@@ -21,6 +21,7 @@ use std::time::Duration;
 pub(crate) struct AndroidAiMenu {
     show_about: bool,
     show_connection: bool,
+    linux_lab_mode: bool,
     show_openfill_setup: bool,
     openfill_code: String,
     openfill_status: String,
@@ -57,6 +58,7 @@ impl AndroidAiMenu {
         Self {
             show_about: false,
             show_connection: false,
+            linux_lab_mode: false,
             show_openfill_setup: false,
             openfill_code: String::new(),
             openfill_status: "Remote GPU has not been paired.".into(),
@@ -208,10 +210,12 @@ impl AndroidAiMenu {
                         }
                         ui.add_enabled(false, egui::Button::new("Plugin Manager…"));
                         if ui.button("ComfyUI Connection…").clicked() {
+                            self.linux_lab_mode = false;
                             self.show_connection = true;
                             ui.close();
                         }
                         if ui.button("Linux Lab · Local ComfyUI (Preview)…").clicked() {
+                            self.linux_lab_mode = true;
                             // Running Linux Lab on this tablet normally shares
                             // Android's loopback namespace with PhotoCraft.
                             // Configure localhost only; never silently switch
@@ -352,19 +356,29 @@ impl AndroidAiMenu {
                 .resizable(true)
                 .collapsible(false)
                 .show(&ctx, |ui| {
-                    ui.label("Linux Lab / ComfyUI — read-only connection diagnostics. Generative jobs remain disabled.");
-                    ui.label("Enter the computer's private Wi-Fi IP address, e.g. http://192.168.1.20:8188");
-                    ui.label("127.0.0.1 means this tablet, not your Mac or PC.");
-                    if ui.add(egui::TextEdit::singleline(&mut self.endpoint_text)
-                        .hint_text("http://192.168.1.20:8188")).changed() {
-                        self.connection_ok = false;
-                        self.connection_status = "Endpoint changed. Test again.".into();
-                        self.model_status = "Model inventory cleared: endpoint changed.".into();
-                    }
-                    if ui.checkbox(&mut self.allow_private_lan,
-                        "Allow a connection to a trusted private-LAN host (unencrypted HTTP)").changed() {
-                        self.connection_ok = false;
-                        self.model_status = "Model inventory cleared: connection consent changed.".into();
+                    ui.label("Read-only ComfyUI connection diagnostics. AI generation remains disabled.");
+                    if self.linux_lab_mode {
+                        // Local mode is pinned to the tablet's loopback address.
+                        // Do not display a private-LAN consent control or accept
+                        // external IPs in the dedicated Linux Lab workflow.
+                        self.endpoint_text = "http://127.0.0.1:8188".into();
+                        self.allow_private_lan = false;
+                        ui.label("Linux Lab on this tablet · 127.0.0.1:8188");
+                        ui.label("Local loopback only; no private Wi-Fi IP or LAN permission is needed.");
+                    } else {
+                        ui.label("Enter a trusted computer's private Wi-Fi IP address, e.g. http://192.168.1.20:8188");
+                        ui.label("127.0.0.1 means this tablet, not another computer.");
+                        if ui.add(egui::TextEdit::singleline(&mut self.endpoint_text)
+                            .hint_text("http://192.168.1.20:8188")).changed() {
+                            self.connection_ok = false;
+                            self.connection_status = "Endpoint changed. Test again.".into();
+                            self.model_status = "Model inventory cleared: endpoint changed.".into();
+                        }
+                        if ui.checkbox(&mut self.allow_private_lan,
+                            "Allow a connection to a trusted private-LAN host (unencrypted HTTP)").changed() {
+                            self.connection_ok = false;
+                            self.model_status = "Model inventory cleared: connection consent changed.".into();
+                        }
                     }
                     ui.label("No image, document, selection, prompt, model or password is transmitted.");
                     ui.label("Do not expose ComfyUI directly to the internet.");

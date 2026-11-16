@@ -23,4 +23,4 @@ __pycache__/
 Thumbs.db
 
 # Local encrypted CADCraft signer backup (never commit to Git)
-.cadcraft-signing-backup/
+CADCraft-signing-backup/

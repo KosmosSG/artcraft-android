@@ -1,0 +1,2 @@
+One-time VectorCraft v0.24.1-android.14 separate ARM64 performance APK build.
+Pinned Android.13 tested branch; preserve original publication/signing. Run Rust byte-parity tests for cached pixel shift, source preflight, and Android test-only artifact upload. No production release.

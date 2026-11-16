@@ -714,6 +714,29 @@ def prepare_exact_icon(reference: Path, source: Path) -> None:
     print("PASS: Cc menu/wheel artwork uses exact supplied red #D13153 and cream #F3E4E7.")
 
 
+def patch_test_apk_version(reference: Path) -> None:
+    """Show the full ArtCraft Android revision in App Info, not only 0.19.0.
+
+    This patches only the workflow's disposable reference checkout. The public
+    reference builder and upstream CADCraft source are left untouched.
+    """
+    builder = reference / "lib/build-common.sh"
+    source = builder.read_text(encoding="utf-8")
+    anchor = 'PY\n)"\n\n# The shared craft-fonts'
+    if source.count(anchor) != 1:
+        raise SystemExit("CADCraft Android APP_VERSION builder anchor changed; refuse version override")
+    replacement = (
+        'PY\n)"\n'
+        '# CADCraft isolated TEST APK versionName; keep upstream source at v0.19.0.\n'
+        'if [[ "$APP" == "cadcraft" && "$PACKAGENAME" == "com.artcraft.cadcraft.test" ]]; then\n'
+        '  APP_VERSION="0.19.0-android.12"\n'
+        'fi\n\n'
+        '# The shared craft-fonts'
+    )
+    builder.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
+    print("PASS: isolated Android test versionName 0.19.0-android.12 (App Info).")
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--source", required=True, type=Path)
@@ -724,6 +747,7 @@ def main() -> None:
     prepare_exact_icon(args.reference, args.source)
     install_cadcraft_updater(args.reference)
     install_pen_button(args.reference)
+    patch_test_apk_version(args.reference)
 
 
 if __name__ == "__main__":

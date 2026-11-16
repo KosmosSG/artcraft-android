@@ -7,3 +7,5 @@ Features: checked persistent Check at Startup toggle, bottom native update toast
 Build optimized ARM64 with native symbols stripped and compressed native library. Stable package com.artcraft.vectorcraft, versionName 0.24.1-android.12, versionCode 16784919. Reuse exact original signer SHA-256 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5; verify against published VectorCraft Android.9. Require production APK smaller than prior published 90,808,525 bytes; fail closed if any prerequisite fails.
 
 Publish new release only after APK signature/package/ARM64/size checks; never overwrite prior release or tags. Clean temporary signing material.
+
+Production release retry #2: previous run #43802008584 passed compilation, behavioral tests, signer and package checks but final APK failed strictly-smaller-than-Android.9 size gate. This retry uses maximum-level lossless ZIP DEFLATE before zipalign/original signing while retaining all entry data and the signed-APK size gate. Do not weaken APK size assertion, publish on failure, replace existing tags or modify production signing secrets.

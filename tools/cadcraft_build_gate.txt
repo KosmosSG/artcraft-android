@@ -1,28 +1,13 @@
-CADCraft v0.19.0-android.9 ARM64 disposable TEST ONLY
+CADCraft v0.19.0-android.10 ARM64 disposable test — isolated stylus side button root-cause diagnostics.
+Reported on HONOR MagicPad 4: .9 D/S/C and Pen Input Status build passed CI; side button during hover STILL does not open wheel. Do not assert fixed.
+Goal: distinguish rendering vs MagicOS input delivery without another guessed remapping.
 
-Device report:
-- Android.8 still fails to open stylus wheel by hovering Magic-Pencil 4s side-button.
-- "Pen Input Status (TEST)" does not function.
-- Screenshot: CADCraft Save Changes (Don't Save / Cancel / Save) dialog lacks D/S/C hints and keyboard choices.
-
-Requested Android.9 isolated changes:
-1. Patch only the Android staged CADCraft v0.19.0 close modal:
-   - D = Don't Save (discard), S = Save, C = Cancel.
-   - Show [D], [S], [C] text hints on the corresponding buttons.
-   - Only intercept unmodified keys while this modal is visible. ESC still Cancel.
-   - Preserve normal CAD shortcuts, text typing, editor commands, desktop upstream.
-2. Replace nonfunctioning Java AlertDialog Pen Input Status route with a
-   guaranteed-to-open CADCraft-native egui window from Cc > Stylus Wheel.
-   - Show Java wheel-enabled, accepted key/mouse events and named pen device IDs.
-   - If JNI unavailable display clear failure, do not silently do nothing.
-   - Show native AInputQueue candidate DPAD count, accepted count, last device/key/action,
-     including wrong-ID candidates, without consuming physical keyboard inputs.
-   - Test diagnostics only; remove prior to any permanent release.
-3. Preserve Android.8 PhotoCraft-style pre-IME/keyboard, named pen mouse routing,
-   hover pointer, Cc wheel, default 75%/85%, DXF/DWG SAF and app-specific updater.
-4. CI static source checks, signature, ZIP integrity, ARM64 native library,
-   appId com.artcraft.cadcraft.test, both JNI exports and SHA256 in artifact.
-
-Only feature/cadcraft-v0190-android1-test-20261111 / draft PR #158.
-No main/other app edits, no production keystore, no merge/publish.
-One focused build gate to conserve GitHub Actions minutes. HONOR device verification required.
+- Cc > Stylus Wheel > Open Wheel Manually (TEST): open the exact normal 8-segment wheel through UI without any button signal. If this fails, issue is render/state; if works, event route is failure.
+- Cc > Stylus Wheel > Pen Input Status (TEST): existing native egui window always opens, even if Java JNI unavailable.
+- Include Java raw DPAD candidate counts and last event device ID/name/route even when the input is rejected by pen-name matching. Count named Magic-Pencil alternate keycodes (not general typing).
+- Include NativeActivity raw mouse-button candidate count and last id/action/button bitmask, alongside native raw DPAD candidate count and accepted verified key count.
+- All new diagnostics read-only on unmatched events, never consume physical keyboard, trackpad, ordinary mouse, touch or other apps.
+- Keep current named HONOR Magic-Pencil side-button handler, hover pointer, pen-only native capture, Cc wheel styles, defaults 75%/85%, modal D/S/C keyboard hints, app-specific updater, SAF DXF/DWG and optimized ARM64 build.
+- Package com.artcraft.cadcraft.test, new disposable signer, ZIP integrity, native ARM64, v2 signer, Java + native JNI symbols, SHA256 and uploaded artifact gates.
+- Only feature/cadcraft-v0190-android1-test-20261111, draft PR #158. No merge, main, other apps, production keys, or publishing.
+- Make ONE focused workflow trigger. Real HONOR hardware verification and diagnostic screenshot needed for actual button fix.

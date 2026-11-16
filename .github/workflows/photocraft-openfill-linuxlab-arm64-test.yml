@@ -52,6 +52,7 @@ jobs:
               ".github/workflows/photocraft-openfill-remote-probe-tests.yml",
               ".github/workflows/photocraft-openfill-linuxlab-arm64-test.yml",
               "adapters/photocraft/src/ai_menu.rs",
+              "tools/photocraft_v022_vc_style_menu.py",
               "adapters/photocraft/src/lib.rs",
               "adapters/photocraft/src/openfill_remote.rs",
               "docs/photocraft-openfill-android-integration-20261116.md",
@@ -268,7 +269,11 @@ jobs:
           ! grep -Fq 'pc-shortcut-pad-reserved-rect' source/photocraft/crates/ui-egui/src/canvas.rs
           grep -Fq 'action(ui, "Customization", 35);' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'ui.menu_button("Touch Shortcut Pad"' source/photocraft/crates/ui-egui/src/panels/brand.rs
-          grep -Fq 'ui.menu_button("Diagnostics"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          ! grep -Fq 'ui.menu_button("Diagnostics"' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          for label in 'Fill with Prompt…' 'Remove Object…' 'Generative Expand…' 'Create · Text to Image…'; do
+            grep -Fq "$label" source/photocraft/crates/ui-egui/src/panels/brand.rs
+          done
+          grep -Fq '37..=40 => self.ai_menu.open_openfill_operation(pc_action)' adapters/photocraft/src/lib.rs
           echo 'PASS: Android.7 input preserved; Android.8 hover/canvas modifications excluded'
           grep -Fq '"edit.keyboardShortcuts"' adapters/photocraft/src/lib.rs
           # Baseline adapter integration yields android.3 until we bump the
@@ -522,6 +527,14 @@ jobs:
           print("Separate com.artcraft.photocraft.candidate.openfill app: production package and keys untouched")
           PY
 
+      - name: Restore compiled Rust ARM64 dependencies on compatible CI runs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "source/photocraft -> ../../build/photocraft/target"
+          shared-key: photocraft-openfill-v0231-arm64
+          cache-targets: true
+          cache-on-failure: false
+
       - name: Compile release-optimized upstream v0.23.1 compatibility candidate
         shell: bash
         run: |
@@ -640,4 +653,5 @@ jobs:
             output/*.apk
             SHA256SUMS.txt
           retention-days: 7
+          compression-level: 0
           if-no-files-found: error

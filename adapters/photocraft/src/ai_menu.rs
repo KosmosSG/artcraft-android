@@ -3,6 +3,10 @@
 //! No upstream PhotoCraft crates, Android manifest, or signing files are changed.
 
 use crate::ai_tools::{AiAction, ComfyEndpoint};
+use crate::ai_openfill_operations::{
+    Dimensions as FillSize, DocVersion as FillDocVersion,
+    JobDraft as FillDraft, Operation as FillOperation,
+};
 use crate::ai_background_editor;
 use crate::ai_background_job::{Job, JobId};
 use crate::ai_u2netp_transport;
@@ -23,6 +27,16 @@ pub(crate) struct AndroidAiMenu {
     show_connection: bool,
     linux_lab_mode: bool,
     show_openfill_setup: bool,
+    fill_operation: Option<FillOperation>,
+    fill_prompt: String,
+    fill_model: String,
+    fill_width: String,
+    fill_height: String,
+    fill_left: String,
+    fill_top: String,
+    fill_consent: bool,
+    fill_status: String,
+    fill_preflight: Option<Receiver<Result<(String, Option<FillDocVersion>), String>>>,
     openfill_code: String,
     openfill_status: String,
     openfill_consent: bool,
@@ -60,6 +74,16 @@ impl AndroidAiMenu {
             show_connection: false,
             linux_lab_mode: false,
             show_openfill_setup: false,
+            fill_operation: None,
+            fill_prompt: String::new(),
+            fill_model: String::new(),
+            fill_width: "1024".into(),
+            fill_height: "1024".into(),
+            fill_left: "0".into(),
+            fill_top: "0".into(),
+            fill_consent: false,
+            fill_status: "No generation requested.".into(),
+            fill_preflight: None,
             openfill_code: String::new(),
             openfill_status: "Remote GPU has not been paired.".into(),
             openfill_consent: false,
@@ -83,6 +107,23 @@ impl AndroidAiMenu {
             last_visible: visible,
             preference_path,
         }
+    }
+
+    /// Pc launcher menu actions 37–40 open operation-specific inputs.
+    /// Actual Generate is NOT enabled until a verified local AI transport exists.
+    pub(crate) fn open_openfill_operation(&mut self, code: u8) {
+        self.fill_operation = match code {
+            37 => Some(FillOperation::Fill),
+            38 => Some(FillOperation::RemoveObject),
+            39 => Some(FillOperation::GenerativeExpand),
+            40 => Some(FillOperation::Create),
+            _ => return,
+        };
+        self.fill_prompt.clear();
+        self.fill_model.clear();
+        self.fill_consent = false;
+        self.fill_preflight = None;
+        self.fill_status = "Enter the request, then validate offline. No image upload.".into();
     }
 
     fn persist_visibility(&mut self, visible: bool) {
@@ -110,6 +151,7 @@ impl AndroidAiMenu {
             self.cpu_consent = false;
         }
         let layer_changed = self.poll_cpu_result(session, ui.ctx());
+        self.poll_fill_preflight(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
         match received {
             Some(Ok(Ok(()))) => {
@@ -241,6 +283,76 @@ impl AndroidAiMenu {
                     });
             });
         });
+
+
+        if let Some(operation) = self.fill_operation {
+            let caption = match operation {
+                FillOperation::Fill => "Fill with Prompt",
+                FillOperation::RemoveObject => "Remove Object",
+                FillOperation::GenerativeExpand => "Generative Expand",
+                FillOperation::Create => "Create · Text to Image",
+            };
+            let mut open = true;
+            egui::Window::new(format!("PhotoCraft · OpenFill · {caption}"))
+                .id(egui::Id::new("pc_openfill_four_operation_window"))
+                .open(&mut open)
+                .resizable(true).collapsible(false)
+                .show(&ctx, |ui| {
+                    ui.heading(caption);
+                    ui.label("Request preview only — AI inference is not connected in this candidate.");
+                    if operation != FillOperation::Create {
+                        if let Some(active) = session.active() {
+                            ui.label(format!("Current canvas: {} × {} px",
+                                active.doc.size.width, active.doc.size.height));
+                        } else {
+                            ui.weak("Open an image first.");
+                        }
+                    }
+                    if operation != FillOperation::RemoveObject {
+                        ui.label("Prompt");
+                        ui.add(egui::TextEdit::multiline(&mut self.fill_prompt)
+                            .desired_rows(2).hint_text("Describe the result"));
+                    } else {
+                        ui.label("Select the object using a marquee or lasso.");
+                    }
+                    ui.label("OpenFill model identifier (backend/model license not verified)");
+                    ui.add(egui::TextEdit::singleline(&mut self.fill_model)
+                        .hint_text("Installed model ID"));
+                    if matches!(operation, FillOperation::GenerativeExpand | FillOperation::Create) {
+                        ui.horizontal(|ui| {
+                            ui.label("Output width");
+                            ui.text_edit_singleline(&mut self.fill_width);
+                            ui.label("Height");
+                            ui.text_edit_singleline(&mut self.fill_height);
+                        });
+                    }
+                    if operation == FillOperation::GenerativeExpand {
+                        ui.horizontal(|ui| {
+                            ui.label("Source left");
+                            ui.text_edit_singleline(&mut self.fill_left);
+                            ui.label("Top");
+                            ui.text_edit_singleline(&mut self.fill_top);
+                        });
+                        ui.label("Expand must preserve every original image pixel.");
+                    }
+                    ui.checkbox(&mut self.fill_consent,
+                        "Allow local request preparation for this image (no upload)");
+                    let busy = self.fill_preflight.is_some();
+                    if ui.add_enabled(!busy && self.fill_consent,
+                        egui::Button::new("Validate Request (Offline)")).clicked() {
+                        self.start_fill_preflight(operation, session, &ctx);
+                    }
+                    if busy { ui.spinner(); }
+                    ui.label(&self.fill_status);
+                    ui.add_enabled(false, egui::Button::new("Generate · backend not connected"));
+                    ui.weak("A successful validation is not a generated image. No pixels, mask or prompt leaves PhotoCraft.");
+                });
+            if !open {
+                self.fill_operation = None;
+                self.fill_preflight = None;
+                self.fill_consent = false;
+            }
+        }
 
         if self.show_background_setup {
             let mut open = self.show_background_setup;
@@ -456,6 +568,105 @@ impl AndroidAiMenu {
                 });
         }
         layer_changed
+    }
+
+
+    fn start_fill_preflight(
+        &mut self, operation: FillOperation, session: &Session, ctx: &egui::Context,
+    ) {
+        if self.fill_preflight.is_some() { return; }
+        let consent = std::mem::take(&mut self.fill_consent);
+        if !consent {
+            self.fill_status = "Explicit local validation consent required.".into();
+            return;
+        }
+        let snapshot = if operation == FillOperation::Create {
+            None
+        } else {
+            match ai_background_editor::active_snapshot(session) {
+                Ok(pair) => Some(pair),
+                Err(error) => { self.fill_status = error; return; }
+            }
+        };
+        let numeric = |value: &str| value.parse::<u32>();
+        let result = if matches!(operation, FillOperation::Create | FillOperation::GenerativeExpand) {
+            match (numeric(&self.fill_width), numeric(&self.fill_height),
+                   numeric(&self.fill_left), numeric(&self.fill_top)) {
+                (Ok(width), Ok(height), Ok(left), Ok(top)) =>
+                    Ok((FillSize { width, height }, left, top)),
+                _ => Err("Width, height and offsets must be valid unsigned integers"),
+            }
+        } else {
+            match snapshot.as_ref() {
+                Some((doc, _)) => Ok((FillSize {
+                    width: doc.size.width, height: doc.size.height,
+                }, 0, 0)),
+                None => Err("Open an image first"),
+            }
+        };
+        let (output, offset_x, offset_y) = match result {
+            Ok(value) => value,
+            Err(error) => { self.fill_status = error.into(); return; }
+        };
+        let prompt = self.fill_prompt.clone();
+        let model_id = self.fill_model.clone();
+        let (tx, rx) = mpsc::channel();
+        self.fill_preflight = Some(rx);
+        self.fill_status = "Validating real selection coverage without network activity…".into();
+        std::thread::spawn(move || {
+            let validation = (|| -> Result<(String, Option<FillDocVersion>), String> {
+                let source = snapshot.as_ref().map(|(_, rev)| FillDocVersion {
+                    document: rev.document, revision: rev.revision,
+                });
+                let input = snapshot.as_ref().map(|(doc, _)| FillSize {
+                    width: doc.size.width, height: doc.size.height,
+                });
+                let selected_pixels = if matches!(operation,
+                    FillOperation::Fill | FillOperation::RemoveObject)
+                {
+                    let (doc, rev) = snapshot.as_ref()
+                        .ok_or("A source image is required")?;
+                    ai_background_editor::capture_masked_fill(doc, *rev, true)?
+                        .selected_pixels()
+                } else { 0 };
+                let draft = FillDraft {
+                    operation, source, input, output, offset_x, offset_y,
+                    selected_pixels, prompt, model_id,
+                };
+                let checked = draft.validate_intent(true).map_err(str::to_owned)?;
+                if operation == FillOperation::GenerativeExpand {
+                    let _ = draft.expansion_mask(true).map_err(str::to_owned)?;
+                }
+                Ok((format!("Offline request validated: {:?} · {} × {} px. Model readiness and inference still unverified.",
+                    checked.kind, output.width, output.height), source))
+            })();
+            let _ = tx.send(validation);
+        });
+        ctx.request_repaint_after(Duration::from_millis(200));
+    }
+
+    fn poll_fill_preflight(&mut self, session: &Session, ctx: &egui::Context) {
+        let received = self.fill_preflight.as_ref().map(|rx| rx.try_recv());
+        match received {
+            Some(Ok(Ok((text, source)))) => {
+                self.fill_preflight = None;
+                let live = ai_background_editor::current_revision(session).map(|rev|
+                    FillDocVersion { document: rev.document, revision: rev.revision });
+                self.fill_status = if source.is_some() && source != live {
+                    "Document changed during validation. Request discarded.".into()
+                } else { text };
+            }
+            Some(Ok(Err(error))) => {
+                self.fill_preflight = None;
+                self.fill_status = format!("Request rejected: {error}");
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.fill_preflight = None;
+                self.fill_status = "Local validation worker disconnected.".into();
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint_after(Duration::from_millis(200)),
+            None => {}
+        }
     }
 
     fn cancel_cpu_job(&mut self) {

@@ -81,6 +81,11 @@ def main() -> None:
 ''' + appearance + '''
             ui.separator();
             ui.menu_button("AI Tools", |ui| {
+                action(ui, "Fill with Prompt…", 37);
+                action(ui, "Remove Object…", 38);
+                action(ui, "Generative Expand…", 39);
+                action(ui, "Create · Text to Image…", 40);
+                ui.separator();
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
                 action(ui, "About AI Tools…", 4);
@@ -108,25 +113,26 @@ def main() -> None:
                 action(ui, "Shortcut Pad Settings…", 19);
             });
             action(ui, "Keyboard Shortcuts…", 36);
-            ui.menu_button("Diagnostics", |ui| {
-                action(ui, "Keyboard / IME Input Diagnostics…", 18);
-                ui.weak("Records shortcut key names only");
-            });
             ui.separator();
             ui.menu_button("About PhotoCraft", |ui| {
                 ui.label("PhotoCraft · ArtCraft Android");
                 ui.label("Official upstream: v0.22.0");
                 ui.label("ARM64 test build · disposable signing");
             });'''
-    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,18,19,35,36):
+    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,35,36,37,38,39,40):
         if f", {id});" not in new_menu:
             raise RuntimeError(f"Restyle dropped action {id}")
     if 'artcraft_queue_pc_menu_action(34)' not in new_menu:
         raise RuntimeError("Restyle dropped wheel enable/disable action")
+    for feature in ("Fill with Prompt…", "Remove Object…", "Generative Expand…", "Create · Text to Image…"):
+        if new_menu.count(feature) != 1:
+            raise RuntimeError(f"Missing or duplicate OpenFill feature: {feature}")
+    if 'ui.menu_button("Diagnostics"' in new_menu:
+        raise RuntimeError("Diagnostics should not be visible in Pc menu")
     if new_menu.count('theme_action(ui,') != 14:
         raise RuntimeError("Restyle dropped a theme selection")
     for section in ('App Updates', 'Appearance', 'AI Tools', 'Stylus Wheel',
-                    'Touch Shortcut Pad', 'Keyboard Shortcuts…', 'Diagnostics',
+                    'Touch Shortcut Pad', 'Keyboard Shortcuts…',
                     'About PhotoCraft'):
         if new_menu.count(f'"{section}"') != 1:
             raise RuntimeError(f"Duplicate or missing {section} Pc menu row")
@@ -134,7 +140,8 @@ def main() -> None:
 
     # Open the established official PhotoCraft keyboard shortcut preferences
     # instead of inventing an Android-only nonfunctional settings screen.
-    new_dispatch = '''            36 => {
+    new_dispatch = '''            37..=40 => self.ai_menu.open_openfill_operation(pc_action),
+            36 => {
                 if let Err(error) = photocraft_ui_egui::menus::invoke(
                     &mut self.inner, ui.ctx(), "edit.keyboardShortcuts", serde_json::json!({})
                 ) { log::warn!("Keyboard Shortcuts menu: {error}"); }
@@ -147,6 +154,9 @@ def main() -> None:
     assert output.count('ui.menu_button("Diagnostics", |ui| {') == 1
     assert output.count('ui.menu_button("Touch Shortcut Pad", |ui| {') == 1
     assert 'Keyboard Diagnostics (test)' not in output
+    assert 'ui.menu_button("Diagnostics"' not in output
+    for feature in ("Fill with Prompt…", "Remove Object…", "Generative Expand…", "Create · Text to Image…"):
+        assert output.count(feature) == 1
     print("PASS: VectorCraft-style compact Pc menu with PhotoCraft actions preserved")
     print("PASS: 14 themes, 8-slot Default wheel, AI, fonts, keyboard settings, diagnostics, shortcut pad")
 

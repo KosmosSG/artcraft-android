@@ -59,7 +59,10 @@ class GuardedPatchTests(unittest.TestCase):
                 contents = (root / name).read_text()
                 self.assertIn(MARKER, contents)
                 self.assertEqual(contents.count(after), 1)
-                self.assertNotIn(before, contents)
+                if name.endswith("canvas/outline.rs"):
+                    self.assertEqual(contents.count(before), 1)  # desktop cap preserved
+                else:
+                    self.assertNotIn(before, contents)
             with self.assertRaises(ValueError):
                 patch(root)
 
@@ -68,7 +71,7 @@ def validate_staged(root: Path):
     for name, before, after in REPLACEMENTS:
         contents = (root / name).read_text()
         assert MARKER in contents and after in contents, name
-        assert before not in contents, name
+        assert (contents.count(before) == 1 if name.endswith("canvas/outline.rs") else before not in contents), name
     # Keep upstream's cache and worker; do not replace them.
     canvas = (root / "source/vectorcraft/crates/ui-egui/src/canvas.rs").read_text()
     assert "crate::render_worker::Worker::spawn" in canvas

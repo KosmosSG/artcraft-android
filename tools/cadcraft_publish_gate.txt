@@ -1,0 +1,6 @@
+CADCraft v0.19.0-android.15 — ONE-TIME OWNER-AUTHORIZED permanent signing and publishing gate.
+User approved production cleanup and publication after Android.14 Magic-Pencil auto-recognition device PASS.
+Publish only when a dedicated backed-up CADCraft permanent keystore and fingerprint are configured in GitHub Actions secrets. No temporary signer or borrowed other-app signer.
+Release tag cadcraft-v0.19.0-android.15; new official package com.artcraft.cadcraft; installed versionName 0.19.0-android.15; code 16782095.
+Preflight must validate signer and backup before compiling; build must verify APK, native JNI, package, version, v2 cert, checksum before release.
+No merge to main or any other Craft app modifications. Do not overwrite existing releases. Stop on any failed gate and report exact blocker.

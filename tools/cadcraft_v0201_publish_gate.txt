@@ -1,0 +1,9 @@
+CADCraft v0.20.1-android.1 — OWNER-AUTHORIZED ONE-TIME STABLE PRODUCTION RELEASE
+Upstream: official Storytold CADCraft tag v0.20.1 (not main); Android overlay based on known published CADCraft 0.19.0-android.15.
+Published production package: com.artcraft.cadcraft, versionName 0.20.1-android.1, versionCode 16782338 (higher than 16782095).
+Keep Cc icon, compact menu, hover pointer, Magic-Pencil button wheel auto-recognition + optional Pair Stylus Button, default wheel 75% size / 85% opacity, SAF DXF/DWG, modal D/S/C, PhotoCraft-style in-app updater.
+User explicitly authorized direct permanent signing and STABLE publication on 2026-11-17. No additional device-test approval needed for workflow execution.
+Use ONLY existing CADCraft permanent signing key with recoverable backup flag, verify expected certificate SHA-256 and v2 APK signing before release. Do not print/export secrets.
+Fail closed if package/version/versionCode, ARM64 native ABI/JNI exports, signer, APK archive, or checksum fails. Never use a test/temporary signer for production.
+Never overwrite existing CADCraft v0.19.0-android.15 release, alter main, merge any branch, or touch other Craft apps.
+Publishing must occur only after successful CI checks for this specific source and artifact.

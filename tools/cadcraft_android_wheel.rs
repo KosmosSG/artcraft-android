@@ -163,6 +163,25 @@ pub fn cc_menu(app: &mut CadApp, ui: &mut egui::Ui, clicked: &mut Option<String>
                 ui.close();
             }
             // Visible only in this disposable TEST build, not final CADCraft.
+            if ui.button("Open Wheel Manually (TEST)").clicked() {
+                app.ui.cad_wheel_customize = false;
+                app.ui.cad_wheel_enabled = true;
+                app.ui.cad_wheel_open = true;
+                let bounds = ui.ctx().content_rect();
+                let pointer = ui.ctx().input(|i| i.pointer.hover_pos())
+                    .unwrap_or(bounds.center());
+                let half = WHEEL_SIZE * app.ui.cad_wheel_size * 0.5 + 10.0;
+                let center = Pos2::new(
+                    pointer.x.clamp(bounds.left() + half,
+                        (bounds.right() - half).max(bounds.left() + half)),
+                    pointer.y.clamp(bounds.top() + half,
+                        (bounds.bottom() - half).max(bounds.top() + half)));
+                ui.ctx().data_mut(|d| d.insert_temp(
+                    Id::new("cadcraft-wheel-center"), center));
+                notify(ui.ctx(), "TEST: manual wheel opened; pen-button detection is separate");
+                ui.ctx().request_repaint();
+                ui.close();
+            }
             if ui.button("Pen Input Status (TEST)...").clicked() {
                 // Always open native egui diagnostics; if JNI cannot reach the
                 // Java Activity the window still appears and reports the fault.
@@ -458,8 +477,9 @@ pub fn show(app: &mut CadApp, ctx: &egui::Context, _bounds: egui::Rect) {
                     ui.label(line);
                 }
                 ui.separator();
+                ui.label("Use Open Wheel Manually (TEST) in the Cc menu to verify wheel rendering.");
                 ui.label("If candidate DPAD increases but accepted stays zero, inspect verified device IDs.");
-                ui.label("If neither count changes, MagicOS may consume the button before CADCraft.");
+                ui.label("If neither Java nor native count changes, Android may route the button outside the app.");
                 if ui.button("Refresh").clicked() { ui.ctx().request_repaint(); }
             });
         ctx.data_mut(|d| d.insert_temp(diag_id, open));

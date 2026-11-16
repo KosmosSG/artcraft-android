@@ -121,7 +121,7 @@ jobs:
           grep -Fq 'state.paired_id = Some(device)' reference/vendor/android-activity/src/lib.rs
           grep -Fq 'Pair Stylus Button' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           ! grep -Fq 'Pair Pen Button (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
-          grep -Fq 'stylus_bridge_failure' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
+          ! grep -Fq 'stylus_bridge_failure' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs
           grep -Fq 'cadRawDpadCandidates' reference/templates/android/SafActivity.java
           grep -Fq 'cadNamedPenOtherKeys' reference/templates/android/SafActivity.java
           ! grep -Fq 'Open Wheel Manually (TEST)' reference/source/cadcraft/crates/ui-egui/src/cadcraft_android_wheel.rs

@@ -29,6 +29,16 @@ jobs:
           set -euo pipefail
           rustc --edition=2021 --test adapters/photocraft/src/openfill_remote.rs -o "$RUNNER_TEMP/openfill-probe-tests"
           "$RUNNER_TEMP/openfill-probe-tests" --nocapture
+      - name: Run Linux Lab local ComfyUI synthetic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/photocraft_ai_cpu -p 'test_linux_lab_comfy_probe.py' -v
+      - name: Check Python source syntax without installing packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_ai_cpu/linux_lab_comfy_probe.py tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py
       - name: Verify no production release or signer was touched
         shell: bash
         run: |
@@ -38,7 +48,7 @@ jobs:
           printf '%s\n' "$changed"
           printf '%s\n' "$changed" | while IFS= read -r f; do
             case "$f" in
-              adapters/photocraft/src/openfill_remote.rs|adapters/photocraft/src/lib.rs|adapters/photocraft/src/ai_menu.rs|docs/photocraft-openfill-android-integration-20261116.md|.github/workflows/photocraft-openfill-remote-probe-tests.yml) ;;
+              adapters/photocraft/src/openfill_remote.rs|adapters/photocraft/src/lib.rs|adapters/photocraft/src/ai_menu.rs|docs/photocraft-openfill-android-integration-20261116.md|tools/photocraft_ai_cpu/linux_lab_comfy_probe.py|tools/photocraft_ai_cpu/test_linux_lab_comfy_probe.py|.github/workflows/photocraft-openfill-remote-probe-tests.yml) ;;
               *) echo "Unexpected change outside OpenFill preview: $f" >&2; exit 1 ;;
             esac
           done

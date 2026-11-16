@@ -12,12 +12,16 @@ use jni::{
 use photocraft_codecs::{ChannelLayout, EncodeOptions, Image};
 use photocraft_doc::Document;
 use photocraft_engine::Session;
+use photocraft_format::RecoveryStore;
 use photocraft_ui_egui::{
-    FileDialogAnswer, FileDialogReply, FileDialogRequest, Inbox, PhotocraftApp, Services,
+    FileDialogAnswer, FileDialogReply, FileDialogRequest, Inbox, PhotocraftApp, Recoverable,
+    Services,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -34,6 +38,13 @@ mod ime_bridge;
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.
 const ANDROID_SHELL_MARKER: &str = "ARTCRAFT_PHOTOCRAFT_ANDROID_SHELL_V2_MODIFIERS_FULLSCREEN";
 
+/// Cleared when the app shuts down, so a background watcher stops talking to the Activity.
+///
+/// Android releases the Activity's Java object as soon as the native thread returns, so a
+/// watcher that kept asking it for files after that would call into a dead object. The flag is
+/// cleared when the app is dropped, which happens before the native thread returns.
+static ALIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
 struct AndroidFileBridge {
     app: AndroidApp,
     vm: Arc<JavaVM>,
@@ -49,7 +60,7 @@ impl AndroidFileBridge {
         })
     }
 
-    fn request_open(&self, id: u64, multiple: bool) -> Result<(), String> {
+    fn request_open(&self, id: u64, multiple: bool, extensions: &str) -> Result<(), String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 // AndroidApp returns an unowned global ref. Do not delete it when this wrapper drops.
@@ -57,11 +68,17 @@ impl AndroidFileBridge {
                 // SAFETY: AndroidApp retains this global Activity reference; as_cast_raw borrows it
                 // without taking ownership or attempting to delete the reference.
                 let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                let ext_name = env.new_string(extensions)?;
+                let ext_obj = JObject::from(ext_name);
                 env.call_method(
                     &*activity,
                     jni_str!("pcRequestOpen"),
-                    jni_sig!("(JZ)V"),
-                    &[JValue::Long(id as i64), JValue::Bool(multiple)],
+                    jni_sig!("(JZLjava/lang/String;)V"),
+                    &[
+                        JValue::Long(id as i64),
+                        JValue::Bool(multiple),
+                        JValue::Object(&ext_obj),
+                    ],
                 )?;
                 Ok(())
             })
@@ -147,6 +164,35 @@ impl AndroidFileBridge {
             .map_err(|e| e.to_string())
     }
 
+    /// How many files the system (or a drop) handed us that the shell has not opened yet.
+    /// Asked without taking anything off the queue, so the frame that opens the file still
+    /// finds it there. The watcher's thread uses it to wake an idle app.
+    fn intent_pending(&self) -> Result<usize, String> {
+        self.vm
+            .attach_current_thread(|env| -> jni::errors::Result<usize> {
+                let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                // SAFETY: AndroidApp retains this global Activity reference; as_cast_raw borrows it
+                // without taking ownership or attempting to delete the reference.
+                let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                let value = match env.call_method(
+                    &*activity,
+                    jni_str!("intentPending"),
+                    jni_sig!("()I"),
+                    &[],
+                ) {
+                    Ok(value) => value.i()?,
+                    Err(error) => {
+                        // A missing `intentPending` leaves a pending NoSuchMethodError on the shared
+                        // JNI thread (which the SAF bridge also uses); clear it before returning.
+                        env.exception_clear();
+                        return Err(error);
+                    }
+                };
+                Ok(value.max(0) as usize)
+            })
+            .map_err(|e| e.to_string())
+    }
+
     fn files_dir(&self) -> Result<PathBuf, String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<PathBuf> {
@@ -211,12 +257,20 @@ impl PickerState {
     ) {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
         let launch_result = match request {
-            FileDialogRequest::Open { multiple, .. } => {
+            FileDialogRequest::Open {
+                multiple,
+                extensions,
+                ..
+            } => {
                 self.replies
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .insert(id, reply);
-                bridge.request_open(id, multiple)
+                let ext_str = extensions
+                    .as_ref()
+                    .map(|exts| exts.join(","))
+                    .unwrap_or_default();
+                bridge.request_open(id, multiple, &ext_str)
             }
             FileDialogRequest::Save { suggested } => {
                 let name = Path::new(&suggested)
@@ -318,6 +372,9 @@ impl PickerState {
             reply.send(answer);
             ctx.request_repaint();
         }
+        if !self.replies.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
     }
 }
 
@@ -352,18 +409,31 @@ fn write_mobile(bridge: &AndroidFileBridge, path: &str, bytes: &[u8]) -> Result<
     }
 }
 
+type SharedRecovery = Rc<RefCell<Option<RecoveryStore>>>;
+
+fn with_store<R>(store: &SharedRecovery, f: impl FnOnce(&mut RecoveryStore) -> R) -> Result<R, String> {
+    let mut slot = store.try_borrow_mut().map_err(|_| "crash recovery is busy".to_string())?;
+    Ok(f(slot.as_mut().ok_or("no config directory")?))
+}
+
 fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: PathBuf, inbox: Inbox) -> Services {
     let write_bridge = bridge.clone_for_services();
     let save_bridge = bridge.clone_for_services();
     let prefs_bridge = bridge.clone_for_services();
     let load_prefs_path = prefs_path.clone();
+
+    let recovery_dir = prefs_path.parent().map(|p| p.join("recovery"));
+    let recover_dir = recovery_dir.clone();
+    let store: SharedRecovery = Rc::new(RefCell::new(recovery_dir.map(RecoveryStore::new)));
+    let (s1, s2, s4, s5) = (store.clone(), store.clone(), store.clone(), store.clone());
+
     Services {
         // Files the system asked us to open (ACTION_VIEW/ACTION_SEND) are queued here and drained
         // by the app's own per-frame inbox, exactly like a document chosen in the picker.
         inbox: Some(inbox),
         import: Some(Box::new(
-            |name: &str, bytes: &[u8], max_svg_group_depth: usize| {
-                photocraft_io::import_with_svg_group_depth(name, bytes, max_svg_group_depth)
+            |name: &str, bytes: &[u8], opts: &photocraft_io::ImportOptions| {
+                photocraft_io::import_with_options(name, bytes, opts)
                     .map(|r| (r.document, r.warnings))
                     .map_err(|e| e.to_string())
             },
@@ -447,6 +517,29 @@ fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: Pat
                 &EncodeOptions::default(),
             )
             .map_err(|e| e.to_string())
+        })),
+        autosave: Some(Box::new(move |doc: &Arc<Document>, revision: u64, path: Option<&str>| {
+            with_store(&s1, |s| s.autosave_checked(doc, revision, path.map(str::to_string)))?
+        })),
+        autosave_results: Some(Box::new(move || with_store(&s4, RecoveryStore::take_completed).unwrap_or_default())),
+        flush_autosaves: Some(Box::new(move || with_store(&s5, RecoveryStore::flush).unwrap_or_default())),
+        discard_autosave: Some(Box::new(move |id: u64| {
+            let _ = with_store(&s2, |s| s.discard(id));
+        })),
+        recover: Some(Box::new(move || {
+            let Some(dir) = recover_dir.as_ref() else { return Vec::new() };
+            photocraft_format::list_recovery(dir)
+                .into_iter()
+                .map(|e| Recoverable {
+                    key: e.info.key.clone(),
+                    name: e.info.document_name.clone(),
+                    path: e.info.original_path.clone(),
+                    load: Box::new(move || photocraft_format::recover(&e).map_err(|e| e.to_string())),
+                })
+                .collect()
+        })),
+        adopt_autosave: Some(Box::new(move |id: u64, key: &str| {
+            let _ = with_store(&store, |s| s.adopt(id, key));
         })),
         ..Services::default()
     }
@@ -537,11 +630,42 @@ struct PhotoCraftAndroidApp {
     // when the one-time orphan sweep of the directory is due.
     staged_seen: Vec<String>,
     staged_sweep_at: Option<std::time::Instant>,
+    persist_last: Option<std::time::Instant>,
 }
 
 /// Read the files the system asked this app to open (an `ACTION_VIEW`/`ACTION_SEND` it is registered
 /// for) into the app's import inbox, exactly like a document chosen in the picker. Each staged path
 /// is read once; a launcher without the intent host stops the poll after one error.
+/// Watch for files the system (or another app's drop) handed the app while it was idle.
+///
+/// egui runs a frame only when something asks it to, so a file that arrives while the app sits
+/// untouched would wait in the Activity's queue until the user happened to touch the screen. The
+/// watcher asks the Activity how many files are waiting (without taking any of them) and asks
+/// egui for a repaint when there is one, so the file opens on its own. The file itself is still
+/// opened on the frame thread, in `drain_incoming`.
+fn watch_incoming(bridge: &AndroidFileBridge, ctx: &egui::Context) {
+    static WATCHER: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if WATCHER.set(()).is_err() {
+        return;
+    }
+    let bridge = bridge.clone_for_services();
+    let ctx = ctx.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        if !ALIVE.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+        match bridge.intent_pending() {
+            Ok(pending) if pending > 0 => ctx.request_repaint(),
+            Ok(_) => {}
+            Err(error) => {
+                log::info!("Launcher does not report incoming files: {error}");
+                break;
+            }
+        }
+    });
+}
+
 fn drain_incoming(bridge: &AndroidFileBridge, inbox: &Inbox, warmup: &mut i64) {
     if *warmup > 0 {
         *warmup -= 1;
@@ -652,15 +776,43 @@ impl PhotoCraftAndroidApp {
         }
         self.staged_seen = current;
     }
+
+    fn persist_tick(&mut self) {
+        let now = std::time::Instant::now();
+        if self.persist_last.is_some_and(|last| now.duration_since(last) < std::time::Duration::from_secs(2)) {
+            return;
+        }
+        self.persist_last = Some(now);
+        self.persist_now();
+    }
+
+    fn persist_now(&mut self) {
+        if let Some(flush) = self.inner.services.flush_autosaves.as_mut() {
+            let _ = flush();
+        }
+    }
+}
+
+impl Drop for PhotoCraftAndroidApp {
+    fn drop(&mut self) {
+        // The Activity is about to go: stop the watcher before the native thread returns.
+        ALIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.picker.poll(&self.bridge, ctx);
-        // Deliver any file the system asked us to open through the app's own inbox.
+        // Wake the app when a file the system handed us is waiting, then deliver it through the
+        // app's own inbox.
+        watch_incoming(&self.bridge, ctx);
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
+        self.persist_tick();
         self.inner.logic(ctx, frame);
+        if self.inner.session.has_jobs() || !self.inner.jobs.opens.is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -671,14 +823,90 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.ime.poll(raw);
         apply_android_modifiers(&mut self.modifiers, raw);
+        if raw.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(false))) {
+            self.persist_now();
+        }
         self.inner.raw_input_hook(ctx, raw);
     }
+
+    fn on_exit(&mut self) {
+        self.persist_now();
+    }
+}
+
+/// Screen below 600 dpi (phones) applies the scale; denser screens stay at Auto.
+#[cfg(target_os = "android")]
+fn device_is_high_density(app: &AndroidApp) -> Option<bool> {
+    // SAFETY: AndroidApp owns the live VM pointer for the lifetime of the activity.
+    let jvm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as *mut _) };
+    let activity_raw = app.activity_as_ptr() as jni::sys::jobject;
+    let result = jvm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+        let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+        Ok(env
+            .call_method(&*activity, jni_str!("isHighDensityDevice"), jni_sig!("()Z"), &[])?
+            .z()?)
+    });
+    match result {
+        Ok(is_dense) => Some(is_dense),
+        Err(error) => {
+            log::warn!("Could not determine the screen density: {error}");
+            None
+        }
+    }
+}
+
+/// Whether the high-density UI scale should be applied to this launch, and the sidecar that
+/// remembers that it was.
+///
+/// The scale belongs to the *device*, but `preferences.json` belongs to the *user*: it is written on
+/// the first launch and never revisited, so a screen that later stops being high-density (a
+/// foldable, an external display, a display-size change) kept the old scale. The choice is
+/// remembered in its own sidecar (`device_class`), so "first launch" means "the scale has not been
+/// set for this device yet" and a user who changes the scale by hand keeps it: the sidecar already
+/// says it was applied, so nothing is re-applied.
+#[cfg(target_os = "android")]
+fn device_scale_first_time(dir: &Path) -> bool {
+    let marker = dir.join("device_class");
+    if fs::read_to_string(&marker).ok().is_some_and(|saved| saved.trim() == "scaled") {
+        return false;
+    }
+    let path = dir.join("device_class");
+    let temporary = path.with_extension("tmp");
+    if let Err(error) = fs::create_dir_all(dir).and_then(|()| fs::write(&temporary, b"scaled")).and_then(|()| fs::rename(&temporary, &path)) {
+        log::warn!("settings: {}: {error}", path.display());
+    }
+    true
 }
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(android_app: AndroidApp) {
+    android_logger::init_once(
+        android_logger::Config::default()
+            .with_max_level(log::LevelFilter::Info)
+            .with_tag("com.artcraft.photocraft"),
+    );
     log::info!("{ANDROID_SHELL_MARKER} ready; {}", ime_bridge::ime::IME_MARKER);
+
+    // Initialize Rayon's global thread pool to leverage all available CPU cores for
+    // parallel image tile/band processing and Wasm filter execution.
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .max(2);
+
+    if let Err(error) = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_cpus)
+        .stack_size(2 * 1024 * 1024)
+        .thread_name(|i| format!("pc-worker-{i}"))
+        .build_global()
+    {
+        log::warn!("Rayon global thread pool initialization note: {error}");
+    } else {
+        log::info!("Rayon global thread pool initialized with {num_cpus} worker threads (stack: 2MB)");
+    }
+
+    egui_winit::android_activity::set_activity(android_app.activity_as_ptr());
     system_fonts::install_font_env(&android_app);
     let bridge = match AndroidFileBridge::new(android_app.clone()) {
         Ok(bridge) => bridge,
@@ -702,7 +930,7 @@ fn android_main(android_app: AndroidApp) {
     }
     let picker = Arc::new(PickerState::default());
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("PhotoCraft")
             .with_drag_and_drop(true),
@@ -712,6 +940,14 @@ fn android_main(android_app: AndroidApp) {
         android_app: Some(android_app),
         ..Default::default()
     };
+    // The adapter's real texture and buffer limits, so large documents stay on the GPU canvas;
+    // Vulkan first, GLES on devices without a usable Vulkan driver — the same setup the desktop
+    // app and the generated launchers use.
+    photocraft_ui_egui::gpu_canvas::use_adapter_limits(&mut options.wgpu_options.wgpu_setup);
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
+        create.instance_descriptor.backends =
+            eframe::wgpu::Backends::VULKAN | eframe::wgpu::Backends::GL;
+    }
     let app_bridge = bridge.clone_for_services();
     let app_picker = picker.clone();
     let app_intent_inbox = intent_inbox.clone();
@@ -729,6 +965,16 @@ fn android_main(android_app: AndroidApp) {
                     app_intent_inbox.clone(),
                 ),
             );
+            app.background_jobs = true;
+            // A high-density screen gets the app's 150 % UI scale; every other screen keeps its own
+            // default, Auto. Applied once (`device_scale_first_time`), which covers a first launch
+            // and an upgrade from a build without this bootstrap; a user who sets the scale by hand
+            // keeps it, since the sidecar already says it was applied. The app saves it through
+            // `save_prefs` on its normal schedule.
+            let class_dir = prefs_path.parent().unwrap_or_else(|| Path::new("."));
+            if device_is_high_density(&app_bridge.app) == Some(true) && device_scale_first_time(class_dir) {
+                let _ = app.session.execute("prefs.set", serde_json::json!({"values": {"interface.uiScale": "150"}}));
+            }
 
             // eframe drawing a window through wgpu does not automatically enable
             // PhotoCraft's own GPU image compositor. Pass the *same* render state
@@ -770,6 +1016,7 @@ fn android_main(android_app: AndroidApp) {
                 );
             }
 
+
             Ok(Box::new(PhotoCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
@@ -780,6 +1027,7 @@ fn android_main(android_app: AndroidApp) {
                 intent_warmup: 2,
                 staged_seen: Vec::new(),
                 staged_sweep_at: Some(std::time::Instant::now() + std::time::Duration::from_secs(30)),
+                persist_last: None,
             }))
         }),
     );

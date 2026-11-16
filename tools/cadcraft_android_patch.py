@@ -336,12 +336,15 @@ struct CadStylusKeys {
     candidate_count: u32,
     accepted_count: u32,
     last_candidate: Option<(i32, i32, i32)>,
+    raw_mouse_button_count: u32,
+    last_mouse_button: Option<(i32, i32, i32)>,
 }
 #[cfg(feature = "native-activity")]
 static CAD_STYLUS_KEYS: std::sync::Mutex<CadStylusKeys> =
     std::sync::Mutex::new(CadStylusKeys {
         enabled: false, allowed_ids: Vec::new(), events: Vec::new(), last: None,
-        candidate_count: 0, accepted_count: 0, last_candidate: None
+        candidate_count: 0, accepted_count: 0, last_candidate: None,
+        raw_mouse_button_count: 0, last_mouse_button: None
     });
 
 #[cfg(feature = "native-activity")]
@@ -382,12 +385,21 @@ pub fn cad_stylus_capture(device: i32, code: i32, action: i32, repeat: i32) -> b
     true
 }
 #[cfg(feature = "native-activity")]
+pub fn cad_stylus_observe_mouse(device: i32, action: i32, buttons: i32) {
+    if action != 11 && action != 12 { return; }
+    if let Ok(mut state) = CAD_STYLUS_KEYS.lock() {
+        state.raw_mouse_button_count = state.raw_mouse_button_count.saturating_add(1);
+        state.last_mouse_button = Some((device, action, buttons));
+    }
+}
+#[cfg(feature = "native-activity")]
 pub fn cad_stylus_native_status() -> String {
     if let Ok(state) = CAD_STYLUS_KEYS.lock() {
         format!(
-            "Native enabled: {} | Verified IDs: {:?} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?}",
+            "Native enabled: {} | Verified IDs: {:?} | Candidate DPAD: {} | Accepted pen buttons: {} | Last candidate (device, key, action): {:?} | Raw mouse-button candidates: {} | Last mouse (device, action, buttons): {:?}",
             state.enabled, state.allowed_ids, state.candidate_count,
-            state.accepted_count, state.last_candidate
+            state.accepted_count, state.last_candidate,
+            state.raw_mouse_button_count, state.last_mouse_button
         )
     } else { "Native input state lock unavailable".to_owned() }
 }
@@ -450,6 +462,7 @@ pub fn cad_stylus_hover_current() -> Option<(f32, f32)> {
                 let device = unsafe { ndk_sys::AInputEvent_getDeviceId(ptr) };
                 let action = unsafe { ndk_sys::AMotionEvent_getAction(ptr) } & 0xff;
                 let buttons = unsafe { ndk_sys::AMotionEvent_getButtonState(ptr) } as i32;
+                crate::cad_stylus_observe_mouse(device, action, buttons);
                 if action == 11 && buttons & (2 | 32 | 64) != 0 &&
                     crate::cad_stylus_capture(device, 20, 0, 0) {
                     queue.finish_event(ndk_event, true);

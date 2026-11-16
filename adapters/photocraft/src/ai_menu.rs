@@ -131,6 +131,30 @@ impl AndroidAiMenu {
             }
             None => {}
         }
+        // OpenFill remote GPU handshake is read-only. No pixels or prompts
+        // are uploaded, and the pairing token stays in memory for this session.
+        let remote_received = self.openfill_result.as_ref().map(|rx| rx.try_recv());
+        match remote_received {
+            Some(Ok(Ok(pair))) => {
+                self.openfill_session = Some(pair);
+                self.openfill_status = "OpenFill remote GPU verified for this session. Generative jobs are not wired up yet.".into();
+                self.openfill_result = None;
+            }
+            Some(Ok(Err(error))) => {
+                self.openfill_session = None;
+                self.openfill_status = format!("Remote GPU check failed: {error}");
+                self.openfill_result = None;
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.openfill_session = None;
+                self.openfill_status = "Remote GPU check ended unexpectedly.".into();
+                self.openfill_result = None;
+            }
+            Some(Err(TryRecvError::Empty)) => {
+                ui.ctx().request_repaint_after(Duration::from_millis(200));
+            }
+            None => {}
+        }
         // The model check is separately requested by the user; never query
         // model folders automatically just because ComfyUI was reachable.
         let model_received = self.model_result.as_ref().map(|rx| rx.try_recv());

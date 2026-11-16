@@ -151,7 +151,7 @@ def main() -> None:
     output = brand.read_text(encoding="utf-8")
     assert output.count('ui.menu_button("Stylus Wheel", |ui| {') == 1
     assert output.count('action(ui, "Customization", 35);') == 1
-    assert output.count('ui.menu_button("Diagnostics", |ui| {') == 1
+    assert output.count('ui.menu_button("Diagnostics", |ui| {') == 0
     assert output.count('ui.menu_button("Touch Shortcut Pad", |ui| {') == 1
     assert 'Keyboard Diagnostics (test)' not in output
     assert 'ui.menu_button("Diagnostics"' not in output

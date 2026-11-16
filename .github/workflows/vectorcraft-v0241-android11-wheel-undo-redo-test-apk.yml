@@ -1,4 +1,4 @@
-name: VectorCraft v0.24.1-android.11 Stylus Wheel and Undo Redo ARM64 TEST ONLY
+name: VectorCraft v0.24.1-android.12 Vc Update Menu Refinements ARM64 TEST ONLY
 
 # Isolated Android.11 pen-hover and Undo/Redo test; preserve device-proven Android.10 .ai typing and Android.9 pan.
 # One-time Android.9 cursor-only trigger-file gated push; no ordinary source push rebuild.
@@ -26,8 +26,8 @@ jobs:
     env:
       UPSTREAM_SHA: f4922aa7ac99a4f6d56fc68a83a44945207ec610
       BUILDER_SHA: 52308fbcb26d8d8625f35fc1f048813f8e1e12a8
-      VERSION_NAME: 0.24.1-android.11
-      VERSION_CODE: '16784918'
+      VERSION_NAME: 0.24.1-android.12
+      VERSION_CODE: '16784919'
       LAST_PUBLISHED_CODE: '16784908'
       ORIGINAL_CERT: 7fc384231187a50f7ac3d6fe45e1f0c5b728e195ef24e783b087dce0d3af93f5
       ARTCRAFT_TARGET_SDK: '35'
@@ -805,8 +805,8 @@ jobs:
           p=Path("builder/adapters/vectorcraft/Cargo.toml")
           s=p.read_text()
           assert s.count('label = "VectorCraft Test"')==2
-          p.write_text(s.replace('label = "VectorCraft Test"', 'label = "VectorCraft Wheel Keys Test"'))
-          print("PASS: separate launcher label VectorCraft Wheel Keys Test")
+          p.write_text(s.replace('label = "VectorCraft Test"', 'label = "VectorCraft Updates Test"'))
+          print("PASS: separate launcher label VectorCraft Updates Test")
           PY
           python3 - <<'PY'
           from pathlib import Path
@@ -814,7 +814,7 @@ jobs:
           s=p.read_text()
           old="applicationId '{_groovy(namespace)}.test'"
           assert s.count(old)==1
-          p.write_text(s.replace(old,"applicationId '{_groovy(namespace)}.candidate_v0241a11wheelkeys'",1))
+          p.write_text(s.replace(old,"applicationId '{_groovy(namespace)}.candidate_v0241a12updates'",1))
           PY
           python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
           # Owner supplied a NEW flat Vc artwork; the previous glossy approved
@@ -901,7 +901,7 @@ jobs:
           badging=Path("private-test/badging.txt").read_text()
           resources=Path("private-test/resources.txt").read_text()
           match=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",badging,re.M)
-          assert match and match.groups()==("com.artcraft.vectorcraft.candidate_v0241a11wheelkeys",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
+          assert match and match.groups()==("com.artcraft.vectorcraft.candidate_v0241a12updates",os.environ["VERSION_CODE"],os.environ["VERSION_NAME"]),match
           assert re.search(r"^launchable-activity: name='com\.artcraft\.vectorcraft\.VectorCraftActivity'",badging,re.M)
           sig=Path("private-test/signature.txt").read_text()
           fingerprints=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",sig)
@@ -923,7 +923,7 @@ jobs:
           Path("private-test/verification.json").write_text(json.dumps(report,indent=2)+"\n")
           print("PASS: separate-install temporary-signature TEST APK, correct ARM64, launcher, app identity, icon and version")
           PY
-          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-WHEEL-HISTORY-ARM64-DISPOSABLE-TEST-SIGNED.apk"
+          cp "$APK" "private-test/VectorCraft-v$VERSION_NAME-UPDATE-MENU-ARM64-DISPOSABLE-TEST-SIGNED.apk"
           (cd private-test && sha256sum *.apk > SHA256SUMS.txt)
           # Compare against prior test APK (163407944 bytes); this candidate
           # compresses native code in the package, extracting once on install.
@@ -950,6 +950,12 @@ jobs:
           cp android-port/docs/vectorcraft/v0241-android9-glass-pan-cursor-test.md private-test/TEST-NOTES.md
           cat >> private-test/TEST-NOTES.md <<'EOF'
 
+          ## Android.12 menu refinement device checks
+          1. Vc > App Updates > Check at Startup shows an unchecked checkbox on fresh install. Tap once to show its checkmark, close and reopen menu, then relaunch to confirm persistence.
+          2. Vc > App Updates > Check for Updates leaves the canvas visible without opening About; Android's bottom Vc-icon update toast shows checking and then the completed result.
+          3. Diagnostics is absent from the Vc launcher menu. Keep internal diagnostics and all verified Android.11 keyboard, wheel, updater and .ai typing behavior intact.
+          4. This disposable-signed .12 build uses a separate package from the owner's working .11 candidate and from the production app; never replace production or publish.
+
           ## Android.11 additional device checks
           1. Open a new document. Check Stylus Wheel On in Vc > Stylus Wheel (fresh candidate defaults ON; an existing OFF preference is respected).
           2. Hover HONOR Magic-Pencil 4s without touching and press its side button. The wheel should open; confirm the touch tip selects a segment.
@@ -964,7 +970,7 @@ jobs:
       - name: Upload test artifact only — never publish a GitHub Release
         uses: actions/upload-artifact@v4
         with:
-          name: VectorCraft-v0.24.1-android.11-WHEEL-HISTORY-ARM64-TEST-ONLY
+          name: VectorCraft-v0.24.1-android.12-UPDATE-MENU-ARM64-TEST-ONLY
           path: private-test/
           if-no-files-found: error
           retention-days: 7

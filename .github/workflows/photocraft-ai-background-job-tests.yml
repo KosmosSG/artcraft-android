@@ -1,0 +1,27 @@
+name: PhotoCraft AI background job contract tests (no APK)
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - 'adapters/photocraft/src/ai_background_job.rs'
+      - '.github/workflows/photocraft-ai-background-job-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract-tests:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test consent, cancellation and stale-document rejection
+        run: |
+          rustc --edition=2021 --test adapters/photocraft/src/ai_background_job.rs -o /tmp/photocraft-ai-background-job-tests
+          /tmp/photocraft-ai-background-job-tests
+      - name: Confirm processing commands remain disabled
+        run: |
+          grep -q 'ui.add_enabled(false, egui::Button::new(action.label()))' adapters/photocraft/src/ai_menu.rs
+          echo 'No inference, image upload, APK, release or signing in this job'

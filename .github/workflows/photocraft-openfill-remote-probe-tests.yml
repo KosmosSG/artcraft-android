@@ -50,7 +50,7 @@ jobs:
                              (39, "Generative Expand"), (40, "Create · Text to Image")):
               assert f'action(ui, "{name}…", {code});' in p
           assert '37..=40 => self.ai_menu.open_openfill_operation(pc_action)' in p
-          assert 'ui.menu_button("Diagnostics", |ui| {' not in p
+          assert """assert output.count('ui.menu_button("Diagnostics", |ui| {') == 0""" in p
           host = Path("adapters/photocraft/src/ai_menu.rs").read_text()
           assert 'fn start_fill_generation(' in host
           assert 'fn poll_fill_generation(' in host

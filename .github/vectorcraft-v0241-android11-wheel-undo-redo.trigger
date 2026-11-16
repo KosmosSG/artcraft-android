@@ -19,3 +19,5 @@ Android.11 isolated run #5: rebuild corrected Rust JNI bool and history match-ar
 Android.11 isolated run #6: corrected source-only JNI Boolean assertion to match jni-0.22.4 JValue::Bool(enabled), after failed run 43783016563. Continue through full Rust build and APK test-only checks. No release or permanent signing.
 
 Android.12 isolated menu-refinement build #7: checked/persistent App Updates > Check at Startup toggle; Vc > Check for Updates uses existing bottom Android toast without About popup; hide Vc Diagnostics submenu only, retain private diagnostic implementation. Version 0.24.1-android.12 / code 16784919 uses separate candidate_v0241a12updates package, disposable signing, immutable upstream and Android.11 successful IME/hover/undo baseline. Never merge or publish.
+
+Android.12 isolated menu-refinement build #8: fixed two historical source tests which previously demanded the now-hidden Vc Diagnostics submenu. New preflight tests require checked startup toggle, notification-only checks, and preserved installer. Continue disposable ARM64 only.

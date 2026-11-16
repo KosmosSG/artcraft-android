@@ -161,6 +161,18 @@ impl AndroidAiMenu {
             self.cancel_cpu_job();
             self.cpu_consent = false;
         }
+        // Consume the one-shot Pc menu click before drawing dialogs.
+        // This survives the frame boundary between the upstream Pc popup
+        // and the Android AI adapter. The queued command stays as fallback.
+        let direct_action = ui.ctx().data_mut(|data| {
+            let id = egui::Id::new("pc_openfill_direct_menu_action");
+            let code = data.get_temp::<u8>(id).unwrap_or(0);
+            data.insert_temp(id, 0u8);
+            code
+        });
+        if (37..=40).contains(&direct_action) {
+            self.open_openfill_operation(direct_action);
+        }
         let background_changed = self.poll_cpu_result(session, ui.ctx());
         let fill_changed = self.poll_fill_generation(session, ui.ctx());
         let layer_changed = background_changed || fill_changed;

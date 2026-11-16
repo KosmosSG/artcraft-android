@@ -81,10 +81,24 @@ def main() -> None:
 ''' + appearance + '''
             ui.separator();
             ui.menu_button("AI Tools", |ui| {
-                action(ui, "Fill with Prompt…", 37);
-                action(ui, "Remove Object…", 38);
-                action(ui, "Generative Expand…", 39);
-                action(ui, "Create · Text to Image…", 40);
+                // The generic Pc command queue is processed after the Android
+                // AI dialogs have already rendered. Also stage an egui
+                // one-shot action that the AI adapter consumes NEXT frame.
+                // request_repaint guarantees that next frame runs even when
+                // tapping a submenu closes the only currently active popup.
+                let openfill_action = |ui: &mut egui::Ui, title: &str, code: u8| {
+                    if ui.button(title).clicked() {
+                        let id = egui::Id::new("pc_openfill_direct_menu_action");
+                        ui.ctx().data_mut(|data| data.insert_temp(id, code));
+                        crate::menus::artcraft_queue_pc_menu_action(code);
+                        ui.ctx().request_repaint();
+                        ui.close();
+                    }
+                };
+                openfill_action(ui, "Fill with Prompt…", 37);
+                openfill_action(ui, "Remove Object…", 38);
+                openfill_action(ui, "Generative Expand…", 39);
+                openfill_action(ui, "Create · Text to Image…", 40);
                 ui.separator();
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
@@ -119,9 +133,12 @@ def main() -> None:
                 ui.label("Official upstream: v0.22.0");
                 ui.label("ARM64 test build · disposable signing");
             });'''
-    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,35,36,37,38,39,40):
+    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,35,36):
         if f", {id});" not in new_menu:
             raise RuntimeError(f"Restyle dropped action {id}")
+    for id in (37,38,39,40):
+        if f'openfill_action(ui, "' not in new_menu or f', {id});' not in new_menu:
+            raise RuntimeError(f"Restyle dropped direct OpenFill entry {id}")
     if 'artcraft_queue_pc_menu_action(34)' not in new_menu:
         raise RuntimeError("Restyle dropped wheel enable/disable action")
     for feature in ("Fill with Prompt…", "Remove Object…", "Generative Expand…", "Create · Text to Image…"):
@@ -140,7 +157,10 @@ def main() -> None:
 
     # Open the established official PhotoCraft keyboard shortcut preferences
     # instead of inventing an Android-only nonfunctional settings screen.
-    new_dispatch = '''            37..=40 => self.ai_menu.open_openfill_operation(pc_action),
+    new_dispatch = '''            37..=40 => {
+                self.ai_menu.open_openfill_operation(pc_action);
+                ui.ctx().request_repaint();
+            },
             36 => {
                 if let Err(error) = photocraft_ui_egui::menus::invoke(
                     &mut self.inner, ui.ctx(), "edit.keyboardShortcuts", serde_json::json!({})

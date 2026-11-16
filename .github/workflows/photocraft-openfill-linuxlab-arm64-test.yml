@@ -282,7 +282,10 @@ jobs:
           for label in 'Fill with Prompt…' 'Remove Object…' 'Generative Expand…' 'Create · Text to Image…'; do
             grep -Fq "$label" source/photocraft/crates/ui-egui/src/panels/brand.rs
           done
-          grep -Fq '37..=40 => self.ai_menu.open_openfill_operation(pc_action)' adapters/photocraft/src/lib.rs
+          grep -Fq '37..=40 => {' adapters/photocraft/src/lib.rs
+          grep -Fq 'pc_openfill_direct_menu_action' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'pc_openfill_direct_menu_action' source/photocraft/crates/ui-egui/src/panels/brand.rs
+          grep -Fq 'ui.ctx().request_repaint();' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'mod ai_openfill_editor;' adapters/photocraft/src/lib.rs
           grep -Fq 'mod ai_openfill_local_transport;' adapters/photocraft/src/lib.rs
           grep -Fq 'fn start_fill_generation(' adapters/photocraft/src/ai_menu.rs

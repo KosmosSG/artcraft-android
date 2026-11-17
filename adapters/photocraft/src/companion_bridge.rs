@@ -132,12 +132,12 @@ impl CompanionBridge {
                         if ui.button("Copy pairing token").clicked() {
                             ctx.copy_text(self.token.clone());
                         }
-                        ui.small("Only connect trusted local software. A paired Companion can modify the open document.");
+                        ui.label(egui::RichText::new("Only connect trusted local software. A paired Companion can modify the open document.").small());
                     }
                 }
                 ui.separator();
-                ui.small("Disabled by default. Listening binds only to tablet localhost. Never connect over a public network.");
-                ui.small("Companion desktop GPU inference, plugin store, and .pcpl installation are not ported to Android yet.");
+                ui.label(egui::RichText::new("Disabled by default. Listening binds only to tablet localhost. Never connect over a public network.").small());
+                ui.label(egui::RichText::new("Companion desktop GPU inference, plugin store, and .pcpl installation are not ported to Android yet.").small());
             });
         self.show_window = open;
     }

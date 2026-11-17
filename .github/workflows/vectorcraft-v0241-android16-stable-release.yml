@@ -585,7 +585,7 @@ jobs:
           old=Path('previous-release/badging.txt').read_text()
           signer=Path('previous-release/signer.txt').read_text()
           m=re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", old, re.M)
-          assert m and m.groups()==('com.artcraft.vectorcraft',os.environ['LAST_PUBLISHED_CODE'],'0.24.1-android.9'),m
+          assert m and m.groups()==('com.artcraft.vectorcraft',os.environ['LAST_PUBLISHED_CODE'],'0.24.1-android.12'),m
           cert=re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})",signer)
           assert len(cert)==1 and cert[0].lower()==os.environ['ORIGINAL_CERT'], "Original published signature differs"
           assert int(os.environ['VERSION_CODE'])>int(m.group(2)), "Version code cannot update current release"

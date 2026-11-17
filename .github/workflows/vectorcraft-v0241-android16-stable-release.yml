@@ -1071,9 +1071,9 @@ jobs:
           previous_bytes=90640589
           print(f"Signed APK size: {size:,} bytes; previous release: {previous_bytes:,}; difference: {size-previous_bytes:+,}",flush=True)
           # Check only for unexpected APK size regression; preserve all artwork.
-assert size <= previous_bytes + 5_000_000, (
-    f"Signed APK {size:,} B exceeds published Android.12 by over 5 MB "
-    f"({previous_bytes:,} B). Do not publish; inspect compression delta.")
+          assert size <= previous_bytes + 5_000_000, (
+              f"Signed APK {size:,} B exceeds published Android.12 by over 5 MB "
+              f"({previous_bytes:,} B). Do not publish; inspect compression delta.")
           digest=hashlib.sha256(apk.read_bytes()).hexdigest()
           verification={
               'package':'com.artcraft.vectorcraft',

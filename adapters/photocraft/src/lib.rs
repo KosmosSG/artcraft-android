@@ -34,6 +34,7 @@ mod ime_bridge;
 mod ai_tools;
 mod ai_models;
 mod ai_menu;
+mod companion_bridge;
 mod ai_u2netp_transport;
 mod ai_background_job;
 mod ai_output_validation;
@@ -538,6 +539,7 @@ struct PhotoCraftAndroidApp {
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
     ai_menu: ai_menu::AndroidAiMenu,
+    companion: companion_bridge::CompanionBridge,
     // Files the system asked us to open are staged by the Activity; this is the shared queue the
     // app's own inbox drains. `intent_warmup` skips the first couple of frames so the app has
     // finished its own start-up, and goes negative (stop polling) if the host has no intent bridge.
@@ -676,7 +678,7 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         system_fonts::install_system_fonts(ui.ctx());
         // Native menu; unimplemented actions remain disabled until backend verification.
-        if self.ai_menu.show(ui, &mut self.inner.session) {
+        if self.ai_menu.show(ui, &mut self.inner.session, &mut self.companion) {
             self.inner.sync_views();
         }
         self.inner.ui(ui, _frame);
@@ -784,6 +786,10 @@ fn android_main(android_app: AndroidApp) {
                 );
             }
 
+            // Only the UI thread can execute engine commands. The transport
+            // remains disabled until the owner explicitly enables Companion.
+            let (companion_tx, companion_rx) = std::sync::mpsc::channel();
+            let app = app.with_control(companion_rx);
             Ok(Box::new(PhotoCraftAndroidApp {
                 inner: app,
                 bridge: app_bridge.clone_for_services(),
@@ -791,6 +797,7 @@ fn android_main(android_app: AndroidApp) {
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
                 ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
+                companion: companion_bridge::CompanionBridge::new(companion_tx),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

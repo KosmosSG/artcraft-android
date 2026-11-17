@@ -196,13 +196,13 @@ fn read_bounded_line(
 }
 
 fn write_response(stream: &mut TcpStream, value: &Value) -> io::Result<()> {
-    let mut bytes = serde_json::to_vec(value)?;
+    let mut bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
     if bytes.len() > MAX_RESPONSE {
         bytes = serde_json::to_vec(&json!({
             "id": value.get("id").cloned().unwrap_or(Value::Null),
             "ok": false,
             "error": "Companion result exceeds the Android bridge size limit"
-        }))?;
+        })).map_err(io::Error::other)?;
     }
     bytes.push(b'\n');
     stream.write_all(&bytes)?;

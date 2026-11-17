@@ -218,6 +218,35 @@ jobs:
           print("PASS: preserved legacy font/clipboard overlay with explicit Companion argument")
           PY
 
+      - name: Retarget Pc AI Tools menu to Companion dialog (runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tools/photocraft_v022_vc_style_menu.py")
+          s = p.read_text()
+          # Android.6 overlay removes the old AI toolbar entirely. Put the
+          # Companion action into the real Pc launcher the owner uses.
+          old = '                action(ui, "About AI Tools…", 4);\n'
+          new = '                action(ui, "About AI Tools…", 4);\n                action(ui, "PhotoCraft Companion…", 41);\n'
+          assert s.count(old) == 1, "Companion Pc menu anchor drift"
+          s = s.replace(old, new, 1)
+          old = "    new_dispatch = '''            36 => {\n"
+          new = (
+              "    new_dispatch = '''            41 => {\n"
+              "                photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(true);\n"
+              "                self.companion.show_window = true;\n"
+              "                ui.ctx().request_repaint();\n"
+              "            }\n"
+              "            36 => {\n"
+          )
+          assert s.count(old) == 1, "Companion host dispatch anchor drift"
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("PASS: dedicated Companion Pc menu action and next-frame dialog dispatch")
+          PY
+
       - name: Adapt upstream v0.23.1 UI while preserving owner Android features (runner only)
         shell: bash
         run: |
@@ -463,7 +492,7 @@ jobs:
           grep -Fq 'app.with_control(companion_rx)' adapters/photocraft/src/lib.rs
           grep -Fq 'CompanionBridge::new(companion_tx)' adapters/photocraft/src/lib.rs
           grep -Fq 'companion.show_dialog(&ctx);' adapters/photocraft/src/ai_menu.rs
-          grep -Fq 'PhotoCraft Companion · Plugin Bridge' adapters/photocraft/src/ai_menu.rs
+          grep -Fq 'action(ui, "PhotoCraft Companion…", 41);' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'TcpListener::bind(("127.0.0.1", PORT))' adapters/photocraft/src/companion_bridge.rs
           grep -Fq 'if !authenticated {' adapters/photocraft/src/companion_bridge.rs
           grep -Fq 'ControlRequest::new(' adapters/photocraft/src/companion_bridge.rs

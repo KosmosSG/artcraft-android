@@ -185,6 +185,39 @@ jobs:
           PY
           echo "Source pin: $UPSTREAM_SHA"
 
+      - name: Retarget legacy Android overlay hooks to Companion (runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tools/photocraft_v019_adapter_overlay.py")
+          s = p.read_text(encoding="utf-8")
+          edits = (
+              (
+                  "'        if self.ai_menu.show(ui, &mut self.inner.session) {\\n',",
+                  "'        if self.ai_menu.show(ui, &mut self.inner.session, &mut self.companion) {\\n',",
+              ),
+              (
+                  "if self.ai_menu.show(ui, &mut self.inner.session, || clipboard_bridge.clipboard_text().ok().flatten()) {",
+                  "if self.ai_menu.show(ui, &mut self.inner.session, &mut self.companion, || clipboard_bridge.clipboard_text().ok().flatten()) {",
+              ),
+              (
+                  "'    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {\\n',",
+                  "'    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, companion: &mut crate::companion_bridge::CompanionBridge) -> bool {\\n',",
+              ),
+              (
+                  "'    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, clipboard: impl Fn() -> Option<String>) -> bool {\\n',",
+                  "'    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, companion: &mut crate::companion_bridge::CompanionBridge, clipboard: impl Fn() -> Option<String>) -> bool {\\n',",
+              ),
+          )
+          for old, new in edits:
+              assert s.count(old) == 1, f"Unreviewed PhotoCraft overlay hook: {old[:96]}: {s.count(old)}"
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+          print("PASS: preserved legacy font/clipboard overlay with explicit Companion argument")
+          PY
+
       - name: Adapt upstream v0.23.1 UI while preserving owner Android features (runner only)
         shell: bash
         run: |

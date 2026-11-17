@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc::Sender, Arc};
 use std::time::{Duration, Instant};
 
+use crate::AndroidFileBridge;
 use photocraft_ui_egui::ControlRequest;
 use serde_json::{json, Value};
 
@@ -19,6 +20,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(25);
 
 pub(crate) struct CompanionBridge {
     sender: Sender<ControlRequest>,
+    clipboard: AndroidFileBridge,
+    copy_status: Option<String>,
     running: Option<Arc<AtomicBool>>,
     token: String,
     status: String,
@@ -30,9 +33,11 @@ pub(crate) struct CompanionBridge {
 }
 
 impl CompanionBridge {
-    pub(crate) fn new(sender: Sender<ControlRequest>) -> Self {
+    pub(crate) fn new(sender: Sender<ControlRequest>, clipboard: AndroidFileBridge) -> Self {
         Self {
             sender,
+            clipboard,
+            copy_status: None,
             running: None,
             token: String::new(),
             status: "Off. No local control port is listening.".to_owned(),
@@ -45,6 +50,7 @@ impl CompanionBridge {
     }
 
     fn start(&mut self, ctx: &egui::Context) {
+        self.copy_status = None;
         if self.running.is_some() {
             return;
         }
@@ -103,6 +109,7 @@ impl CompanionBridge {
     }
 
     fn stop(&mut self) {
+        self.copy_status = None;
         self.writes_enabled.store(false, Ordering::Release);
         self.macro_confirmed = false;
         self.pending_macro = false;
@@ -139,7 +146,13 @@ impl CompanionBridge {
                         ui.label("Local endpoint: 127.0.0.1:18492");
                         ui.label("Session token hidden to prevent accidental screenshot exposure.");
                         if ui.button("Copy pairing token privately").clicked() {
-                            ctx.copy_text(self.token.clone());
+                            self.copy_status = Some(match self.clipboard.copy_private_companion_token(&self.token) {
+                                Ok(()) => "Pairing token copied to Android clipboard. Paste privately.".to_owned(),
+                                Err(error) => format!("Copy failed: {error}"),
+                            });
+                        }
+                        if let Some(message) = &self.copy_status {
+                            ui.label(message);
                         }
                         let mut enabled = self.writes_enabled.load(Ordering::Acquire);
                         if ui.checkbox(&mut enabled, "Allow approved undoable edits from paired clients").changed() {

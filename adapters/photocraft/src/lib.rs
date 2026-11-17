@@ -59,6 +59,64 @@ impl AndroidFileBridge {
         })
     }
 
+
+    /// Native clipboard write for the private Companion token. Do not pass through
+    /// egui's generic output queue: this Android NativeActivity does not reliably copy.
+    fn copy_private_companion_token(&self, token: &str) -> Result<(), String> {
+        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("No valid Companion token available".into());
+        }
+        let copied = self.vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
+            // AndroidApp owns this global Activity reference. Only borrow it.
+            let raw = self.app.activity_as_ptr() as jni::sys::jobject;
+            let activity = unsafe { env.as_cast_raw::<JObject>(&raw)? };
+            let service = JObject::from(env.new_string("clipboard")?);
+            let clipboard = env.call_method(
+                &*activity, jni_str!("getSystemService"),
+                jni_sig!("(Ljava/lang/String;)Ljava/lang/Object;"),
+                &[JValue::Object(&service)],
+            )?.l()?;
+            if clipboard.is_null() { return Ok(false); }
+            let label = JObject::from(env.new_string("Private pairing token")?);
+            let value = JObject::from(env.new_string(token)?);
+            let clip = env.call_static_method(
+                jni_str!("android/content/ClipData"), jni_str!("newPlainText"),
+                jni_sig!("(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;"),
+                &[JValue::Object(&label), JValue::Object(&value)],
+            )?.l()?;
+            if clip.is_null() { return Ok(false); }
+            let description = env.call_method(
+                &clip, jni_str!("getDescription"),
+                jni_sig!("()Landroid/content/ClipDescription;"), &[],
+            )?.l()?;
+            if !description.is_null() {
+                // Hide the token from the Android 13+ clipboard preview.
+                // ClipDescription extras are available on the candidate minSdk.
+                let extras = env.new_object(
+                    jni_str!("android/os/PersistableBundle"), jni_sig!("()V"), &[],
+                )?;
+                let key = JObject::from(env.new_string("android.content.extra.IS_SENSITIVE")?);
+                env.call_method(
+                    &extras, jni_str!("putBoolean"),
+                    jni_sig!("(Ljava/lang/String;Z)V"),
+                    &[JValue::Object(&key), JValue::Bool(true)],
+                )?;
+                env.call_method(
+                    &description, jni_str!("setExtras"),
+                    jni_sig!("(Landroid/os/PersistableBundle;)V"),
+                    &[JValue::Object(&extras)],
+                )?;
+            }
+            env.call_method(
+                &clipboard, jni_str!("setPrimaryClip"),
+                jni_sig!("(Landroid/content/ClipData;)V"),
+                &[JValue::Object(&clip)],
+            )?;
+            Ok(true)
+        }).map_err(|_| "Android clipboard write failed".to_owned())?;
+        if copied { Ok(()) } else { Err("Android clipboard service unavailable".into()) }
+    }
+
     fn request_open(&self, id: u64, multiple: bool) -> Result<(), String> {
         self.vm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -815,7 +873,7 @@ fn android_main(android_app: AndroidApp) {
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
                 ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
-                companion: companion_bridge::CompanionBridge::new(companion_tx),
+                companion: companion_bridge::CompanionBridge::new(companion_tx, app_bridge.clone_for_services()),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

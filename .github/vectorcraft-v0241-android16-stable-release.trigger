@@ -1,0 +1,3 @@
+Owner-approved release: VectorCraft v0.24.1-android.16 original-signed stable ARM64. Approved on November 17, 2026 after Vista Kepong brochure performance tests.
+
+Pin successful Android.14-derived source commit 99b5c0a0ffa110e025d5d68f8f49b97771ad3285. Never merge Android.15. Verified candidate Action 43950690478, owner tested 149%-200% selected-group and reported first-pan stutter then smooth. Preserve original app ID and signing identity of published Android.12; release v0.24.1-android.16, versionCode 16784923. Fail on signer/package/test/size errors. Never overwrite previous releases/tags, and don't modify production signing secrets.

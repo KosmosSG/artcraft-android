@@ -87,7 +87,7 @@ impl AndroidAiMenu {
 
     /// Returns true after a new undoable layer is inserted so the host can
     /// synchronize PhotoCraft canvas caches before rendering the editor.
-    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, companion: &mut crate::companion_bridge::CompanionBridge) -> bool {
         // A hidden AI Tools menu must not apply an invisible in-flight result.
         // Window → Show AI Tools can be toggled at any time.
         if !photocraft_ui_egui::menus::artcraft_ai_tools_visible() {
@@ -169,7 +169,10 @@ impl AndroidAiMenu {
                             self.show_background_setup = true;
                             ui.close();
                         }
-                        ui.add_enabled(false, egui::Button::new("Plugin Manager…"));
+                        if ui.button("PhotoCraft Companion · Plugin Bridge…").clicked() {
+                            companion.show_window = true;
+                            ui.close();
+                        }
                         if ui.button("ComfyUI Connection…").clicked() {
                             self.show_connection = true;
                             ui.close();
@@ -318,6 +321,9 @@ impl AndroidAiMenu {
                     ui.label("Existing filters, fonts and keyboard shortcuts remain available.");
                 });
         }
+        // Render Companion's native dialog in the same pass as its menu click;
+        // do not depend on the upstream Pc command queue that broke OpenFill.
+        companion.show_dialog(&ctx);
         layer_changed
     }
 

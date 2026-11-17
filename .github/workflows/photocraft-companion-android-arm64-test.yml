@@ -498,7 +498,11 @@ jobs:
           set -euo pipefail
           grep -Fq 'mod companion_bridge;' adapters/photocraft/src/lib.rs
           grep -Fq 'app.with_control(companion_rx)' adapters/photocraft/src/lib.rs
-          grep -Fq 'CompanionBridge::new(companion_tx)' adapters/photocraft/src/lib.rs
+          grep -Fq 'CompanionBridge::new(companion_tx, app_bridge.clone_for_services())' adapters/photocraft/src/lib.rs
+          grep -Fq 'fn copy_private_companion_token(' adapters/photocraft/src/lib.rs
+          grep -Fq 'jni_str!("setPrimaryClip")' adapters/photocraft/src/lib.rs
+          grep -Fq 'android.content.extra.IS_SENSITIVE' adapters/photocraft/src/lib.rs
+          grep -Fq 'self.clipboard.copy_private_companion_token(&self.token)' adapters/photocraft/src/companion_bridge.rs
           grep -Fq 'companion.show_dialog(&ctx);' adapters/photocraft/src/ai_menu.rs
           grep -Fq 'action(ui, "PhotoCraft Companion…", 41);' source/photocraft/crates/ui-egui/src/panels/brand.rs
           grep -Fq 'TcpListener::bind(("127.0.0.1", PORT))' adapters/photocraft/src/companion_bridge.rs

@@ -1,0 +1,20 @@
+{
+  "id": "macro.photocraft.plugins.black_and_white",
+  "name": "B&W Film Pop (No-Code)",
+  "version": "1.0.0",
+  "description": "Duplicate active layer, then desaturate the duplicate. Two undoable steps.",
+  "author": "kobaltGIT (adapted for Android limited command allowlist)",
+  "plugin_type": "no_code",
+  "commands": [
+    {
+      "command": "layer.duplicate",
+      "params": {},
+      "description": "Duplicate active layer"
+    },
+    {
+      "command": "image.adjustments.desaturate",
+      "params": {},
+      "description": "Desaturate duplicate"
+    }
+  ]
+}

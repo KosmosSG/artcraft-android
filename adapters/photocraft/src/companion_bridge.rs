@@ -23,6 +23,10 @@ pub(crate) struct CompanionBridge {
     token: String,
     status: String,
     pub(crate) show_window: bool,
+    writes_enabled: Arc<AtomicBool>,
+    macro_confirmed: bool,
+    pending_macro: bool,
+    macro_status: String,
 }
 
 impl CompanionBridge {
@@ -33,6 +37,10 @@ impl CompanionBridge {
             token: String::new(),
             status: "Off. No local control port is listening.".to_owned(),
             show_window: false,
+            writes_enabled: Arc::new(AtomicBool::new(false)),
+            macro_confirmed: false,
+            pending_macro: false,
+            macro_status: "No Companion macro has been run.".to_owned(),
         }
     }
 
@@ -65,13 +73,14 @@ impl CompanionBridge {
         let sender = self.sender.clone();
         let worker_ctx = ctx.clone();
         let worker_token = token.clone();
+        let worker_writes = Arc::clone(&self.writes_enabled);
         match std::thread::Builder::new()
             .name("photocraft-companion-loopback".into())
             .spawn(move || {
                 while !worker_stop.load(Ordering::Acquire) {
                     match listener.accept() {
                         Ok((stream, peer)) if peer.ip().is_loopback() => {
-                            serve_client(stream, &worker_token, &sender, &worker_ctx, &worker_stop);
+                            serve_client(stream, &worker_token, &sender, &worker_ctx, &worker_stop, &worker_writes);
                         }
                         Ok(_) => {} // Defense in depth; listener is already loopback-only.
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -94,6 +103,9 @@ impl CompanionBridge {
     }
 
     fn stop(&mut self) {
+        self.writes_enabled.store(false, Ordering::Release);
+        self.macro_confirmed = false;
+        self.pending_macro = false;
         if let Some(stop) = self.running.take() {
             stop.store(true, Ordering::Release);
         }
@@ -125,21 +137,45 @@ impl CompanionBridge {
                     }
                     if self.running.is_some() {
                         ui.label("Local endpoint: 127.0.0.1:18492");
-                        ui.label("One-session control token (keep private):");
-                        let mut visible_token = self.token.clone();
-                        ui.add(egui::TextEdit::singleline(&mut visible_token)
-                            .desired_width(420.0).interactive(false));
-                        if ui.button("Copy pairing token").clicked() {
+                        ui.label("Session token hidden to prevent accidental screenshot exposure.");
+                        if ui.button("Copy pairing token privately").clicked() {
                             ctx.copy_text(self.token.clone());
                         }
-                        ui.label(egui::RichText::new("Only connect trusted local software. A paired Companion can modify the open document.").small());
+                        let mut enabled = self.writes_enabled.load(Ordering::Acquire);
+                        if ui.checkbox(&mut enabled, "Allow approved undoable edits from paired clients").changed() {
+                            self.writes_enabled.store(enabled, Ordering::Release);
+                        }
+                        ui.label(egui::RichText::new("Read-only by default. Paired clients cannot save, open files, install plugins, send pixels, or run arbitrary commands.").small());
                     }
                 }
+                ui.separator();
+                ui.strong("Compatible no-code Companion macro");
+                ui.label("B&W Film Pop: duplicate the active layer, then desaturate the copy.");
+                ui.label("These are two separate undoable operations (Undo twice to revert both).");
+                ui.checkbox(&mut self.macro_confirmed, "I want to run this macro on the active document");
+                if ui.add_enabled(self.macro_confirmed, egui::Button::new("Apply B&W Film Pop")).clicked() {
+                    self.pending_macro = true;
+                    self.macro_confirmed = false;
+                }
+                ui.label(&self.macro_status);
                 ui.separator();
                 ui.label(egui::RichText::new("Disabled by default. Listening binds only to tablet localhost. Never connect over a public network.").small());
                 ui.label(egui::RichText::new("Companion desktop GPU inference, plugin store, and .pcpl installation are not ported to Android yet.").small());
             });
         self.show_window = open;
+    }
+}
+
+impl CompanionBridge {
+    pub(crate) fn take_macro_request(&mut self) -> bool {
+        std::mem::take(&mut self.pending_macro)
+    }
+
+    pub(crate) fn macro_finished(&mut self, result: Result<(), String>) {
+        self.macro_status = match result {
+            Ok(()) => "B&W Film Pop applied to the duplicate; Undo twice to revert both edits.".into(),
+            Err(error) => format!("Macro not fully completed: {error}"),
+        };
     }
 }
 
@@ -173,10 +209,12 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
 fn read_bounded_line(
     reader: &mut BufReader<TcpStream>,
     stop: &AtomicBool,
+    deadline: Instant,
 ) -> io::Result<Option<Vec<u8>>> {
     let mut line = Vec::new();
     loop {
         if stop.load(Ordering::Acquire) { return Ok(None); }
+        if Instant::now() >= deadline { return Err(io::Error::new(io::ErrorKind::TimedOut, "Companion read deadline elapsed")); }
         let available = match reader.fill_buf() {
             Ok(available) => available,
             Err(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => continue,
@@ -209,12 +247,37 @@ fn write_response(stream: &mut TcpStream, value: &Value) -> io::Result<()> {
     stream.flush()
 }
 
+/// Paired clients have no unrestricted engine access.
+fn authorize_request(method: &str, params: &Value, can_write: bool) -> Result<(), &'static str> {
+    const REFUSED: &str = "Command is not approved for the Android Companion bridge";
+    let empty = params.as_object().is_some_and(|fields| fields.is_empty());
+    if matches!(method, "companion.ping" | "ui.inspect" | "engine.commands") {
+        return if empty { Ok(()) } else { Err(REFUSED) };
+    }
+    if method != "engine.execute" { return Err(REFUSED); }
+    let fields = params.as_object().ok_or(REFUSED)?;
+    if fields.len() != 2 || !fields.contains_key("command") || !fields.contains_key("params") {
+        return Err(REFUSED);
+    }
+    let command = fields.get("command").and_then(Value::as_str).ok_or(REFUSED)?;
+    if !fields.get("params").is_some_and(|args| args.as_object().is_some_and(|m| m.is_empty())) {
+        return Err(REFUSED);
+    }
+    match command {
+        "document.inspect" | "session.inspect" => Ok(()),
+        "layer.duplicate" | "image.adjustments.desaturate" |
+        "layer.newAdjustmentLayer.blackWhite" | "edit.undo" | "edit.redo" if can_write => Ok(()),
+        _ => Err(if can_write { REFUSED } else { "Enable approved edits in the Companion dialog first" }),
+    }
+}
+
 fn serve_client(
     mut stream: TcpStream,
     token: &str,
     sender: &Sender<ControlRequest>,
     ctx: &egui::Context,
     stop: &AtomicBool,
+    writes_enabled: &AtomicBool,
 ) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
@@ -224,7 +287,8 @@ fn serve_client(
     let auth_deadline = Instant::now() + Duration::from_secs(10);
     while !stop.load(Ordering::Acquire) {
         if !authenticated && Instant::now() > auth_deadline { break; }
-        let line = match read_bounded_line(&mut reader, stop) {
+        let idle_deadline = if authenticated { Instant::now() + Duration::from_secs(60) } else { auth_deadline };
+        let line = match read_bounded_line(&mut reader, stop, idle_deadline) {
             Ok(Some(bytes)) => bytes,
             _ => break,
         };
@@ -252,6 +316,22 @@ fn serve_client(
             continue;
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+        let can_write = writes_enabled.load(Ordering::Acquire);
+        if let Err(error) = authorize_request(method, &params, can_write) {
+            if write_response(&mut stream, &json!({"id":id,"ok":false,"error":error})).is_err() { break; }
+            continue;
+        }
+        if method == "companion.ping" {
+            let reply = json!({"id":id,"ok":true,"result":{
+                "protocol":2, "app":"PhotoCraft Android", "transport":"127.0.0.1",
+                "readOnly":!can_write,
+                "supportedRead":["ui.inspect","engine.commands","document.inspect","session.inspect"],
+                "supportedEdits":["layer.duplicate","image.adjustments.desaturate",
+                    "layer.newAdjustmentLayer.blackWhite","edit.undo","edit.redo"]
+            }});
+            if write_response(&mut stream, &reply).is_err() { break; }
+            continue;
+        }
         let (mut command, reply) = ControlRequest::new(method.to_owned(), params);
         let deadline = Instant::now() + REQUEST_TIMEOUT;
         command.deadline = Some(deadline);
@@ -276,6 +356,27 @@ mod tests {
         assert!(constant_time_equal(&token, &token));
         assert!(!constant_time_equal(&token, &token[..63]));
         assert!(!constant_time_equal(&token, &"A".repeat(64)));
+    }
+    #[test]
+    fn read_only_allows_inspection_but_not_mutations() {
+        assert!(authorize_request("engine.execute", &json!({"command":"document.inspect","params":{}}), false).is_ok());
+        assert!(authorize_request("engine.execute", &json!({"command":"session.inspect","params":{}}), false).is_ok());
+        assert!(authorize_request("ui.inspect", &json!({}), false).is_ok());
+        assert!(authorize_request("engine.execute", &json!({"command":"layer.duplicate","params":{}}), false).is_err());
+    }
+    #[test]
+    fn write_gate_allows_only_reviewed_zero_argument_commands() {
+        for cmd in ["edit.undo","edit.redo","layer.duplicate",
+                    "image.adjustments.desaturate","layer.newAdjustmentLayer.blackWhite"] {
+            assert!(authorize_request("engine.execute", &json!({"command":cmd,"params":{}}), true).is_ok());
+        }
+        for method in ["app.open", "app.save", "ui.pointer", "ui.key", "ui.screenshot",
+                       "ui.menu.invoke", "ui.set", "jobs.cancel"] {
+            assert!(authorize_request(method, &json!({}), true).is_err(), "{method}");
+        }
+        assert!(authorize_request("engine.execute", &json!({"command":"file.delete","params":{}}), true).is_err());
+        assert!(authorize_request("engine.execute", &json!({"command":"edit.undo","params":{},"wait":false}), true).is_err());
+        assert!(authorize_request("engine.execute", &json!({"command":"layer.duplicate","params":{"layer":17}}), true).is_err());
     }
     #[test]
     fn tokens_have_256_bits_of_entropy_and_are_unique() {

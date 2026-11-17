@@ -1,4 +1,4 @@
-name: PhotoCraft v0.23.1 Companion Bridge ARM64 TEST ONLY
+name: PhotoCraft v0.23.1 Companion Phase 2 ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -7,6 +7,10 @@ on:
       - feature/photocraft-v0231-companion-android-20261117
     paths:
       - 'adapters/photocraft/src/companion_bridge.rs'
+      - 'tools/photocraft_companion_linuxlab.py'
+      - 'tools/photocraft_companion_plugins/black_white.json'
+      - 'tools/tests/test_photocraft_companion_linuxlab.py'
+      - 'docs/photocraft-companion-phase2.md'
       - 'adapters/photocraft/src/lib.rs'
       - 'adapters/photocraft/src/ai_menu.rs'
       - '.github/workflows/photocraft-companion-android-arm64-test.yml'
@@ -59,9 +63,13 @@ jobs:
               "adapters/photocraft/src/companion_bridge.rs",
               "adapters/photocraft/src/ai_menu.rs",
               "adapters/photocraft/src/lib.rs",
+              "tools/photocraft_companion_linuxlab.py",
+              "tools/photocraft_companion_plugins/black_white.json",
+              "tools/tests/test_photocraft_companion_linuxlab.py",
+              "docs/photocraft-companion-phase2.md",
           }
           assert changed == expected, f"unexpected changes relative to protected Android.5 tag: {changed ^ expected}"
-          print("PASS: only new Companion bridge, Android menu/wiring and test workflow differ from published release")
+          print("PASS: only isolated Companion Phase 2 files differ from published release")
           PY
           # A strict four-file diff against the immutable published tag is the
           # relevant guard here: adapter changes are intentional for Companion.
@@ -500,6 +508,22 @@ jobs:
           ! grep -Fq 'https://' adapters/photocraft/src/companion_bridge.rs
           echo 'PASS: Companion bridge is locally bound, off by default and token authenticated'
 
+      - name: Offline Companion Phase 2 contract and Linux Lab client tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/photocraft_companion_linuxlab.py
+          python3 -m unittest discover -s tools/tests -p test_photocraft_companion_linuxlab.py -v
+          python3 tools/photocraft_companion_linuxlab.py --dry-run tools/photocraft_companion_plugins/black_white.json
+          grep -Fq 'fn authorize_request(method: &str, params: &Value, can_write: bool)' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'if let Err(error) = authorize_request(method, &params, can_write)' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'ui.checkbox(&mut enabled, "Allow approved undoable edits' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'Session token hidden to prevent accidental screenshot exposure' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'self.companion.take_macro_request()' adapters/photocraft/src/lib.rs
+          grep -Fq 'self.inner.run("image.adjustments.desaturate"' adapters/photocraft/src/lib.rs
+          ! grep -Fq 'visible_token = self.token.clone()' adapters/photocraft/src/companion_bridge.rs
+          echo 'PASS: Phase2 stdlib Linux Lab tests and source authorization guard'
+          
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -571,9 +595,9 @@ jobs:
           p = Path("adapters/photocraft/Cargo.toml")
           manifest = p.read_text()
           changes = [
-              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.companion2316"', 1),
+              ('package = "com.artcraft.photocraft"', 'package = "com.artcraft.photocraft.candidate.companion2317"', 1),
               ('name = ".PhotoCraftActivity"', 'name = "com.artcraft.photocraft.PhotoCraftActivity"', 1),
-              ('label = "PhotoCraft"', 'label = "PhotoCraft Companion Test"', 2),
+              ('label = "PhotoCraft"', 'label = "PhotoCraft Companion Phase2"', 2),
           ]
           for old, new, expected in changes:
               count = manifest.count(old)
@@ -583,8 +607,8 @@ jobs:
           p.write_text(manifest)
           import tomllib
           data = tomllib.loads(manifest)
-          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.companion2316"
-          print("Separate com.artcraft.photocraft.candidate.companion2316 app: production package and keys untouched")
+          assert data["package"]["metadata"]["android"]["package"] == "com.artcraft.photocraft.candidate.companion2317"
+          print("Separate com.artcraft.photocraft.candidate.companion2317 app: production package and keys untouched")
           PY
 
       - name: Compile release-optimized upstream v0.23.1 compatibility candidate
@@ -596,7 +620,7 @@ jobs:
           # Release-optimized refers to compiler/packaging mode, NOT approval to publish.
           bash build.sh -photocraft
           test -f output/photocraft-0.23.1.apk
-          mv output/photocraft-0.23.1.apk output/PhotoCraft-v0.23.1-android.5-COMPANION-ARM64-TEST.apk
+          mv output/photocraft-0.23.1.apk output/PhotoCraft-v0.23.1-android.5-COMPANION-PHASE2-ARM64-TEST.apk
 
       - name: Preserve line-symbolized native debug file for ANR
         shell: bash
@@ -616,7 +640,7 @@ jobs:
           "$NDK_LLVM/llvm-objcopy" --only-keep-debug "$SO" diagnostics/libphotocraft_android.so.debug
           "$NDK_LLVM/llvm-readelf" -n "$SO" > diagnostics/native-elf-notes.txt
           echo "commit=$GITHUB_SHA" > diagnostics/native-source-identity.txt
-          echo "package=com.artcraft.photocraft.candidate.companion2316" >> diagnostics/native-source-identity.txt
+          echo "package=com.artcraft.photocraft.candidate.companion2317" >> diagnostics/native-source-identity.txt
           echo "version=0.23.1-android.5" >> diagnostics/native-source-identity.txt
           zstd -6 -T2 -q -f diagnostics/libphotocraft_android.so.debug -o diagnostics/libphotocraft_android.so.debug.zst
           rm diagnostics/libphotocraft_android.so.debug
@@ -668,7 +692,7 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" | grep '^package:'
-          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.companion2316'"
+          "$AAPT" dump badging "$APK" | grep -q "name='com.artcraft.photocraft.candidate.companion2317'"
           "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.23.1-android.5'"
           # Enforce isolated-package architecture, non-production signer, and realistic size report.
           SIGNER_SHA="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print toupper($2); exit}')"
@@ -695,12 +719,12 @@ jobs:
           PY
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
-          echo "Companion control bridge is opt-in, loopback-only, token authenticated and UNTESTED on device. No desktop inference or plugin installation bundled." >> "$GITHUB_STEP_SUMMARY"
+          echo "Companion Phase 2 adds allowlisted inspection, gated undoable macro and Linux Lab client; UNTESTED on physical Android. No desktop inference bundled." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.23.1-android.5-COMPANION-BRIDGE-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.23.1-android.5-COMPANION-PHASE2-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

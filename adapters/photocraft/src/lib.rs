@@ -682,6 +682,24 @@ impl eframe::App for PhotoCraftAndroidApp {
             self.inner.sync_views();
         }
         self.inner.ui(ui, _frame);
+        if self.companion.take_macro_request() {
+            // Only execute after a one-time on-device confirmation.
+            // Both engine commands create normal undoable history entries.
+            let result = if self.inner.session.active().is_none() {
+                Err("Open a document before running a Companion macro.".to_owned())
+            } else {
+                match self.inner.run("layer.duplicate", serde_json::json!({})) {
+                    Err(e) => Err(format!("Nothing was duplicated: {e}")),
+                    Ok(_) => match self.inner.run("image.adjustments.desaturate", serde_json::json!({})) {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(format!("Duplicate succeeded but desaturation failed: {e}. Undo once to remove the duplicate.")),
+                    },
+                }
+            };
+            self.inner.sync_views();
+            self.companion.macro_finished(result);
+            ui.ctx().request_repaint();
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

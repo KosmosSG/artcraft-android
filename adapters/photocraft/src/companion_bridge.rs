@@ -18,6 +18,25 @@ const MAX_REQUEST: usize = 64 * 1024;
 const MAX_RESPONSE: usize = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(25);
 
+/// In-app toolstrip never accepts arbitrary commands or exposes the pairing token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ToolstripAction {
+    Inspect,
+    Undo,
+    Redo,
+}
+
+// Pure safety guard shared by the floating buttons. Only an explicit on-device
+// approval unlocks the toolstrip's edit commands; B&W also requires confirmation.
+fn tool_action_allowed(
+    action: ToolstripAction,
+    has_document: bool,
+    edits_allowed: bool,
+) -> bool {
+    has_document && (action == ToolstripAction::Inspect || edits_allowed)
+}
+
+
 pub(crate) struct CompanionBridge {
     sender: Sender<ControlRequest>,
     clipboard: AndroidFileBridge,
@@ -30,6 +49,13 @@ pub(crate) struct CompanionBridge {
     macro_confirmed: bool,
     pending_macro: bool,
     macro_status: String,
+    toolstrip_visible: bool,
+    toolstrip_vertical: bool,
+    toolstrip_scale: f32,
+    toolstrip_opacity: f32,
+    toolstrip_confirmed: bool,
+    pending_toolstrip_action: Option<ToolstripAction>,
+    toolstrip_status: String,
 }
 
 impl CompanionBridge {
@@ -46,6 +72,14 @@ impl CompanionBridge {
             macro_confirmed: false,
             pending_macro: false,
             macro_status: "No Companion macro has been run.".to_owned(),
+            // Off by default; this egui window floats inside PhotoCraft, not over Android apps.
+            toolstrip_visible: false,
+            toolstrip_vertical: false,
+            toolstrip_scale: 0.85,
+            toolstrip_opacity: 0.90,
+            toolstrip_confirmed: false,
+            pending_toolstrip_action: None,
+            toolstrip_status: "Ready for read-only inspection.".to_owned(),
         }
     }
 
@@ -110,6 +144,8 @@ impl CompanionBridge {
 
     fn stop(&mut self) {
         self.copy_status = None;
+        self.toolstrip_confirmed = false;
+        self.pending_toolstrip_action = None;
         self.writes_enabled.store(false, Ordering::Release);
         self.macro_confirmed = false;
         self.pending_macro = false;
@@ -118,6 +154,104 @@ impl CompanionBridge {
         }
         self.token.clear();
         self.status = "Off. No new Companion commands will be accepted.".to_owned();
+    }
+
+
+    /// Draw after the native editor, so the draggable egui window stays above
+    /// the canvas. No SYSTEM_ALERT_WINDOW, extra Android Activity or hidden IO.
+    pub(crate) fn show_toolstrip(&mut self, ctx: &egui::Context, has_document: bool) {
+        if !self.toolstrip_visible { return; }
+        let mut open = self.toolstrip_visible;
+        let scale = self.toolstrip_scale.clamp(0.75, 1.25);
+        let alpha = (255.0 * self.toolstrip_opacity.clamp(0.65, 1.0)) as u8;
+        let frame = egui::Frame::window(&ctx.style())
+            .fill(egui::Color32::from_rgba_unmultiplied(20, 30, 49, alpha));
+        egui::Window::new("Pc · Companion Tools")
+            .id(egui::Id::new("pc_companion_phase3_floating_toolstrip"))
+            .default_pos(egui::pos2(84.0, 180.0))
+            .resizable(false)
+            .collapsible(true)
+            .open(&mut open)
+            .frame(frame)
+            .show(ctx, |ui| {
+                let bridge_mode = if self.running.is_none() {
+                    "Bridge off"
+                } else if self.writes_enabled.load(Ordering::Acquire) {
+                    "Approved edits enabled"
+                } else {
+                    "Read-only bridge"
+                };
+                ui.label(egui::RichText::new(bridge_mode).color(
+                    egui::Color32::from_rgb(124, 217, 237)
+                ).size(12.0 * scale));
+                ui.label(egui::RichText::new(if has_document {
+                    "Document open"
+                } else {
+                    "Open a document to enable actions"
+                }).small());
+                if self.toolstrip_vertical {
+                    ui.vertical(|ui| self.toolstrip_actions(ui, has_document, scale));
+                } else {
+                    ui.horizontal_wrapped(|ui| self.toolstrip_actions(ui, has_document, scale));
+                }
+                if has_document && self.writes_enabled.load(Ordering::Acquire) {
+                    ui.checkbox(&mut self.toolstrip_confirmed, "Confirm B&W edits on this document");
+                } else {
+                    self.toolstrip_confirmed = false;
+                }
+                ui.label(egui::RichText::new(&self.toolstrip_status).small());
+                ui.horizontal(|ui| {
+                    let switch = if self.toolstrip_vertical { "Horizontal" } else { "Vertical" };
+                    if ui.small_button(switch).clicked() {
+                        self.toolstrip_vertical = !self.toolstrip_vertical;
+                    }
+                    if ui.small_button("Companion settings").clicked() {
+                        self.show_window = true;
+                    }
+                });
+            });
+        self.toolstrip_visible = open;
+    }
+
+    fn toolstrip_actions(&mut self, ui: &mut egui::Ui, has_document: bool, scale: f32) {
+        let edits_allowed = self.writes_enabled.load(Ordering::Acquire);
+        let size = egui::vec2(86.0 * scale, 34.0 * scale);
+        if ui.add_enabled(
+            tool_action_allowed(ToolstripAction::Inspect, has_document, edits_allowed),
+            egui::Button::new("Inspect").min_size(size),
+        ).clicked() {
+            self.pending_toolstrip_action = Some(ToolstripAction::Inspect);
+        }
+        if ui.add_enabled(
+            has_document && edits_allowed && self.toolstrip_confirmed,
+            egui::Button::new("B&W Pop").min_size(size),
+        ).clicked() {
+            // Route through the exact owner-tested, on-device Phase 2 macro path.
+            self.pending_macro = true;
+            self.macro_confirmed = false;
+            self.toolstrip_confirmed = false;
+            self.toolstrip_status = "Applying two undoable B&W operations…".to_owned();
+        }
+        if ui.add_enabled(
+            tool_action_allowed(ToolstripAction::Undo, has_document, edits_allowed),
+            egui::Button::new("Undo").min_size(size),
+        ).clicked() {
+            self.pending_toolstrip_action = Some(ToolstripAction::Undo);
+        }
+        if ui.add_enabled(
+            tool_action_allowed(ToolstripAction::Redo, has_document, edits_allowed),
+            egui::Button::new("Redo").min_size(size),
+        ).clicked() {
+            self.pending_toolstrip_action = Some(ToolstripAction::Redo);
+        }
+    }
+
+    pub(crate) fn take_toolstrip_action(&mut self) -> Option<ToolstripAction> {
+        self.pending_toolstrip_action.take()
+    }
+
+    pub(crate) fn toolstrip_action_finished(&mut self, result: Result<String, String>) {
+        self.toolstrip_status = result.unwrap_or_else(|error| format!("Action unavailable: {error}"));
     }
 
     pub(crate) fn show_dialog(&mut self, ctx: &egui::Context) {
@@ -162,6 +296,13 @@ impl CompanionBridge {
                     }
                 }
                 ui.separator();
+                ui.strong("Floating Companion toolstrip (Phase 3)");
+                ui.checkbox(&mut self.toolstrip_visible, "Show floating toolstrip");
+                ui.checkbox(&mut self.toolstrip_vertical, "Vertical toolstrip");
+                ui.add(egui::Slider::new(&mut self.toolstrip_scale, 0.75..=1.25).text("Toolstrip size"));
+                ui.add(egui::Slider::new(&mut self.toolstrip_opacity, 0.65..=1.0).text("Background opacity"));
+                ui.label(egui::RichText::new("Drag the toolstrip title to reposition; use its collapse button to minimize. Settings are session-only.").small());
+                ui.separator();
                 ui.strong("Compatible no-code Companion macro");
                 ui.label("B&W Film Pop: duplicate the active layer, then desaturate the copy.");
                 ui.label("These are two separate undoable operations (Undo twice to revert both).");
@@ -189,6 +330,7 @@ impl CompanionBridge {
             Ok(()) => "B&W Film Pop applied to the duplicate; Undo twice to revert both edits.".into(),
             Err(error) => format!("Macro not fully completed: {error}"),
         };
+        self.toolstrip_status = self.macro_status.clone();
     }
 }
 
@@ -363,6 +505,17 @@ fn serve_client(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn toolstrip_inspection_is_read_only_and_edits_need_permission() {
+        assert!(!tool_action_allowed(ToolstripAction::Inspect, false, false));
+        assert!(tool_action_allowed(ToolstripAction::Inspect, true, false));
+        assert!(!tool_action_allowed(ToolstripAction::Undo, true, false));
+        assert!(!tool_action_allowed(ToolstripAction::Redo, true, false));
+        assert!(tool_action_allowed(ToolstripAction::Undo, true, true));
+        assert!(tool_action_allowed(ToolstripAction::Redo, true, true));
+        assert!(!tool_action_allowed(ToolstripAction::Undo, false, true));
+    }
+
     #[test]
     fn constant_time_token_check_rejects_prefix_and_case_changes() {
         let token = "a".repeat(64);

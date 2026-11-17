@@ -79,3 +79,47 @@ Use the GitHub Actions workflow
 Require completed Python offline tests, ABI=arm64-v8a, a **separate candidate
 package**, \`apksigner verify\`, and a non-production certificate hash.
 Never merge, sign with production keys, or publish a release.
+
+
+## Phase 3 — in-app egui floating toolstrip (test-only)
+
+The Phase 3 candidate adds a **separate, opt-in egui window inside PhotoCraft**.
+It does not request Android overlay permission or float over Linux Lab/other apps.
+Open **Pc → AI Tools → PhotoCraft Companion**, then turn on **Show floating
+toolstrip**. Close the main Companion dialog to use the toolstrip on canvas.
+
+- Drag the toolstrip's title to move it; the window's built-in collapse control
+  minimizes it. Layout can be changed between horizontal and vertical.
+- Toolstrip size (75–125%) and background opacity (65–100%) are adjustable.
+  These are session-only values and do not change the stylus wheel.
+- **Inspect** is read-only and reports a brief, in-app open-document summary.
+  Full document/session inspection remains available from Linux Lab.
+- **Undo / Redo** are disabled until **Allow approved undoable edits from
+  paired clients** is checked in the Companion dialog and a document is open.
+- **B&W Pop** also requires a separate **Confirm B&W edits on this document**
+  checkbox on the toolstrip, consumed once per macro run. It reuses the Phase 2
+  duplicate/desaturate path (two independent Undo entries).
+- Defaults remain safe: toolstrip hidden; bridge off; approved edits off.
+  Hiding or collapsing the toolstrip never enables edits or network access.
+- The token is never drawn in the toolstrip. Native clipboard handling remains
+  confined to the existing private pairing button.
+- Phase 3 does **not** make Linux Lab commands work in the background when
+  Android suspends PhotoCraft. Continue using the owner-tested split/floating
+  window arrangement for live CLI inspection and edits until a separate
+  Android lifecycle integration is implemented and device-tested.
+
+### Phase 3 owner test
+
+1. Install the **test-only isolated candidate** beside production PhotoCraft.
+2. Open a throwaway document and enable the floating toolstrip in the dialog.
+3. Confirm drag/collapse, horizontal/vertical, size/opacity and Inspect.
+4. Check Undo, Redo and B&W Pop are disabled while Companion edit permission is off.
+5. Enable approved edits. Run B&W Pop only after checking its separate on-device
+   confirmation; verify the duplicate and black-and-white result.
+6. Check Undo twice removes both operations, Redo twice restores both,
+   then uncheck edits and confirm the controls become disabled.
+7. Close/reopen the toolstrip, and disable the bridge after testing.
+
+These are test instructions, **not** claims of hardware verification. Physical
+stylus input, gesture separation, app lifecycle and toolstrip interaction
+must be confirmed by the owner on HONOR MagicPad 4.

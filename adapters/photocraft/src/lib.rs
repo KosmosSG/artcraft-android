@@ -740,6 +740,40 @@ impl eframe::App for PhotoCraftAndroidApp {
             self.inner.sync_views();
         }
         self.inner.ui(ui, _frame);
+        // In-app Phase 3 floating egui toolstrip: render after the native canvas
+        // so its drag, buttons and confirmation remain above artwork controls.
+        self.companion.show_toolstrip(ui.ctx(), self.inner.session.active().is_some());
+        if let Some(action) = self.companion.take_toolstrip_action() {
+            use companion_bridge::ToolstripAction;
+            let is_edit = action != ToolstripAction::Inspect;
+            let result: Result<String, String> = match action {
+                ToolstripAction::Inspect => {
+                    self.inner.run("document.inspect", serde_json::json!({}))
+                        .map(|metadata| {
+                            let name = metadata.get("name").and_then(|x| x.as_str())
+                                .unwrap_or("Open document");
+                            let width = metadata.get("width").and_then(|x| x.as_u64());
+                            let height = metadata.get("height").and_then(|x| x.as_u64());
+                            match (width, height) {
+                                (Some(w), Some(h)) => format!("Inspected {name} · {w} × {h} px"),
+                                _ => format!("Inspected {name} (read-only)"),
+                            }
+                        })
+                        .map_err(|error| error.to_string())
+                }
+                ToolstripAction::Undo => self.inner.run("edit.undo", serde_json::json!({}))
+                    .map(|_| "Undo completed.".to_owned())
+                    .map_err(|error| error.to_string()),
+                ToolstripAction::Redo => self.inner.run("edit.redo", serde_json::json!({}))
+                    .map(|_| "Redo completed.".to_owned())
+                    .map_err(|error| error.to_string()),
+            };
+            if is_edit {
+                self.inner.sync_views();
+            }
+            self.companion.toolstrip_action_finished(result);
+            ui.ctx().request_repaint();
+        }
         if self.companion.take_macro_request() {
             // Only execute after a one-time on-device confirmation.
             // Both engine commands create normal undoable history entries.

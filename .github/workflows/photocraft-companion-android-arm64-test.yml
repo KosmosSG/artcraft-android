@@ -1,4 +1,4 @@
-name: PhotoCraft v0.23.1 Companion Phase 2 ARM64 TEST ONLY
+name: PhotoCraft v0.23.1 Companion Phase 3 ARM64 TEST ONLY
 
 # Independent review branch. Deliberately not on the auto-preview publisher allowlist.
 on:
@@ -512,6 +512,22 @@ jobs:
           ! grep -Fq 'https://' adapters/photocraft/src/companion_bridge.rs
           echo 'PASS: Companion bridge is locally bound, off by default and token authenticated'
 
+      - name: Verify Phase 3 floating toolstrip safety before compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'pub(crate) enum ToolstripAction' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'toolstrip_visible: false' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'tool_action_allowed(ToolstripAction::Undo, has_document, edits_allowed)' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'tool_action_allowed(ToolstripAction::Redo, has_document, edits_allowed)' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'has_document && edits_allowed && self.toolstrip_confirmed' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'self.toolstrip_confirmed = false;' adapters/photocraft/src/companion_bridge.rs
+          grep -Fq 'self.companion.show_toolstrip(ui.ctx(), self.inner.session.active().is_some())' adapters/photocraft/src/lib.rs
+          grep -Fq 'ToolstripAction::Inspect => ' adapters/photocraft/src/lib.rs
+          grep -Fq 'ToolstripAction::Undo => ' adapters/photocraft/src/lib.rs
+          grep -Fq 'ToolstripAction::Redo => ' adapters/photocraft/src/lib.rs
+          echo 'PASS: Phase 3 in-app egui toolstrip opt-in, read-only by default and edit-gated'
+
       - name: Offline Companion Phase 2 contract and Linux Lab client tests
         shell: bash
         run: |
@@ -723,12 +739,12 @@ jobs:
           PY
           sha256sum "$APK" | tee SHA256SUMS.txt
           echo "UNTESTED release-optimized disposable-key APK: isolated package ID. Install alongside stable PhotoCraft; does not migrate private data." >> "$GITHUB_STEP_SUMMARY"
-          echo "Companion Phase 2 adds allowlisted inspection, gated undoable macro and Linux Lab client; UNTESTED on physical Android. No desktop inference bundled." >> "$GITHUB_STEP_SUMMARY"
+          echo "Companion Phase 3 adds optional in-app floating egui toolstrip, preserving Phase 2 bridge; UNTESTED on physical Android. No desktop inference bundled." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release-optimized temporary-signed TEST artifact ONLY (never publish)
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoCraft-v0.23.1-android.5-COMPANION-PHASE2-ARM64-ISOLATED-TEST
+          name: PhotoCraft-v0.23.1-android.5-COMPANION-PHASE3-ARM64-ISOLATED-TEST
           path: |
             output/*.apk
             SHA256SUMS.txt

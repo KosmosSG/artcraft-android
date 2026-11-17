@@ -164,7 +164,9 @@ impl CompanionBridge {
         let mut open = self.toolstrip_visible;
         let scale = self.toolstrip_scale.clamp(0.75, 1.25);
         let alpha = (255.0 * self.toolstrip_opacity.clamp(0.65, 1.0)) as u8;
-        let frame = egui::Frame::window(&ctx.style())
+        // The Android-pinned egui Context has no style() getter; Frame::default
+        // preserves the custom floating toolstrip background without that API.
+        let frame = egui::Frame::default()
             .fill(egui::Color32::from_rgba_unmultiplied(20, 30, 49, alpha));
         egui::Window::new("Pc · Companion Tools")
             .id(egui::Id::new("pc_companion_phase3_floating_toolstrip"))

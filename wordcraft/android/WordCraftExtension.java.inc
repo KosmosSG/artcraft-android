@@ -94,7 +94,7 @@
             long copiedBytes = 0;
             int skipped = 0;
             while (!pending.isEmpty() && scannedFolders < 300 && copied < 150
-                    && copiedBytes < 200L * 1024 * 1024) {
+                    && copiedBytes < 4L * 1024 * 1024 * 1024) {
                 String parentId = pending.removeFirst();
                 if (!seen.add(parentId)) continue;
                 scannedFolders++;
@@ -107,7 +107,7 @@
                         null, null, null)) {
                     if (cursor == null) { skipped++; continue; }
                     while (cursor.moveToNext() && copied < 150
-                            && copiedBytes < 200L * 1024 * 1024) {
+                            && copiedBytes < 4L * 1024 * 1024 * 1024) {
                         String id = cursor.getString(0);
                         String name = cursor.getString(1);
                         String mime = cursor.getString(2);
@@ -136,7 +136,7 @@
                             while ((n = input.read(buffer)) != -1) {
                                 total += n;
                                 if (total > 20L * 1024 * 1024
-                                        || copiedBytes + total > 200L * 1024 * 1024)
+                                        || copiedBytes + total > 4L * 1024 * 1024 * 1024)
                                     throw new java.io.IOException("Font storage limit exceeded");
                                 output.write(buffer, 0, n);
                             }

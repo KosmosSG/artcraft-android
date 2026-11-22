@@ -1,0 +1,22 @@
+name: Shared Android keyboard focus tests
+on:
+  push:
+    branches: [fix/suite-keyboard-focus-20261026]
+    paths: ['templates/android/SafActivity.java', 'tools/keyboard/test_shared_keyboard.py', '.github/workflows/shared-keyboard-focus.yml']
+  pull_request:
+    paths: ['templates/android/SafActivity.java', 'tools/keyboard/test_shared_keyboard.py', '.github/workflows/shared-keyboard-focus.yml']
+permissions:
+  contents: read
+jobs:
+  java-keyboard-behavior:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: python3 -m unittest discover -s tools/keyboard -p 'test_shared_keyboard.py' -v

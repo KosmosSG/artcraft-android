@@ -48,8 +48,14 @@ public final class PhotoCraftActivity extends NativeActivity {
     private static final String TAG = "PhotoCraftSAF";
     private static final int REQ_OPEN = 0x5043;
     private static final int REQ_SAVE = 0x5044;
+    private static final int REQ_COMPANION = 0x5045;
+    private static final String COMPANION_PREFS = "photocraft_companion_catalog_readonly";
+    private static final int MAX_COMPANION_ENTRIES = 24;
+    private static final int MAX_COMPANION_ARCHIVE_BYTES = 512 * 1024;
     private static final String PREFS = "photocraft_saf_uri_map";
     private final ConcurrentLinkedQueue<String> results = new ConcurrentLinkedQueue<>();
+    // Independent of document open/save results: a plugin is NEVER handed to the canvas inbox.
+    private final ConcurrentLinkedQueue<String> companionResults = new ConcurrentLinkedQueue<>();
     private final Map<Integer, Long> requestIds = new HashMap<>();
     private final Map<Long, String> suggestedNames = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -329,6 +335,118 @@ public final class PhotoCraftActivity extends NativeActivity {
 
     public String pcPollPickerResult() { return results.poll(); }
 
+    /** The Companion catalog only contains sanitized manifest metadata, never plugin bytes. */
+    public String pcCompanionCatalogSnapshot() {
+        return getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE)
+                .getString("catalog", "[]");
+    }
+
+    public String pcCompanionPollResult() { return companionResults.poll(); }
+
+    /** Distinct SAF request; no write or persistable URI permissions are requested. */
+    public void pcRequestCompanionPlugin(long id) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                // Android SAF has no guaranteed .pcpl MIME support: verify extension ourselves.
+                intent.setType("*/*");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                requestIds.put(REQ_COMPANION, id);
+                startActivityForResult(intent, REQ_COMPANION);
+            } catch (Exception e) {
+                enqueueCompanionError(id, "Could not start the Companion file picker");
+            }
+        });
+    }
+
+    /** Only bounded, explicitly selected plugin metadata is retained. */
+    private void rememberCompanionMetadata(JSONObject plugin) throws Exception {
+        String id = plugin.getString("id");
+        SharedPreferences prefs = getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE);
+        JSONArray old;
+        try {
+            old = new JSONArray(prefs.getString("catalog", "[]"));
+        } catch (Exception ignored) {
+            old = new JSONArray();
+        }
+        JSONArray list = new JSONArray();
+        for (int i = 0; i < old.length(); i++) {
+            JSONObject entry = old.optJSONObject(i);
+            if (entry != null && !id.equals(entry.optString("id"))
+                    && list.length() < MAX_COMPANION_ENTRIES - 1) {
+                // Never persist arbitrary fields from an old/corrupted catalog.
+                JSONObject clean = new JSONObject();
+                for (String key : new String[] {
+                        "id", "name", "version", "plugin_type", "catalog_status"}) {
+                    clean.put(key, entry.optString(key, ""));
+                }
+                list.put(clean);
+            }
+        }
+        // Avoid using a selected document's name or URI as a trusted package identity.
+        JSONObject clean = new JSONObject();
+        for (String key : new String[] {
+                "id", "name", "version", "plugin_type", "catalog_status"}) {
+            clean.put(key, plugin.getString(key));
+        }
+        list.put(clean);
+        if (list.toString().length() > 16384) {
+            throw new Exception("Companion metadata catalog exceeds safe storage limit");
+        }
+        if (!prefs.edit().putString("catalog", list.toString()).commit()) {
+            throw new Exception("Could not persist Companion metadata");
+        }
+    }
+
+    private void enqueueCompanionError(long id, String message) {
+        try {
+            JSONObject result = base(id, "companion", "error");
+            result.put("message", message);
+            companionResults.offer(result.toString());
+        } catch (Exception ignored) { Log.e(TAG, "Could not report Companion picker error"); }
+    }
+
+    private void companionPicked(long id, Intent data) {
+        Uri uri = data.getData();
+        if (uri == null) {
+            enqueueCompanionError(id, "Companion picker returned no file");
+            return;
+        }
+        // Process in the existing worker without blocking Android UI or GPU rendering.
+        io.execute(() -> {
+            try {
+                String name = displayName(uri);
+                if (name == null || !name.toLowerCase(java.util.Locale.ROOT).endsWith(".pcpl")) {
+                    throw new Exception("Please select a PhotoCraft Companion .pcpl package");
+                }
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[] {OpenableColumns.SIZE}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int index = cursor.getColumnIndex(OpenableColumns.SIZE);
+                        if (index >= 0 && !cursor.isNull(index)
+                                && cursor.getLong(index) > MAX_COMPANION_ARCHIVE_BYTES) {
+                            throw new Exception("Companion package exceeds 512 KiB");
+                        }
+                    }
+                }
+                JSONObject plugin;
+                try (InputStream stream = getContentResolver().openInputStream(uri)) {
+                    plugin = CompanionPluginCatalog.inspect(stream);
+                }
+                rememberCompanionMetadata(plugin);
+                JSONObject result = base(id, "companion", "ok");
+                result.put("plugin", plugin);
+                companionResults.offer(result.toString());
+            } catch (Exception error) {
+                // Do not echo URI, paths, model URLs or raw untrusted content into UI.
+                Log.w(TAG, "Companion metadata import rejected: "
+                        + error.getClass().getSimpleName());
+                enqueueCompanionError(id, "Plugin package rejected or could not be read");
+            }
+        });
+    }
+
     public void pcRequestOpen(long id, boolean multiple) {
         runOnUiThread(() -> {
             try {
@@ -366,10 +484,21 @@ public final class PhotoCraftActivity extends NativeActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE) return;
+        if (requestCode != REQ_OPEN && requestCode != REQ_SAVE
+                && requestCode != REQ_COMPANION) return;
         Long boxedId = requestIds.remove(requestCode);
         if (boxedId == null) return;
         final long id = boxedId;
+        if (requestCode == REQ_COMPANION) {
+            if (resultCode != RESULT_OK || data == null) {
+                try {
+                    companionResults.offer(base(id, "companion", "cancel").toString());
+                } catch (Exception ignored) { Log.w(TAG, "Could not report Companion cancellation"); }
+            } else {
+                companionPicked(id, data);
+            }
+            return;
+        }
         final String kind = requestCode == REQ_OPEN ? "open" : "save";
         if (resultCode != RESULT_OK || data == null) {
             suggestedNames.remove(id);

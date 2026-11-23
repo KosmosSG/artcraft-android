@@ -3193,7 +3193,7 @@ fi
 # Select the already reviewed Android JNI implementation for this *candidate only*;
 # never silently replace it with a stub or bypass clipboard tests. Cargo will fail
 # closed if a newer upstream dependency actually requires arboard >=3.7.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" || "${PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then
     grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
         fail "PDFCraft Android clipboard patch missing; refusing pinned v0.17/v0.18 build"
     cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||

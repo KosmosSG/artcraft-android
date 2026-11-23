@@ -3127,7 +3127,7 @@ fi
 # builder's older mouse-aware vendor copy lacks it. For this disposable candidate
 # only, restore the exact official winit commit and reapply the guarded Android
 # mouse/scroll/hover backend. Do not silently fall back to touch-only input.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" || "${PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
     # PDFCRAFT_ANDROID5_DESTROY_EXITS_NATIVE_LOOP: pinned Android winit

@@ -2042,7 +2042,16 @@ try:
             import subprocess
             subprocess.run([convert, str(icon), "-resize", f"{sizes[density]}x{sizes[density]}", str(out_dir / "ic_launcher.png")], check=True)
         else:
-            shutil.copy2(icon, out_dir / "ic_launcher.png")
+            # Pillow is installed in the isolated candidate builder environment; preserve a real
+            # PNG resource instead of copying a WebP file with a misleading .png extension.
+            try:
+                from PIL import Image
+            except ImportError as exc:
+                raise SystemExit("ImageMagick or Pillow is required to generate Android launcher icons") from exc
+            with Image.open(icon) as source_image:
+                source_image.convert("RGBA").resize(
+                    (sizes[density], sizes[density]), Image.Resampling.LANCZOS
+                ).save(out_dir / "ic_launcher.png", format="PNG")
 
     # PDFCraft's approved raster icon is sufficient when no reviewed transparent adaptive foreground exists.
     # Keep the full approved Pc icon instead of failing the candidate build on an absent optional PNG.

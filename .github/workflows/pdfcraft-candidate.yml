@@ -2,19 +2,8 @@ name: PDFCraft v0.22.0 ARM64 candidate (ephemeral only)
 # Keep the parent commit available for the protected-baseline ancestry check.
 
 on:
-  push:
-    branches:
-      - pdfcraft-v0.22.0-android-integration
-    paths:
-      - .github/workflows/pdfcraft-candidate.yml
-      - docs/pdfcraft-v0.22.0-android-candidate.md
-      - lib/build-common.sh
-      - tools/pdfcraft_stable_audit.py
-      - tools/test_pdfcraft_adapter.py
-      - tools/pdfcraft/**
-      - templates/android/pdfcraft_*
-      - assets/pdfcraft/approved-icon.webp
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - pdfcraft-v0.21.1-android.10-baseline
   workflow_dispatch:
@@ -30,9 +19,8 @@ jobs:
   candidate:
     if: >-
       github.repository == 'KosmosSG/artcraft-android' &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/pdfcraft-v0.22.0-android-integration') ||
-       (github.event_name == 'pull_request' && github.head_ref == 'pdfcraft-v0.22.0-android-integration') ||
-       github.event_name == 'workflow_dispatch')
+      ((github.event_name == 'pull_request' && github.head_ref == 'pdfcraft-v0.22.0-android-integration') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/pdfcraft-v0.22.0-android-integration'))
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:

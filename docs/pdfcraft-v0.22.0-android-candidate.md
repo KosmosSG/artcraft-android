@@ -27,6 +27,7 @@ The candidate retains the protected Android.10 tree, including the current PDFCr
 - ABI: ARM64 / `arm64-v8a` only.
 - Icon: protected approved Pc artwork at `assets/pdfcraft/approved-icon.webp`.
 - Signing: a new disposable keystore generated on the hosted runner for this run only.
+- Image tooling: Pillow is installed in a temporary Python virtual environment for the approved WebP icon and stylus-wheel asset generation.
 
 The test package is deliberately different from production `com.artcraft.pdfcraft`, so it can be installed side-by-side. Its signature is not compatible with the production app. Never use it as an update. The workflow has read-only repository permissions and does not create tags or releases.
 

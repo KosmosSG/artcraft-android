@@ -89,3 +89,18 @@ FigCraft and SoundCraft: perform a source/toolchain/Android API feasibility revi
 ## Current result
 
 Upstream release inventory is complete for the 13 builder-supported app repositories plus ArtCraft core. This document does not certify source compatibility or APK readiness. The next implementation action is a per-app source diff and candidate build, beginning with Wave 1, while preserving every protected release branch.
+
+
+## Wave 1 branch freshness check (2026-11-23)
+
+A GitHub branch comparison was run for the existing integration/work branches against the current protected Android release branches. These counts describe repository-branch ancestry, **not** the number of upstream Storytold commits:
+
+| App | Protected release compared with | Existing branch | Existing branch status |
+|---|---|---|---|
+| WordCraft | Android.1 release | `integration/wordcraft-upstream-20261110` | 52 commits behind; no unique commits ahead |
+| GridCraft | Android.8 release | `integration/gridcraft-upstream-20261110` | 71 commits behind; no unique commits ahead |
+| CADCraft | Android.1 stable | `feature/cadcraft-v0190-android15-production-20261116` | 3 commits behind; no unique commits ahead |
+| DeckCraft | Android.8 release | `integration/deckcraft-upstream-20261110` | 27 commits behind; no unique commits ahead |
+| LightCraft | Android.4 release | `integration/lightcraft-upstream-20261110` | 29 commits behind; no unique commits ahead |
+
+**Interpretation:** do not reuse these old branches as if they were current integration candidates. Start each new review from its protected release baseline, then pin the current official upstream tag and selectively reapply/validate Android-only changes. CADCraft's v0.19.0 Android.15 work branch is also behind the v0.20.1 Android stable branch and should not be used as the current baseline.

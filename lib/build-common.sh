@@ -2044,28 +2044,27 @@ try:
         else:
             shutil.copy2(icon, out_dir / "ic_launcher.png")
 
-    # PDFCraft-only adaptive icon resources, based on the approved uploaded artwork.
-    # The input PNG comes from the GitHub candidate preparation step. Fail closed.
+    # PDFCraft's approved raster icon is sufficient when no reviewed transparent adaptive foreground exists.
+    # Keep the full approved Pc icon instead of failing the candidate build on an absent optional PNG.
     if app == "pdfcraft" and appicon:
         fg = root / "assets" / "pdfcraft" / "approved-foreground.png"
-        if not fg.is_file():
-            raise SystemExit(f"Missing PDFCraft adaptive foreground: {fg}")
-        drawable = staging_dir / "res" / "drawable-nodpi"
-        drawable.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(fg, drawable / "pdfcraft_foreground.png")
-        anydpi = staging_dir / "res" / "mipmap-anydpi-v26"
-        anydpi.mkdir(parents=True, exist_ok=True)
-        (anydpi / "ic_launcher.xml").write_text(
-            '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
-            '  <background android:drawable="@color/pdfcraft_bg" />\n'
-            '  <foreground android:drawable="@drawable/pdfcraft_foreground" />\n'
-            '</adaptive-icon>\n'
-        )
-        values = staging_dir / "res" / "values"
-        values.mkdir(parents=True, exist_ok=True)
-        (values / "pdfcraft_colors.xml").write_text(
-            '<resources><color name="pdfcraft_bg">#fb0e00</color></resources>\n'
-        )
+        if fg.is_file():
+            drawable = staging_dir / "res" / "drawable-nodpi"
+            drawable.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fg, drawable / "pdfcraft_foreground.png")
+            anydpi = staging_dir / "res" / "mipmap-anydpi-v26"
+            anydpi.mkdir(parents=True, exist_ok=True)
+            (anydpi / "ic_launcher.xml").write_text(
+                '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                '  <background android:drawable="@color/pdfcraft_bg" />\n'
+                '  <foreground android:drawable="@drawable/pdfcraft_foreground" />\n'
+                '</adaptive-icon>\n'
+            )
+            values = staging_dir / "res" / "values"
+            values.mkdir(parents=True, exist_ok=True)
+            (values / "pdfcraft_colors.xml").write_text(
+                '<resources><color name="pdfcraft_bg">#fb0e00</color></resources>\n'
+            )
 
     serde_dep = 'serde_json = { workspace = true }\n' if (saf or _persist) else ''
     # The SAF bridge for rfd-driven apps (pdfcraft) calls `rfd::artcraft_saf` from the launcher, so

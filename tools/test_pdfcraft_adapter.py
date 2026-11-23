@@ -27,23 +27,32 @@ for block in blocks:
 with tempfile.TemporaryDirectory() as folder:
     dst = Path(folder) / 'source'
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
+    test_package = os.environ.get('PDFCRAFT_ANDROID_TEST_PACKAGE', 'com.artcraft.pdfcraft.v0220test1')
+    approved_icon = root / 'assets' / 'pdfcraft' / 'approved-icon.webp'
+    assert approved_icon.is_file(), 'approved PDFCraft Pc launcher icon is missing'
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.19.0-android.5')})
+                       env={**os.environ,
+                            'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1'),
+                            'PDFCRAFT_ANDROID_TEST_PACKAGE': test_package})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
     before = scanner
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     assert (dst / 'crates/engine/src/text_fonts.rs').read_text() == before
-    run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
+    run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', test_package, str(approved_icon))
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.19.0-android.5')
+    assert cargo['package']['version'] == os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1')
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['dependencies']['sha2'] == '0.10'
     assert cargo['package']['metadata']['android']['assets'] == 'ocr-assets'
-    assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
+    assert cargo['package']['metadata']['android']['package'] == test_package
+    for density in ('mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'):
+        assert (android / 'res' / f'mipmap-{density}' / 'ic_launcher.png').is_file()
+    if not (root / 'assets' / 'pdfcraft' / 'approved-foreground.png').is_file():
+        assert not (android / 'res' / 'mipmap-anydpi-v26' / 'ic_launcher.xml').exists()
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
     assert 'mod pdfcraft_ocr;' in native

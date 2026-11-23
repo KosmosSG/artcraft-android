@@ -15,8 +15,8 @@ import sys
 from urllib.request import Request, urlopen
 
 REPOSITORY = "storytold/pdfcraft"
-BASELINE_TAG = "v0.10.1"
-BASELINE_SHA = "b77d57000c22c760f731206f6cf14486d149de72"
+BASELINE_TAG = "v0.21.1"
+BASELINE_SHA = "b503b2e62dfeec5598f344e4e287d9c9cbdb34fa"
 BASE = f"https://api.github.com/repos/{REPOSITORY}"
 
 

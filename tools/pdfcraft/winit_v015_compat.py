@@ -1,7 +1,7 @@
-"""PDFCraft v0.15/v0.17/v0.18/v0.19/v0.20 candidate-only pinned winit/Android input compatibility.
+"""PDFCraft v0.15/v0.17/v0.18/v0.19/v0.20/v0.21.1/v0.22.0 candidate-only pinned winit/Android input compatibility.
 
 The shared builder's old vendored winit lacks the IME API required by the
-immutable egui-winit revision in PDFCraft v0.15/v0.17/v0.18/v0.19/v0.20. Start with the exact official
+immutable egui-winit revision in PDFCraft v0.15/v0.17/v0.18/v0.19/v0.20/v0.21.1/v0.22.0. Start with the exact official
 Storytold winit commit, then retain the existing Android mouse/scroll/hover
 backend with only the upstream Android IME stubs restored.
 """
@@ -62,12 +62,12 @@ def with_passive_stylus_hover(android_mod: str) -> str:
 def prepare(source: Path, builder_android: Path) -> None:
     raw = (source / "Cargo.toml").read_text()
     data = tomllib.loads(raw)
-    if data["workspace"]["package"]["version"] not in ("0.15.0", "0.17.0", "0.18.0", "0.19.0", "0.20.0", "0.21.1"):
-        raise ValueError("Only audited official PDFCraft v0.15.0/v0.17.0/v0.18.0/v0.19.0/v0.20.0 are supported")
+    if data["workspace"]["package"]["version"] not in ("0.15.0", "0.17.0", "0.18.0", "0.19.0", "0.20.0", "0.21.1", "0.22.0"):
+        raise ValueError("Only audited official PDFCraft v0.15.0/v0.17.0/v0.18.0/v0.19.0/v0.20.0/v0.21.1/v0.22.0 are supported")
     patches = data["patch"]["crates-io"]
     if patches["winit"].get("rev") != PIN or patches["winit"].get("git") != REMOTE:
         raise ValueError("PDFCraft official winit source pin changed")
-    expected_egui = "725a39fca940f77149ffbb9c58eef405a16997bc" if data["workspace"]["package"]["version"] == "0.21.1" else EGUI_PIN
+    expected_egui = "725a39fca940f77149ffbb9c58eef405a16997bc" if data["workspace"]["package"]["version"] in ("0.21.1", "0.22.0") else EGUI_PIN
     if patches["egui"].get("rev") != expected_egui:
         raise ValueError("PDFCraft official egui source pin changed")
     vendor = source / "vendor" / "winit"

@@ -14,9 +14,10 @@ The candidate retains the protected Android.10 tree, including the current PDFCr
 
 1. `.github/workflows/pdfcraft-candidate.yml` — isolated ARM64 candidate workflow.
 2. `docs/pdfcraft-v0.22.0-android-candidate.md` — this candidate record.
-3. `lib/build-common.sh` — make the optional adaptive foreground truly optional when the protected approved full-raster Pc icon is supplied.
-4. `tools/pdfcraft_stable_audit.py` — advance the official upstream comparison baseline from v0.10.1 to v0.21.1.
-5. `tools/pdfcraft/winit_v015_compat.py` — restore the exact upstream winit 0.30.13 API required by egui-winit 0.37, while reapplying the reviewed Android mouse/scroll/hover and lifecycle patches for v0.22.0.\n6. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and approved Pc icon, including a guard against skipping the v0.22.0 winit overlay.
+3. `lib/build-common.sh` — preserve the optional adaptive foreground behavior and invoke the audited Android winit overlay for the v0.22.0 candidate.
+4. `tools/pdfcraft/winit_v015_compat.py` — restore the exact upstream winit 0.30.13 API required by egui-winit 0.37, while reapplying the reviewed Android mouse/scroll/hover and lifecycle patches for v0.22.0.
+5. `tools/pdfcraft_stable_audit.py` — advance the official upstream comparison baseline from v0.10.1 to v0.21.1.
+6. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and approved Pc icon, including a guard against skipping the v0.22.0 winit overlay.
 
 ## Candidate identity and signing
 

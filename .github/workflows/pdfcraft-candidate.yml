@@ -70,11 +70,14 @@ jobs:
           test -f templates/android/pdfcraft_mobile_java.txt
           echo "Protected Android.10 source is unchanged outside the five reviewed candidate files." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Install image conversion tools for the approved Pc icon
+      - name: Install Pillow for Pc icon and stylus-wheel generation
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
-          identify assets/pdfcraft/approved-icon.webp
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
+          "$RUNNER_TEMP/pdfcraft-tools/bin/python" -m pip install --disable-pip-version-check --no-input Pillow
+          echo "$RUNNER_TEMP/pdfcraft-tools/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('assets/pdfcraft/approved-icon.webp'); im.verify(); print('Approved Pc icon:', im.format, im.size)"
 
       - name: Verify the exact official upstream tag and source commit
         shell: bash

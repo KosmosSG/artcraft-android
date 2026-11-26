@@ -62,6 +62,7 @@ jobs:
           docs/pdfcraft-v0.22.0-android-candidate.md
           lib/build-common.sh
           tools/pdfcraft/android_tools_menu_patch.py
+          tools/pdfcraft/android_on_exit_compat.py
           tools/pdfcraft/winit_v015_compat.py
           tools/pdfcraft_stable_audit.py
           tools/test_pdfcraft_adapter.py
@@ -71,7 +72,7 @@ jobs:
           test -f templates/android/pdfcraft_stylus_wheel.rs
           test -f templates/android/pdfcraft_mobile.rs
           test -f templates/android/pdfcraft_mobile_java.txt
-          echo "Protected Android.10 source is unchanged outside the seven reviewed candidate files." >> "$GITHUB_STEP_SUMMARY"
+          echo "Protected Android.10 source is unchanged outside the eight reviewed candidate files." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Pillow for Pc icon and stylus-wheel generation
         shell: bash

@@ -19,11 +19,11 @@ def install_approved_brand_module():
     lib_path = ui_src / "lib.rs"
     brand_path = ui_src / "android_approved_brand.rs"
     lib_text = lib_path.read_text()
-    declaration = '#[cfg(target_os = "android")]\\nmod android_approved_brand;'
+    declaration = '#[cfg(target_os = "android")]\nmod android_approved_brand;'
     if "mod android_approved_brand;" not in lib_text:
-        anchor = "mod menus;\\n"
+        anchor = "mod menus;\n"
         assert lib_text.count(anchor) == 1, "PDFCraft UI crate module anchor changed"
-        lib_path.write_text(lib_text.replace(anchor, declaration + "\\n" + anchor, 1))
+        lib_path.write_text(lib_text.replace(anchor, declaration + "\n" + anchor, 1))
 
     brand_source = """// PDFCRAFT_ANDROID_APPROVED_PC_BRAND
 // Small vector rendering of the approved PDFCraft Pc mark for the Android menu.

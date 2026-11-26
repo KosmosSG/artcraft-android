@@ -40,6 +40,9 @@ with tempfile.TemporaryDirectory() as folder:
                             'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1'),
                             'PDFCRAFT_ANDROID_TEST_PACKAGE': test_package})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
+    subprocess.run([sys.executable, str(root / 'tools/pdfcraft/android_on_exit_compat.py'), str(dst)], check=True)
+    android_app = (dst / 'apps/pdfcraft-android/src/lib.rs').read_text()
+    assert 'fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)' in android_app
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
     before = scanner

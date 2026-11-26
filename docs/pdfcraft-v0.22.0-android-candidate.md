@@ -10,14 +10,15 @@
 - Official upstream source: `storytold/pdfcraft` tag `v0.22.0`
 - Official upstream commit: `ac140f809d554981a5276d748e6193fcf4d4bdfa`
 
-The candidate retains the protected Android.10 tree, including the current PDFCraft stylus wheel, approved Pc branding assets, Android trackpad and stylus work, lifecycle handling, SAF/font integration, in-app updater, OCR bridge, and the full existing PDFCraft regression suite. Only the following files differ from the protected baseline:
+The candidate retains the protected Android.10 tree, including the current PDFCraft stylus wheel, approved Pc branding assets, Android trackpad and stylus work, lifecycle handling, SAF/font integration, in-app updater, OCR bridge, and the full existing PDFCraft regression suite. Only the following seven reviewed files differ from the protected baseline:
 
 1. `.github/workflows/pdfcraft-candidate.yml` — isolated ARM64 candidate workflow.
 2. `docs/pdfcraft-v0.22.0-android-candidate.md` — this candidate record.
 3. `lib/build-common.sh` — preserve the optional adaptive foreground behavior and invoke the audited Android winit overlay for the v0.22.0 candidate.
-4. `tools/pdfcraft/winit_v015_compat.py` — restore the exact upstream winit 0.30.13 API required by egui-winit 0.37, while reapplying the reviewed Android mouse/scroll/hover and lifecycle patches for v0.22.0.
-5. `tools/pdfcraft_stable_audit.py` — advance the official upstream comparison baseline from v0.10.1 to v0.21.1.
-6. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and approved Pc icon, including a guard against skipping the v0.22.0 winit overlay.
+4. `tools/pdfcraft/android_tools_menu_patch.py` — add the missing Android-only Pc painter and use upstream v0.22.0's three-argument menu helper without changing desktop behavior.
+5. `tools/pdfcraft/winit_v015_compat.py` — restore the exact upstream winit 0.30.13 API required by egui-winit 0.37, while reapplying the reviewed Android mouse/scroll/hover and lifecycle patches for v0.22.0.
+6. `tools/pdfcraft_stable_audit.py` — advance the official upstream comparison baseline from v0.10.1 to v0.21.1.
+7. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and approved Pc icon, including a guard against skipping the v0.22.0 winit overlay.
 
 ## Candidate identity and signing
 

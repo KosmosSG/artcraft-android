@@ -12,11 +12,63 @@ src = Path(sys.argv[1])
 path = src / "crates/ui-egui/src/menus.rs"
 text = path.read_text()
 marker = "ARTCRAFT_ANDROID_TOOLS_VISIBLE"
+
+def install_approved_brand_module():
+    """Add the missing Android-only Pc painter to the upstream UI crate."""
+    ui_src = src / "crates/ui-egui/src"
+    lib_path = ui_src / "lib.rs"
+    brand_path = ui_src / "android_approved_brand.rs"
+    lib_text = lib_path.read_text()
+    declaration = '#[cfg(target_os = "android")]\\nmod android_approved_brand;'
+    if "mod android_approved_brand;" not in lib_text:
+        anchor = "mod menus;\\n"
+        assert lib_text.count(anchor) == 1, "PDFCraft UI crate module anchor changed"
+        lib_path.write_text(lib_text.replace(anchor, declaration + "\\n" + anchor, 1))
+
+    brand_source = """// PDFCRAFT_ANDROID_APPROVED_PC_BRAND
+// Small vector rendering of the approved PDFCraft Pc mark for the Android menu.
+// Palette matches the owner-approved launcher artwork: #FB0E00 / #FBB4B0.
+use egui::{Align2, Color32, FontId, Painter, Rect};
+
+pub(crate) fn paint(painter: &Painter, rect: Rect) {
+    let diameter = rect.width().min(rect.height());
+    if diameter <= 0.0 {
+        return;
+    }
+    let center = rect.center();
+    painter.circle_filled(
+        center,
+        diameter * 0.5,
+        Color32::from_rgb(251, 14, 0),
+    );
+    painter.text(
+        center,
+        Align2::CENTER_CENTER,
+        "Pc",
+        FontId::proportional(diameter * 0.62),
+        Color32::from_rgb(251, 180, 176),
+    );
+}
+"""
+    if brand_path.exists():
+        assert brand_path.read_text() == brand_source, "Unexpected existing Android Pc brand module"
+    else:
+        brand_path.write_text(brand_source)
+
+
+install_approved_brand_module()
+
+if "fn menu_item(&self, id: &'static str, label: Option<&str>, mac: bool)" in text:
+    menu_item_call = "self.menu_item(ANDROID_TOOLS, None, false)"
+elif "fn menu_item(&self, id: &'static str, label: Option<&str>)" in text:
+    menu_item_call = "self.menu_item(ANDROID_TOOLS, None)"
+else:
+    raise SystemExit("Unsupported PDFCraft menu_item signature; refusing an unreviewed menu patch")
 if marker in text:
     expected = [
         'const ANDROID_TOOLS: &str = "view.android_tools";',
         'PDFCRAFT_ANDROID_ICON_MENU',
-        "self.menu_item(ANDROID_TOOLS, None)",
+        menu_item_call,
         "pub fn android_tools_visible(&self) -> bool",
         "pub fn set_android_tools_visible(&self, visible: bool)",
         "ANDROID_TOOLS => cfg!(target_os = \"android\")",
@@ -50,7 +102,7 @@ replace('    (NO_RECENT, "No recent files", None),',
 
 replace('        view.extend(list(PANES, &mut used));',
         '        #[cfg(target_os = "android")]\n'
-        '        view.push(self.menu_item(ANDROID_TOOLS, None));\n'
+        '        view.push(' + menu_item_call + ');\n'
         '        view.extend(list(PANES, &mut used));')
 
 replace('                PANEL => panel(command).is_some(),',

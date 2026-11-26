@@ -160,10 +160,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'pub fn android_tools_visible(&self) -> bool' in menu
     assert 'pub fn set_android_tools_visible(&self, visible: bool)' in menu
-    assert 'view.push(self.menu_item(ANDROID_TOOLS, None))' in menu
+    assert 'view.push(self.menu_item(ANDROID_TOOLS, None, false))' in menu
     assert 'PDFCRAFT_ANDROID_HELP_REQUEST' in menu
     assert 'PDFCRAFT_ANDROID_ICON_MENU' in menu
     assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
+    brand_module = (dst / 'crates/ui-egui/src/android_approved_brand.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_APPROVED_PC_BRAND' in brand_module
+    assert 'mod android_approved_brand;' in (dst / 'crates/ui-egui/src/lib.rs').read_text()
     assert '"Import Fonts…"' in menu and '"Check for Updates…"' in menu
     assert '"Automatic update check…"' not in menu
     assert 'PDFCRAFT_ANDROID_DECKCRAFT_APP_UPDATES' in menu

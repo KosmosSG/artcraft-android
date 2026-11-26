@@ -342,6 +342,8 @@ if app == "pdfcraft":
     fixed.append("Android tools sidebar touch-only scrolling; no trackpad wheel capture")
     subprocess.run([sys.executable, str(Path.cwd() / "tools/pdfcraft/android_pen_pressure_patch.py"), str(src)], check=True)
     fixed.append("Android experimental pressure-aware PDF Ink width (per-stroke; guarded)")
+    subprocess.run([sys.executable, str(Path.cwd() / "tools/pdfcraft/android_on_exit_compat.py"), str(src)], check=True)
+    fixed.append("PDFCraft Android eframe 0.37 on_exit signature compatibility")
 
     # v0.15 moved the updater to platform/updates.rs; keep the old path for earlier stable pins.
     update_paths = [src / "crates/ui-egui/src/platform/updates.rs", src / "crates/ui-egui/src/updates.rs"]

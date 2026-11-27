@@ -54,7 +54,7 @@ impl AndroidAiMenu {
             .unwrap_or(true);
         // Window's checked item and Android's separate menu strip read the
         // same Android-only UI state. Default is visible on first launch.
-        photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(visible);
+        // Keep visibility local to the Android shell; the protected v0.23.1 UI crate does not expose the newer menu visibility API.
         Self {
             show_about: false,
             show_connection: false,
@@ -105,10 +105,6 @@ impl AndroidAiMenu {
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session, companion: &mut crate::companion_bridge::CompanionBridge) -> bool {
         // A hidden AI Tools menu must not apply an invisible in-flight result.
         // Window → Show AI Tools can be toggled at any time.
-        if !photocraft_ui_egui::menus::artcraft_ai_tools_visible() {
-            self.cancel_cpu_job();
-            self.cpu_consent = false;
-        }
         let layer_changed = self.poll_cpu_result(session, ui.ctx());
         let txt2img_changed = self.poll_txt2img_result(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
@@ -157,9 +153,7 @@ impl AndroidAiMenu {
             }
             None => {}
         }
-        let visible = photocraft_ui_egui::menus::artcraft_ai_tools_visible();
-        self.persist_visibility(visible);
-        if !visible { return layer_changed; }
+        self.persist_visibility(true);
         // egui 0.36 uses Panel::top instead of TopBottomPanel. Mount the
         // Android-only native menu in its own top strip, without editing the
         // upstream Filter menu or painting a floating palette.
@@ -473,7 +467,7 @@ impl AndroidAiMenu {
                         }
                         match ai_background_editor::insert_undoable(session, job.origin, layer) {
                             Ok(()) => {
-                                self.connection_status = "PxC image generated. New undoable AI layer inserted.";
+                                self.connection_status = "PxC image generated. New undoable AI layer inserted.".to_string();
                                 return true;
                             }
                             Err(error) => self.connection_status = error,

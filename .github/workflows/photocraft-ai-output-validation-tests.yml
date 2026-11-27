@@ -1,0 +1,32 @@
+name: PhotoCraft AI output preflight tests (no APK)
+on:
+  push:
+    branches: [feature/photocraft-android-ai-tools-20261029]
+    paths:
+      - 'adapters/photocraft/src/ai_output_validation.rs'
+      - '.github/workflows/photocraft-ai-output-validation-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust-preflight:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/feature/photocraft-android-ai-tools-20261029'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run isolated Rust header preflight tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 --test adapters/photocraft/src/ai_output_validation.rs -o /tmp/photocraft-ai-output-tests
+          /tmp/photocraft-ai-output-tests
+      - name: Ensure feature stays disabled pending full decoder and undoable layer integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'ui.add_enabled(false, egui::Button::new(action.label()))' adapters/photocraft/src/ai_menu.rs
+          grep -q 'header-only preflight is deliberately insufficient' adapters/photocraft/src/ai_output_validation.rs
+          echo 'PASS: preliminary validation only; no image inference, APK, release or production signing'

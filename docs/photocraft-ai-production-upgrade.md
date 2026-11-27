@@ -1,0 +1,738 @@
+# PhotoCraft AI PR #93 — production update readiness (not a release)
+
+> **Isolated preview run completion and artifact containment — 2 November 2026.**
+> The previously in-progress [ARM64 run #41445396193](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193)
+> finished **SUCCESS** (job 125277102896). Its compiled manifest is
+> **`com.artcraft.photocraft.ai.preview`**, version `0.14.0-android.1`,
+> versionCode `16790004`, ARM64, and launcher `PhotoCraft AI Preview`.
+> The four-file artifact [#13142856849](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193/artifacts/13142856849)
+> is an **isolated, disposable-signed preview APK and verification metadata**,
+> NOT a production-package APK, V2 update or approved owner test. Its archive
+> digest is `a332a29825642caac3b200a89670d700a39733f51bf3e823f9b7171a5a134d2d`;
+> GitHub reports expiry 16 November 2026. No new build was started.
+> The obsolete [regular-package disposable proof #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+> remains failed with **zero artifacts**; do not rerun it.
+> [Preview failure-artifact containment 915f3c6e](https://github.com/KosmosSG/artcraft-android/commit/915f3c6e2de2bec63385d297cb8ccd2e26a6fb11)
+> restricts failure diagnostics to logs and JSON (not copied APKs) and
+> removes disposable APK copies during runner cleanup. [Parity guard 9ccc579a](https://github.com/KosmosSG/artcraft-android/commit/9ccc579a6f054d9053356a00b8ede272468fbeee)
+> adds three negative mutations: production package substitution, unsafe
+> failure upload, and missing cleanup. The archived workflow remains job-disabled.
+> Lightweight CI for the latest guard change is **not yet verified**;
+> no release-readiness claim is made. Stable android.4 remains unchanged,
+> android.5 rejected, PR93 DRAFT; no production signing or publication.
+
+> **Local AI consent/token privacy hardening — 2 November 2026.**
+> [PR93 change e4b61a83](https://github.com/KosmosSG/artcraft-android/commit/e4b61a837f7fd4eabfa65f3becefe047ba9f9559)
+> revokes the in-memory per-image consent and temporary Linux Lab bearer token,
+> closes the pending background-removal dialog and cancels any client-side job
+> when Window → Show AI Tools is hidden. It does not persist tokens or change
+> the local 127.0.0.1-only architecture. [Source regression 55f4edc1](https://github.com/KosmosSG/artcraft-android/commit/55f4edc10272a4b83792301f4f2c2c9a29c6b4a2)
+> adds three fail-closed negative mutations. [Lightweight V2 CI #41445423510](https://github.com/KosmosSG/artcraft-android/actions/runs/41445423510)
+> **PASSED**: 20 parity mutations, 19 V2 identity regressions, actual
+> published android.4 APK signer/hash/ARM64 checks, **zero artifacts**.
+> The AI-menu source edit also auto-triggered the existing *isolated-preview*
+> ARM64 workflow [#41445396193](https://github.com/KosmosSG/artcraft-android/actions/runs/41445396193),
+> which was **still running at evidence capture**; do not start a duplicate,
+> cancel an active build, or treat an isolated preview as a production candidate.
+> [Preview-workflow containment 6ac87689](https://github.com/KosmosSG/artcraft-android/commit/6ac8768986b64fedbc67a09b08a79bf0c526c381)
+> removes automatic push-triggered heavy ARM64 builds and archives its one
+> job with a hard false condition; the existing run was **not cancelled**.
+> [Guard 9a4367ae](https://github.com/KosmosSG/artcraft-android/commit/9a4367ae144e6ea58c34275f98e9b95213a8b0ca)
+> adds three negative mutations (23 parity mutations total), requiring the
+> preview to remain manual-only, disabled and non-cancelling.
+> [CI #41445624201](https://github.com/KosmosSG/artcraft-android/actions/runs/41445624201)
+> **PASSED** source tests and actual published android.4 V2 signer/ARM64
+> verification; **zero artifacts**. No further preview build was triggered
+> by the workflow archive or regression guard.
+> This is privacy/build-containment work, **not** a fix for the unresolved
+> android.5 Ctrl+W hardware regression. Android.4 stays stable; android.5
+> remains rejected; no new production signing, merge or release authorized.
+
+> **Archived ARM64 job bypass protection — 2 November 2026.**
+> [Commit f0874c04](https://github.com/KosmosSG/artcraft-android/commit/f0874c045d328e5e6114e4141960c57dc1751dac)
+> closes a source-guard gap: checking for a bare `if: false` string did not
+> exclude a second unguarded job, duplicate job-level `if`, or a false
+> condition moved into a step. The guard now requires **exactly one**
+> `arm64-preview` job with **exactly one** job-level `if: ${{ false }}`
+> in each of the archived android.4, rejected android.5 and obsolete
+> android.2 workflows; three new negative mutations raise the total to 17.
+> [Lightweight CI #41436027420](https://github.com/KosmosSG/artcraft-android/actions/runs/41436027420)
+> **PASSED** (job 125245880909), including 19 V2 identity negative cases,
+> 17 parity mutations and inspection of the **actual** public V2 android.4
+> APK signer/hash; **zero artifacts**. No ARM build, key, new APK, merge,
+> installation or publication. This prevents accidental historical builds,
+> **not** the owner's still-unresolved Android.5 Ctrl+W regression.
+
+> **Archived historical android.4 ARM64 rebuild (2 November 2026):** The
+> published, owner-accepted V2 android.4 APK remains the only stable release.
+> The old `.github/workflows/photocraft-ai-v2-fontscan-android4-unsigned.yml`
+> ARM64 job is now disabled even for manual dispatch, while its exact
+> keyboard/AI/4 GiB font-scan build recipe remains available as a read-only
+> parity reference. [Commit 502ef91a](https://github.com/KosmosSG/artcraft-android/commit/502ef91a08a6cca34179eade5fc520ffa647b905).
+> [Source guard 72e80c95](https://github.com/KosmosSG/artcraft-android/commit/72e80c95b7d8c81fef6375b82073470f8ca959c2)
+> requires this archive state and adds a negative test against reactivation.
+> The rejected android.5 job and obsolete android.2 disposable proof remain
+> disabled. This prevents redundant heavy builds; it is **not** a Ctrl+W
+> runtime fix. [Lightweight CI #41424781274](https://github.com/KosmosSG/artcraft-android/actions/runs/41424781274)
+> **passed**, including 14 negative parity mutations and real public V2 android.4
+> certificate/hash verification; [historical android.4 workflow #41424763495](https://github.com/KosmosSG/artcraft-android/actions/runs/41424763495)
+> **skipped** its ARM64 job as intended. Both runs have **zero artifacts**.
+> No APK, signing or release action.
+
+> **Ctrl+W overlay source regression gate (2 November 2026):**
+> [PR93 source guard](../tools/photocraft_ai_v2_build_parity.py) now checks
+> that the experimental AI menu/Window toggle do not add key-consumption or
+> Ctrl+W interception and that the staged adapter retains the existing
+> discard-dialog and Escape keyboard hooks. Three new negative mutations
+> fail closed. [Lightweight CI #41420475729](https://github.com/KosmosSG/artcraft-android/actions/runs/41420475729)
+> **passed** at commit `17214f9d`, including the actual published android.4
+> V2 APK identity check; **zero artifacts** were uploaded. This is a
+> *source-boundary* regression guard, **not** proof that Android.5's Ctrl+W
+> failure has been reproduced or fixed. Android.5 remains rejected; no
+> replacement build or signing is authorized.
+>
+> **Read-only build-parity regression check (2 November 2026):** New
+> [source-only guard](../tools/photocraft_ai_v2_build_parity.py) checks the
+> exact accepted android.4 recipe for pinned keyboard/AI integration and its
+> 4 GiB/5,000-font overlay, and refuses reactivation of the rejected android.5
+> workflow. Thirteen negative source mutations are exercised; this does **not**
+> establish the cause of Ctrl+W failing on hardware. [CI run #41401513433](https://github.com/KosmosSG/artcraft-android/actions/runs/41401513433)
+> passed the parity test, V2 rejection tests and read-only inspection of the
+> actual published android.4 APK/signature. No new candidate was built or
+> signed, and no new release was approved.
+>
+> **Historical proof containment:** The obsolete original-key
+> `0.14.0-android.2` disposable production-package proof is now job-disabled
+> (including manual dispatch) in
+> [`photocraft-ai-production-dryrun.yml`](../.github/workflows/photocraft-ai-production-dryrun.yml).
+> The existing artifact-safety regression suite and new parity guard verify
+> that the old `icon-verification/` APK copy is not uploaded and is cleaned.
+> [No-build workflow #41401661448](https://github.com/KosmosSG/artcraft-android/actions/runs/41401661448)
+> was **skipped** as intended; [artifact-safety #41401661436](https://github.com/KosmosSG/artcraft-android/actions/runs/41401661436)
+> and [V2/parity #41401681419](https://github.com/KosmosSG/artcraft-android/actions/runs/41401681419)
+> passed. Historical failure artifact `12966638625` was already deleted
+> by the owner and the exact run now reports zero artifacts. Do not rerun
+> historical disposable production-package proofs.
+
+
+> **Owner device-test decision — 2 November 2026 (latest; supersedes android.5 promotion plans).**
+> The owner tested the privately V2-signed `0.14.0-android.5` candidate on
+> HONOR MagicPad 4 and reported that **Ctrl+W does not respond**. They prefer
+> the already-published, fully working `0.14.0-android.4` and found no
+> meaningful benefit in android.5. **Android.5 is rejected for release**;
+> do not promote, republish, rebuild, re-sign, or silently substitute it for
+> android.4. Leave the public stable android.4 release and PR #93 DRAFT unchanged.
+>
+> **Source parity finding (not a proven Ctrl+W root cause):** the successful
+> android.4 unsigned build at source `3af883c9` ran
+> `tools/photocraft_ai_fontscan_4g_stage.py` in its ephemeral runner, whereas
+> android.5 workflow `.github/workflows/photocraft-ai-v2-candidate-unsigned.yml`
+> does **not** apply that 4 GiB/5,000-file font-scan overlay. Both workflows
+> start from the same immutable keyboard baseline `f708fff8`, so the reported
+> Ctrl+W regression cannot be attributed to a different keyboard-baseline
+> commit without further evidence. GitHub green build/signature checks do not
+> establish hardware-keyboard or feature parity. Any separately authorized
+> future candidate must explicitly preserve android.4 font scanning and pass
+> repeated on-device Ctrl+W / D-C-S checks before release consideration.
+> No new APK or downgrade is requested; **do not uninstall the owner's app**
+> as a downgrade workaround because it can remove app-private data.
+>
+> **Rejected-build containment (2 November 2026):** the historical
+> `.github/workflows/photocraft-ai-v2-candidate-unsigned.yml` is now
+> deliberately **job-disabled** (`if: ${{ false }}`), and its earliest
+> preflight also rejects the owner-rejected `android.5` name/code using the
+> V2 upgrade-gate constants. This prevents an accidental heavy rebuild or
+> manual re-dispatch of the rejected candidate from producing an APK.
+> Commit [`fac02a57`](https://github.com/KosmosSG/artcraft-android/commit/fac02a577c0512430e1734648098623c72615598).
+> This is source/workflow containment, **not** a fix for Ctrl+W. The
+> exact keyboard regression still requires investigation against android.4
+> before any separately authorized new candidate.
+
+> **Current status — 2 November 2026 (supersedes historical signing instructions below).**
+> [PhotoCraft `v0.14.0-android.4`](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.4)
+> is **already published as a stable core editor** (1 November 2026), with
+> experimental **opt-in Linux Lab U2NetP AI**, recursive shared-font scanning
+> (4 GiB aggregate/5,000 files), normal PhotoCraft package and the owner-tested
+> keyboard/editor features. Its **permanent V2** certificate SHA-256 is
+> `EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936`;
+> versionCode **16790007**; published APK SHA-256
+> `d50857fe7d563821563d29842299858bbda09ea49e3786c420ec02f21b8e6367`.
+> The former `android.1` certificate **45933A…** is **not** compatible with
+> V2, cannot be used to update an installed V2 release, and must **never**
+> be auto-selected for a new AI build. The owner chose V2 after original-key
+> recovery failed; migration from original signing to V2 can require an
+> explicit backup and reinstall, with loss of app-private files otherwise.
+>
+> **Actual source and checks:** PR #93 is still **draft/unmerged**. The
+> [V2 upgrade self-test #6](https://github.com/KosmosSG/artcraft-android/actions/runs/41375360748)
+> passed after raising the minimum future candidate to **strictly newer
+> than `android.4` and versionCode >16790007**. The
+> [real-public-APK check #7](https://github.com/KosmosSG/artcraft-android/actions/runs/41375457611)
+> verified the actual published stable ARM64 APK's V2 certificate, hash,
+> version and no-bundled-model archive. Earlier draft sections below
+> chronicle the historical `android.1` original-signing plan and do **not**
+> supersede the actual published `android.4` V2 release.
+>
+> **Remaining PR #93 work:** more real-device Linux Lab pause/restart/
+> cancellation lifecycle stress tests, proof of V2-to-V2 in-place upgrade
+> and data preservation for a **future** higher-version candidate, accurate
+> model/dataset-rights notices for public usage, and separate approval before
+> any future AI publication or PR merge. No automatic public release, model
+> weights, dataset, secret signing key, or installer is bundled here.
+
+
+**Owner-device milestone:** PhotoCraft AI Preview ARM64 run #53 compiled successfully;
+the owner tested U2NetP background removal, a new raster layer, Undo/Redo,
+cancellation, dialog close, and existing physical-keyboard behavior on
+HONOR MagicPad 4. Preview package is `com.artcraft.photocraft.ai.preview`,
+signed with a disposable CI key. It cannot update or replace the normal app.
+
+## Existing public PhotoCraft — verified reference
+
+| Item | Release identity |
+|---|---|
+| Published tag | `photocraft-v0.14.0-android.1` |
+| Android package | `com.artcraft.photocraft` |
+| App label | `PhotoCraft` |
+| Version | `0.14.0-android.1` |
+| Version code | `16790004` |
+| Signing certificate SHA-256 | `45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef` |
+
+This public certificate **fingerprint** is not the secret signing key. The
+`PhotoCraft AI production signing reference (read-only)` workflow verified
+the APK using Android build tools; it does not grant access to private keys.
+
+## New build-only source integration proof (PR #93)
+
+`.github/workflows/photocraft-ai-production-dryrun.yml` starts from the
+immutable, previously owner-tested Android source and injects the PR93 AI
+modules. It converts only the **throwaway Actions workspace** from the
+separate preview package to the real `PhotoCraft` label, package and Java
+Activity namespace. It proposes `0.14.0-android.2` for **identity testing**
+and carries forward the approved launcher and keyboard baseline.
+
+The generic builder signs with a randomly generated **disposable** key.
+It is therefore **not a production signing step**. The pipeline must confirm
+that signer differs from the public release, verify the package, launcher,
+version code, ARM64, approved icon and compiled code, then **delete the APK**.
+Only a JSON proof is uploaded; never upload the disposable-signer APK with
+the production package name. Failure at any gate must stop the proof.
+
+**No Workflow Dispatch input enables publishing or production signing.**
+
+## Separate eventual production-signed candidate — blocked until approved
+
+1. Retrieve the original PhotoCraft permanent signing key through the
+   owner's **trusted private** GitHub Actions signing environment. Never
+   expose a JKS, key password, base64 key, or signing secret in chat,
+   ordinary artifacts, logs or the public PR. Do not create a replacement
+   permanent key, overwrite existing signing secrets, or use the generic
+   builder's disposable key for this update.
+2. Build the same reviewed AI source with a version code **strictly above**
+   `16790004`, approved original artwork, production Java namespace and
+   `com.artcraft.photocraft`. Preserve existing SAF, import fonts,
+   updater, GPU diagnostics and ESC/V/T/C/Y/N keyboard behavior.
+3. Before accepting an installable candidate, run
+   `tools/photocraft_ai_candidate_compatibility.py` against the **public
+   reference APK** and the **actual signed candidate**. Require exact
+   package, public signing fingerprint, `PhotoCraft` label and launcher,
+   approved versionName, and increasing versionCode. Fail closed.
+4. Produce a **private review APK only** once the signing identity is
+   proven. Back up important documents, install **over** existing
+   PhotoCraft without uninstalling it, confirm user data remains intact,
+   and retest custom fonts, SAF, update checker, ESC/V/T/C/Y/N, AI
+   background removal, consent, cancellation, masks and Undo/Redo.
+5. Review third-party U2NetP **weights/training-data commercial terms**
+   separately. The Android app currently needs its opt-in localhost
+   **Linux Lab** CPU server to be running; this is **not** a standalone
+   on-device ONNX-in-APK engine. Do not advertise it as one.
+6. Request explicit owner authorization for merge and/or public
+   GitHub Release *only after* the above steps are verified.
+
+## Verified private original-signing attempt — 30 October 2026
+
+The owner explicitly authorized preparing an **original-signed private candidate**
+for device testing, **not** a public release. The isolated signing workflow is
+on `KosmosSG/photocraft-signing-private`, branch
+`release/photocraft-ai-pr93-signed-candidate-20261030`:
+[`photocraft-ai-pr93-signed-candidate.yml`](https://github.com/KosmosSG/photocraft-signing-private/blob/release/photocraft-ai-pr93-signed-candidate-20261030/.github/workflows/photocraft-ai-pr93-signed-candidate.yml).
+It pins the **tested application source** at
+`adb9b2d545f870a022f5d6be81c498668d240501`, then separates the
+disposable-key ARM64 compilation from the clean, trusted private signing job.
+The second job is designed to verify the published baseline, decrypt the
+already-existing production signing backup **only on its own runner**, verify
+the original certificate, sign `0.14.0-android.2` (versionCode
+`16790005`), and upload **only a private testing artifact**. It does not
+merge, tag or publish.
+
+**Actual result:** [private signing run #1](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+failed **before a runner or any step was assigned** (build job `runner_id=0`,
+`steps=[]`); signing was skipped. An independent
+[no-secret private runner probe](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+also failed before runner assignment (`runner_id=0`, `steps=[]`).
+This is a **GitHub-hosted private-runner/account availability blocker**, not
+evidence of an APK compile or signing failure. Billing, quota, policy or
+runner availability are possible causes, **none confirmed**. Do not repeatedly
+queue heavy builds until a minimal private runner can actually execute.
+No production key was accessed and **no original-signed AI APK exists yet**.
+The public [ARM64 package proof #5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+passed and uploaded a JSON identity report **only**; its disposable APK was
+deleted, and is not installable over production PhotoCraft.
+
+## U2NetP model rights — upstream evidence and unresolved distribution gate
+
+The U²-Net author's [response in issue #208](https://github.com/xuebinqin/U-2-Net/issues/208)
+(25 May 2021) says the repository's released code and models follow its
+Apache-2.0 license, but expressly warns that the **training dataset's rights
+are not controlled by the author**. The author separately confirms in that
+issue that **u2net.pth and u2netp.pth were trained on DUTS**. The later
+[request for commercial-use/redistribution clarification, issue #409](https://github.com/xuebinqin/U-2-Net/issues/409),
+was still open with no confirmed answer at this review. The
+[rembg project](https://github.com/danielgatis/rembg) also warns that model
+weight rights must be evaluated separately from the rembg software license.
+
+**Decision:** Keep U2NetP weights **outside the APK, repository, release
+assets and installer**. Existing opt-in Linux Lab processing using the
+owner's manually obtained local model remains an experimental personal
+workflow; do not advertise blanket commercial rights or automate model
+distribution. Before any bundled/hosted/commercial distribution, document
+the exact ONNX file provenance and cryptographic hash, license/attribution
+and NOTICE requirements, DUTS dataset permissions, and whether an additional
+rights-holder confirmation is needed. A source-code Apache-2.0 badge alone
+is not proof that training-data and redistributed-weight rights are clear.
+
+## Latest read-only verification — 30 October 2026, 20:17 MYT
+
+- PR #93 remained **DRAFT** at source commit `644f22d34ac64a906c5f353d3fe7656ab543ffcd`.
+  Hardened `tools/photocraft_ai_reference_signing.py` to require **exactly
+  one anchored, valid aapt package/version record** instead of trusting the
+  first matching substring. Added fail-closed tests for duplicate, conflicting,
+  malformed and misleading package lines. This change affects **read-only
+  reference parsing**, not the owner-tested app, model, APK build or signing.
+- [Read-only CI run #41054169508](https://github.com/KosmosSG/artcraft-android/actions/runs/41054169508)
+  **passed** all steps: offline parser tests, 17 candidate-compatibility
+  rejection scenarios, download and inspection of the actual public PhotoCraft
+  baseline, and a **metadata-only** signing reference artifact. No APK was
+  uploaded, installed, re-signed or released.
+- The historical [ARM64 disposable proof run #4 (41032183666)](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+  is **completed/failed**, not running. Its concrete failure was
+  `AssertionError: Unexpected versionName`; the subsequent
+  [run #5 (41033840254)](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+  **passed** with the `0.14.0-android.2` production-package identity and
+  uploaded **only a JSON report**, after deleting its throwaway-signed APK.
+  Do not mistake run #4 for the latest proof.
+- Private signer [run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+  and separate no-secret private runner
+  [probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+  still show **zero steps / no runner assignment**, with no newer runs
+  found on the private candidate branch at this check. No production key
+  access or original-signed AI candidate occurred. The exact GitHub
+  private-runner/account cause is unverified; avoid repeated heavy retries.
+- Model weights remain outside Android artifacts. Owner installation/data
+  preservation and final publication approval remain outstanding.
+
+## Candidate identity hardening — 30 October 2026, 21:35 MYT
+
+- PR #93 source commit [`980200d`](https://github.com/KosmosSG/artcraft-android/commit/980200d5705d526ab909c54d60587da10150c3f4) strengthens the **read-only** `tools/photocraft_ai_candidate_compatibility.py` gate. Previously, malformed duplicate `package:`, `application-label:` or `launchable-activity:` lines could be ignored if one well-formed record also existed. The gate now counts **all raw identity records**, rejects malformed/ambiguous duplicates, and adds five regression scenarios (22 total). It does not touch the owner-tested Android app, fonts, SAF, AI model, build identity or signing material.
+- [CI run #41064512404](https://github.com/KosmosSG/artcraft-android/actions/runs/41064512404) **passed** on that exact source commit. Its job logs show the parser tests passed, **22/22 incompatible-candidate rejection scenarios** passed, and the real public PhotoCraft release identity was verified again. The only uploaded artifact was the 477-byte `PhotoCraft-PR93-Public-Release-Signing-Reference` JSON metadata; **no APK was built, signed, installed or distributed**.
+- Historical regular-package ARM64 proof [#5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254) remains the latest completed heavy build; it verified the intended regular PhotoCraft package but deleted the disposable-key APK. The private original-signing run [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and no-secret runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) still have **zero runner assignments and zero steps**, and there are no newer runs on the private candidate branch as of this check. No original-signed AI APK exists; the GitHub private-runner/account blocker still requires resolution before signing can be verified.
+- Model weights remain excluded from APK/release assets pending redistribution-rights review. Owner must still validate in-place install/data preservation on HONOR MagicPad 4 and explicitly approve any publication.
+
+## Additional APK signer-record validation — 30 October 2026, 22:39 MYT
+
+- On the **actual latest PR93 branch**, commit [`23be34c`](https://github.com/KosmosSG/artcraft-android/commit/23be34cfe03b5ef9da4cd33c24df08e6cf9c5187) strengthened the **read-only** `tools/photocraft_ai_reference_signing.py` parser. Previously a valid first signer could mask an unexpected second signer or malformed certificate SHA-256 record because only recognized signer matches were counted. The parser now checks **all certificate SHA-256 records**, requires complete well-formed signer lines, rejects additional signer numbers even if their certificate matches, and rejects malformed/trailing data. It still accepts legitimate V2/V3 scheme records that identify the same signer.
+- Six additional fail-closed signer regression cases cover extra `Signer #2` records, versioned scheme signer #2, truncated SHA-256, trailing garbage, malformed digest punctuation and unknown signer formats. The real published PhotoCraft APK uses `V3.0 Signer: certificate SHA-256 digest` and remains accepted.
+- [Read-only CI run #41073508333](https://github.com/KosmosSG/artcraft-android/actions/runs/41073508333) **passed** at that exact source commit: parser self-tests, **22 candidate-compatibility rejection scenarios**, and Android SDK inspection of the actual public PhotoCraft `0.14.0-android.1` release. Its only artifact is the **477-byte JSON public signing-reference report**. No APK was built, uploaded, signed or distributed in this run.
+- Historical ARM64 regular-package disposable-signing proof [#5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254) remains successful and metadata-only; proof #4 is a completed earlier failure. Private original-signing run [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and no-secret private-runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) still have **no assigned runners or executed steps**. There is no newer successful private run. **No production-signed AI APK exists**. Do not retry heavy signing until private runner execution is restored.
+- This source-only validation change does not modify PhotoCraft Android behavior, the owner-tested AI preview, original signing keys, local model weights, icon, keyboard, fonts, SAF or updater. PR #93 remains **DRAFT**; owner in-place device acceptance and separate publication approval are outstanding.
+
+## U2NetP loopback consent-header ambiguity fix — 30 October 2026, 23:14 MYT
+
+- Source-only commit [`f904234c`](https://github.com/KosmosSG/artcraft-android/commit/f904234c706d1190bdb2e0ba44d19f66ce1f7658) fixes a reproducible consent ambiguity in `tools/photocraft_ai_cpu/loopback_u2netp_server.py`. Python's HTTP header `get()` accepts the first of duplicated headers, so a request with contradictory or duplicated `X-PhotoCraft-Image-Consent` or `Content-Type` fields could be accepted. The local-only sidecar now requires **exactly one** `X-PhotoCraft-Image-Consent: yes` and **exactly one** PNG content-type field before reading image data or launching inference. Existing bearer-token, duplicate authorization/length, request-size, single-worker, timeout and no-persistent-storage protections remain unchanged.
+- The synthetic localhost HTTP regression suite now covers duplicate affirmative consent, contradictory consent, duplicate PNG MIME and contradictory MIME; all four must fail without starting the mocked inference subprocess. [CI loopback transport run #41078762874](https://github.com/KosmosSG/artcraft-android/actions/runs/41078762874) **passed** on the exact source commit: **8/8 HTTP tests** plus PNG validation and Python compilation. [Standalone CPU safety run #41078762619](https://github.com/KosmosSG/artcraft-android/actions/runs/41078762619) and [production integration review #41078762589](https://github.com/KosmosSG/artcraft-android/actions/runs/41078762589) **also passed** on that commit. All three runs produced **zero artifacts**; no model download, Android APK, keystore access or public release.
+- Owner-tested PhotoCraft Android adapter, UI, keyboard, fonts, SAF, updater and original production package were **not modified** by this change. The original-signed private candidate remains blocked: the private signing workflow and independent no-secret runner probe have still never received a GitHub-hosted runner as of this run; no private candidate has been generated or device-tested. No retry was launched. Model-weight redistribution remains excluded pending licensing review, and PR #93 remains **DRAFT**.
+
+## Known blockers
+
+- The generic `build.sh -photocraft` builder creates
+  `keys/artcraft-builder.jks` on runners lacking it; that key **does
+  not** establish upgrade compatibility.
+- The old `build-photocraft-release.yml` has older tag and signer-output
+  assumptions and should not be used to publish this AI version without
+  separate correction and review.
+- Client-side cancellation closes the HTTP transport and discards the
+  result, but the Linux Lab CPU process may still complete after cancellation.
+- Linux Lab background execution reliability, model rights and
+  in-place installation/data preservation need additional testing.
+
+**PR #93 remains DRAFT. No merge, production key modification, automatic
+release, Play Store deployment or stable APK publication is authorized.**
+
+## Linux Lab unsigned APK signing-input proof — 31 October 2026, 00:44 MYT
+
+- Owner requested a PhotoCraft AI `0.14.0-android.2` ARM64 APK for **local signing** on Linux Lab, not an installable APK, merge or publication. [Build run #41086392166](https://github.com/KosmosSG/artcraft-android/actions/runs/41086392166), PR93 commit [`2303e072`](https://github.com/KosmosSG/artcraft-android/commit/2303e0722d799751c1fc08dc7a808c10f0cf9c2c), **succeeded**. All steps passed and artifact [#12992188787](https://github.com/KosmosSG/artcraft-android/actions/runs/41086392166/artifacts/12992188787) (31,367,500-byte compressed ZIP) contained only an **unsigned, non-installable** ARM64 APK, SHA256SUMS and identity reports. The original disposable-key signed APK and temporary key were deleted on the runner; no production key used. The regular PhotoCraft package `com.artcraft.photocraft`, name/launcher, ARM64 ABI, `0.14.0-android.2` / `16790005` were verified. This is **not** an original-signed candidate and cannot update the installed app.
+- The successful build's `aapt` logs exposed repeated **ZIP header mismatch warnings** during unsigned archive verification (the source conversion had used forced ZIP64 for individual entries). Rather than distribute that potentially problematic input for local signing, a separate **lightweight, no-ARM-rebuild** regression/normalization workflow was added in [`c57ab5b`](https://github.com/KosmosSG/artcraft-android/commit/c57ab5b43015c9079f664cc01e2e03a66e34b554). It downloaded the exact existing artifact, checked the SHA/provenance, reconstructed ZIP local/central records without forced ZIP64, preserved all member names/order/CRCs/sizes, aligned the output, and asserted `apksigner verify` **rejects** it as unsigned.
+- [Signability proof run #41092549070](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070) **passed**: the cleaned APK produced **no ZIP header mismatch warnings** under `aapt`, retained the correct package/version/launcher, and could be signed and verified using a newly generated **disposable test key**. That test-signed APK and test key were **deleted** and were **never uploaded**. Only the clean **UNSIGNED** signing input and JSON/SHA evidence were uploaded as artifact [#12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844), named `PhotoCraft-AI-v0.14.0-android.2-CLEAN-UNSIGNED-LINUX-LAB-PR93` (31,366,770-byte compressed ZIP, seven-day retention). **Use this clean artifact rather than the earlier ZIP** for any owner-approved local signing.
+- Signing remains an **owner-local step** requiring independently verified access to the **original** permanent PhotoCraft signing certificate SHA256 `45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef`. After signing, run `tools/photocraft_ai_candidate_compatibility.py` against the published `photocraft-v0.14.0-android.1` APK; then back up data and obtain explicit HONOR MagicPad 4 **in-place update** acceptance. A disposable-signed test APK **must never** be installed or distributed. No original-signed PhotoCraft AI APK exists yet; the private Actions signer runner is still unavailable (last observed private runs [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) failed without assigned runners). AI model weights remain excluded pending redistribution-rights review.
+- This work did **not** modify the owner-tested Android behavior, Linux Lab CPU sidecar, production signing secrets, any other ArtCraft app, main branch or public releases. **PR93 remains DRAFT** and final publication still requires the owner's separate explicit approval.
+
+## Signed-candidate ARM64 ZIP/weight safety gate — 31 October 2026, 00:55 MYT
+
+- The current [PR #93](https://github.com/KosmosSG/artcraft-android/pull/93) remains **DRAFT**. The [clean unsigned Linux Lab input](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844) is verified but is **not installable**. Its GitHub Actions ZIP upload SHA256 is `b8b55b4ad93630458af14f69d74652a600eb1452ebc32fb54cf82a80911d113e`; the artifact contains its own `SHA256SUMS.txt` for the inner unsigned APK. Artifact retention ends approximately **6 November 2026, 16:44 UTC**. No original-signed candidate is known.
+- Commit [`1da1ce0a`](https://github.com/KosmosSG/artcraft-android/commit/1da1ce0a19073d983ca47ce859e1fab876447cc1) strengthens the **read-only, post-signing** `tools/photocraft_ai_candidate_compatibility.py` gate. In addition to existing original-certificate, package, versionCode, name and launcher checks, a future signed APK must now pass ZIP member integrity (CRC), unambiguous entries, safe archive paths, no symlink/encrypted entries, a manifest, **ARM64 native libraries only**, and no accidentally embedded keystore or model weights (`.jks`, `.p12`, `.keystore`, `.onnx`, `.pth`, `.pt`, `.safetensors`). These checks operate on the actual signed APK, **never on signing keys**. Eleven synthetic rejection scenarios were added; the existing 22 compatibility rejection scenarios remain.
+- [Read-only CI run #41094124391](https://github.com/KosmosSG/artcraft-android/actions/runs/41094124391) **passed** at that exact commit. Job logs explicitly show `PASS: ARM64 archive and no-embedded-model/key checks (11 rejection scenarios)`, `PASS: production upgrade compatibility gates (22 rejection scenarios)`, and the original published PhotoCraft signer certificate verified from the public release. Its only artifact is a **477-byte signing-reference JSON** [#12995820909](https://github.com/KosmosSG/artcraft-android/actions/runs/41094124391/artifacts/12995820909); **no APK was built or signed in this check**. The latest ARM64 build remains [#41086392166](https://github.com/KosmosSG/artcraft-android/actions/runs/41086392166), followed by the no-rebuild clean unsigned proof [#41092549070](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070).
+- Preliminary licensing provenance: the [original U-2-Net project](https://github.com/xuebinqin/U-2-Net/blob/master/LICENSE) displays **Apache-2.0** for its repository, while [rembg](https://github.com/danielgatis/rembg) is **MIT** licensed. This does **not independently establish the precise redistribution rights for the exact cached `u2netp.onnx` weight bytes** or third-party data provenance; do not bundle or redistribute those weights until that provenance/notice obligation is reviewed. The current Linux Lab sidecar retains locally cached weights and no weights are in the APK.
+- The private signing run [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and independent private no-secret probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) remain the latest private runs, both failed **without executing steps or obtaining a runner**. No retry was started. Owner-local original-key signing and the on-device in-place update/data-preservation test remain required before any release decision. No merge, main edit, production key access, install or publication occurred.
+
+
+## CPU subprocess output-memory guard — 31 October 2026, 02:08 MYT
+
+- At PR93 commit [`fc2b4db2`](https://github.com/KosmosSG/artcraft-android/commit/fc2b4db2ce49c272e087d4bd68505a82a8cc1875), the localhost U2NetP HTTP server and its file bridge stopped using Python `subprocess.run(capture_output=True)` for the CPU inference chain. Previously, child-process stdout/stderr were buffered without a byte limit, despite never being used in the PNG response or for success checks. A verbose or malfunctioning child could therefore exhaust Linux Lab memory during an otherwise bounded image request. Both layers now route child stdout/stderr to `subprocess.DEVNULL`, retain the existing 180-second timeouts, return-code checks, output-file validation and private error responses, and never expose model paths or image data through HTTP.
+- Two regression assertions verify that the HTTP transport and file bridge both invoke their mocked inference children with `stdout=DEVNULL`, `stderr=DEVNULL` and without `capture_output`. These are **source/CPU sidecar-only** changes; no model is downloaded, weights bundled, APK compiled, key accessed, device modified or public release created. The owner-tested PhotoCraft Android UI, keyboard, fonts, SAF and updater are unchanged.
+- The relevant GitHub Actions checks were automatically queued on that exact commit: [loopback transport #41104333397](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333397), [sidecar integration #41104333475](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333475), [standalone CPU safety #41104333340](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333340), and [production source review #41104333313](https://github.com/KosmosSG/artcraft-android/actions/runs/41104333313). **Results pending at commit time; do not call them passing until checked.** No additional heavy ARM64 build was queued.
+- Production-signed candidate remains blocked on original-key signing (private hosted-runner execution unverified; owner-local original-key signing remains an option), followed by the signed APK compatibility gate, HONOR MagicPad 4 in-place/data-preservation test, and separate final publication approval. Keep PR93 **DRAFT** and the clean unsigned artifact private to the owner's local signing workflow.
+
+
+## 31 October 2026 — historical public failure-artifact leak (manual deletion required)
+
+**Safety finding, not a production-signing breach.** Retrospective inspection of
+[failed ARM proof run #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+found that the approved-branding verifier copied a disposable-key-signed APK
+bearing the **regular PhotoCraft package name** into the icon-verification
+directory. The old failure-only artifact step uploaded that directory
+along with build logs. GitHub reports an unexpired public artifact
+[PhotoCraft-AI-PR93-Keyboard-Icon-Failure, ID 12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625),
+31,308,102 bytes, created 30 October 2026 09:27 UTC and scheduled to expire
+6 November 2026 09:27 UTC. Its ~31 MB size, the explicit APK copy in
+the verifier, and the upload log are strong evidence that the diagnostic
+ZIP contains the throwaway-signed APK. **The ZIP entries have not been
+independently extracted/verified**, so do not assert its precise filename
+or version. This APK cannot update the original production app because
+its signer differs, but it must **not** be presented as a valid test/release
+APK. No evidence that the original permanent signing key was exposed.
+
+**Owner action required:** manually delete artifact **12966638625** from the
+linked Actions run's artifact controls as soon as possible; the available
+GitHub connector has no artifact-deletion action. Do not download, install,
+share or re-sign this failed-run diagnostic ZIP. A successful metadata-only
+[proof #41033840254](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254)
+and the separately verified **unsigned** Linux Lab input remain distinct.
+
+**Prevention committed to PR93 only:** metadata-only workflow commit
+[285ba2c](https://github.com/KosmosSG/artcraft-android/commit/285ba2c878405865f2378bab1b17dbedb581018d)
+and unsigned workflow commit
+[ee0310a](https://github.com/KosmosSG/artcraft-android/commit/ee0310ab9b3a3d6858b7f7c022f612edc7549b13)
+remove failure-diagnostics artifact uploads altogether and always delete the
+icon-verification copy and disposable key/output APK. Both were committed
+with [skip ci] to avoid two unnecessary expensive ARM64 rebuilds. New
+static artifact allowlist regression
+[test_public_artifact_safety.py](https://github.com/KosmosSG/artcraft-android/blob/feature/photocraft-android-ai-tools-20261029/tools/photocraft_ai_cpu/test_public_artifact_safety.py)
+runs in [CI #41110533672](https://github.com/KosmosSG/artcraft-android/actions/runs/41110533672),
+**passed 2/2 tests**, with **no APK build, signing or artifact upload**.
+The tests assert that the regular-package proof uploads JSON only, the
+Linux Lab workflow uploads only its explicitly named unsigned APK/metadata,
+and neither uploads diagnostics or leaves the disposable APK copy.
+
+The earlier run #41032183666 failed on **Unexpected versionName**, not on
+an ARM compiler error; later proof #41033840254 fixed the versionName and
+succeeded. The separate private signer remains blocked by no-runner
+[run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and [probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865).
+Do not rerun private signing until a runner is demonstrably available.
+PR93 remains DRAFT, with no production-signed AI candidate, no publication
+approval and no owner in-place device acceptance.
+
+## 31 October 2026 — bounded localhost HTTP headers before authentication (PR93 only)
+
+**Reproducible source-level risk:** `ThreadingHTTPServer` originally applied the
+15-second `REQUEST_READ_TIMEOUT` only **after** the HTTP request headers had
+been fully parsed and after bearer-token/consent checks. A local process that
+opened a TCP connection and stalled mid-header could leave an idle handler
+thread waiting indefinitely, without ever entering the protected PNG upload
+path. This is a localhost availability issue, not evidence of remote access.
+
+**Fix:** commit [`00eab900`](https://github.com/KosmosSG/artcraft-android/commit/00eab9007787643c2f04cab73bbabc192f9fa7d1)
+introduces `LoopbackHTTPServer(ThreadingHTTPServer)` and applies the existing
+15-second socket timeout immediately upon accepting the connection, **before**
+request headers are parsed. It still binds only to `127.0.0.1` and retains
+the per-image consent, bearer-token checks, 4 MP PNG cap, single-inference
+lock, 180-second child timeout, no image persistence and bounded response.
+Commit [`184213db`](https://github.com/KosmosSG/artcraft-android/commit/184213db7de414f8dd39a8d42a07785f0daafe65)
+adds a live localhost regression: a client sends incomplete authorization
+headers, the socket is closed after the short test timeout, and a subsequent
+properly authorized PNG request still succeeds.
+
+**CI evidence:** [loopback transport #41118109005](https://github.com/KosmosSG/artcraft-android/actions/runs/41118109005)
+**PASS**, and [CPU standalone safety #41118108781](https://github.com/KosmosSG/artcraft-android/actions/runs/41118108781)
+**PASS**. The source review initially **failed** on
+[#41118108800](https://github.com/KosmosSG/artcraft-android/actions/runs/41118108800)
+because its static guard expected the old `ThreadingHTTPServer` constructor
+literal; no production identity or transport regression was observed. Commit
+[`c47b4e38`](https://github.com/KosmosSG/artcraft-android/commit/c47b4e38112051a628d07809be802701e9639269)
+updates the guard to require the **new loopback-only subclass and both
+pre-auth header and body timeouts**. [Source review #41118146659](https://github.com/KosmosSG/artcraft-android/actions/runs/41118146659)
+**PASS**. No model or image was downloaded; no ARM APK built, key used,
+private signing workflow retried, merge, device installation or release.
+
+**Unchanged release blockers:** private hosted signing jobs
+[#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secret runner probe
+[#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+still failed without an assigned runner; no original-signed AI candidate exists.
+Historical failed-build diagnostic artifact
+[#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+still exists as of this check and needs owner deletion from GitHub UI; it may
+contain a disposable-key APK. Owner device acceptance, licensing review and
+explicit final publication approval remain required. PR93 stays **DRAFT**.
+
+## 31 October 2026 — absolute upload deadline against slow-trickle clients (PR93 only)
+
+**Reproducible availability risk:** after the pre-auth header timeout fix,
+the sidecar still used a single `rfile.read(Content-Length)` with a
+15-second **socket inactivity timeout** while holding the one-inference lock.
+A localhost client could send one body byte every few seconds, indefinitely
+resetting that timeout without completing its PNG. This was an availability
+issue within the opt-in `127.0.0.1` endpoint, not a remote bind or a model
+data leak.
+
+**Fix and tests:** [`5c78d4d`](https://github.com/KosmosSG/artcraft-android/commit/5c78d4d78ffdd11ba509feec5d1cc59bb7611eaa)
+enforces an **absolute monotonic 15-second total body-upload deadline**
+with bounded `read1` chunks, independently of how frequently bytes arrive.
+The existing token, per-image consent, 24 MiB input/4 MP pixel caps,
+single-inference lock, bounded output, private errors and local-only bind
+remain unchanged. [`77eb23a`](https://github.com/KosmosSG/artcraft-android/commit/77eb23a846d81f1feb597253fb7cd4fcd310fed8)
+adds a live synthetic localhost test that deliberately trickles body bytes
+every 40 ms and verifies HTTP 408, **no inference**, lock release and a
+subsequent authorized request; [`13097f6`](https://github.com/KosmosSG/artcraft-android/commit/13097f62f3d6e2759781bb1155bb6d678b46da3c)
+simplifies the test's wire framing. [`044dfeb`](https://github.com/KosmosSG/artcraft-android/commit/044dfebbbf31e52d7b913266e16171a48013e8cc)
+adds an explicit absolute-deadline requirement to the production source
+review so this protection cannot be silently removed.
+
+**Verified GitHub Actions:** [loopback transport #41133031167](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031167)
+**PASS 10/10**, including the slow-trickle regression;
+[production source review #41133031070](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031070)
+**PASS**; [standalone CPU safety #41133031057](https://github.com/KosmosSG/artcraft-android/actions/runs/41133031057)
+**PASS**. These are source/localhost mocked-inference checks only, **not**
+a new ARM APK build or HONOR MagicPad 4 acceptance.
+
+**Release boundaries rechecked:** [historical failed proof #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+remains completed/failed; [diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+still exists and requires owner deletion (suspected disposable-key APK).
+The [clean unsigned Linux Lab artifact #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+remains a **non-installable signing input**, not a production-signed APK.
+Private signer [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secrets probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+still show failed/no-runner execution, with **no newer private runs** as
+of this check. No signing attempt, secret access, model distribution,
+heavy build, merge, device update or public release occurred. PR93 remains
+**DRAFT**; original-signed candidate verification, owner in-place tests,
+licensing review and separate final publication approval are still required.
+
+## 31 October 2026 — absolute pre-auth header deadline and quiet disconnects (PR93 only)
+
+**New reproducible gap:** The earlier pre-auth socket timeout was an
+*inactivity* limit. A localhost client could send one incomplete HTTP header
+byte every few seconds, indefinitely resetting that limit and retaining a
+handler thread without presenting a bearer token. This is a local
+availability concern; the server still binds exclusively to `127.0.0.1`.
+
+**Fix:** [`a9dfa966`](https://github.com/KosmosSG/artcraft-android/commit/a9dfa96696769d4487f8a425ae18ff7f7bc6f13c)
+starts a 15-second **absolute header timer** before the HTTP request line is
+read, shuts down the socket if headers are still incomplete, and cancels the
+timer immediately after header parsing. It does **not** cut off legitimate
+CPU inference after valid headers. [`5e99af1d`](https://github.com/KosmosSG/artcraft-android/commit/5e99af1d17dffe88e2fd03d8e44340fc883a9ddb)
+adds live mocked-inference tests for slow-trickle authorization headers and
+for valid requests whose inference exceeds the shortened test header deadline.
+[`26581bc6`](https://github.com/KosmosSG/artcraft-android/commit/26581bc6b94ae9a4f755d40f82e6f3fb993a3fd4)
+requires the absolute timer in the production source guard.
+
+**Log-safety follow-up:** Initial passing loopback tests
+[#41134782717](https://github.com/KosmosSG/artcraft-android/actions/runs/41134782717)
+showed expected `BrokenPipeError` tracebacks when the HTTP parser attempted
+to answer a socket intentionally closed by the timer. No bearer token or
+image bytes were printed, but these noisy exception traces are undesirable.
+[`7e60cb64`](https://github.com/KosmosSG/artcraft-android/commit/7e60cb645dd14634d37fec1beae0e145cb435be6)
+now handles **only** expected broken-pipe/connection-reset errors caused by
+the expired header timer; unrelated errors still surface normally.
+[`7a308375`](https://github.com/KosmosSG/artcraft-android/commit/7a3083752156a8ef4d50c9e1b1d5cc9634c905de)
+adds a regression requiring no unhandled server exception on that expected
+disconnect. [`d73d4be9`](https://github.com/KosmosSG/artcraft-android/commit/d73d4be9de81a38383504c6865bcb96cf05ceaea)
+extends the source guard.
+
+**Verified GitHub Actions:** [loopback transport #41134899566](https://github.com/KosmosSG/artcraft-android/actions/runs/41134899566)
+**PASS 13/13** live localhost synthetic-PNG tests, with no
+`Traceback`/`BrokenPipeError` in the final job log;
+[production review #41134912532](https://github.com/KosmosSG/artcraft-android/actions/runs/41134912532)
+**PASS** at the latest code-guard commit;
+[CPU standalone safety #41134899627](https://github.com/KosmosSG/artcraft-android/actions/runs/41134899627)
+**PASS**. These are source/CPU-sidecar tests only, **not** a new ARM64
+APK build, original signing or owner device acceptance.
+
+**Release gates remain:** Historical failed proof
+[#41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666)
+is completed/failed, and its [diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+was still present at this check; owner deletion remains necessary because
+it may contain a disposable-signed APK. The
+[clean unsigned Linux Lab input #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+remains **non-installable**. No new private signing runs followed
+[failed no-runner signer #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+or [no-secret probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865).
+No original-signed AI candidate, in-place tablet acceptance or model-rights
+clearance exists yet. No heavy build, signing retry, private key access,
+model distribution, merge, device change or publication occurred. PR93 stays
+**DRAFT** pending separate owner approval.
+
+
+## 31 October 2026, 07:13 MYT — full PNG decode before CPU inference (PR93 only)
+
+**Reproducible failure:** Pillow's `Image.verify()` validates PNG chunk
+structure and CRC, but **does not inflate the IDAT pixel stream**. A
+synthetic PNG with a deliberately invalid zlib stream and recomputed valid
+IDAT CRC passed the old input check. It could therefore reach the expensive
+CPU model subprocess even though the PNG could not be decoded. This is an
+availability/input-validation bug; no real user images or model weights were
+needed to reproduce it.
+
+**Fixes:** [server `eb1683e5`](https://github.com/KosmosSG/artcraft-android/commit/eb1683e5af895befc850345e1ca1b8e386d90208)
+and [bridge `0cb422cc`](https://github.com/KosmosSG/artcraft-android/commit/0cb422cc0001ca751b2f15e31124c5b509d72ba2)
+now reopen and fully decode each already-bounded, consented PNG before
+launching inference. The existing 24 MiB / 4 MP input limits, localhost
+token consent, temporary files, inference timeout, validated alpha PNG
+output and non-destructive Android editor behavior remain unchanged.
+[Loopback regression `94b5aae5`](https://github.com/KosmosSG/artcraft-android/commit/94b5aae5cc1232a3e8db55cc175119514f4d7725)
+and [bridge regression `7b480832`](https://github.com/KosmosSG/artcraft-android/commit/7b4808324998c32b652558b5ce7b83f4ffd7ebb7)
+both construct CRC-correct but undecodable PNGs and assert **no model
+subprocess starts**. The first bridge fixture had a double-escaped byte
+literal and [CI #41143090342](https://github.com/KosmosSG/artcraft-android/actions/runs/41143090342)
+failed in test setup; [`f1801a96`](https://github.com/KosmosSG/artcraft-android/commit/f1801a965c5662a9aea396fb66e3975a23b0383c)
+corrected the fixture, without changing production code.
+
+**Verified final CI:** [loopback #41143064792](https://github.com/KosmosSG/artcraft-android/actions/runs/41143064792)
+**PASS 14/14**, including the CRC-valid broken-IDAT regression and valid
+request afterward; [sidecar #41143137007](https://github.com/KosmosSG/artcraft-android/actions/runs/41143137007)
+**PASS 5/5**, including the corrected bridge regression;
+[CPU safety #41143137025](https://github.com/KosmosSG/artcraft-android/actions/runs/41143137025)
+**PASS**; [production source review #41143136978](https://github.com/KosmosSG/artcraft-android/actions/runs/41143136978)
+**PASS**. These checks ran without downloading models, compiling an ARM
+APK, using signing keys or changing the owner's tablet.
+
+**Artifact/source provenance warning:** The previously available
+[clean unsigned ARM64 artifact #12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+predates these PNG hardening commits. It remains a **non-installable,
+outdated signing input**, not evidence that the current PR93 source is
+present in an APK. The existing private signing workflow is pinned to
+the older `adb9b2d545f870a022f5d6be81c498668d240501` source and must
+be separately reviewed and re-pinned to an approved, verified candidate
+source **before** any future production signing. Do not rerun it merely
+because private runners become available. The latest private runs still
+failed without a runner; no original-signed candidate exists.
+
+**Unchanged release gates:** The historical
+[disposable-key diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+remains unexpired and previously requested for owner deletion. A fresh
+production-compatible ARM64 candidate from reviewed source, verified
+original-signing continuity, HONOR MagicPad 4 in-place data/feature tests,
+U2NetP weight-rights clearance where distribution is proposed, and explicit
+owner approval are still required. No PR merge, main change, publication,
+key access, or device change was performed. PR93 remains **DRAFT**.
+
+
+## 31 October 2026, 08:30 MYT — bounded HTTP Content-Length parsing (PR93 only)
+
+**Reproduced:** the localhost server's HTTP Content-Length check used
+raw_size.isdecimal() followed by int(raw_size). A 5,000-digit decimal
+header passes isdecimal(), but Python 3.11+ raises ValueError at conversion
+(the 4,300-digit safety limit). The handler disconnected instead of returning
+a controlled error. This requires an otherwise authorized local client;
+it is not evidence of a remotely exposed service.
+
+**Fixed:** [server dfb99db9](https://github.com/KosmosSG/artcraft-android/commit/dfb99db9d7b22d6ba7ac157df34b3495f0b4641e)
+rejects overlong/non-ASCII/non-decimal length values before integer conversion,
+checks the numeric bound, and reuses the validated integer for upload.
+Per-image token consent, 24 MiB input limit, loopback binding, absolute upload
+deadline and inference behavior remain unchanged.
+[Regression 66862d8](https://github.com/KosmosSG/artcraft-android/commit/66862d8fb3dc380b129914b33181e823d33fa2fa)
+tests 5,000-digit and invalid headers, HTTP 413, no unhandled server errors,
+no inference, and a subsequent successful authorized PNG request. An initial
+test fixture accidentally double-escaped CRLF and failed CI
+[#41150492764](https://github.com/KosmosSG/artcraft-android/actions/runs/41150492764);
+[66862d8](https://github.com/KosmosSG/artcraft-android/commit/66862d8fb3dc380b129914b33181e823d33fa2fa)
+corrected the fixture. [Static source guard 71d1ad1](https://github.com/KosmosSG/artcraft-android/commit/71d1ad18eb5dc7140d6446579ef73049a3f67403)
+prevents accidental removal of the length bound.
+
+**Verified final CI:** [loopback #41150515404](https://github.com/KosmosSG/artcraft-android/actions/runs/41150515404)
+PASS **15/15** synthetic/mocked-inference tests; [production source review
+#41150527314](https://github.com/KosmosSG/artcraft-android/actions/runs/41150527314)
+PASS including the new guard; [CPU safety
+#41150515353](https://github.com/KosmosSG/artcraft-android/actions/runs/41150515353)
+PASS. No ARM64 build, signing retry, model download, key access, device
+change, PR merge or public release occurred.
+
+**Release blockers unchanged:** the clean unsigned ARM64 artifact
+[#12994487844](https://github.com/KosmosSG/artcraft-android/actions/runs/41092549070/artifacts/12994487844)
+and private signing source pin adb9b2d predate the current fixes; they
+cannot be called current-source signed candidates. Private signing workflow
+[#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414)
+and no-secret runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865)
+remain failed with no working private runner. Historical diagnostic artifact
+[#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625)
+remains unexpired, likely contains a disposable-key APK, and awaits the
+previously requested owner deletion. Original-signed candidate,
+HONOR MagicPad 4 in-place data-preservation tests, model-rights review,
+and final owner publication approval remain outstanding. PR93 stays DRAFT.
+
+## Linux Lab bridge dangling-output symlink protection — 31 October 2026, 09:32 MYT
+
+- **Reproducible safety gap:** `Path.resolve()` follows even a **dangling output symlink**. The opt-in local file bridge previously resolved its requested output path before checking `exists()`, so a symlink named `output.png` pointing at a missing `different-location.png` could pass the no-overwrite guard and let U2NetP create an output at a location other than the caller explicitly selected. This is an output-path integrity issue in the manually invoked Linux Lab bridge, **not** a remotely reachable Android APK change.
+- **Fix:** [`242e7ae4`](https://github.com/KosmosSG/artcraft-android/commit/242e7ae4446c8b2d96e7488d9533e28178f59955) rejects a symlink at the requested output path **before** `resolve()`, preserving the existing no-overwrite, explicit-consent, PNG decode and CPU time-limit checks. [`a172b105`](https://github.com/KosmosSG/artcraft-android/commit/a172b1057d898dfdacfba8dbdcb9d150d1bce416) adds an offline regression: a dangling output alias is rejected, inference is never started, the alias remains untouched and its missing target is not created.
+- **Verified on exact code/test head `a172b105`:** [sidecar CI #41155843228](https://github.com/KosmosSG/artcraft-android/actions/runs/41155843228) **PASS, 6/6 tests**, including the new symlink rejection; [production source review #41155843260](https://github.com/KosmosSG/artcraft-android/actions/runs/41155843260) **PASS** (package/label, consent/undo and no bundled models/keys); [CPU standalone safety #41155843213](https://github.com/KosmosSG/artcraft-android/actions/runs/41155843213) **PASS**. The exact job logs were inspected. No heavy Android build, signing job, APK artifact, model download, merge or publication was initiated.
+- **Unchanged release blockers:** Existing clean unsigned ARM64 signing input predates later safety fixes; private original-signing [run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and independent no-secret [runner probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) remain the newest private runs, both failed without runner execution. The private signing workflow is also pinned to older PR93 source and **must be reviewed/updated only after private runner availability is proven**, before any signing. Historical public diagnostic artifact [#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625) remains unexpired and requires the already-requested owner deletion. The old proof run #41032183666 is **completed/failed**, not running. Model-weight redistribution, original-signed candidate checks, owner in-place device acceptance and explicit final publication approval remain outstanding. PR #93 stays **DRAFT**.
+
+## 31 October 2026, 10:26 MYT — controlled rejection of oversized PNG IHDR (PR93 only)
+
+- **Reproduced offline:** a syntactically CRC-correct PNG with a 20,000 × 20,000 (400 MP) IHDR triggers Pillow 12.3.0 `Image.DecompressionBombError` during `Image.open()`, **before** the existing 4 MP dimension check. This exception inherits directly from `Exception`, not `ValueError`; the loopback handler previously did not catch it, producing an unhandled handler failure rather than a controlled HTTP error. The manually invoked bridge likewise lacked a normalized validation error.
+- **Fixes:** [HTTP `251b1be2`](https://github.com/KosmosSG/artcraft-android/commit/251b1be2ab485c72847f02cfaf19da8458f87827) returns HTTP 400 for this specific Pillow validation failure; [bridge `7004e924`](https://github.com/KosmosSG/artcraft-android/commit/7004e92416acbd872310ccac00348ab7392167ee) maps the same early Pillow failure to its existing safe `ValueError` path. No image is sent to inference. The token, explicit per-image consent, localhost-only bind, upload deadlines and normal PNG handling are unchanged.
+- **Regression tests:** [HTTP `86c833ab`](https://github.com/KosmosSG/artcraft-android/commit/86c833aba71cd90f8409d323c6aea2cb50d168ed) uses a tiny CRC-correct 400 MP IHDR fixture, checks HTTP 400/no inference, and then confirms a valid authorized request still succeeds. [Bridge `b4095f37`](https://github.com/KosmosSG/artcraft-android/commit/b4095f372c5fc59e3deba5e3c39a4a5ad9c838e8) confirms controlled rejection/no subprocess/no output. [Static guard `8461aca1`](https://github.com/KosmosSG/artcraft-android/commit/8461aca1353d45fc20629292c5c89fd050b784d7) protects both code paths.
+- **Verified GitHub Actions logs:** [loopback #41159970463](https://github.com/KosmosSG/artcraft-android/actions/runs/41159970463) **PASS 16/16**, [sidecar #41159972943](https://github.com/KosmosSG/artcraft-android/actions/runs/41159972943) **PASS 7/7**, [production source review #41159983004](https://github.com/KosmosSG/artcraft-android/actions/runs/41159983004) **PASS**, [CPU safety #41159972947](https://github.com/KosmosSG/artcraft-android/actions/runs/41159972947) **PASS**. Each inspected run uploaded **zero artifacts**. No ARM build, model download, signing, device change or release.
+- **Unchanged release blockers:** private signing workflow [#41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and independent no-secret runner probe [#41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) remain the latest private runs, both failed without a runner. The signer workflow is pinned to old `adb9b2d` source and **must not run without re-review and verified source pin**. The old unsigned ARM64 artifact is not current-source. Historical public diagnostic artifact [#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625) remains unexpired and requires previously requested owner deletion. Owner in-place acceptance, production signer continuity, model-rights review and final explicit publication approval remain pending. PR #93 stays **DRAFT**.
+
+
+## 31 October 2026 — bounded pre-auth localhost connections (no APK)
+
+- Rechecked actual DRAFT PR #93 source head `bbeef55c7b4432586ed932bcc67132de8d1fa913` before editing. The historical [ARM64 proof #4](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666) is completed/failed (versionName assertion); [proof #5](https://github.com/KosmosSG/artcraft-android/actions/runs/41033840254) passed with **metadata-only** artifact and deleted disposable-signed APK. Old proof #4's diagnostic artifact [#12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625) still exists and may contain a throwaway-signed APK; owner deletion remains outstanding.
+- **Risk:** the HTTP sidecar already had a 15-second absolute header deadline, but `ThreadingHTTPServer` could still spawn an **unbounded number of pre-auth handler threads and timers** from many simultaneous slow local connections before individual deadlines elapsed. The single-inference lock did not cap those unauthenticated sockets.
+- [Fix `ad34c0ee`](https://github.com/KosmosSG/artcraft-android/commit/ad34c0ee5158af8460e9f51246d9a2b540889ba5) adds a 16-slot nonblocking admission semaphore. Excess sockets are closed before handler-thread creation; slots return after successful requests, malformed headers, worker errors and timeouts, with thread-start failure cleanup. The existing loopback-only bind, bearer token, per-image consent, 15-second deadlines, 4 MP/24 MiB limits, one-inference lock and 180-second CPU worker limit remain unchanged.
+- [Regression `12ac27e8`](https://github.com/KosmosSG/artcraft-android/commit/12ac27e8e36f9d95da21213d186593d74fd276d1) tests fail-closed saturated admission, capacity recovery and repeated authorized processing. [Production guard `3001e141`](https://github.com/KosmosSG/artcraft-android/commit/3001e1416742792d729951ec5c9f5d728e84e1a6) rejects accidental removal of the bounded admission mechanism.
+- GitHub Actions verified: [loopback transport #41162688384](https://github.com/KosmosSG/artcraft-android/actions/runs/41162688384) **passed 18/18 live HTTP tests**, [production source review #41162695302](https://github.com/KosmosSG/artcraft-android/actions/runs/41162695302) **passed**, and [standalone CPU safety #41162688397](https://github.com/KosmosSG/artcraft-android/actions/runs/41162688397) **passed**. All three uploaded **zero artifacts**. No real inference, APK compilation, signing or model download occurred.
+- Private [signing run #41036796414](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41036796414) and [runner probe #41037016865](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41037016865) remain the only branch runs, both failed before runner assignment. No heavy retry was launched. The private workflow still pins **older PR93 source** and must be reviewed and repinned after private runner recovery, before any production signing.
+- The Android owner-tested UI/keyboard/icons, fonts/SAF/updater, original package, local-only consent, and Linux Lab manual startup were not changed. PR #93 remains **DRAFT**. Original-key-signed current-source APK, certificate/version/launcher compatibility, owner in-place tablet acceptance, model-rights review and final publication approval remain outstanding.
+
+## 31 October 2026, 20:59 MYT — bound signed APK ZIP expansion and additional model formats
+
+- **Reproduced validation gap:** the signed-candidate archive gate called `ZipFile.testzip()` without bounding declared uncompressed member sizes. A maliciously highly compressed APK could therefore force excessive decompression work. The model exclusion list also omitted common weight formats such as `.tflite`, `.ort`, `.ckpt`, `.gguf` and `.h5`. These are **synthetic defense-in-depth issues**, not evidence that the existing unsigned APK is compromised.
+- **PR93-only fix:** [`12528ef9`](https://github.com/KosmosSG/artcraft-android/commit/12528ef93f6596c2a360ff23e102f429320167b6) requires a regular, non-symlink candidate APK no larger than 512 MiB, caps aggregate declared uncompressed ZIP member sizes at 1 GiB (with a separate per-member cap), and rejects additional recognized model-weight suffixes (`.tflite`, `.ort`, `.ckpt`, `.gguf`, `.h5`, `.hdf5`). Limits are checked **before** ZIP CRC decompression. Added six negative tests: five disguised model-weight extensions and an archive exceeding a lowered test-only expansion cap. Existing ARM64, signer, package, launcher and source checks are unchanged.
+- **Exact-code public CI:** [read-only signing-reference run #41203490148](https://github.com/KosmosSG/artcraft-android/actions/runs/41203490148), job `124543821233`, **PASS**. Full logs show **27 archive rejection scenarios**, **22 production compatibility rejection scenarios**, and re-verification of the actual published PhotoCraft baseline signer SHA-256 `45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef`. The run uploaded only 477 bytes of public-reference JSON metadata ([artifact #13044130072](https://github.com/KosmosSG/artcraft-android/actions/runs/41203490148/artifacts/13044130072)); **no APK, key or model**.
+- **No rebuild required:** [unsigned ARM64 artifact #13030046136](https://github.com/KosmosSG/artcraft-android/actions/runs/41167324817/artifacts/13030046136) is unchanged, SHA-256 `784f2303944726dd4f1c5d9ed75f9ee7bc8e977397fed9d54c4cee0fe6ab03ea`, expires 7 November 2026 04:22 UTC. These changes affect only read-only Python candidate validation, not compiled PhotoCraft application bytes. Historical proof #4 remains failed; its [potentially disposable-signed diagnostic artifact #12966638625](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666/artifacts/12966638625) remains unexpired and requires owner deletion; never install or distribute it.
+- **Release gates:** owner-only original-keystore Linux Lab signing and certificate check, pinned unsigned-to-signed payload continuity, published-baseline compatibility, backed-up in-place HONOR MagicPad 4 acceptance, model-weight rights decision and separate final publication approval. PR #93 stays **DRAFT**. No private signer retry, secrets, heavy ARM build, device action, merge or release.
+
+
+## 1 November 2026, 10:52 MYT — current-source unsigned ARM64 verified; model-rights review (no signing)
+
+- Re-read actual DRAFT PR #93 head `09f0c5fffc5d7510ce02f5bb413d91b53d13c22a` and checked the exact [unsigned ARM64 run #41264535113](https://github.com/KosmosSG/artcraft-android/actions/runs/41264535113), job `124724481412`: **completed successfully**. Inspected all step conclusions and job log; source-identity verification, current U2NetP HTTP/PNG/bridge preflight, Android ARM64 build, package/version/launcher checks, disposable signability proof, deletion of disposable signed proof and final cleanup all **passed**. [Artifact-leak guard #41264535181](https://github.com/KosmosSG/artcraft-android/actions/runs/41264535181) also **passed**, with zero artifacts.
+- **Current-source owner-signing input:** [artifact #13066868778](https://github.com/KosmosSG/artcraft-android/actions/runs/41264535113/artifacts/13066868778), `PhotoCraft-AI-v0.14.0-android.2-ARM64-UNSIGNED-LINUX-LAB-PR93`, 31,363,713-byte GitHub artifact ZIP, GitHub-reported **ZIP** SHA-256 `b46bf426ccaf2b861433f0d1484899194266a97fbd625b009a558362e3284128`; expires **2026-11-08 02:30 UTC**. This is **not** the inner APK hash. The ZIP contains `PhotoCraft-v0.14.0-android.2-arm64-v8a-UNSIGNED.apk`, `SHA256SUMS.txt`, `UNSIGNED-VERIFICATION.json` and `production-identity-build-proof.json`. Verify the extracted APK against the included `SHA256SUMS.txt` before signing. The logged APK identity is `com.artcraft.photocraft`, `0.14.0-android.2`, versionCode `16790005`, launcher `com.artcraft.photocraft.PhotoCraftActivity`; production baseline code is `16790004`. No original key was used; the artifact is **unsigned/non-installable**, not a release.
+- **Owner-only Linux Lab gate:** sign the verified extracted unsigned APK using the **original permanent PhotoCraft keystore**, never a new/disposable key. Verify final signed APK certificate SHA-256 exactly `45933a886c258e5be9f98ba68dc37e5ee2dd543a6efde008e407879bc9dc59ef`, re-run `tools/photocraft_ai_candidate_compatibility.py` and signed/unsigned payload-continuity checks, then back up user data and obtain owner's explicit **in-place** HONOR MagicPad 4 acceptance. Do not send keystore/password through chat. If original keystore is unavailable, signing remains blocked; do not rotate the identity.
+- **Model-rights research (not legal clearance):** [U-2-Net original license](https://github.com/xuebinqin/U-2-Net/blob/master/LICENSE) is Apache-2.0. The original maintainer states in [issue #208](https://github.com/xuebinqin/U-2-Net/issues/208#issuecomment-847883906) that released code and models follow the same license, while expressly warning that training-dataset licenses are outside their control; [follow-up](https://github.com/xuebinqin/U-2-Net/issues/208#issuecomment-848093240) confirms `u2net.pth`/`u2netp.pth` were trained on DUTS. The [DUTS project](https://saliencydetection.net/duts/) reserves rights; it does not grant an unambiguous commercial redistribution license. [rembg](https://github.com/danielgatis/rembg) separately warns that model-weight rights may differ from its software license. **Do not bundle/redistribute U2NetP weights or claim commercial clearance without a provenance/terms decision**. The current APK artifact is an unsigned application input, not a model bundle; Linux Lab sidecar remains locally started by the owner.
+- **Other activity isolated:** a separate private repository has newer PhotoCraft V2 manual-signing runs, but they are **not PR93 original-signer candidate evidence** and do not change this task's owner-only Linux Lab signing policy. No private PR93 signing workflow was triggered or modified. Historical [failed proof #41032183666](https://github.com/KosmosSG/artcraft-android/actions/runs/41032183666) still has an unexpired diagnostic artifact #12966638625 which may contain a disposable-signed APK; never install or redistribute it. No merge, ready-for-review, main edit, production signing, model distribution, device action or public release. PR #93 remains **DRAFT**.
+
+
+## 1 November 2026 — V2-signed PR93 preview released and owner device-tested
+
+**Supersedes earlier release-gate notes that assumed the original PhotoCraft keystore was available.** The old production certificate SHA-256 `45933A886C258E5BE9F98BA68DC37E5EE2DD543A6EFDE008E407879BC9DC59EF` could not be recovered; a separately preserved, permanent V2 signing key was created and verified in private `KosmosSG/photocraft-signing-private`. The new certificate is `EDDA8AB30390E383E10450193B8AE5864312A6FF80E9D6C7F3437816524E6936`. Do not imply original-key in-place update compatibility or attempt new signing-key rotation.
+
+**Actual signed AI candidate and publication:** [private signed ARM64 run #41268439675](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268439675) passed APK hash, package, launcher, V2 key, signature and absence-of-bundled-model-weights checks, using unsigned AI source proof #41264535113. [Regular V2 versus AI V2 signed-APK identity check #41268525156](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268525156) succeeded. [Public release workflow #41268829142](https://github.com/KosmosSG/photocraft-signing-private/actions/runs/41268829142) published [PhotoCraft AI 0.14.0-android.2 V2 ARM64 preview](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.0-android.2-ai-v2-preview) with `--prerelease --latest=false`, public SHA256SUMS, no main merge and no model weights. This is a real public **prerelease**, not an unsigned proof or stable release. A separately signed regular PhotoCraft v0.14.1 V2 [preview](https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v0.14.1-v2-preview) was also published. AI `versionCode 16790005` exceeds regular V2 `16780801`, but on-device V2-to-V2 upgrade was not proven by the CI-only identity check.
+
+**Owner acceptance:** On 1 November 2026, the owner answered **“yes”** to confirming all seven acceptance points had worked on the HONOR MagicPad 4 after the AI V2 preview was published: U2NetP Background Removal; separate editable AI layer; Undo/Redo; font import/discovery; keyboard shortcuts and ESC; file Open/Save; and Check for Updates. This is owner-reported testing, not a fresh independent test log. See [PR #93 acceptance comment](https://github.com/KosmosSG/artcraft-android/issues/93#issuecomment-6552850028).
+
+**IMPORTANT MIGRATION:** PhotoCraft V2 uses a different certificate from the originally published PhotoCraft app. Android cannot install V2 as an update to an existing original-signed install; backing up projects and app-private data before uninstalling is critical. Old app uninstall may delete private files. Do not advertise it as seamless in-place upgrade.
+
+**Outstanding release gates:** U2NetP/rembg model-weight and training-dataset commercial licensing/provenance decision; broader on-device lifecycle, model/server handling, stress tests and reliability; confirm install/migration/update UX, and obtain new explicit approval for changing this V2 AI preview into a stable/Latest release. No model weights bundled. The current public preview stays a prerelease and PR #93 stays DRAFT/unmerged pending those gates.

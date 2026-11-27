@@ -1,0 +1,47 @@
+name: PhotoCraft AI V2 stable release gate audit (NO RELEASE)
+on:
+  push:
+    branches:
+      - feature/photocraft-android-ai-tools-20261029
+    paths:
+      - 'tools/photocraft_ai_v2_stable_readiness.py'
+      - 'docs/photocraft-ai-v2-stable-checklist.json'
+      - 'docs/photocraft-ai-model-rights-review.md'
+      - '.github/workflows/photocraft-ai-v2-stable-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run fail-closed schema, certificate and release approval regressions
+        run: |
+          python3 -m py_compile tools/photocraft_ai_v2_stable_readiness.py
+          python3 tools/photocraft_ai_v2_stable_readiness.py --self-test
+      - name: Report actual stable-release blockers without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/photocraft_ai_v2_stable_readiness.py | tee stable-audit.txt
+          set +e
+          python3 tools/photocraft_ai_v2_stable_readiness.py --require-ready >/dev/null
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then
+            echo "STOP: unreviewed stable release would incorrectly pass or audit encountered an unexpected error" >&2
+            exit 1
+          fi
+          {
+            echo '### PhotoCraft AI V2 — stable release is BLOCKED'
+            echo 'The audit passes because it correctly detects outstanding gates; it is NOT a stable-release green light.'
+            echo ''
+            echo '\`\`\`'
+            cat stable-audit.txt
+            echo '\`\`\`'
+            echo 'No APK downloaded, built, signed, installed, published or merged.'
+          } >> "$GITHUB_STEP_SUMMARY"

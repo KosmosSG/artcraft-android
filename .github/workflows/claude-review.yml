@@ -16,10 +16,20 @@ jobs:
       - name: Checkout pull request
         uses: actions/checkout@v4
 
+      # Work around an upstream Claude Code GitHub Action regression:
+      # its action marker environment variables are misinterpreted by the CLI.
+      - name: Install Claude Code with marker-clearing wrapper
+        shell: bash
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          printf '#!/bin/sh\nunset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_ACTION\nexec "%s" "$@"\n' "$HOME/.local/bin/claude" > "$RUNNER_TEMP/claude"
+          chmod +x "$RUNNER_TEMP/claude"
+
       - name: Run Claude Code review
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_claude_code_executable: ${{ runner.temp }}/claude
           prompt: |
             Perform a read-only review of this pull request and its actual changes.
             Focus on Android compatibility, regressions to existing ArtCraft customizations,

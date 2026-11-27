@@ -3,6 +3,7 @@ package com.artcraft.launcher;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -25,6 +26,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.Window;
+import android.view.WindowManager;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
@@ -279,6 +282,10 @@ public final class MainActivity extends Activity {
         GradientDrawable cardSurface=shape(surface,border,0);
         card.setBackground(cardSurface);
         card.setElevation(0f);
+        card.setClickable(true);
+        card.setFocusable(true);
+        // Match v0.7.0: selecting the card opens its app details surface; action buttons remain independent.
+        card.setOnClickListener(v->showAppDetails(app));
         card.setOnHoverListener((v,event)->{
             boolean hovering=event.getAction()==android.view.MotionEvent.ACTION_HOVER_ENTER ||
                 event.getAction()==android.view.MotionEvent.ACTION_HOVER_MOVE;
@@ -340,8 +347,7 @@ public final class MainActivity extends Activity {
         TextView primary=action(label,true,accent,onPrimary);
         buttons.addView(primary,new LinearLayout.LayoutParams(0,dp(40),1f));
         String secondaryLabel=app.community?"Repository":(installed!=null?"Info":"Details");
-        Runnable secondaryAction=app.community?()->openCommunityRepo(app):
-            ()->{ if(remote==null) lookupAppRelease(app,false); else openUrl(remote.notesUrl); };
+        Runnable secondaryAction=app.community?()->openCommunityRepo(app):()->showAppDetails(app);
         TextView secondary=action(secondaryLabel,false,accent,secondaryAction);
         LinearLayout.LayoutParams secondLp=new LinearLayout.LayoutParams(0,dp(40),1f);
         secondLp.setMargins(dp(6),0,0,0);
@@ -504,7 +510,108 @@ public final class MainActivity extends Activity {
                     "Published launcher updates must use a compatible signing certificate.")
                 .setPositiveButton("OK",null).show();
         });
+        // Animate the popup itself, then reveal each menu row in a short stagger.
+        scroll.setAlpha(0f);
+        scroll.setScaleX(0.96f);scroll.setScaleY(0.96f);
+        scroll.setTranslationY(-dp(8));
         popup.showAsDropDown(anchor,0,dp(5),Gravity.RIGHT);
+        scroll.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+            .setDuration(230L).setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
+        for(int i=0;i<content.getChildCount();i++) {
+            View item=content.getChildAt(i);
+            item.setAlpha(0f);item.setTranslationY(-dp(5));
+            item.animate().alpha(1f).translationY(0f).setStartDelay(24L*i)
+                .setDuration(190L).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
+    }
+
+    /**
+     * App selection surface inspired by Mostafa v0.7.0's sliding details drawer.
+     * It is opened by selecting a card or its Details/Info action.
+     */
+    private void showAppDetails(CatalogClient.App app) {
+        PackageInfo pkg=installed(app.packageName);
+        CatalogClient.Release remote=available.get(app.key);
+        Dialog dialog=new Dialog(this);
+        LinearLayout panel=vertical();
+        panel.setPadding(dp(22),dp(20),dp(22),dp(22));
+        panel.setBackground(shape(surface,border,0));
+
+        LinearLayout heading=horizontal();
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(appIcon(app),new LinearLayout.LayoutParams(dp(52),dp(52)));
+        LinearLayout names=vertical();
+        names.setPadding(dp(14),0,0,0);
+        names.addView(text(app.name,20,foreground,true));
+        String status=pkg==null?"Not installed":"Installed · v"+safe(pkg.versionName);
+        if(remote!=null)status+=" · latest v"+remote.version;
+        names.addView(text(status,12,muted,false));
+        heading.addView(names,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView close=text("×",28,muted,false);
+        close.setGravity(Gravity.CENTER);
+        heading.addView(close,new LinearLayout.LayoutParams(dp(38),dp(42)));
+        close.setOnClickListener(v->dialog.dismiss());
+        panel.addView(heading);
+
+        View rule=new View(this);
+        rule.setBackgroundColor(border);
+        LinearLayout.LayoutParams ruleLp=new LinearLayout.LayoutParams(-1,dp(1));
+        ruleLp.setMargins(0,dp(18),0,dp(14));
+        panel.addView(rule,ruleLp);
+
+        String description=app.community
+            ?"Community project · "+(app.repo==null?"Repository unavailable":app.repo)
+            :remote==null?"ArtCraft suite application. Check its published release information for version and availability."
+            :(remote.preview?"Preview release":"Published release")+" · v"+remote.version;
+        TextView summary=text(description,13,muted,false);
+        summary.setPadding(0,0,0,dp(18));
+        panel.addView(summary);
+
+        LinearLayout actions=horizontal();
+        String primaryLabel=pkg!=null?"Open":(remote!=null?"Download":"Check releases");
+        Runnable primaryAction=pkg!=null?()->openApp(app):app.community?()->openCommunityRepo(app):
+            remote!=null?()->confirmDownload(app,remote):()->lookupAppRelease(app,true);
+        TextView primary=action(primaryLabel,true,accent,()->{dialog.dismiss();primaryAction.run();});
+        actions.addView(primary,new LinearLayout.LayoutParams(0,dp(44),1f));
+        TextView secondary=action(app.community?"Repository":"Release notes",false,accent,()->{
+            dialog.dismiss();
+            if(app.community)openCommunityRepo(app);
+            else if(remote!=null)openUrl(remote.notesUrl);
+            else lookupAppRelease(app,false);
+        });
+        LinearLayout.LayoutParams secondaryLp=new LinearLayout.LayoutParams(0,dp(44),1f);
+        secondaryLp.setMargins(dp(8),0,0,0);
+        actions.addView(secondary,secondaryLp);
+        panel.addView(actions);
+
+        dialog.setContentView(panel);
+        Window window=dialog.getWindow();
+        if(window!=null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params=new WindowManager.LayoutParams();
+            params.copyFrom(window.getAttributes());
+            params.width=Math.min(getResources().getDisplayMetrics().widthPixels-dp(28),dp(640));
+            params.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;
+            params.dimAmount=0.42f;
+            window.setAttributes(params);
+        }
+        panel.setAlpha(0f);
+        panel.setTranslationY(dp(42));
+        panel.setScaleX(0.985f);panel.setScaleY(0.985f);
+        dialog.setOnShowListener(d->panel.post(()->panel.animate().alpha(1f).translationY(0f)
+            .scaleX(1f).scaleY(1f).setDuration(280L)
+            .setInterpolator(new android.view.animation.DecelerateInterpolator(1.35f)).start()));
+        dialog.show();
+        if(window!=null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dp(28),dp(640)),
+                WindowManager.LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+            WindowManager.LayoutParams params=window.getAttributes();
+            params.dimAmount=0.42f;window.setAttributes(params);
+        }
     }
 
     private void menuGroup(LinearLayout content,String label) {

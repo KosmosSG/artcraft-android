@@ -1,0 +1,1 @@
+Retry PhotoCraft RC2 Android build after rfd dependency detection fix.

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/photocraft-pxc-android-20261127
+      - feature/photocraft-pxc-release-baseline-20261127
     paths:
       - 'adapters/photocraft/**'
       - 'crates/**'

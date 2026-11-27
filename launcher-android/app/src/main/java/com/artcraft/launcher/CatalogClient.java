@@ -85,6 +85,10 @@ public final class CatalogClient {
         new App("PixelCraft","Px",0xff7952b3,"com.artcraft.pixelcraft","asad-albadi/PixelCraft")
     };
 
+    static boolean shouldMatchSuiteRelease(App app) {
+        return app != null && !app.community;
+    }
+
     static final class Release {
         final String version, tag, filename, apkUrl, checksumsUrl, notesUrl;
         final boolean preview;
@@ -108,7 +112,7 @@ public final class CatalogClient {
                 for (App app:APPS) {
                     // Community projects are discovery-only; never treat their tags as
                     // official KosmosSG suite releases or offer them for suite APK updates.
-                    if (app.community) continue;
+                    if (!shouldMatchSuiteRelease(app)) continue;
                     String version=ReleaseRules.versionForTag(app.key,tag);
                     if (version==null) continue;
                     String apkName=null,apkUrl=null,checksums=null;

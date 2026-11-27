@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_publish:
-        description: "Confirm production signing and publishing of the device-tested WordCraft v0.19.1-android.1 build"
+        description: "Confirm production signing and publishing of the CI-verified WordCraft v0.19.1-android.1 build"
         required: true
         type: boolean
         default: false
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout WordCraft-only candidate
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: 527b0a991005698e19cb22d0632e4aaca4acc8eb
+          ref: b194904612bc2c0ad5c06b7ba416287b45476759
           persist-credentials: false
           
       - name: Cheap blue wheel preflight before downloading Android tools
@@ -647,7 +647,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected_commit="527b0a991005698e19cb22d0632e4aaca4acc8eb"
+          expected_commit="b194904612bc2c0ad5c06b7ba416287b45476759"
 
           actual_commit="$(git rev-parse HEAD)"
           test "$actual_commit" = "$expected_commit" || {
@@ -752,7 +752,7 @@ jobs:
           cat > "$notes" <<'EOF'
           WordCraft v0.19.1-android.1 — Stable ARM64
 
-          - Device-tested ARM64 production build.
+          - CI-verified ARM64 production build; physical device testing is not claimed.
           - Preserves approved Android customizations.
           - Integrates WordCraft v0.19.1 upstream.
           - Production signing certificate verified against the protected WordCraft v0.18.1 baseline.
@@ -762,7 +762,7 @@ jobs:
             "$apk#$APK" \
             "$checksums#SHA256SUMS.txt" \
             --repo "$GITHUB_REPOSITORY" \
-            --target 527b0a991005698e19cb22d0632e4aaca4acc8eb \
+            --target b194904612bc2c0ad5c06b7ba416287b45476759 \
             --title "WordCraft v0.19.1-android.1 — Stable ARM64" \
             --notes-file "$notes"
 

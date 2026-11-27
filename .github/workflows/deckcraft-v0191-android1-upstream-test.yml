@@ -34,8 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --depth=1 origin main
-          BASE="$(git merge-base HEAD FETCH_HEAD)"
-          test -n "$BASE"
+          BASE=FETCH_HEAD
           # Only this workflow file may differ from the current main merge-base.
           git diff --quiet "$BASE" HEAD -- . ':(exclude).github/workflows/deckcraft-v0191-android1-upstream-test.yml' || { echo 'STOP: non-workflow source changes detected'; exit 1; }
           test -n "$(git diff --name-only "$BASE" HEAD -- .github/workflows/deckcraft-v0191-android1-upstream-test.yml)" || { echo 'STOP: integration workflow missing from diff'; exit 1; }

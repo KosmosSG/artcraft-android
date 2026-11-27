@@ -125,10 +125,29 @@ pub fn insert_undoable(
     expected: DocumentRevision,
     layer: Layer,
 ) -> Result<(), String> {
+    insert_undoable_named(session, expected, layer, "AI · Remove Background")
+}
+
+/// Insert a generated image as a separate undoable layer with an accurate
+/// history label. The same document identity/revision gate applies.
+pub fn insert_generated_undoable(
+    session: &mut Session,
+    expected: DocumentRevision,
+    layer: Layer,
+) -> Result<(), String> {
+    insert_undoable_named(session, expected, layer, "AI · PxC Generated")
+}
+
+fn insert_undoable_named(
+    session: &mut Session,
+    expected: DocumentRevision,
+    layer: Layer,
+    history_label: &'static str,
+) -> Result<(), String> {
     if current_revision(session) != Some(expected) {
         return Err("Document changed while processing; AI result was discarded".into());
     }
-    session.edit("AI · Remove Background", |doc, active| {
+    session.edit(history_label, |doc, active| {
         let id = doc.insert_above(*active, layer);
         *active = Some(id);
         Ok(())

@@ -45,11 +45,11 @@ def apply(root):
         '    ("app.openDialog", "Open…", None, "{purpose?}"),\n    ("app.importFont", "Import Font (TTF/OTF)…", None, "{}"),\n    ("view.tabletTools", "Tablet Tools", None, "{}"),')
     edit('app/commands.rs', '            "app.openDialog" => self.pick_and_open(),',
         '            "app.openDialog" => self.pick_and_open(),\n            "app.importFont" => self.import_font_dialog(),\n            "view.tabletTools" => self.ui.tablet_tools = !self.ui.tablet_tools,')
-    edit('app/commands.rs', '                #[cfg(not(target_arch = "wasm32"))]\n                updates_ui::request_check(self);',
+    edit('app/commands.rs', '                #[cfg(not(target_arch = "wasm32"))]\n                updates_ui::request_check(self)?;',
         '''                #[cfg(target_os = "android")]
                 if let Some(open) = self.services.open_async.as_mut() { open("deckcraft-updates", 0); }
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-                updates_ui::request_check(self);''')
+                updates_ui::request_check(self)?;''')
     edit('state.rs', '    pub ribbon_collapsed: bool,', '    pub ribbon_collapsed: bool,\n    #[serde(default)]\n    pub tablet_tools: bool,')
     edit('state.rs', '            ribbon_collapsed: false,', '            ribbon_collapsed: false,\n            tablet_tools: false,')
     # Keep Import Font under Help (and Tablet Tools) only.

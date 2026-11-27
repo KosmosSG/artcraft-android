@@ -1,6 +1,11 @@
-name: PDFCraft v0.22.0 permanent signing and release (manual)
+name: PDFCraft v0.22.0 permanent signing and release (approved one-shot)
 
 on:
+  push:
+    branches:
+      - pdfcraft-v0.22.0-release-trigger
+    paths:
+      - tools/pdfcraft/release-trigger.txt
   workflow_dispatch:
     inputs:
       candidate_run:
@@ -40,51 +45,70 @@ env:
   CANDIDATE_BRANCH: pdfcraft-v0.22.0-android-integration
   CANDIDATE_WORKFLOW: .github/workflows/pdfcraft-candidate.yml
   CANDIDATE_ARTIFACT: PDFCraft-0.22.0-android.1-EPHEMERAL-NOT-UPDATE
+  CANDIDATE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_run || '45935775231' }}
+  CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || '0c6c55a14ed304c7465d953b5602539499c9b529' }}
   BASELINE_SHA: 6e58b1674633b4f5745c308b6c34c0f7ff42e02b
-  UPSTREAM_REF: v0.22.0
-  UPSTREAM_SHA: ac140f809d554981a5276d748e6193fcf4d4bdfa
+  PDFCRAFT_REF: v0.22.0
+  PDFCRAFT_SHA: ac140f809d554981a5276d748e6193fcf4d4bdfa
+  PDFCRAFT_ANDROID_VERSION_NAME: 0.22.0-android.1
+  RELEASE_TAG: pdfcraft-v0.22.0-android.1
+  RELEASE_TRIGGER_BRANCH: pdfcraft-v0.22.0-release-trigger
 
 jobs:
   sign:
-    if: github.repository == 'KosmosSG/artcraft-android'
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/pdfcraft-v0.22.0-release-trigger'))
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Validate successful candidate provenance
+      - name: Validate successful candidate provenance and download candidate
         id: source
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.candidate_run }}
-          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+          RUN_ID: ${{ env.CANDIDATE_RUN_ID }}
+          EXPECTED_SHA: ${{ env.CANDIDATE_SHA }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
           jq -e --arg sha "$EXPECTED_SHA" --arg branch "$CANDIDATE_BRANCH" --arg wf "$CANDIDATE_WORKFLOW" '
-            .conclusion == "success" and .head_sha == $sha and .head_branch == $branch and .path == $wf' run.json
+            .conclusion == "success"
+            and .head_sha == $sha
+            and .head_branch == $branch
+            and .path == $wf
+            and .event == "push"
+          ' run.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" > artifacts.json
           jq -e --arg n "$CANDIDATE_ARTIFACT" '.artifacts | any(.name == $n and .expired == false)' artifacts.json
           gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$CANDIDATE_ARTIFACT" -D candidate
           test -s candidate/pdfcraft-0.22.0.apk
+          test -s candidate/pdfcraft-badging.txt
+          test -s candidate/SHA256SUMS.txt
+          (cd candidate && sha256sum -c SHA256SUMS.txt)
+          grep -q "package: name='$TEST_PACKAGE'" candidate/pdfcraft-badging.txt
+          grep -q "versionName='$VERSION_NAME'" candidate/pdfcraft-badging.txt
+          grep -q "versionCode='$VERSION_CODE'" candidate/pdfcraft-badging.txt
           echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout exact reviewed source
+      - name: Checkout exact reviewed candidate source
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ env.CANDIDATE_SHA }}
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify protected baseline and official upstream
+      - name: Verify protected baseline and exact official upstream
+        shell: bash
         run: |
           set -euo pipefail
           git merge-base --is-ancestor "$BASELINE_SHA" HEAD
-          test "$(git ls-remote --tags https://github.com/storytold/pdfcraft.git "refs/tags/$UPSTREAM_REF" | awk 'NR==1{print $1}')" = "$UPSTREAM_SHA"
-          git clone --depth 1 --branch "$UPSTREAM_REF" https://github.com/storytold/pdfcraft.git source/pdfcraft
-          test "$(git -C source/pdfcraft rev-parse HEAD)" = "$UPSTREAM_SHA"
+          test "$(git ls-remote --tags https://github.com/storytold/pdfcraft.git "refs/tags/$PDFCRAFT_REF" | awk 'NR==1{print $1}')" = "$PDFCRAFT_SHA"
+          git clone --depth 1 --branch "$PDFCRAFT_REF" https://github.com/storytold/pdfcraft.git source/pdfcraft
+          test "$(git -C source/pdfcraft rev-parse HEAD)" = "$PDFCRAFT_SHA"
+          echo "Protected baseline and upstream pin verified."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -98,19 +122,40 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Configure Android SDK and NDK
+        shell: bash
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35"
+          test -d "$SDK_ROOT/ndk/27.2.12479018"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Re-run protected Android adapter checks
-        run: python3 tools/test_pdfcraft_adapter.py source/pdfcraft
+      - name: Re-run Android adapter and keyboard regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/test_pdfcraft_adapter.py source/pdfcraft
+          mkdir -p "$RUNNER_TEMP/pdfcraft-input-tests/src"
+          cp templates/android/pdfcraft_modifiers.rs "$RUNNER_TEMP/pdfcraft-input-tests/src/lib.rs"
+          cat > "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml" <<'EOF'
+          [package]
+          name = "pdfcraft-input-tests"
+          version = "0.1.0"
+          edition = "2024"
+          [dependencies]
+          egui = "0.37"
+          EOF
+          cargo test --manifest-path "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml"
+          cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-cos --lib -j 2
 
-      - name: Prepare exact protected Pc artwork
+      - name: Recreate and verify protected Android.10 Pc artwork
+        shell: bash
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
@@ -118,28 +163,41 @@ jobs:
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" tools/pdfcraft/pc_brand.py
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('tools/approved-branding/assets/PDFCraft.png'); im.verify(); assert im.size==(256,256)"
 
-      - name: Build production-package ARM64 APK
+      - name: Build production-package ARM64 APK from the reviewed source
+        shell: bash
         run: |
           set -euo pipefail
           test ! -e keys/artcraft-builder.jks
           test ! -e keys/.keystore-password
+          export PDFCRAFT_REF PDFCRAFT_SHA PDFCRAFT_ANDROID_VERSION_NAME
           bash build.sh -pdfcraft -appname=PDFCraft -packagename="$PROD_PACKAGE" -appicon=tools/approved-branding/assets/PDFCraft.png
           test -s output/pdfcraft-0.22.0.apk
 
-      - name: Verify production APK before signing
+      - name: Verify production package, version, ARM64 and launcher icon
+        shell: bash
         run: |
           set -euo pipefail
-          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/aapt2" dump badging output/pdfcraft-0.22.0.apk | tee output/badging.txt
-          grep -q "package: name='$PROD_PACKAGE'" output/badging.txt
-          grep -q "versionName='$VERSION_NAME'" output/badging.txt
-          grep -q "versionCode='$VERSION_CODE'" output/badging.txt
-          unzip -Z1 output/pdfcraft-0.22.0.apk | grep -q '^lib/arm64-v8a/.*\\.so$'
-          ! unzip -Z1 output/pdfcraft-0.22.0.apk | grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/'
-          ! unzip -Z1 output/pdfcraft-0.22.0.apk | grep -Eq '\\.(jks|p12|keystore)$'
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT2="$ANDROID_HOME/build-tools/$BT/aapt2"
+          APK=output/pdfcraft-0.22.0.apk
+          "$AAPT2" dump badging "$APK" | tee output/package.txt
+          grep -q "package: name='$PROD_PACKAGE'" output/package.txt
+          grep -q "versionName='$VERSION_NAME'" output/package.txt
+          grep -q "versionCode='$VERSION_CODE'" output/package.txt
+          unzip -Z1 "$APK" | tee output/archive.txt
+          grep -q '^lib/arm64-v8a/.*\.so$' output/archive.txt
+          if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' output/archive.txt; then
+            echo "::error::Unexpected non-ARM64 native library"; exit 1
+          fi
+          grep -Eq '^res/mipmap-[^/]+/ic_launcher\.png$' output/archive.txt
+          if grep -Eq '\.(jks|p12|keystore)$' output/archive.txt; then
+            echo "::error::Private signing material found in APK"; exit 1
+          fi
 
-      - name: Sign with permanent PDFCraft identity and verify
+      - name: Sign with the permanent PDFCraft identity and verify update compatibility
+        shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           KEYSTORE_BASE64: ${{ secrets.PDFCRAFT_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.PDFCRAFT_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.PDFCRAFT_KEY_PASSWORD }}
@@ -152,29 +210,72 @@ jobs:
           [[ "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pdfcraft.p12"
           trap 'rm -f "$RUNNER_TEMP/pdfcraft.p12"' EXIT
-          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          mkdir -p release
-          "$BT/zipalign" -P 16 -f 4 output/pdfcraft-0.22.0.apk aligned.apk
-          "$BT/apksigner" sign --ks "$RUNNER_TEMP/pdfcraft.p12" --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out release/PDFCraft-v0.22.0-arm64-release.apk aligned.apk
-          "$BT/apksigner" verify --verbose --print-certs release/PDFCraft-v0.22.0-arm64-release.apk > release/signature.txt
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          mkdir -p release previous
+          APK=release/PDFCraft-v0.22.0-arm64-release.apk
+          "$ANDROID_HOME/build-tools/$BT/zipalign" -P 16 -f 4 output/pdfcraft-0.22.0.apk aligned.apk
+          "$ANDROID_HOME/build-tools/$BT/apksigner" sign --ks "$RUNNER_TEMP/pdfcraft.p12" --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$APK" aligned.apk
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --verbose --print-certs "$APK" > release/signature.txt
           ACTUAL="$(python3 - <<'PY'
           import re
           for line in open('release/signature.txt'):
               if 'certificate sha-256 digest:' in line.lower():
-                  d=line.split('digest:',1)[1].strip()
-                  if re.fullmatch(r'[0-9a-fA-F]{64}',d):
-                      print(d.lower()); break
+                  digest=line.split('digest:',1)[1].strip()
+                  if re.fullmatch(r'[0-9a-fA-F]{64}',digest):
+                      print(digest.lower()); break
           PY
           )"
-          test -n "$ACTUAL" && test "${ACTUAL,,}" = "${CERT_SHA256,,}"
-          "$BT/zipalign" -c -P 16 4 release/PDFCraft-v0.22.0-arm64-release.apk
-          "$BT/aapt2" dump badging release/PDFCraft-v0.22.0-arm64-release.apk > release/package.txt
+          test -n "$ACTUAL"
+          test "${ACTUAL,,}" = "${CERT_SHA256,,}"
+          "$ANDROID_HOME/build-tools/$BT/zipalign" -c -P 16 4 "$APK"
+          "$ANDROID_HOME/build-tools/$BT/aapt2" dump badging "$APK" > release/package.txt
           grep -q "package: name='$PROD_PACKAGE'" release/package.txt
           grep -q "versionName='$VERSION_NAME'" release/package.txt
           grep -q "versionCode='$VERSION_CODE'" release/package.txt
-          sha256sum release/PDFCraft-v0.22.0-arm64-release.apk > release/SHA256SUMS.txt
+          python3 - <<'PY'
+          import zipfile
+          before=zipfile.ZipFile('output/pdfcraft-0.22.0.apk')
+          after=zipfile.ZipFile('release/PDFCraft-v0.22.0-arm64-release.apk')
+          def payload(z):
+              return {n:z.read(n) for n in z.namelist() if not n.startswith('META-INF/')}
+          assert payload(before)==payload(after), 'Permanent signing changed application payload'
+          libs=[n for n in after.namelist() if n.startswith('lib/') and n.endswith('.so')]
+          assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
+          assert not any(n.lower().endswith(('.jks','.p12','.keystore')) for n in after.namelist())
+          PY
+          gh release download pdfcraft-v0.21.1-android.10 -R "$GITHUB_REPOSITORY" --pattern 'PDFCraft-v0.21.1-arm64-release.apk' --dir previous
+          OLD=previous/PDFCraft-v0.21.1-arm64-release.apk
+          test -s "$OLD"
+          "$ANDROID_HOME/build-tools/$BT/aapt2" dump badging "$OLD" > previous/package.txt
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --verbose --print-certs "$OLD" > previous/signature.txt
+          CERT_SHA256="$CERT_SHA256" python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          def version_code(path):
+              match=re.search(r"versionCode='(\\d+)'",Path(path).read_text())
+              assert match, f'Missing versionCode in {path}'
+              return int(match.group(1))
+          def cert(path):
+              match=re.search(r'certificate SHA-256 digest:\\s*([0-9a-fA-F]{64})',Path(path).read_text(),re.I)
+              assert match, f'Missing certificate fingerprint in {path}'
+              return match.group(1).lower()
+          old_pkg=Path('previous/package.txt').read_text()
+          new_pkg=Path('release/package.txt').read_text()
+          assert "package: name='com.artcraft.pdfcraft'" in old_pkg
+          assert "package: name='com.artcraft.pdfcraft'" in new_pkg
+          old_code=version_code('previous/package.txt')
+          new_code=version_code('release/package.txt')
+          assert new_code > old_code, f'In-place update versionCode must increase: {old_code} -> {new_code}'
+          expected=os.environ['CERT_SHA256'].lower()
+          assert cert('previous/signature.txt')==expected, 'Protected baseline signer does not match configured permanent PDFCraft certificate'
+          assert cert('release/signature.txt')==expected, 'New APK signer does not match configured permanent PDFCraft certificate'
+          print(f'PASS: production identity preserved; versionCode {old_code} -> {new_code}')
+          PY
+          printf '%s\n' "$CANDIDATE_SHA" > release/SOURCE-COMMIT.txt
+          printf '%s\n' "$PDFCRAFT_SHA" > release/UPSTREAM-COMMIT.txt
+          (cd release && sha256sum PDFCraft-v0.22.0-arm64-release.apk > SHA256SUMS.txt)
 
-      - name: Retain permanent signed APK
+      - name: Retain verified permanently signed APK
         uses: actions/upload-artifact@v5
         with:
           name: PDFCraft-v0.22.0-permanently-signed
@@ -184,7 +285,7 @@ jobs:
 
   publish:
     needs: sign
-    if: inputs.publish && inputs.explicit_approval == 'PUBLISH_PDFCRAFT_0.22.0'
+    if: needs.sign.result == 'success' && ((github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.explicit_approval == 'PUBLISH_PDFCRAFT_0.22.0') || (github.event_name == 'push' && github.ref == 'refs/heads/pdfcraft-v0.22.0-release-trigger'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -193,29 +294,40 @@ jobs:
         with:
           name: PDFCraft-v0.22.0-permanently-signed
           path: release
-      - name: Publish without replacing an existing release
+
+      - name: Publish verified signed APK without replacing any existing release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.sign.outputs.source_sha }}
         run: |
           set -euo pipefail
-          TAG=pdfcraft-v0.22.0-android.1
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag already exists; refusing to overwrite it."
+          TAG="$RELEASE_TAG"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/git/refs/tags" > tags.json
+          if jq -e --arg ref "refs/tags/$TAG" 'any(.[]; .ref == $ref)' tags.json >/dev/null; then
+            echo "::error::Release tag already exists; refusing to overwrite it."
             exit 1
           fi
+          APK_SHA="$(awk 'NR==1 {print $1}' release/SHA256SUMS.txt)"
           cat > release-notes.md <<EOF
           PDFCraft v0.22.0-android.1 — ARM64 Android release.
 
-          Based on official Storytold PDFCraft v0.22.0 (upstream commit $UPSTREAM_SHA).
+          Based on official Storytold PDFCraft v0.22.0 (upstream commit $PDFCRAFT_SHA).
           Preserves the protected Android.10 baseline and approved Android adaptations, including the exact protected PDFCraft Pc/launcher artwork.
 
           Source commit: $SOURCE_SHA
           Production package: $PROD_PACKAGE
-          Version code: $VERSION_CODE
-          ARM64 / arm64-v8a
-          Permanent PDFCraft certificate verified in CI.
+          Version: $VERSION_NAME (versionCode $VERSION_CODE)
+          ABI: arm64-v8a
+          APK SHA-256: $APK_SHA
+          The APK was rebuilt for the production package and signed with the existing permanent PDFCraft certificate; CI independently checked the previous production APK's signer and confirmed a higher versionCode.
           This is an independently maintained Android port, not an official Storytold distribution.
+          The production-signed APK still requires owner device verification before relying on it for important PDF workflows.
           EOF
-          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "PDFCraft 0.22.0-android.1 — ARM64" --notes-file release-notes.md --latest release/PDFCraft-v0.22.0-arm64-release.apk release/SHA256SUMS.txt release/signature.txt release/package.txt
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" | jq -e '.assets | any(.name == "PDFCraft-v0.22.0-arm64-release.apk")'
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "PDFCraft v0.22.0-android.1 — ARM64" --notes-file release-notes.md --latest \
+            release/PDFCraft-v0.22.0-arm64-release.apk release/SHA256SUMS.txt release/signature.txt release/package.txt release/SOURCE-COMMIT.txt release/UPSTREAM-COMMIT.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > checked-release.json
+          jq -e --arg tag "$TAG" --arg name "PDFCraft-v0.22.0-arm64-release.apk" --arg digest "sha256:$APK_SHA" '
+            .tag_name == $tag and any(.assets[]; .name == $name and .digest == $digest)
+          ' checked-release.json
+          echo "Published release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

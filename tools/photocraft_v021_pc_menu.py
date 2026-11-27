@@ -39,7 +39,7 @@ def main() -> None:
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
-                action(ui, "Text to Image · PxC / ComfyUI…", 20);
+                action(ui, "Text to Image · PxC / ComfyUI…", 34);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {

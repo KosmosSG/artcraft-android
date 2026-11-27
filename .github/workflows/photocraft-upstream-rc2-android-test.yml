@@ -20,7 +20,7 @@ jobs:
       ARTCRAFT_TARGET_SDK: "35"
       ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
       UPSTREAM_TAG: "v0.24.0-rc.2"
-      UPSTREAM_SHA: "9e518a5"
+      UPSTREAM_SHA: "9e518a5c55e52028869cc6d91b0555d5e7ddafae"
       TEST_PACKAGE: "com.artcraft.photocraft.test"
     steps:
       - name: Checkout protected integration branch
@@ -44,20 +44,35 @@ jobs:
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
           ACTUAL="$(git -C source/photocraft rev-parse HEAD)"
           echo "Upstream checkout: $ACTUAL"
-          test "$ACTUAL" = "9e518a5c55e52028869cc6d91b0555d5e7ddafae"
+          test "$ACTUAL" = "$UPSTREAM_SHA"
+          echo "Upstream Cargo workspace version:"
+          python3 - <<'PY'
+          import pathlib, tomllib
+          data = tomllib.loads(pathlib.Path("source/photocraft/Cargo.toml").read_text())
+          print(data["workspace"]["package"]["version"])
+          PY
 
-      - name: Install Rust Android toolchain
+      - name: Install upstream-pinned Rust Android toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.95.0"
-          targets: aarch64-linux-android
+          toolchain: "1.100.0"
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Build separate temporary-signed ARM64 test APK
         shell: bash
         run: |
           set -euo pipefail
+          APP_VERSION="$(python3 - <<'PY'
+          import pathlib, tomllib
+          data = tomllib.loads(pathlib.Path("source/photocraft/Cargo.toml").read_text())
+          print(data["workspace"]["package"]["version"])
+          PY
+          )"
+          echo "Upstream release tag: $UPSTREAM_TAG"
+          echo "APK versionName from upstream workspace manifest: $APP_VERSION"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
           bash build.sh -photocraft -packagename="$TEST_PACKAGE"
-          APK="output/photocraft-0.24.0.apk"
+          APK="output/photocraft-$APP_VERSION.apk"
           test -s "$APK"
           mkdir -p verified
           cp "$APK" "verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
@@ -69,9 +84,12 @@ jobs:
           APK="verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
           AAPT="$ANDROID_HOME/build-tools/$ARTCRAFT_BUILD_TOOLS_VERSION/aapt"
           "$AAPT" dump badging "$APK" | grep -Fq "name='$TEST_PACKAGE'"
-          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.24.0'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='$APP_VERSION'"
           unzip -l "$APK" | grep -Fq "lib/arm64-v8a/"
-          test "$(unzip -l "$APK" | grep -c "lib/armeabi-v7a/")" -eq 0 || exit 1
+          if unzip -l "$APK" | grep -Eq "lib/(armeabi-v7a|x86|x86_64)/"; then
+            echo "Unexpected non-ARM64 native library found in test APK." >&2
+            exit 1
+          fi
           sha256sum "$APK" | tee verified/SHA256SUMS.txt
 
       - name: Upload verified test APK

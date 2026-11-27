@@ -465,7 +465,7 @@ impl AndroidAiMenu {
                             self.connection_status = "Document changed or generation cancelled; PxC result discarded.".into();
                             return false;
                         }
-                        match ai_background_editor::insert_undoable(session, job.origin, layer) {
+                        match ai_background_editor::insert_generated_undoable(session, job.origin, layer) {
                             Ok(()) => {
                                 self.connection_status = "PxC image generated. New undoable AI layer inserted.".to_string();
                                 return true;

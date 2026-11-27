@@ -78,10 +78,103 @@ jobs:
           path.write_text(updated)
           print(f"Candidate workspace package version: {version}")
           PY
+          # The custom adapter owns its Android manifest, so the generic builder's
+          # -packagename option cannot override it. Change only this disposable CI checkout;
+          # keep the Java Activity's original fully-qualified class name.
+          python3 - "$TEST_PACKAGE" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path("adapters/photocraft/Cargo.toml")
+          text = path.read_text()
+          package = sys.argv[1]
+          text, count = re.subn(r'(?m)^package = "com\\.artcraft\\.photocraft"
+          test -s "$APK"
+          mkdir -p verified
+          cp "$APK" "verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+
+      - name: Verify test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+          AAPT="$ANDROID_HOME/build-tools/$ARTCRAFT_BUILD_TOOLS_VERSION/aapt"
+          "$AAPT" dump badging "$APK" | grep -Fq "name='$TEST_PACKAGE'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='$APP_VERSION'"
+          unzip -l "$APK" | grep -Fq "lib/arm64-v8a/"
+          if unzip -l "$APK" | grep -Eq "lib/(armeabi-v7a|x86|x86_64)/"; then
+            echo "Unexpected non-ARM64 native library found in test APK." >&2
+            exit 1
+          fi
+          # Prove the APK is signed by the disposable key generated in this job.
+          EXPECTED_CERT="$(keytool -exportcert -keystore keys/artcraft-builder.jks -alias artcraftbuilder -storepass "$TEST_KEY_PASSWORD" | sha256sum | awk '{print tolower($1)}')"
+          ACTUAL_CERT="$(apksigner verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2)}' | tr -d ':')"
+          test -n "$ACTUAL_CERT"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          echo "Verified disposable CI signing certificate: $ACTUAL_CERT"
+          sha256sum "$APK" | tee verified/SHA256SUMS.txt
+
+      - name: Upload verified test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED
+          path: verified/*
+          if-no-files-found: error
+, f'package = "{package}"', text, count=1)
+          if count != 1:
+              raise SystemExit("Could not safely set the PhotoCraft test package")
+          text, count = re.subn(r'(?m)^name = "\\.PhotoCraftActivity"
+          test -s "$APK"
+          mkdir -p verified
+          cp "$APK" "verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+
+      - name: Verify test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+          AAPT="$ANDROID_HOME/build-tools/$ARTCRAFT_BUILD_TOOLS_VERSION/aapt"
+          "$AAPT" dump badging "$APK" | grep -Fq "name='$TEST_PACKAGE'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='$APP_VERSION'"
+          unzip -l "$APK" | grep -Fq "lib/arm64-v8a/"
+          if unzip -l "$APK" | grep -Eq "lib/(armeabi-v7a|x86|x86_64)/"; then
+            echo "Unexpected non-ARM64 native library found in test APK." >&2
+            exit 1
+          fi
+          sha256sum "$APK" | tee verified/SHA256SUMS.txt
+
+      - name: Upload verified test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED
+          path: verified/*
+          if-no-files-found: error
+, 'name = "com.artcraft.photocraft.PhotoCraftActivity"', text, count=1)
+          if count != 1:
+              raise SystemExit("Could not safely make the PhotoCraft Activity class fully qualified")
+          path.write_text(text)
+          print(f"Isolated test application ID: {package}")
+          PY
+
+          # The builder normally creates/uses keys/artcraft-builder.jks. Pre-create that
+          # path with a fresh random CI-only key so no persistent or production signing key
+          # is touched. The runner is ephemeral and the key is never uploaded.
+          mkdir -p keys
+          chmod 700 keys
+          python3 - <<'PY' > keys/.keystore-password
+          import secrets
+          print(secrets.token_urlsafe(32))
+          PY
+          chmod 600 keys/.keystore-password
+          TEST_KEY_PASSWORD="$(<keys/.keystore-password)"
+          keytool -genkeypair -noprompt -keystore keys/artcraft-builder.jks -storetype JKS \
+            -storepass "$TEST_KEY_PASSWORD" -keypass "$TEST_KEY_PASSWORD" \
+            -alias artcraftbuilder -keyalg RSA -keysize 2048 -validity 30 \
+            -dname "CN=PhotoCraft CI Disposable Test, OU=CI, O=ArtCraft, C=US"
+          chmod 600 keys/artcraft-builder.jks
+
           echo "Upstream release tag: $UPSTREAM_TAG"
           echo "APK versionName from upstream release tag: $APP_VERSION"
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
-          bash build.sh -photocraft -packagename="$TEST_PACKAGE"
+          bash build.sh -photocraft
           APK="output/photocraft-$APP_VERSION.apk"
           test -s "$APK"
           mkdir -p verified

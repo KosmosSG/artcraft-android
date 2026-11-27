@@ -328,7 +328,7 @@ PY
 say 4 "Preparing the NativeActivity launcher..."
 if [[ -x "adapters/$APP/prepare.sh" ]]; then
     echo "Using app-specific adapter: adapters/$APP/prepare.sh"
-    bash "adapters/$APP/prepare.sh" "$APP" "$TITLE" "$SRC" "$MODE"
+    bash "adapters/$APP/prepare.sh" "$APP" "$TITLE" "$SRC" "$MODE" "$APPNAME" "$PACKAGENAME" "$APPICON"
 else
     python3 - "$ROOT" "$SRC" "$APP" "$TITLE" "$TARGET_SDK" "$APPNAME" "$PACKAGENAME" "$APPICON" <<'PY'
 from pathlib import Path

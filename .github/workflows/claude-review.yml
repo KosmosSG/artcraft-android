@@ -1,0 +1,31 @@
+name: Claude CLI Read-Only Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Perform a read-only review of this pull request and its actual changes.
+            Focus on Android compatibility, regressions to existing ArtCraft customizations,
+            build and test risks, security, signing, and release safety.
+            Do not edit files, create commits, merge, sign, publish, or trigger workflows.
+            Return concise actionable findings with file paths and line references.
+            If no actionable issue is found, state that clearly.
+          claude_args: |
+            --max-turns 5
+            --allowedTools "Read,Glob,Grep"

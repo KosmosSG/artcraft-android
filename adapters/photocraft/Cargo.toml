@@ -8,6 +8,7 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+craft = { workspace = true, features = ["settings"] }
 photocraft-engine = { path = "../../crates/engine" }
 photocraft-ui-egui = { path = "../../crates/ui-egui" }
 photocraft-io = { path = "../../crates/io" }

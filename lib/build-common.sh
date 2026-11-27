@@ -2747,7 +2747,7 @@ PY
 # `aarch64-linux-android`. Vendor the builder's Android-compatible copy (a stub backend that
 # resolves dialogs to "cancelled") and patch it into the workspace so the launcher builds. Real
 # open/save on Android needs a platform adapter (see adapters/README.md).
-if grep -rqE '\brfd::' "$SRC"/crates/*/src 2>/dev/null; then
+if grep -rqE '\brfd::' "$SRC"/crates/*/src "$SRC"/apps/*/src 2>/dev/null || grep -qE '^\s*rfd\s*=' "$SRC/Cargo.toml" 2>/dev/null || grep -rqE '\brfd\b' "$ROOT/adapters/$APP" 2>/dev/null; then
     echo "Vendoring an Android-compatible rfd for $TITLE (native file dialogs become no-ops)..."
     mkdir -p "$SRC/vendor"
     rm -rf "$SRC/vendor/rfd"

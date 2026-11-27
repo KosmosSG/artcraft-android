@@ -18,6 +18,9 @@ on:
     branches:
       - feature/photocraft-v0231-companion-android-20261117
 
+env:
+  PHOTOCRAFT_UPSTREAM_REF: v0.23.1
+
 permissions:
   contents: read
 

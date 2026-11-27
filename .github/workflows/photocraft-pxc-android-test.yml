@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - feature/photocraft-pxc-android-20261127
-      - feature/photocraft-pxc-release-baseline-20261127
     paths:
       - 'adapters/photocraft/**'
       - 'crates/**'
@@ -517,7 +516,7 @@ jobs:
           meta=tomllib.loads(Path("adapters/photocraft/Cargo.toml").read_text())["package"]["metadata"]["android"]
           assert meta["package"]=="com.artcraft.photocraft", "Not original PhotoCraft package"
           assert meta["application"]["label"]=="PhotoCraft"
-          assert meta["application"]["activity"][0]["name"]==".PhotoCraftActivity"
+          assert meta["application"]["activity"][0]["name"]=="com.artcraft.photocraft.PhotoCraftActivity"
           print("PASS unchanged original app identity; temporary signing is for build only")
           PY
 

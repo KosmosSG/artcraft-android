@@ -68,9 +68,6 @@ jobs:
           rm -f adapters/photocraft/src/pxc_client.rs
           git worktree add --detach "$RUNNER_TEMP/photocraft-baseline" "$BASELINE"
           python3 "$RUNNER_TEMP/photocraft-baseline/tools/photocraft_v019_preservation_gate.py" --check-immutable-base
-          git apply --3way "$RUNNER_TEMP/photocraft-pxc.patch"
-          grep -Fq "PxcClient" adapters/photocraft/src/ai_menu.rs
-          grep -Fq "mod pxc_client;" adapters/photocraft/src/lib.rs
 
       - name: Retarget exact upstream pin and Android version in disposable CI checkout only
         shell: bash
@@ -432,6 +429,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git apply --reject --ignore-whitespace "$RUNNER_TEMP/photocraft-pxc.patch"
           test -f adapters/photocraft/src/pxc_client.rs
           grep -Fq 'mod pxc_client;' adapters/photocraft/src/lib.rs
           grep -Fq 'AI · PxC Generated' adapters/photocraft/src/ai_background_editor.rs

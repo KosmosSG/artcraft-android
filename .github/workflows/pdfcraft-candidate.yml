@@ -61,8 +61,8 @@ jobs:
           .github/workflows/pdfcraft-candidate.yml
           docs/pdfcraft-v0.22.0-android-candidate.md
           lib/build-common.sh
-          tools/pdfcraft/android_tools_menu_patch.py
           tools/pdfcraft/android_on_exit_compat.py
+          tools/pdfcraft/android_tools_menu_patch.py
           tools/pdfcraft/winit_v015_compat.py
           tools/pdfcraft_stable_audit.py
           tools/test_pdfcraft_adapter.py

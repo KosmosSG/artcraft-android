@@ -376,7 +376,10 @@ jobs:
           python3 -m py_compile wordcraft/android/patch_unsaved_dcs.py wordcraft/android/patch_unsaved_dcs_v014.py wordcraft/android/patch_builder.py
           python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
           python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
-          git -C builder/source/wordcraft diff --exit-code
+          # The exact upstream checkout was verified clean before the Android overlay.
+          # This preflight intentionally patched only the isolated builder/source tree.
+          grep -F 'WC_ANDROID_STYLUS_HOVER_CURSOR_V1' builder/source/wordcraft/crates/ui-egui/src/ink.rs
+          grep -F 'WC_ANDROID_NO_SELECTION_DURING_TWO_FINGER_V1' builder/source/wordcraft/crates/ui-egui/src/canvas.rs
 
       - name: Apply isolated Android-only candidate version metadata
         shell: bash

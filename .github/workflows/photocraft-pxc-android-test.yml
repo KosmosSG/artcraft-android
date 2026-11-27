@@ -52,7 +52,6 @@ jobs:
           set -euo pipefail
           BASELINE=36cace94c2fb589cae68a614eef6d8e98a4230c4
           git merge-base --is-ancestor "$BASELINE" HEAD
-          python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
           echo "PASS: protected v0.23.1-android.5 baseline remains an ancestor; PxC work is isolated."
 
       - name: Save PxC-only adapter patch for reapplication after protected Android overlays
@@ -74,6 +73,7 @@ jobs:
             adapters/photocraft/src/ai_menu.rs \\
             adapters/photocraft/src/ai_background_editor.rs
           rm -f adapters/photocraft/src/pxc_client.rs
+          python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
 
       - name: Retarget exact upstream pin and Android version in disposable CI checkout only
         shell: bash

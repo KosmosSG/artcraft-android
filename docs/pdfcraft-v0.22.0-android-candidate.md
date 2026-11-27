@@ -28,7 +28,7 @@ The candidate retains the protected Android.10 tree, including the current PDFCr
 - Test-only package ID: `com.artcraft.pdfcraft.v0220test1`
 - APK output path: `output/pdfcraft-0.22.0.apk` (the builder names the file from the upstream workspace version; the Android version name is stored separately in the manifest).
 - ABI: ARM64 / `arm64-v8a` only.
-- Icon: protected approved Pc artwork at `assets/pdfcraft/approved-icon.webp`.
+- Icon: exact protected Android.10 Pc artwork from `tools/pdfcraft/pc-icon.b64`, used for both the launcher and top-left menu.
 - Signing: a new disposable keystore generated on the hosted runner for this run only.
 - Image tooling: Pillow is installed in a temporary Python virtual environment for the approved WebP icon and stylus-wheel asset generation.
 

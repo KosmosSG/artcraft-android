@@ -27,7 +27,7 @@ jobs:
       CANDIDATE_ARTIFACT: 'ArtCraft-Launcher-v0.1.0-android.13-PARALLEL-TEST-ONLY'
       EXPECTED_PACKAGE: 'com.artcraft.launcher'
       EXPECTED_VERSION: '0.1.0-android.13'
-      EXPECTED_VERSION_CODE: '12'
+      EXPECTED_VERSION_CODE: '13'
       KEYSTORE_BASE64: ${{ secrets.ARTCRAFT_LAUNCHER_KEYSTORE_BASE64 }}
       STORE_PASSWORD: ${{ secrets.ARTCRAFT_LAUNCHER_STORE_PASSWORD }}
       KEY_PASSWORD: ${{ secrets.ARTCRAFT_LAUNCHER_KEY_PASSWORD }}
@@ -123,9 +123,9 @@ jobs:
               if not m:raise SystemExit("Missing package identity")
               return m.groups()
           test,production=ident(sys.argv[1]),ident(sys.argv[2])
-          if test!=('com.artcraft.launcher.test','12','0.1.0-android.13'):
+          if test!=('com.artcraft.launcher.test','13','0.1.0-android.13'):
               raise SystemExit('Owner-tested APK identity mismatch: '+str(test))
-          if production!=('com.artcraft.launcher','12','0.1.0-android.13'):
+          if production!=('com.artcraft.launcher','13','0.1.0-android.13'):
               raise SystemExit('Unsigned production package/version mismatch: '+str(production))
           print('Verified production package separate from parallel test package')
           PY
@@ -182,7 +182,7 @@ jobs:
           print('PASS: exact resource and class payload unchanged by signing')
           PY
           (cd release && sha256sum ArtCraft-Launcher-v0.1.0-android.13-arm64-v8a.apk > SHA256SUMS.txt)
-          echo "Certified permanent Android.10 signer: $signer"
+          echo "Certified permanent Android.13 signer: $signer"
       - name: Upload Android.13 production-signed candidate for Play Protect review, NOT a release
         uses: actions/upload-artifact@v4
         with:

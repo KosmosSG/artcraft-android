@@ -146,7 +146,7 @@ impl PxcClient {
                     return Err(PxcError::Protocol(format!("ComfyUI job failed: {error}")));
                 }
                 if let Some(image_ref) = first_output_image(entry) {
-                    let bytes = self.download_image(image_ref)?;
+                    let bytes = self.download_image(&image_ref)?;
                     if bytes.len() > MAX_PNG {
                         return Err(PxcError::Limit("Generated PNG exceeds the 24 MiB result limit".into()));
                     }

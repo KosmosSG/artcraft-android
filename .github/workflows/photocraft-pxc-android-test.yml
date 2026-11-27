@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches:
-      - feature/photocraft-v0231-companion-android-20261117
+      - baseline/photocraft-v0231-android5-pxc-target
 
 permissions:
   contents: read

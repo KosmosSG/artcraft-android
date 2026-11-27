@@ -19,6 +19,12 @@ public final class CatalogClientTest {
         assertEquals(41,CatalogClient.APPS.length);
     }
 
+    @Test public void communityAppsNeverMatchOfficialSuiteReleaseFeed() {
+        for (CatalogClient.App app : CatalogClient.APPS) {
+            assertEquals(!app.community, CatalogClient.shouldMatchSuiteRelease(app));
+        }
+    }
+
     @Test public void communityAppsUseRealPackageIdsForInstalledDetection() {
         assertEquals("io.tangencylabs.solidcraft",app("solidcraft").packageName);
         assertEquals("org.rustgis.mobile",app("rustgis").packageName);

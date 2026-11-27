@@ -56,22 +56,23 @@ use egui::{Color32, Painter, Rect, TextureHandle};
 
 pub(crate) fn paint(ctx: &egui::Context, painter: &Painter, rect: Rect) {
     let texture_id = egui::Id::new("pdfcraft.android.approved_pc_icon");
-    let texture = ctx.data_mut(|data| data.get_temp::<TextureHandle>(texture_id))
-        .unwrap_or_else(|| {
-            let rgba = match image::load_from_memory(include_bytes!("android_pc_icon.png")) {
-                Ok(image) => image.to_rgba8(),
-                Err(_) => return,
-            };
-            let size = [rgba.width() as usize, rgba.height() as usize];
-            let image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-            let texture = ctx.load_texture(
-                "pdfcraft-protected-pc-icon",
-                image,
-                egui::TextureOptions::LINEAR,
-            );
-            ctx.data_mut(|data| data.insert_temp(texture_id, texture.clone()));
-            texture
-        });
+    let texture = if let Some(texture) = ctx.data_mut(|data| data.get_temp::<TextureHandle>(texture_id)) {
+        texture
+    } else {
+        let rgba = match image::load_from_memory(include_bytes!("android_pc_icon.png")) {
+            Ok(image) => image.to_rgba8(),
+            Err(_) => return,
+        };
+        let size = [rgba.width() as usize, rgba.height() as usize];
+        let image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+        let texture = ctx.load_texture(
+            "pdfcraft-protected-pc-icon",
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        ctx.data_mut(|data| data.insert_temp(texture_id, texture.clone()));
+        texture
+    };
     painter.image(
         texture.id(),
         rect,

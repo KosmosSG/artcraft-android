@@ -643,8 +643,8 @@ public final class MainActivity extends Activity {
     private void openMenu(View anchor) {
         LinearLayout content=vertical();
         content.setPadding(dp(7),dp(7),dp(7),dp(7));
-        content.setBackground(shape(Color.BLACK,
-            Color.parseColor("#677179"),15));
+        content.setBackground(shape(Color.parseColor("#151719"),
+            Color.parseColor("#343A3F"),12));
 
         ScrollView scroll=new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
@@ -708,14 +708,14 @@ public final class MainActivity extends Activity {
     }
 
     private void menuGroup(LinearLayout content,String label) {
-        TextView heading=text(label,10,Color.parseColor("#8EE9DF"),true);
+        TextView heading=text(label,10,Color.parseColor("#92999F"),true);
         heading.setPadding(dp(15),dp(9),dp(12),dp(4));
         content.addView(heading,new LinearLayout.LayoutParams(-1,dp(33)));
     }
 
     private void menuDivider(LinearLayout content) {
         View line=new View(this);
-        line.setBackgroundColor(Color.parseColor("#43494D"));
+        line.setBackgroundColor(Color.parseColor("#343A3F"));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));
         lp.setMargins(dp(11),dp(7),dp(11),dp(7));
         content.addView(line,lp);
@@ -724,13 +724,13 @@ public final class MainActivity extends Activity {
     private void menuItem(LinearLayout content,PopupWindow popup,String title,
                           boolean highlighted,Runnable onSelect) {
         TextView item=text(title,14,Color.parseColor("#F6F8F9"),false);
-        item.setMinHeight(dp(44));
+        item.setMinHeight(dp(46));
         item.setPadding(dp(15),dp(10),dp(10),dp(10));
         item.setGravity(Gravity.CENTER_VERTICAL);
         if(highlighted)
-            item.setBackground(shape(Color.parseColor("#123734"),
-                Color.TRANSPARENT,10));
-        else item.setBackground(shape(Color.TRANSPARENT,Color.TRANSPARENT,10));
+            item.setBackground(shape(Color.parseColor("#292E32"),
+                Color.parseColor("#41484E"),8));
+        else item.setBackground(shape(Color.TRANSPARENT,Color.TRANSPARENT,8));
         item.setOnClickListener(view->{popup.dismiss();onSelect.run();});
         content.addView(item,new LinearLayout.LayoutParams(-1,-2));
     }

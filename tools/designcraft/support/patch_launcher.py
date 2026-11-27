@@ -16,6 +16,7 @@ def update_policy_for_activity(activity_source, policy_source):
     if activity_package not in (
         "package com.artcraft.designcraft;",
         "package com.artcraft.designcraft.candidate;",
+        "package com.artcraft.designcraft.test;",
     ):
         raise ValueError("Unexpected generated DesignCraft Java package")
     # No production policy values, signing identity, or updater gates are changed.

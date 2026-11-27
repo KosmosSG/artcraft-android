@@ -12,7 +12,8 @@ photocraft-engine = { path = "../../crates/engine" }
 photocraft-ui-egui = { path = "../../crates/ui-egui" }
 photocraft-io = { path = "../../crates/io" }
 photocraft-doc = { path = "../../crates/doc" }
-photocraft-codecs = { path = "../../crates/codecs" }
+# v0.24.0-rc.2 moved the shared image-codec crate to Storytold's craft-libs workspace dependency.
+photocraft-codecs = { workspace = true }
 eframe = { workspace = true, features = ["wgpu", "persistence"] }
 egui = { workspace = true }
 log = { workspace = true }

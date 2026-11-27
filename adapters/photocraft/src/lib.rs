@@ -39,6 +39,7 @@ mod ai_u2netp_transport;
 mod ai_background_job;
 mod ai_output_validation;
 mod ai_background_editor;
+mod pxc_client;
 
 /// Emitted at startup so a device log (and the packaged `.so` strings) can confirm this shell —
 /// including the Android modifier-key fix and immersive fullscreen — is the one that is running.

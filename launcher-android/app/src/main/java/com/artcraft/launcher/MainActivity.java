@@ -271,39 +271,79 @@ public final class MainActivity extends Activity {
         updateCards();
     }
 
+    private boolean officialExpanded = true;
+    private boolean communityExpanded = false;
+
     private void updateCards() {
         if(list==null)return;
         int position=scroller==null?0:scroller.getScrollY();
         list.removeAllViews();
-        int columns=getResources().getConfiguration().screenWidthDp>=950?3:2;
-        int installed=0,updates=0;
+        int width=getResources().getConfiguration().screenWidthDp;
+        // Match the reference launcher breakpoint: single-column mobile below 680dp.
+        int columns=width<680?1:(width<1050?2:3);
+        int installedCount=0,officialInstalled=0,communityInstalled=0,updates=0;
+        int officialCount=0,communityCount=0;
         for(CatalogClient.App app:CatalogClient.APPS) {
             PackageInfo pkg=installed(app.packageName);
-            if(pkg!=null) installed++;
+            if(app.community) communityCount++; else officialCount++;
+            if(pkg!=null) {
+                installedCount++;
+                if(app.community)communityInstalled++; else officialInstalled++;
+            }
             CatalogClient.Release remote=available.get(app.key);
             if(pkg!=null && remote!=null && ReleaseRules.compareVersions(remote.version,pkg.versionName)>0) updates++;
         }
-        String intro=installed+" of "+CatalogClient.APPS.length+" apps installed   •   "+
-            (checking?"Checking releases…":updates+" updates identified");
-        summary.setText(intro);
-        for(int i=0;i<CatalogClient.APPS.length;i+=columns) {
+        summary.setText(installedCount+" of "+CatalogClient.APPS.length+" apps installed  ·  "+
+            officialInstalled+"/"+officialCount+" official  ·  "+communityInstalled+"/"+communityCount+
+            " community  ·  "+(checking?"Checking releases…":updates+" updates"));
+
+        addSectionHeader("OFFICIAL ARTCRAFT APPS",officialCount,officialInstalled,officialExpanded,
+            ()->{officialExpanded=!officialExpanded;updateCards();});
+        if(officialExpanded)addAppGrid(false,columns);
+
+        addSectionHeader("COMMUNITY APPS",communityCount,communityInstalled,communityExpanded,
+            ()->{communityExpanded=!communityExpanded;updateCards();});
+        if(communityExpanded)addAppGrid(true,columns);
+
+        if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
+    }
+
+    private void addSectionHeader(String heading,int total,int installed,boolean expanded,Runnable toggle) {
+        LinearLayout header=horizontal();
+        header.setPadding(dp(13),dp(12),dp(13),dp(12));
+        header.setBackground(shape(dark?Color.parseColor("#171B1E"):Color.parseColor("#E4E9EC"),border,13));
+        LinearLayout labels=vertical();
+        header.addView(labels,new LinearLayout.LayoutParams(0,-2,1f));
+        labels.addView(text(heading,13,foreground,true));
+        labels.addView(text(installed+" of "+total+" installed",11,muted,false));
+        TextView arrow=text(expanded?"⌄":"›",25,accent,true);
+        arrow.setGravity(Gravity.CENTER);
+        header.addView(arrow,new LinearLayout.LayoutParams(dp(32),dp(38)));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
+        lp.setMargins(dp(3),dp(12),dp(3),dp(5));
+        list.addView(header,lp);
+        header.setOnClickListener(v->toggle.run());
+    }
+
+    private void addAppGrid(boolean community,int columns) {
+        java.util.ArrayList<CatalogClient.App> group=new java.util.ArrayList<>();
+        for(CatalogClient.App app:CatalogClient.APPS)if(app.community==community)group.add(app);
+        for(int i=0;i<group.size();i+=columns) {
             LinearLayout row=horizontal();
             row.setGravity(Gravity.TOP);
             list.addView(row,new LinearLayout.LayoutParams(-1,-2));
             for(int j=0;j<columns;j++) {
                 int idx=i+j;
-                if(idx>=CatalogClient.APPS.length) {
+                if(idx>=group.size()) {
                     View blank=new View(this);
                     row.addView(blank,new LinearLayout.LayoutParams(0,dp(1),1f));
                     continue;
                 }
-                CatalogClient.App app=CatalogClient.APPS[idx];
                 LinearLayout.LayoutParams cardLp=new LinearLayout.LayoutParams(0,-2,1f);
                 cardLp.setMargins(dp(4),dp(4),dp(4),dp(8));
-                row.addView(appCard(app),cardLp);
+                row.addView(appCard(group.get(idx)),cardLp);
             }
         }
-        if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
     }
 
     /**
@@ -343,10 +383,11 @@ public final class MainActivity extends Activity {
         title.addView(text(app.name,16,foreground,true));
         title.addView(text(installed!=null?"Installed":"Not installed",11,muted,false));
         String note;
-        if(remote==null)
-            note=catalogLoaded?"No verified APK in selected channel":
+        if(remote==null) {
+            if(app.community)note="Community project  ·  "+app.repo;
+            else note=catalogLoaded?"No verified APK in selected channel":
                 installed==null?"Tap Download to check latest APK":"Tap Info to check releases";
-        else note=(remote.preview?"Preview ":"Release ")+"v"+remote.version;
+        } else note=(remote.preview?"Preview ":"Release ")+"v"+remote.version;
         TextView detail=text(note,12,muted,false);
         detail.setMaxLines(2);
         detail.setPadding(0,dp(11),0,dp(9));
@@ -361,17 +402,20 @@ public final class MainActivity extends Activity {
         LinearLayout buttons=horizontal();
         buttons.setPadding(0,dp(12),0,0);
         card.addView(buttons);
-        String label=ReleaseRules.primaryAction(installed!=null,needsUpdate);
+        String label=needsUpdate?"Update":(installed!=null?"Open":
+            (app.community && remote==null?"Explore":"Download"));
         Runnable onPrimary;
         if(needsUpdate || (installed==null && remote!=null))
             onPrimary=()->confirmDownload(app,remote);
         else if(installed!=null)onPrimary=()->openApp(app);
+        else if(app.community)onPrimary=()->openCommunityRepo(app);
         else onPrimary=()->lookupAppRelease(app,true);
         TextView primary=action(label,true,accent,onPrimary);
         buttons.addView(primary,new LinearLayout.LayoutParams(0,dp(40),1f));
-        TextView secondary=action(installed!=null?"Info":"Details",false,accent,
-            ()->{ if(remote==null) lookupAppRelease(app,false);
-                else openUrl(remote.notesUrl); });
+        String secondaryLabel=app.community?"Repository":(installed!=null?"Info":"Details");
+        Runnable secondaryAction=app.community?()->openCommunityRepo(app):
+            ()->{ if(remote==null) lookupAppRelease(app,false); else openUrl(remote.notesUrl); };
+        TextView secondary=action(secondaryLabel,false,accent,secondaryAction);
         LinearLayout.LayoutParams secondLp=new LinearLayout.LayoutParams(0,dp(40),1f);
         secondLp.setMargins(dp(6),0,0,0);
         buttons.addView(secondary,secondLp);
@@ -392,6 +436,15 @@ public final class MainActivity extends Activity {
         try { startActivity(intent); }
         catch(Exception e) {notice("Unable to launch "+app.name);}
     }
+    /** Open the community project's canonical source repository. */
+    private void openCommunityRepo(CatalogClient.App app) {
+        if(app.repo==null || !app.repo.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) {
+            notice("Community project link is unavailable");
+            return;
+        }
+        startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/"+app.repo)));
+    }
+
     private void openUrl(String url) {
         if(url==null || !url.startsWith("https://github.com/KosmosSG/artcraft-android/releases/")) {
             openReleases();return;

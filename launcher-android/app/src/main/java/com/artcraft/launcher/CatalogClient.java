@@ -18,13 +18,27 @@ public final class CatalogClient {
     static final String RELEASES = "https://api.github.com/repos/KosmosSG/artcraft-android/releases";
     static final String DOWNLOAD_PREFIX = "https://github.com/KosmosSG/artcraft-android/releases/download/";
     static final class App {
-        final String name, key, letters, packageName;
+        final String name, key, letters, packageName, repo;
         final int accent;
+        final boolean community;
         App(String name, String letters, int accent) {
-            this.name=name; this.key=name.toLowerCase(Locale.ROOT); this.letters=letters;
-            this.packageName="com.artcraft."+key; this.accent=accent;
+            this(name, letters, accent, "com.artcraft."+name.toLowerCase(Locale.ROOT), null, false);
+        }
+        App(String name, String letters, int accent, String packageName, String repo) {
+            this(name, letters, accent, packageName, repo, true);
+        }
+        private App(String name, String letters, int accent, String packageName, String repo, boolean community) {
+            this.name=name;
+            this.key=name.toLowerCase(Locale.ROOT).replace(" ","");
+            this.letters=letters;
+            this.packageName=packageName;
+            this.repo=repo;
+            this.accent=accent;
+            this.community=community;
         }
     }
+
+    // Official suite cards remain unchanged; community apps are indexed separately below.
     static final App[] APPS = {
         new App("PhotoCraft","Pc",0xff21bad7),
         new App("VectorCraft","Vc",0xff649ce3),
@@ -38,7 +52,37 @@ public final class CatalogClient {
         new App("DeckCraft","Dk",0xffdd7f8b),
         new App("CADCraft","Cc",0xff9c8bc9),
         new App("SoundCraft","Sc",0xff58b2be),
-        new App("FigCraft","Fg",0xff93a7b7)
+        new App("FigCraft","Fg",0xff93a7b7),
+
+        // Community apps and their real Android application IDs from the v0.7.0 catalog.
+        new App("SubCraft","Su",0xffff861a,"com.artcraft.subcraft","Aalzard/subcraft"),
+        new App("SolidCraft","So",0xff46a1fb,"io.tangencylabs.solidcraft","tangency-labs/solidcraft"),
+        new App("BIMCraft","BIM",0xff569d7e,"com.artcraft.bimcraft","IPedrax/BIMCraft"),
+        new App("CapsuleCraft","Ca",0xff1aa9fb,"com.artcraft.capsulecraft","kostyk348/CapsuleCraft"),
+        new App("DiagramCraft","Di",0xffffc93e,"com.artcraft.diagramcraft","baradhili/DiagramCraft"),
+        new App("EarthCraft","Ea",0xff12d8d0,"com.artcraft.earthcraft","therichronicles/EarthCraft"),
+        new App("HumanMotionCraft","Hm",0xfffa7b3d,"com.artcraft.humanmotioncraft","YalKouassi/HumanMotionCraft"),
+        new App("MapCraft","Ma",0xfff89028,"com.artcraft.mapcraft","bearlikelion/MapCraft"),
+        new App("NoteCraft","No",0xff9d28ff,"com.artcraft.notecraft","AlienTechSoftware/notecraft"),
+        new App("PaintCraft","Pa",0xffff9219,"com.artcraft.paintcraft","replicraft/PaintCraft"),
+        new App("PicassoSuite","Ps",0xff1aafff,"com.artcraft.picassosuite","fabox-os/Picasso-Suite"),
+        new App("ProWave","Pw",0xff1ae6fc,"com.artcraft.prowave","fabox-os/Pro-Wave"),
+        new App("RustGIS","Rg",0xffb84a2c,"org.rustgis.mobile","opengeos/RustGIS"),
+        new App("TraceDraw","Td",0xff53c6ff,"dev.tracedraw.app","tracedraw/tracedraw"),
+        new App("Transit","Tr",0xff4fbafc,"com.artcraft.transit","transit-audio/transit"),
+        new App("Coiman IDE","Ci",0xff2f8cff,"com.artcraft.coimanide","ManuelCoimbra/coiman-ide"),
+        new App("Keydeck","Kd",0xffc2306a,"app.bramble.keydeck","bramble-apps/bramble-office"),
+        new App("Values","Va",0xff8e3a8a,"app.bramble.values","bramble-apps/bramble-office"),
+        new App("Letters","Le",0xff5a7f3c,"app.bramble.letters","bramble-apps/bramble-office"),
+        new App("ProCraft","Pr",0xffffa337,"io.github.artcraftandroid.procraft","artcraft-android/procraft"),
+        new App("CapCraft","Cc",0xff191919,"io.github.artcraftandroid.capcraft","artcraft-android/capcraft-android"),
+        new App("Concat","Co",0xff0568fd,"app.concat.editor","jub0t/Concat"),
+        new App("ShapeCraft","Sh",0xff4d85fb,"com.jackharvest.shapecraft","jackharvest/shapecraft"),
+        new App("PCBCraft","PCB",0xff188a44,"io.tangencylabs.pcbcraft","tangency-labs/pcbcraft"),
+        new App("FieldCraft","Fi",0xff266ed7,"io.tangencylabs.fieldcraft","tangency-labs/fieldcraft"),
+        new App("PaperCraft","Pa",0xffea4c89,"com.artcraft.papercraft","slyim/papercraft"),
+        new App("Ferrite","Fe",0xff6e7885,"com.artcraft.ferrite","OlaProeis/Ferrite"),
+        new App("PixelCraft","Px",0xff7952b3,"com.artcraft.pixelcraft","asad-albadi/PixelCraft")
     };
 
     static final class Release {

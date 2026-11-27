@@ -129,15 +129,16 @@ public final class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        // Accessible high-contrast charcoal palette, no blue/green surface cast.
-        bg=Color.parseColor(dark?"#000000":"#F1F3F4");
-        surface=Color.parseColor(dark?"#30363B":"#FFFFFF");
-        border=Color.parseColor(dark?"#717B83":"#B3BCC2");
-        foreground=Color.parseColor(dark?"#F7FAFA":"#1D252A");
-        muted=Color.parseColor(dark?"#D0D7DB":"#4B5962");
-        accent=Color.parseColor(dark?"#50E0D3":"#087F75");
-        buttonFill=Color.parseColor("#087F75");
-        buttonOutline=Color.parseColor(dark?"#49DACE":"#087F75");
+        // Match the v0.7.0 launcher UI: warm paper / near-black surfaces, hairline rules,
+        // restrained blue accent, and inverted monochrome primary controls.
+        bg=Color.parseColor(dark?"#121316":"#F2F1EE");
+        surface=bg;
+        border=dark?Color.argb(38,242,241,238):Color.argb(41,16,16,20);
+        foreground=Color.parseColor(dark?"#F2F1EE":"#101014");
+        muted=dark?Color.argb(153,242,241,238):Color.argb(158,16,16,20);
+        accent=Color.parseColor(dark?"#74AAFF":"#1659C4");
+        buttonFill=Color.parseColor(dark?"#FFFFFF":"#101014");
+        buttonOutline=dark?Color.argb(102,242,241,238):Color.argb(102,16,16,20);
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -193,11 +194,12 @@ public final class MainActivity extends Activity {
     }
 
     private TextView action(String label,boolean primary,int color,Runnable click) {
-        TextView button=text(label,13,primary?Color.WHITE:buttonOutline,true);
+        int ink=primary?Color.parseColor(dark?"#0B0B0C":"#F2F1EE"):foreground;
+        TextView button=text(label,13,ink,true);
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(13),dp(10),dp(13),dp(10));
-        button.setBackground(shape(primary?buttonFill:surface,
-            primary?Color.TRANSPARENT:buttonOutline,11));
+        button.setBackground(shape(primary?buttonFill:Color.TRANSPARENT,
+            primary?Color.TRANSPARENT:buttonOutline,0));
         button.setOnClickListener(v->click.run());
         return button;
     }
@@ -206,21 +208,23 @@ public final class MainActivity extends Activity {
         root=vertical();root.setBackgroundColor(bg);
         setContentView(root);
         LinearLayout head=horizontal();
-        head.setPadding(dp(18),dp(16),dp(18),dp(13));
-        root.addView(head,new LinearLayout.LayoutParams(-1,dp(82)));
+        head.setPadding(dp(16),0,dp(16),0);
+        root.addView(head,new LinearLayout.LayoutParams(-1,dp(52)));
         ImageView emblem=new ImageView(this);
         emblem.setImageResource(R.drawable.ac_brand_icon);
         emblem.setScaleType(ImageView.ScaleType.FIT_CENTER);
         emblem.setContentDescription("ArtCraft Ac logo");
-        head.addView(emblem,new LinearLayout.LayoutParams(dp(52),dp(52)));
+        head.addView(emblem,new LinearLayout.LayoutParams(dp(30),dp(30)));
         LinearLayout heading=vertical();
         heading.setPadding(dp(12),0,0,0);
         head.addView(heading,new LinearLayout.LayoutParams(0,-2,1f));
-        heading.addView(text("ArtCraft",25,foreground,true));
-        heading.addView(text("ANDROID SUITE  ·  LAUNCHER",10,muted,true));
-        TextView refresh=action("Check Updates",true,accent,this::refreshCatalog);
-        head.addView(refresh);
-        TextView menu=text(" ⋮ ",25,foreground,true);
+        heading.addView(text("Craft App Suite",18,foreground,true));
+        TextView refresh=text("↻",21,muted,false);
+        refresh.setGravity(Gravity.CENTER);
+        refresh.setContentDescription("Check for updates");
+        head.addView(refresh,new LinearLayout.LayoutParams(dp(42),dp(46)));
+        refresh.setOnClickListener(v->refreshCatalog());
+        TextView menu=text("⚙",19,muted,false);
         menu.setGravity(Gravity.CENTER);
         menu.setPadding(dp(9),0,dp(1),0);
         head.addView(menu,new LinearLayout.LayoutParams(dp(43),dp(48)));
@@ -231,22 +235,10 @@ public final class MainActivity extends Activity {
         root.addView(scroller,new LinearLayout.LayoutParams(-1,0,1f));
         LinearLayout page=vertical();page.setPadding(dp(17),dp(7),dp(17),dp(20));
         scroller.addView(page);
-        LinearLayout welcome=vertical();
-        welcome.setPadding(dp(19),dp(17),dp(19),dp(17));
-        // Solid neutral hero surface: stronger edge contrast, no green wash.
-        welcome.setBackground(shape(dark?Color.parseColor("#353C41"):
-            Color.parseColor("#E4E9EC"),border,18));
-        page.addView(welcome,new LinearLayout.LayoutParams(-1,-2));
-        welcome.addView(text("Your creative workspace, all in one place",19,foreground,true));
-        TextView descriptor=text("Open installed apps, check published GitHub releases, and manage updates with Android's installer.",13,muted,false);
-        descriptor.setPadding(0,dp(7),0,dp(8));
-        welcome.addView(descriptor);
-        summary=text("",12,accent,true);
-        welcome.addView(summary);
         addCatalogToolbar(page);
-        TextView section=text("YOUR APPS",13,foreground,true);
-        section.setPadding(dp(4),dp(23),0,dp(12));
-        page.addView(section);
+        summary=text("",12,muted,false);
+        summary.setPadding(dp(2),dp(10),dp(2),dp(8));
+        page.addView(summary);
         list=vertical();page.addView(list);
         downloadPanel=vertical();
         downloadPanel.setPadding(dp(18),dp(12),dp(18),dp(12));
@@ -287,14 +279,14 @@ public final class MainActivity extends Activity {
     private void addCatalogToolbar(LinearLayout page) {
         LinearLayout controls=horizontal();
         controls.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams controlsLp=new LinearLayout.LayoutParams(-1,dp(48));
-        controlsLp.setMargins(0,dp(16),0,dp(5));
+        LinearLayout.LayoutParams controlsLp=new LinearLayout.LayoutParams(-1,dp(42));
+        controlsLp.setMargins(0,dp(12),0,dp(4));
         page.addView(controls,controlsLp);
         searchField=new EditText(this);
         searchField.setSingleLine(true); searchField.setTextSize(14);
         searchField.setTextColor(foreground); searchField.setHintTextColor(muted);
         searchField.setHint("Search apps"); searchField.setPadding(dp(13),0,dp(10),0);
-        searchField.setBackground(shape(surface,border,11)); searchField.setText(searchQuery);
+        searchField.setBackground(shape(surface,border,0)); searchField.setText(searchQuery);
         controls.addView(searchField,new LinearLayout.LayoutParams(0,-1,1f));
         searchField.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence value,int start,int count,int after) {}
@@ -305,13 +297,13 @@ public final class MainActivity extends Activity {
         });
         gridToggle=text("▦",21,tableView?muted:Color.WHITE,true);
         gridToggle.setGravity(Gravity.CENTER); gridToggle.setContentDescription("Show apps as cards");
-        gridToggle.setBackground(shape(tableView?surface:buttonFill,border,10));
+        gridToggle.setBackground(shape(tableView?Color.TRANSPARENT:buttonFill,border,0));
         LinearLayout.LayoutParams toggleLp=new LinearLayout.LayoutParams(dp(44),-1);
         toggleLp.setMargins(dp(7),0,0,0); controls.addView(gridToggle,toggleLp);
         gridToggle.setOnClickListener(v->{tableView=false;updateCards();});
         tableToggle=text("☷",21,tableView?Color.WHITE:muted,true);
         tableToggle.setGravity(Gravity.CENTER); tableToggle.setContentDescription("Show apps as a table");
-        tableToggle.setBackground(shape(tableView?buttonFill:surface,border,10));
+        tableToggle.setBackground(shape(tableView?buttonFill:Color.TRANSPARENT,border,0));
         LinearLayout.LayoutParams tableLp=new LinearLayout.LayoutParams(dp(44),-1);
         tableLp.setMargins(dp(5),0,0,0); controls.addView(tableToggle,tableLp);
         tableToggle.setOnClickListener(v->{tableView=true;updateCards();});
@@ -373,9 +365,9 @@ public final class MainActivity extends Activity {
             (checking?"Checking releases…":updates+" updates"));
         if(gridToggle!=null) {
             gridToggle.setTextColor(tableView?muted:Color.WHITE);
-            gridToggle.setBackground(shape(tableView?surface:buttonFill,border,10));
-            tableToggle.setTextColor(tableView?Color.WHITE:muted);
-            tableToggle.setBackground(shape(tableView?buttonFill:surface,border,10));
+            gridToggle.setBackground(shape(tableView?Color.TRANSPARENT:buttonFill,border,0));
+            tableToggle.setTextColor(tableView?Color.parseColor(dark?"#0B0B0C":"#F2F1EE"):muted);
+            tableToggle.setBackground(shape(tableView?buttonFill:Color.TRANSPARENT,border,0));
         }
         addSectionHeader("OFFICIAL ARTCRAFT APPS",official.size(),countInstalled(official),officialExpanded,
             ()->{officialExpanded=!officialExpanded;updateCards();});
@@ -416,7 +408,7 @@ public final class MainActivity extends Activity {
             PackageInfo pkg=installed(app.packageName);
             CatalogClient.Release remote=available.get(app.key);
             LinearLayout row=horizontal(); row.setPadding(dp(10),dp(9),dp(8),dp(9));
-            row.setBackground(shape(surface,border,10));
+            row.setBackground(shape(surface,border,0));
             LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);
             rowLp.setMargins(dp(2),dp(3),dp(2),dp(3)); list.addView(row,rowLp);
             row.addView(appIcon(app),new LinearLayout.LayoutParams(dp(38),dp(38)));
@@ -437,13 +429,13 @@ public final class MainActivity extends Activity {
 
     private void addSectionHeader(String heading,int total,int installed,boolean expanded,Runnable toggle) {
         LinearLayout header=horizontal();
-        header.setPadding(dp(13),dp(12),dp(13),dp(12));
-        header.setBackground(shape(dark?Color.parseColor("#171B1E"):Color.parseColor("#E4E9EC"),border,13));
+        header.setPadding(dp(16),dp(12),dp(16),dp(12));
+        header.setBackground(shape(Color.TRANSPARENT,border,0));
         LinearLayout labels=vertical();
         header.addView(labels,new LinearLayout.LayoutParams(0,-2,1f));
         labels.addView(text(heading,13,foreground,true));
         labels.addView(text(installed+" of "+total+" installed",11,muted,false));
-        TextView arrow=text(expanded?"⌄":"›",25,accent,true);
+        TextView arrow=text(expanded?"−":"+",20,muted,false);
         arrow.setGravity(Gravity.CENTER);
         header.addView(arrow,new LinearLayout.LayoutParams(dp(32),dp(38)));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
@@ -499,9 +491,9 @@ public final class MainActivity extends Activity {
         PackageInfo installed=installed(app.packageName);
         CatalogClient.Release remote=available.get(app.key);
         LinearLayout card=vertical();
-        card.setPadding(dp(13),dp(14),dp(13),dp(14));
-        card.setBackground(shape(surface,border,17));
-        card.setElevation(dp(3));
+        card.setPadding(dp(20),dp(18),dp(20),dp(18));
+        card.setBackground(shape(surface,border,0));
+        card.setElevation(0f);
         LinearLayout row=horizontal();card.addView(row);
         View icon=appIcon(app);
         row.addView(icon,new LinearLayout.LayoutParams(dp(46),dp(46)));
@@ -643,8 +635,7 @@ public final class MainActivity extends Activity {
     private void openMenu(View anchor) {
         LinearLayout content=vertical();
         content.setPadding(dp(7),dp(7),dp(7),dp(7));
-        content.setBackground(shape(Color.parseColor("#151719"),
-            Color.parseColor("#343A3F"),12));
+        content.setBackground(shape(bg,border,0));
 
         ScrollView scroll=new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
@@ -708,14 +699,14 @@ public final class MainActivity extends Activity {
     }
 
     private void menuGroup(LinearLayout content,String label) {
-        TextView heading=text(label,10,Color.parseColor("#92999F"),true);
+        TextView heading=text(label,10,muted,true);
         heading.setPadding(dp(15),dp(9),dp(12),dp(4));
         content.addView(heading,new LinearLayout.LayoutParams(-1,dp(33)));
     }
 
     private void menuDivider(LinearLayout content) {
         View line=new View(this);
-        line.setBackgroundColor(Color.parseColor("#343A3F"));
+        line.setBackgroundColor(border);
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));
         lp.setMargins(dp(11),dp(7),dp(11),dp(7));
         content.addView(line,lp);
@@ -723,15 +714,20 @@ public final class MainActivity extends Activity {
 
     private void menuItem(LinearLayout content,PopupWindow popup,String title,
                           boolean highlighted,Runnable onSelect) {
-        TextView item=text(title,14,Color.parseColor("#F6F8F9"),false);
+        TextView item=text(title,14,foreground,false);
         item.setMinHeight(dp(46));
         item.setPadding(dp(15),dp(10),dp(10),dp(10));
         item.setGravity(Gravity.CENTER_VERTICAL);
-        if(highlighted)
-            item.setBackground(shape(Color.parseColor("#292E32"),
-                Color.parseColor("#41484E"),8));
-        else item.setBackground(shape(Color.TRANSPARENT,Color.TRANSPARENT,8));
+        item.setBackground(shape(highlighted? (dark?Color.argb(20,242,241,238):Color.argb(18,16,16,20)):
+            Color.TRANSPARENT,Color.TRANSPARENT,0));
         item.setOnClickListener(view->{popup.dismiss();onSelect.run();});
+        item.setOnTouchListener((view,event)->{
+            if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)
+                view.setBackground(shape(dark?Color.argb(28,242,241,238):Color.argb(24,16,16,20),Color.TRANSPARENT,0));
+            else if(event.getAction()==android.view.MotionEvent.ACTION_UP || event.getAction()==android.view.MotionEvent.ACTION_CANCEL)
+                view.setBackground(shape(highlighted?(dark?Color.argb(20,242,241,238):Color.argb(18,16,16,20)):Color.TRANSPARENT,Color.TRANSPARENT,0));
+            return false;
+        });
         content.addView(item,new LinearLayout.LayoutParams(-1,-2));
     }
 

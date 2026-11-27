@@ -43,14 +43,7 @@ fn artcraft_android_menu(ui: &mut Ui) {
                 if action != "font_refresh" { ui.close(); }
             }
         }
-        ui.menu_button("Font Status & Diagnostics", |ui| {
-            ui.set_min_width(330.0);
-            ui.small("Shared fonts: recursive folders, 5,000 files / 4 GiB maximum.");
-            let status = ui.ctx().data(|d|
-                d.get_temp::<String>(egui::Id::new("wc_menu_status"))
-            ).unwrap_or_default();
-            if !status.is_empty() {
-                ui.separator();
+        ui.separator();
                 ui.small(status);
             }
             ui.small("Fonts can be imported individually or from a shared folder.");

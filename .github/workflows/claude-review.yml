@@ -40,3 +40,58 @@ jobs:
           claude_args: |
             --max-turns 5
             --allowedTools "Read,Glob,Grep"
+
+      # Emit only narrowly selected, redacted error metadata. Never print the full SDK output.
+      - name: Report sanitized Claude error metadata
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          path = os.path.join(os.environ["RUNNER_TEMP"], "claude-execution-output.json")
+          if not os.path.isfile(path):
+              print("Claude execution output file was not produced.")
+              raise SystemExit(0)
+          try:
+              with open(path, encoding="utf-8") as f:
+                  data = json.load(f)
+          except Exception as exc:
+              print("Could not parse Claude execution output:", type(exc).__name__)
+              raise SystemExit(0)
+          found = []
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, item in value.items():
+                      if key.lower() in ("error", "errors") and isinstance(item, (dict, list, str)):
+                          found.append(item)
+                      walk(item)
+              elif isinstance(value, list):
+                  for item in value:
+                      walk(item)
+          walk(data)
+          if not found:
+              print("No structured error object found; top-level keys:", ", ".join(map(str, data.keys())) if isinstance(data, dict) else type(data).__name__)
+              raise SystemExit(0)
+          def safe(obj, depth=0):
+              if depth > 3:
+                  return
+              if isinstance(obj, dict):
+                  for key in ("type", "code", "status", "name", "message"):
+                      val = obj.get(key)
+                      if isinstance(val, (str, int, float)):
+                          val = str(val)
+                          val = re.sub(r"sk-ant-[A-Za-z0-9_-]+", "[REDACTED_API_KEY]", val)
+                          val = re.sub(r"Bearer\s+\S+", "Bearer [REDACTED]", val, flags=re.I)
+                          val = re.sub(r"gh[pousr]_[A-Za-z0-9_]+", "[REDACTED_TOKEN]", val)
+                          print(f"{key}: {val[:180]}")
+                  for val in obj.values():
+                      if isinstance(val, (dict, list)):
+                          safe(val, depth + 1)
+              elif isinstance(obj, list):
+                  for val in obj[:5]:
+                      safe(val, depth + 1)
+              elif isinstance(obj, str):
+                  print("error:", obj[:180])
+          for item in found[:3]:
+              safe(item)
+          PY

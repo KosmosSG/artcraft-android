@@ -86,6 +86,38 @@ pub fn decode_layer(output: &[u8], source: &Document) -> Result<Layer, String> {
     Ok(Layer::new("AI · Background Removed", LayerContent::Raster(surface)))
 }
 
+
+/// Decode a ComfyUI-generated PNG into a clean, unlocked PhotoCraft raster
+/// layer. Unlike the background-removal path, the generated image may have
+/// different dimensions from the source document, but it is still bounded and
+/// must be fully decoded before it reaches the editor.
+pub fn decode_generated_layer(output: &[u8]) -> Result<Layer, String> {
+    if output.is_empty() || output.len() > MAX_OUTPUT {
+        return Err("Generated AI PNG exceeds the local processing limit".into());
+    }
+    if !output.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("ComfyUI result is not a PNG".into());
+    }
+    let imported = photocraft_io::import("photocraft-pxc-generated.png", output)
+        .map_err(|_| "ComfyUI result failed full PNG decoding")?;
+    let result = imported.document;
+    if result.size.width == 0 || result.size.height == 0
+        || u64::from(result.size.width) * u64::from(result.size.height) > MAX_PIXELS
+        || result.mode != ColorMode::Rgb
+        || result.depth != SampleType::U8
+        || result.layers.len() != 1
+    {
+        return Err("ComfyUI result is not a supported RGB 8-bit single-layer image".into());
+    }
+    let layer = result.layers.into_iter().next()
+        .ok_or("ComfyUI produced an empty document")?;
+    let surface = match layer.content {
+        LayerContent::Raster(surface) => surface,
+        _ => return Err("ComfyUI result is not a pixel layer".into()),
+    };
+    Ok(Layer::new("AI · PxC Generated", LayerContent::Raster(surface)))
+}
+
 /// Called on the UI thread only, after the worker completes. Session::edit
 /// records one undoable history step and restores via standard Undo/Redo.
 pub fn insert_undoable(

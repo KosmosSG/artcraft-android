@@ -6,6 +6,8 @@ second navigation row. It lives outside the PDF editing core and never alters
 desktop builds. Run against the exact pinned official PDFCraft v0.17 source.
 """
 from pathlib import Path
+import base64
+import hashlib
 import sys
 
 src = Path(sys.argv[1])
@@ -25,28 +27,55 @@ def install_approved_brand_module():
         assert lib_text.count(anchor) == 1, "PDFCraft UI crate module anchor changed"
         lib_path.write_text(lib_text.replace(anchor, declaration + "\n" + anchor, 1))
 
-    brand_source = """// PDFCRAFT_ANDROID_APPROVED_PC_BRAND
-// Small vector rendering of the approved PDFCraft Pc mark for the Android menu.
-// Palette matches the owner-approved launcher artwork: #FB0E00 / #FBB4B0.
-use egui::{Align2, Color32, FontId, Painter, Rect};
+    icon_path = Path(__file__).with_name("pc-icon.b64")
+    icon_bytes = base64.b64decode(icon_path.read_text().strip(), validate=True)
+    expected_sha256 = "690439cf43b99f6d5e5f233f2cbb55877cfbe089e823ae2de600035884d5a3f8"
+    assert hashlib.sha256(icon_bytes).hexdigest() == expected_sha256, "Protected Android.10 Pc icon asset changed"
+    icon_png_path = ui_src / "android_pc_icon.png"
+    if icon_png_path.exists():
+        assert icon_png_path.read_bytes() == icon_bytes, "Unexpected existing PDFCraft Pc menu artwork"
+    else:
+        icon_png_path.write_bytes(icon_bytes)
 
-pub(crate) fn paint(painter: &Painter, rect: Rect) {
-    let diameter = rect.width().min(rect.height());
-    if diameter <= 0.0 {
-        return;
-    }
-    let center = rect.center();
-    painter.circle_filled(
-        center,
-        diameter * 0.5,
-        Color32::from_rgb(251, 14, 0),
-    );
-    painter.text(
-        center,
-        Align2::CENTER_CENTER,
-        "Pc",
-        FontId::proportional(diameter * 0.62),
-        Color32::from_rgb(251, 180, 176),
+    # The upstream crate already has image as a dev dependency. Promote the same
+    # PNG-only decoder to a runtime dependency for the Android Pc menu texture.
+    cargo_path = src / "crates/ui-egui/Cargo.toml"
+    cargo_text = cargo_path.read_text()
+    if 'image = { version = "0.25", default-features = false, features = ["png"] }' not in cargo_text:
+        anchor = 'egui = { workspace = true, features = ["bytemuck", "default_fonts", "monochrome_emoji_fonts"] }'
+        assert cargo_text.count(anchor) == 1, "PDFCraft UI dependency anchor changed"
+        cargo_path.write_text(cargo_text.replace(
+            anchor,
+            anchor + '\\nimage = { version = "0.25", default-features = false, features = ["png"] }',
+            1,
+        ))
+
+    brand_source = """// PDFCRAFT_ANDROID_APPROVED_PC_BRAND
+// Render the exact Pc artwork shipped by the protected Android.10 release.
+use egui::{Color32, Painter, Rect, TextureHandle};
+
+pub(crate) fn paint(ctx: &egui::Context, painter: &Painter, rect: Rect) {
+    let texture_id = egui::Id::new("pdfcraft.android.approved_pc_icon");
+    let texture = ctx.data_mut(|data| data.get_temp::<TextureHandle>(texture_id))
+        .unwrap_or_else(|| {
+            let rgba = image::load_from_memory(include_bytes!("android_pc_icon.png"))
+                .expect("protected PDFCraft Pc menu artwork must decode")
+                .to_rgba8();
+            let size = [rgba.width() as usize, rgba.height() as usize];
+            let image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+            let texture = ctx.load_texture(
+                "pdfcraft-protected-pc-icon",
+                image,
+                egui::TextureOptions::LINEAR,
+            );
+            ctx.data_mut(|data| data.insert_temp(texture_id, texture.clone()));
+            texture
+        });
+    painter.image(
+        texture.id(),
+        rect,
+        Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        Color32::WHITE,
     );
 }
 """
@@ -132,7 +161,7 @@ replace('        let ctx = ui.ctx().clone();',
             let mut theme_choice: Option<ThemePreference> = None;
             let (rect, response) = ui.allocate_exact_size(
                 egui::vec2(28.0, 28.0), egui::Sense::click());
-            crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0));
+            crate::android_approved_brand::paint(ui.ctx(), ui.painter(), rect.shrink(2.0));
             let response = response.on_hover_text("PDFCraft Android settings");
             let _ = egui::Popup::menu(&response).show(|ui| {
                 ui.set_min_width(230.0);

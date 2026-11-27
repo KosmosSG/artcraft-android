@@ -106,6 +106,9 @@ public final class CatalogClient {
                 JSONArray assets=r.optJSONArray("assets");
                 if (assets==null) continue;
                 for (App app:APPS) {
+                    // Community projects are discovery-only; never treat their tags as
+                    // official KosmosSG suite releases or offer them for suite APK updates.
+                    if (app.community) continue;
                     String version=ReleaseRules.versionForTag(app.key,tag);
                     if (version==null) continue;
                     String apkName=null,apkUrl=null,checksums=null;

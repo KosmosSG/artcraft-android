@@ -87,7 +87,9 @@ jobs:
           test -s candidate/pdfcraft-0.22.0.apk
           test -s candidate/pdfcraft-badging.txt
           test -s candidate/SHA256SUMS.txt
-          (cd candidate && sha256sum -c SHA256SUMS.txt)
+          CANDIDATE_HASH="$(awk 'NR==1 {print $1}' candidate/SHA256SUMS.txt)"
+          [[ "$CANDIDATE_HASH" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s  pdfcraft-0.22.0.apk\n' "$CANDIDATE_HASH" | (cd candidate && sha256sum -c -)
           grep -q "package: name='$TEST_PACKAGE'" candidate/pdfcraft-badging.txt
           grep -q "versionName='$VERSION_NAME'" candidate/pdfcraft-badging.txt
           grep -q "versionCode='$VERSION_CODE'" candidate/pdfcraft-badging.txt
@@ -252,11 +254,11 @@ jobs:
           import os,re
           from pathlib import Path
           def version_code(path):
-              match=re.search(r"versionCode='(\\d+)'",Path(path).read_text())
+              match=re.search(r"versionCode='(\d+)'",Path(path).read_text())
               assert match, f'Missing versionCode in {path}'
               return int(match.group(1))
           def cert(path):
-              match=re.search(r'certificate SHA-256 digest:\\s*([0-9a-fA-F]{64})',Path(path).read_text(),re.I)
+              match=re.search(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})',Path(path).read_text(),re.I)
               assert match, f'Missing certificate fingerprint in {path}'
               return match.group(1).lower()
           old_pkg=Path('previous/package.txt').read_text()

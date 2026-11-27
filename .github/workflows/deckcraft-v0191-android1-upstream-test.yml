@@ -159,12 +159,8 @@ jobs:
           from pathlib import Path
           p=Path('baseline/deckcraft/android/patch_deckcraft_v013.py')
           s=p.read_text()
-          old = """                #[cfg(not(target_arch = "wasm32"))]
-                updates_ui::request_check(self);"""
-          new = """                #[cfg(target_os = "android")]
-                if let Some(open) = self.services.open_async.as_mut() { open("deckcraft-updates", 0); }
-                #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-                updates_ui::request_check(self)?;"""
+          old = r'                #[cfg(not(target_arch = "wasm32"))]\n                updates_ui::request_check(self);'
+          new = r'''                #[cfg(target_os = "android")]\n                if let Some(open) = self.services.open_async.as_mut() { open("deckcraft-updates", 0); }\n                #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]\n                updates_ui::request_check(self)?;'''
           if s.count(old)!=1: raise SystemExit(f'v0.19.1 updater anchor drift: {s.count(old)}')
           p.write_text(s.replace(old,new,1))
           print('PASS: v0.19.1 updater Result API compatibility adapter')

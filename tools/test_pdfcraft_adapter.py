@@ -12,11 +12,19 @@ import tomllib
 root = Path(__file__).resolve().parents[1]
 source = Path(sys.argv[1]).resolve()
 script = (root / 'lib/build-common.sh').read_text()
+workflow = (root / '.github/workflows/pdfcraft-candidate.yml').read_text()
+assert 'tools/pdfcraft/pc_brand.py' in workflow, 'candidate does not stage the protected Android.10 Pc artwork'
+assert '-appicon=tools/approved-branding/assets/PDFCraft.png' in workflow, 'candidate launcher icon is not the protected Pc artwork'
+assert 'assets/pdfcraft/approved-icon.webp' not in workflow, 'candidate still overrides the protected launcher artwork'
 # Regression guard: pinned upstream v0.19.0/v0.20.0 must receive the Android IME-reset
 # winit overlay; a skipped guard compiled but failed at egui-winit previously.
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.19.0"' in script
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.20.0"' in script, 'v0.19 IME winit overlay was skipped by builder'
-assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.19.0" || "\u0024{PDFCRAFT_REF:-}" == "v0.20.0" || "\u0024{PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then' in script, 'v0.19 Android arboard compatibility guard missing'
+assert '"\u0024{PDFCRAFT_REF:-}" == "v0.22.0"' in script, 'v0.22 IME winit overlay was skipped by builder'
+compat = (root / 'tools/pdfcraft/winit_v015_compat.py').read_text()
+assert '"0.22.0"' in compat and '"0.21.1", "0.22.0"' in compat, 'v0.22 winit/egui immutable pins are not audited'
+arboard_guard = script.split('Official PDFCraft v0.17.0/v0.18.0 can resolve arboard', 1)[1].split('say 5 \"Preparing a builder-owned signing key', 1)[0]
+assert '"v0.22.0"' in arboard_guard, 'v0.22 Android arboard compatibility guard missing'
 
 
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY", script, re.S)
@@ -27,23 +35,37 @@ for block in blocks:
 with tempfile.TemporaryDirectory() as folder:
     dst = Path(folder) / 'source'
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
+    test_package = os.environ.get('PDFCRAFT_ANDROID_TEST_PACKAGE', 'com.artcraft.pdfcraft.v0220test1')
+    # Rebuild the exact original Pc raster artwork used by protected Android.10.
+    subprocess.run([sys.executable, str(root / 'tools/pdfcraft/pc_brand.py')], check=True)
+    approved_icon = root / 'tools' / 'approved-branding' / 'assets' / 'PDFCraft.png'
+    assert approved_icon.is_file(), 'protected Android.10 PDFCraft Pc launcher icon is missing'
+    original_icon = (root / 'tools/pdfcraft/pc-icon.b64').read_text().strip()
+    import base64
+    assert approved_icon.read_bytes() == base64.b64decode(original_icon, validate=True)
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
-                       env={**os.environ, 'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.19.0-android.5')})
+                       env={**os.environ,
+                            'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1'),
+                            'PDFCRAFT_ANDROID_TEST_PACKAGE': test_package})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
     before = scanner
     run(patch, dst, 'pdfcraft', 'PDFCraft')
     assert (dst / 'crates/engine/src/text_fonts.rs').read_text() == before
-    run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', '', '')
+    run(generator, root, dst, 'pdfcraft', 'PDFCraft', '35', 'PDFCraft', test_package, str(approved_icon))
     android = dst / 'apps/pdfcraft-android'
     cargo = tomllib.loads((android / 'Cargo.toml').read_text())
-    assert cargo['package']['version'] == os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.19.0-android.5')
+    assert cargo['package']['version'] == os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1')
     assert cargo['dependencies']['egui-winit']['path'] == '../../vendor/egui-winit'
     assert cargo['dependencies']['sha2'] == '0.10'
     assert cargo['package']['metadata']['android']['assets'] == 'ocr-assets'
-    assert cargo['package']['metadata']['android']['package'] == 'com.artcraft.pdfcraft'
+    assert cargo['package']['metadata']['android']['package'] == test_package
+    for density in ('mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'):
+        assert (android / 'res' / f'mipmap-{density}' / 'ic_launcher.png').is_file()
+    if not (root / 'assets' / 'pdfcraft' / 'approved-foreground.png').is_file():
+        assert not (android / 'res' / 'mipmap-anydpi-v26' / 'ic_launcher.xml').exists()
     native = (android / 'src/lib.rs').read_text()
     assert 'modifiers: AndroidModifiers' in native
     assert 'mod pdfcraft_ocr;' in native
@@ -52,7 +74,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'jni_str!("pdfFinishNativeLoop")' in native
     assert native.count('finish_pdfcraft_android_activity(') == 2
     on_exit_signature = ('fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)'
-                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] in ('0.20.0', '0.21.1')
+                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] in ('0.20.0', '0.21.1', '0.22.0')
                          else 'fn on_exit(&mut self)')
     assert on_exit_signature in native
     assert native.index(on_exit_signature) < native.index('let result = eframe::run_native(')
@@ -147,10 +169,17 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'PDFCRAFT_ANDROID_HONOR_FINGER_MOUSE' in (root / 'tools/pdfcraft/android_trackpad_patch.py').read_text()
     assert 'pub fn android_tools_visible(&self) -> bool' in menu
     assert 'pub fn set_android_tools_visible(&self, visible: bool)' in menu
-    assert 'view.push(self.menu_item(ANDROID_TOOLS, None))' in menu
+    assert 'view.push(self.menu_item(ANDROID_TOOLS, None, false))' in menu
     assert 'PDFCRAFT_ANDROID_HELP_REQUEST' in menu
     assert 'PDFCRAFT_ANDROID_ICON_MENU' in menu
-    assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
+    assert 'crate::android_approved_brand::paint(ui.ctx(), ui.painter(), rect.shrink(2.0))' in menu
+    brand_module = (dst / 'crates/ui-egui/src/android_approved_brand.rs').read_text()
+    assert 'PDFCRAFT_ANDROID_APPROVED_PC_BRAND' in brand_module
+    assert 'image::load_from_memory(include_bytes!("android_pc_icon.png"))' in brand_module
+    assert (dst / 'crates/ui-egui/src/android_pc_icon.png').read_bytes() == base64.b64decode(original_icon, validate=True)
+    ui_cargo = (dst / 'crates/ui-egui/Cargo.toml').read_text()
+    assert 'image = { version = "0.25", default-features = false, features = ["png"] }' in ui_cargo
+    assert 'mod android_approved_brand;' in (dst / 'crates/ui-egui/src/lib.rs').read_text()
     assert '"Import Fonts…"' in menu and '"Check for Updates…"' in menu
     assert '"Automatic update check…"' not in menu
     assert 'PDFCRAFT_ANDROID_DECKCRAFT_APP_UPDATES' in menu

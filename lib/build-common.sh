@@ -2042,30 +2042,38 @@ try:
             import subprocess
             subprocess.run([convert, str(icon), "-resize", f"{sizes[density]}x{sizes[density]}", str(out_dir / "ic_launcher.png")], check=True)
         else:
-            shutil.copy2(icon, out_dir / "ic_launcher.png")
+            # Pillow is installed in the isolated candidate builder environment; preserve a real
+            # PNG resource instead of copying a WebP file with a misleading .png extension.
+            try:
+                from PIL import Image
+            except ImportError as exc:
+                raise SystemExit("ImageMagick or Pillow is required to generate Android launcher icons") from exc
+            with Image.open(icon) as source_image:
+                source_image.convert("RGBA").resize(
+                    (sizes[density], sizes[density]), Image.Resampling.LANCZOS
+                ).save(out_dir / "ic_launcher.png", format="PNG")
 
-    # PDFCraft-only adaptive icon resources, based on the approved uploaded artwork.
-    # The input PNG comes from the GitHub candidate preparation step. Fail closed.
+    # PDFCraft's approved raster icon is sufficient when no reviewed transparent adaptive foreground exists.
+    # Keep the full approved Pc icon instead of failing the candidate build on an absent optional PNG.
     if app == "pdfcraft" and appicon:
         fg = root / "assets" / "pdfcraft" / "approved-foreground.png"
-        if not fg.is_file():
-            raise SystemExit(f"Missing PDFCraft adaptive foreground: {fg}")
-        drawable = staging_dir / "res" / "drawable-nodpi"
-        drawable.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(fg, drawable / "pdfcraft_foreground.png")
-        anydpi = staging_dir / "res" / "mipmap-anydpi-v26"
-        anydpi.mkdir(parents=True, exist_ok=True)
-        (anydpi / "ic_launcher.xml").write_text(
-            '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
-            '  <background android:drawable="@color/pdfcraft_bg" />\n'
-            '  <foreground android:drawable="@drawable/pdfcraft_foreground" />\n'
-            '</adaptive-icon>\n'
-        )
-        values = staging_dir / "res" / "values"
-        values.mkdir(parents=True, exist_ok=True)
-        (values / "pdfcraft_colors.xml").write_text(
-            '<resources><color name="pdfcraft_bg">#fb0e00</color></resources>\n'
-        )
+        if fg.is_file():
+            drawable = staging_dir / "res" / "drawable-nodpi"
+            drawable.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fg, drawable / "pdfcraft_foreground.png")
+            anydpi = staging_dir / "res" / "mipmap-anydpi-v26"
+            anydpi.mkdir(parents=True, exist_ok=True)
+            (anydpi / "ic_launcher.xml").write_text(
+                '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                '  <background android:drawable="@color/pdfcraft_bg" />\n'
+                '  <foreground android:drawable="@drawable/pdfcraft_foreground" />\n'
+                '</adaptive-icon>\n'
+            )
+            values = staging_dir / "res" / "values"
+            values.mkdir(parents=True, exist_ok=True)
+            (values / "pdfcraft_colors.xml").write_text(
+                '<resources><color name="pdfcraft_bg">#fb0e00</color></resources>\n'
+            )
 
     serde_dep = 'serde_json = { workspace = true }\n' if (saf or _persist) else ''
     # The SAF bridge for rfd-driven apps (pdfcraft) calls `rfd::artcraft_saf` from the launcher, so
@@ -2785,7 +2793,7 @@ impl eframe::App for AndroidShell {{
         # Official PDFCraft v0.20.0's eframe App::on_exit now expects an
         # optional Glow context even when the Android renderer is WGPU.
         # Keep the v0.19 lifecycle signature untouched for the published baseline.
-        if tomllib.loads((src / "Cargo.toml").read_text())["workspace"]["package"]["version"] in ("0.20.0", "0.21.1"):
+        if tomllib.loads((src / "Cargo.toml").read_text())["workspace"]["package"]["version"] in ("0.20.0", "0.21.1", "0.22.0"):
             old_signature = "    fn on_exit(&mut self) {\n"
             if shell.count(old_signature) != 1:
                 raise SystemExit("PDFCraft v0.20 on_exit signature anchor changed")
@@ -3119,7 +3127,7 @@ fi
 # builder's older mouse-aware vendor copy lacks it. For this disposable candidate
 # only, restore the exact official winit commit and reapply the guarded Android
 # mouse/scroll/hover backend. Do not silently fall back to touch-only input.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.15.0" || "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" || "${PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then
     python3 "$ROOT/tools/pdfcraft/winit_v015_compat.py" \
         "$SRC" "$ROOT/vendor/winit/src/platform_impl/android"
     # PDFCRAFT_ANDROID5_DESTROY_EXITS_NATIVE_LOOP: pinned Android winit
@@ -3185,7 +3193,7 @@ fi
 # Select the already reviewed Android JNI implementation for this *candidate only*;
 # never silently replace it with a stub or bypass clipboard tests. Cargo will fail
 # closed if a newer upstream dependency actually requires arboard >=3.7.
-if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" ) ]]; then
+if [[ "$APP" == "pdfcraft" && ( "${PDFCRAFT_REF:-}" == "v0.17.0" || "${PDFCRAFT_REF:-}" == "v0.18.0" || "${PDFCRAFT_REF:-}" == "v0.19.0" || "${PDFCRAFT_REF:-}" == "v0.20.0" || "${PDFCRAFT_REF:-}" == "v0.21.1" || "${PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then
     grep -q 'arboard = { path = "vendor/arboard" }' "$SRC/Cargo.toml" ||
         fail "PDFCraft Android clipboard patch missing; refusing pinned v0.17/v0.18 build"
     cargo update --manifest-path "$SRC/Cargo.toml" -p arboard --precise 3.6.1 ||

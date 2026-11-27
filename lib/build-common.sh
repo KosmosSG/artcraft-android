@@ -275,7 +275,12 @@ if [[ -e "$SRC" ]]; then
     echo "Commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     echo "Source is not automatically reset or updated."
 else
-    git clone --depth 1 "$REPO" "$SRC"
+    if [[ "$APP" == "photocraft" && -n "${PHOTOCRAFT_UPSTREAM_REF:-}" ]]; then
+        echo "PhotoCraft upstream ref: $PHOTOCRAFT_UPSTREAM_REF"
+        git clone --depth 1 --branch "$PHOTOCRAFT_UPSTREAM_REF" "$REPO" "$SRC"
+    else
+        git clone --depth 1 "$REPO" "$SRC"
+    fi
 fi
 
 # Upstream `main` is normally green, but a regression can sit there for a while (the upstream

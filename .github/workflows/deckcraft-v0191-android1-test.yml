@@ -1,5 +1,10 @@
 name: DeckCraft v0.19.1-android.1 upstream integration ARM64 TEST ONLY
 on:
+  push:
+    branches:
+      - integration/deckcraft-upstream-v0191-20261128
+    paths:
+      - '.github/workflows/deckcraft-v0191-android1-test.yml'
   workflow_dispatch:
     inputs:
       approve_candidate_build:
@@ -14,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compile-unsigned:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0191-20261128' && inputs.approve_candidate_build == true
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0191-20261128' && (github.event_name == 'push' || inputs.approve_candidate_build == true)
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

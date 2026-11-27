@@ -14,5 +14,9 @@ jobs:
 
       - name: Run Gemini CLI Action
         uses: google-github-actions/run-gemini-cli@main
+        env:
+          # GitHub Actions workspaces are non-interactive; explicitly trust the
+          # checked-out repository so Gemini CLI can run in headless mode.
+          GEMINI_CLI_TRUST_WORKSPACE: "true"
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

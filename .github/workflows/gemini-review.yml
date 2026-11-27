@@ -14,5 +14,12 @@ jobs:
 
       - name: Run Gemini CLI Action
         uses: google-github-actions/run-gemini-cli@main
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: "true"
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
+            Review this pull request in read-only mode. Inspect the actual diff and relevant surrounding files.
+            Focus on Android regressions, build failures, security issues, signing or release risks, and compatibility.
+            Do not modify files, commit, publish, sign, or trigger other workflows.
+            Report only actionable findings with file paths and line references. If no issues are found, say so clearly.

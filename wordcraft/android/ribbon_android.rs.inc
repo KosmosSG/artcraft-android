@@ -43,11 +43,12 @@ fn artcraft_android_menu(ui: &mut Ui) {
                 if action != "font_refresh" { ui.close(); }
             }
         }
-        ui.separator();
-                ui.small(status);
-            }
-            ui.small("Fonts can be imported individually or from a shared folder.");
-        });
+        ui.small("Shared fonts: recursive folders, 5,000 files / 4 GiB maximum.");
+        let font_status = ui.ctx().data(|d|
+            d.get_temp::<String>(egui::Id::new("wc_menu_status"))
+        ).unwrap_or_default();
+        if !font_status.is_empty() { ui.small(font_status); }
+        ui.small("Fonts can be imported individually or from a shared folder.");
         ui.separator();
         ui.menu_button("App Updates", |ui| {
             ui.set_min_width(250.0);

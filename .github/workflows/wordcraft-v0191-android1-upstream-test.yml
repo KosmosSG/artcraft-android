@@ -562,7 +562,7 @@ jobs:
           assert 'wcImportFonts' in extension
           assert 'wcHandleImportedFonts' in extension
           assert 'WC_COMPACT_GC_STYLE_MENU_V1' in menu, "Gc-style WordCraft menu absent"
-          assert menu.count('ui.menu_button("Font Status & Diagnostics"') == 1
+          assert menu.count('ui.menu_button("Font Status & Diagnostics"') == 0
           assert menu.count('ui.menu_button("Keyboard & Shortcuts"') == 1
           assert menu.count('ui.menu_button("Stylus & Handwriting"') == 0
           assert menu.count('ui.menu_button("About WordCraft"') == 1

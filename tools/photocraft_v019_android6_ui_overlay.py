@@ -74,6 +74,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
+                action(ui, "Text to Image · PxC / ComfyUI…", 5);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -131,6 +132,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             2 => self.show_background_setup = true,
             3 => self.show_connection = true,
             4 => self.show_about = true,
+            5 => self.show_txt2img = true,
             _ => {}
         }
     }

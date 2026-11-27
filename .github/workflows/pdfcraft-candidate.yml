@@ -81,7 +81,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" -m pip install --disable-pip-version-check --no-input Pillow
           echo "$RUNNER_TEMP/pdfcraft-tools/bin" >> "$GITHUB_PATH"
-          python3 tools/pdfcraft/pc_brand.py
+          "$RUNNER_TEMP/pdfcraft-tools/bin/python" tools/pdfcraft/pc_brand.py
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('tools/approved-branding/assets/PDFCraft.png'); im.verify(); assert im.size == (256, 256); print('Protected Android.10 Pc icon:', im.format, im.size)"
 
       - name: Verify the exact official upstream tag and source commit

@@ -74,7 +74,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
-                action(ui, "Text to Image · PxC / ComfyUI…", 5);
+                action(ui, "Text to Image · PxC / ComfyUI…", 17);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -199,6 +199,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
                 photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()
             ),
             5 => { if let Err(e) = self.bridge.request_font_import(false) { log::warn!("Font import: {e}"); } },
+            17 => self.ai_menu.open_from_pc(5),
             6 => { if let Err(e) = self.bridge.request_font_import(true) { log::warn!("Font folder: {e}"); } },
             7 => self.android_fonts.refresh(),
             8 => { if let Err(e) = self.bridge.request_update_check() { log::warn!("Update check: {e}"); } },

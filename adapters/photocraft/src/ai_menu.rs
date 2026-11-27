@@ -6,6 +6,7 @@ use crate::ai_tools::{AiAction, ComfyEndpoint};
 use crate::ai_background_editor;
 use crate::ai_background_job::{Job, JobId};
 use crate::ai_u2netp_transport;
+use crate::pxc_client::PxcClient;
 use photocraft_doc::Layer;
 use photocraft_engine::Session;
 use std::net::SocketAddr;
@@ -21,6 +22,7 @@ pub(crate) struct AndroidAiMenu {
     show_about: bool,
     show_connection: bool,
     show_background_setup: bool,
+    show_txt2img: bool,
     cpu_token: String,
     cpu_consent: bool,
     cpu_status: String,
@@ -28,6 +30,12 @@ pub(crate) struct AndroidAiMenu {
     cpu_cancellation: Option<Arc<AtomicBool>>,
     cpu_job: Option<Job>,
     cpu_next_job: u64,
+    txt2img_prompt: String,
+    txt2img_checkpoint: String,
+    txt2img_seed: String,
+    txt2img_result: Option<Receiver<Result<Layer, String>>>,
+    txt2img_job: Option<Job>,
+    txt2img_next_job: u64,
     endpoint_text: String,
     allow_private_lan: bool,
     connection_status: String,
@@ -51,6 +59,7 @@ impl AndroidAiMenu {
             show_about: false,
             show_connection: false,
             show_background_setup: false,
+            show_txt2img: false,
             cpu_token: String::new(),
             cpu_consent: false,
             cpu_status: "No image has been processed.".into(),
@@ -58,6 +67,12 @@ impl AndroidAiMenu {
             cpu_cancellation: None,
             cpu_job: None,
             cpu_next_job: 0,
+            txt2img_prompt: String::new(),
+            txt2img_checkpoint: String::new(),
+            txt2img_seed: "0".into(),
+            txt2img_result: None,
+            txt2img_job: None,
+            txt2img_next_job: 0,
             endpoint_text: String::new(),
             allow_private_lan: false,
             connection_status: "No connection tested.".into(),
@@ -95,6 +110,7 @@ impl AndroidAiMenu {
             self.cpu_consent = false;
         }
         let layer_changed = self.poll_cpu_result(session, ui.ctx());
+        let txt2img_changed = self.poll_txt2img_result(session, ui.ctx());
         let received = self.connection_result.as_ref().map(|rx| rx.try_recv());
         match received {
             Some(Ok(Ok(()))) => {
@@ -165,6 +181,10 @@ impl AndroidAiMenu {
                                 .on_hover_text("Coming soon — no AI processing backend is connected.");
                         }
                         ui.separator();
+                        if ui.button("Text to Image · PxC / ComfyUI…").clicked() {
+                            self.show_txt2img = true;
+                            ui.close();
+                        }
                         if ui.button("Remove Background · Local CPU Preview…").clicked() {
                             self.show_background_setup = true;
                             ui.close();
@@ -184,6 +204,50 @@ impl AndroidAiMenu {
                     });
             });
         });
+
+        if self.show_txt2img {
+            let mut open = self.show_txt2img;
+            egui::Window::new("PhotoCraft · Text to Image · PxC / ComfyUI")
+                .id(egui::Id::new("photocraft_android_pxc_txt2img"))
+                .open(&mut open)
+                .resizable(true)
+                .collapsible(false)
+                .show(&ctx, |ui| {
+                    ui.heading("Text to Image");
+                    ui.label("Runs inference on your explicitly configured private-LAN ComfyUI server. PhotoCraft stays the Android client.");
+                    ui.separator();
+                    ui.label("Prompt");
+                    ui.add(egui::TextEdit::multiline(&mut self.txt2img_prompt)
+                        .desired_rows(4)
+                        .hint_text("Describe the image to generate…"));
+                    ui.label("Checkpoint filename");
+                    ui.add(egui::TextEdit::singleline(&mut self.txt2img_checkpoint)
+                        .hint_text("Example: model.safetensors"));
+                    ui.label("Seed (optional)");
+                    ui.add(egui::TextEdit::singleline(&mut self.txt2img_seed)
+                        .hint_text("0"));
+                    ui.label("Server: configured in ComfyUI Connection. Private-LAN consent must be enabled and the connection tested.");
+                    let pending = self.txt2img_result.is_some();
+                    let enabled = self.connection_ok && !pending
+                        && !self.txt2img_prompt.trim().is_empty()
+                        && !self.txt2img_checkpoint.trim().is_empty()
+                        && session.active().is_some();
+                    if ui.add_enabled(enabled, egui::Button::new("Generate · Create New Undoable Layer")).clicked() {
+                        self.start_txt2img_job(session, &ctx);
+                    }
+                    if pending && ui.button("Discard pending result").clicked() {
+                        self.cancel_txt2img_job();
+                    }
+                    if !self.connection_ok {
+                        ui.label("Connect to ComfyUI first.");
+                    }
+                    ui.label("The active document must be open and RGB 8-bit. The generated result is fully decoded before insertion.");
+                });
+            if !open {
+                self.cancel_txt2img_job();
+            }
+            self.show_txt2img = open;
+        }
 
         if self.show_background_setup {
             let mut open = self.show_background_setup;
@@ -324,7 +388,110 @@ impl AndroidAiMenu {
         // Render Companion's native dialog in the same pass as its menu click;
         // do not depend on the upstream Pc command queue that broke OpenFill.
         companion.show_dialog(&ctx);
-        layer_changed
+        layer_changed || txt2img_changed
+    }
+
+    fn cancel_txt2img_job(&mut self) {
+        if self.txt2img_result.is_none() { return; }
+        if let Some(mut job) = self.txt2img_job.take() {
+            job.cancel();
+        }
+        self.txt2img_result = None;
+    }
+
+    fn start_txt2img_job(&mut self, session: &Session, ctx: &egui::Context) {
+        if self.txt2img_result.is_some() {
+            return;
+        }
+        let (document, origin) = match ai_background_editor::active_snapshot(session) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.connection_status = error;
+                return;
+            }
+        };
+        let endpoint = match ComfyEndpoint::parse(&self.endpoint_text, self.allow_private_lan) {
+            Ok(endpoint) if self.connection_ok => endpoint,
+            _ => {
+                self.connection_status = "Connect to ComfyUI before generating.".into();
+                return;
+            }
+        };
+        let checkpoint = self.txt2img_checkpoint.trim().to_owned();
+        let prompt = self.txt2img_prompt.trim().to_owned();
+        let seed = match self.txt2img_seed.trim().parse::<u64>() {
+            Ok(value) => value,
+            Err(_) => {
+                self.connection_status = "Seed must be an unsigned integer.".into();
+                return;
+            }
+        };
+        self.txt2img_next_job = self.txt2img_next_job.wrapping_add(1);
+        let job_id = JobId(self.txt2img_next_job);
+        let job = Job::new(job_id, origin);
+        let (tx, rx) = mpsc::channel();
+        self.txt2img_job = Some(job);
+        self.txt2img_result = Some(rx);
+        self.connection_status = "Generating with PxC / ComfyUI…".into();
+        std::thread::spawn(move || {
+            let result = (|| {
+                let client = PxcClient::new(endpoint);
+                let generated = client.generate_text_to_image(
+                    &checkpoint,
+                    &prompt,
+                    seed,
+                    document.size.width,
+                    document.size.height,
+                ).map_err(|error| error.to_string())?;
+                ai_background_editor::decode_generated_layer(&generated.image)
+            })();
+            let _ = tx.send(result);
+        });
+        ctx.request_repaint_after(Duration::from_millis(200));
+    }
+
+    fn poll_txt2img_result(&mut self, session: &mut Session, ctx: &egui::Context) -> bool {
+        let received = self.txt2img_result.as_ref().map(|rx| rx.try_recv());
+        match received {
+            Some(Ok(result)) => {
+                self.txt2img_result = None;
+                let Some(mut job) = self.txt2img_job.take() else {
+                    self.connection_status = "Discarded unexpected PxC result.".into();
+                    return false;
+                };
+                match result {
+                    Ok(layer) => {
+                        if job.finish(job.id).is_err()
+                            || !ai_background_editor::current_revision(session)
+                                .is_some_and(|current| job.may_insert(current)) {
+                            self.connection_status = "Document changed or generation cancelled; PxC result discarded.".into();
+                            return false;
+                        }
+                        match ai_background_editor::insert_undoable(session, job.origin, layer) {
+                            Ok(()) => {
+                                self.connection_status = "PxC image generated. New undoable AI layer inserted.";
+                                return true;
+                            }
+                            Err(error) => self.connection_status = error,
+                        }
+                    }
+                    Err(error) => {
+                        job.fail();
+                        self.connection_status = format!("PxC generation failed: {error}");
+                    }
+                }
+            }
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.txt2img_result = None;
+                self.txt2img_job = None;
+                self.connection_status = "PxC generation worker stopped unexpectedly.".into();
+            }
+            Some(Err(TryRecvError::Empty)) => {
+                ctx.request_repaint_after(Duration::from_millis(200));
+            }
+            None => {}
+        }
+        false
     }
 
     fn cancel_cpu_job(&mut self) {

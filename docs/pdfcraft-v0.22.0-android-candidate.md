@@ -19,7 +19,7 @@ The candidate retains the protected Android.10 tree, including the current PDFCr
 5. `tools/pdfcraft/android_on_exit_compat.py` — align the Android app's `eframe::App::on_exit` implementation with the pinned eframe 0.37 trait signature; fail closed if upstream changes the legacy anchor.
 6. `tools/pdfcraft/winit_v015_compat.py` — restore the exact upstream winit 0.30.13 API required by egui-winit 0.37, while reapplying the reviewed Android mouse/scroll/hover and lifecycle patches for v0.22.0.
 7. `tools/pdfcraft_stable_audit.py` — advance the official upstream comparison baseline from v0.10.1 to v0.21.1.
-8. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and approved Pc icon, including a guard against skipping the v0.22.0 winit overlay.
+8. `tools/test_pdfcraft_adapter.py` — retain the complete Android.10 regression suite while testing the candidate package ID and protected Android.10 Pc artwork, including a guard against skipping the v0.22.0 winit overlay.
 
 ## Candidate identity and signing
 
@@ -30,7 +30,7 @@ The candidate retains the protected Android.10 tree, including the current PDFCr
 - ABI: ARM64 / `arm64-v8a` only.
 - Icon: exact protected Android.10 Pc artwork from `tools/pdfcraft/pc-icon.b64`, used for both the launcher and top-left menu.
 - Signing: a new disposable keystore generated on the hosted runner for this run only.
-- Image tooling: Pillow is installed in a temporary Python virtual environment for the approved WebP icon and stylus-wheel asset generation.
+- Image tooling: Pillow is installed in a temporary Python virtual environment for the protected Pc raster icon and stylus-wheel asset generation.
 
 The test package is deliberately different from production `com.artcraft.pdfcraft`, so it can be installed side-by-side. Its signature is not compatible with the production app. Never use it as an update. The workflow has read-only repository permissions and does not create tags or releases.
 

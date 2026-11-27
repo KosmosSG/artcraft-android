@@ -1,4 +1,20 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+pluginManagement {
+    repositories {
+        google()
+        // Use Google's Maven Central mirror before the rate-limited primary endpoint.
+        maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2') }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        // Keep a mirror fallback for Maven Central dependencies in CI.
+        maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2') }
+        mavenCentral()
+    }
+}
 rootProject.name = 'ArtCraftAndroidLauncher'
 include ':app'

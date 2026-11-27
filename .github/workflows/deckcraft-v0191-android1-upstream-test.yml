@@ -116,7 +116,7 @@ jobs:
       - name: Verify 4 GiB scan boundaries without allocating 4 GiB
         run: |
           mkdir -p /tmp/deck-font-tests
-          javac -d /tmp/deck-font-tests baseline/deckcraft/android/FontScanBudget.java deckcraft/tests/FontScanBudgetTest.java
+          javac -d /tmp/deck-font-tests baseline/deckcraft/android/FontScanBudget.java baseline/deckcraft/tests/FontScanBudgetTest.java
           java -cp /tmp/deck-font-tests FontScanBudgetTest
       - name: Install patch-time Python dependencies
         run: python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'

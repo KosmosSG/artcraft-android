@@ -1,0 +1,70 @@
+name: WordCraft updater compatibility asset alias
+
+on:
+  push:
+    branches:
+      - fix/wordcraft-updater-asset-alias-20261128
+    paths:
+      - .github/workflows/wordcraft-updater-asset-alias.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wordcraft-updater-asset-alias
+  cancel-in-progress: false
+
+jobs:
+  add-compatible-arm64-asset:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/fix/wordcraft-updater-asset-alias-20261128'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: wordcraft-v0.19.1-android.1
+      ORIGINAL_ASSET: wordcraft-0.19.1-android.1.apk
+      ALIAS_ASSET: wordcraft-0.19.1-android.1-arm64-v8a.apk
+      EXPECTED_SHA256: 828b17d3c7c3932aa4d759c27c85311a9240a558c228543323048b61c33e54c1
+    steps:
+      - name: Confirm the exact published WordCraft release and source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > /tmp/release.json
+          python3 - <<'PY'
+          import json, os
+          r=json.load(open("/tmp/release.json"))
+          assert r["tagName"] == os.environ["TAG"]
+          assert r["isDraft"] is False and r["isPrerelease"] is False
+          names={a["name"] for a in r["assets"]}
+          assert os.environ["ORIGINAL_ASSET"] in names, names
+          assert os.environ["ALIAS_ASSET"] not in names, "Compatibility alias already exists; stop rather than duplicate"
+          print("PASS: confirmed exact stable release and original APK asset")
+          PY
+      - name: Download, hash-check and add the legacy-updater-compatible filename
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wordcraft-updater-alias"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ORIGINAL_ASSET" --dir "$RUNNER_TEMP/wordcraft-updater-alias"
+          original="$RUNNER_TEMP/wordcraft-updater-alias/$ORIGINAL_ASSET"
+          test -s "$original"
+          actual="$(sha256sum "$original" | awk '{print $1}')"
+          test "$actual" = "$EXPECTED_SHA256"
+          cp "$original" "$RUNNER_TEMP/wordcraft-updater-alias/$ALIAS_ASSET"
+          cmp "$original" "$RUNNER_TEMP/wordcraft-updater-alias/$ALIAS_ASSET"
+          gh release upload "$TAG" "$RUNNER_TEMP/wordcraft-updater-alias/$ALIAS_ASSET" --repo "$GITHUB_REPOSITORY"
+          echo "PASS: uploaded byte-identical compatibility asset; SHA-256 $actual"
+      - name: Verify GitHub now exposes the exact filename and digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets > /tmp/assets.json
+          python3 - <<'PY'
+          import json, os
+          assets=json.load(open("/tmp/assets.json"))["assets"]
+          matches=[a for a in assets if a["name"] == os.environ["ALIAS_ASSET"]]
+          assert len(matches) == 1, matches
+          assert matches[0].get("digest") == "sha256:" + os.environ["EXPECTED_SHA256"], matches[0]
+          print("PASS: legacy WordCraft updater filename and SHA-256 metadata are published")
+          PY

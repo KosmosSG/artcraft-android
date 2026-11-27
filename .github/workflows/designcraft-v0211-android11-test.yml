@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           git ls-remote https://github.com/storytold/designcraft.git refs/tags/v0.21.1 |
             awk '{print $1}' | grep -qx 7470feae15b824534c842b7888952e63f6493003
-          python3 -m py_compile tools/designcraft/prepare_v0211_test_builder.py tools/designcraft/stage_v0201_wheel.py tools/designcraft/stage_v0201_native.py
+          python3 -m py_compile tools/designcraft/prepare_v0211_test_builder.py tools/designcraft/stage_v0201_wheel.py tools/designcraft/stage_v0201_native.py tools/designcraft/dry_run_v0211_source_port.py
           grep -Fq '#43081F' tools/designcraft/dc_stylus_wheel.rs
           grep -Fq '#EC4869' tools/designcraft/dc_stylus_wheel.rs
           rustfmt --edition 2024 --emit stdout tools/designcraft/dc_stylus_wheel.rs >/dev/null
@@ -39,7 +39,7 @@ jobs:
           test "$(git hash-object tools/designcraft/stage_v0201_wheel.py)" = d84ded0f298d7e38c6ffc3b92b810c9a7b89b98c
           test "$(git hash-object tools/designcraft/stage_v0201_native.py)" = 2725b5b416dcf9c4d0e95be1788d2bf10278e262
           test "$(git hash-object tools/designcraft/v016_android.rs)" = 7d64b58d135ca69a3a70ed5b23b79c89db01b282
-          test "$(git hash-object tools/designcraft/prepare_v0211_test_builder.py)" = b9018b3c21c0f65552d2b58ec0a0083ec1922338
+          test "$(git hash-object tools/designcraft/prepare_v0211_test_builder.py)" = 8e59f220745974899e1cb5553ee68609452ef43d
           grep -Fq 'dc_stylus_native_hover_capture' tools/designcraft/stage_v0201_native.py
           grep -Fq 'AMotionEvent_getToolType' tools/designcraft/stage_v0201_native.py
           grep -Fq 'dc_stylus_native_hover_sample' tools/designcraft/v016_android.rs
@@ -102,6 +102,11 @@ jobs:
           assert obj['permanent_signing_authorized'] is False
           print('Protected release and permanent signing remain disabled')
           PY
+      - name: Probe v0.21.1 Android overlay compatibility before compilation
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.21.1 https://github.com/storytold/designcraft.git "$RUNNER_TEMP/designcraft"
+          python3 tools/designcraft/dry_run_v0211_source_port.py "$RUNNER_TEMP/designcraft"
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '21'}
       - uses: dtolnay/rust-toolchain@stable
@@ -117,7 +122,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
           echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
-      - name: Compile the identical tested source for ORIGINAL production package using TEMP signer
+      - name: Compile isolated DesignCraft .test package with disposable signer
         timeout-minutes: 75
         run: |
           set -euo pipefail
@@ -127,13 +132,13 @@ jobs:
             -appname='DesignCraft Test'
           grep -Fq 'dc-wheel-hover-block' source/designcraft/crates/ui-egui/src/canvas/input.rs
           grep -Fq 'dc_stylus_wheel::ui' source/designcraft/apps/designcraft-android/src/v016_android.rs
-          grep -Fq 'dcTakeWheelAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'dcStylusDeviceIds' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'dcTakeUndoAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'dcUndoShortcut' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'dcDownloadVerifiedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'dcVerifyDownloadedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
-          grep -Fq 'com.artcraft.designcraft.test' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
+          grep -Fq 'dcTakeWheelAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcStylusDeviceIds' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcTakeUndoAction' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcUndoShortcut' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcDownloadVerifiedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'dcVerifyDownloadedApk' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
+          grep -Fq 'com.artcraft.designcraft.test' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
           grep -Fq 'android.permission.REQUEST_INSTALL_PACKAGES' source/designcraft/apps/designcraft-android/Cargo.toml
           grep -Fq 'dc_undo_action' source/designcraft/apps/designcraft-android/src/lib.rs
           grep -Fq 'app.run("edit.undo"' source/designcraft/apps/designcraft-android/src/v016_android.rs
@@ -142,12 +147,12 @@ jobs:
           grep -Fq 'dc_stylus_native_hover_capture' source/designcraft/vendor/android-activity/src/lib.rs
           grep -Fq 'dc_stylus_native_hover_sample' source/designcraft/vendor/android-activity/src/lib.rs
           grep -Fq 'AMotionEvent_getToolType' source/designcraft/vendor/android-activity/src/native_activity/mod.rs
-          grep -Fq 'dispatchTouchEvent' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftActivity.java
+          grep -Fq 'dispatchTouchEvent' source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/test/DesignCraftActivity.java
           test "$(wc -c < source/designcraft/apps/designcraft-android/src/v016_android/dc_wheel_mark.rgba)" -eq 92160
           ! grep -Fq 'Show / Hide Wheel' source/designcraft/crates/ui-egui/src/menus/bar.rs
           grep -Fq '✓ Stylus Wheel On' source/designcraft/crates/ui-egui/src/menus/bar.rs
           grep -Fq 'artcraftSelectSharedFonts' source/designcraft/crates/ui-egui/src/menus/ui_commands.rs
-      - name: Repackage with monotonic production versionCode 16800015 (TEMP signed only)
+      - name: Repackage isolated test APK with monotonic versionCode 16800015 (TEMP signed only)
         run: |
           set -euo pipefail
           BUILDER="$RUNNER_TEMP/designcraft-builder"
@@ -162,7 +167,7 @@ jobs:
           test -s "$REPACKED"
           cp "$REPACKED" "$BUILDER/output/designcraft-0.21.1-android.11-debug.apk"
           echo 'Separate .test package, TEMP-signed. Install side-by-side for testing; never use as a production update.'
-      - name: Verify original package, monotonic version, ARM64, ZIP and temporary signature
+      - name: Verify .test package, monotonic version, ARM64, ZIP and temporary signature
         run: |
           set -euo pipefail
           APK="$RUNNER_TEMP/designcraft-builder/output/designcraft-0.21.1-android.11-debug.apk"
@@ -185,12 +190,12 @@ jobs:
           from pathlib import Path
           import sys
           apk=Path(sys.argv[1])
-          old=259_741_606
+          old=124_446_630
           new=apk.stat().st_size
           print(f'Published Android.8 APK: {old:,} bytes')
-          print(f'Optimized original-package Android.10 TEMP APK: {new:,} bytes')
+          print(f'Optimized isolated Android.11 .test APK: {new:,} bytes')
           print(f'Size reduction: {old-new:,} bytes ({(old-new)/old*100:.1f}%)')
-          assert new < 230_000_000, "Production package APK must remain smaller than 230 MB"
+          assert new < 230_000_000, "Test package APK must remain smaller than 230 MB"
           PY
           sha256sum "$APK" > "$RUNNER_TEMP/SHA256SUMS.txt"
           echo 'SEPARATE .test PACKAGE TEMP-SIGNED PAYLOAD ONLY. Side-by-side test install; never production publish.' >> "$GITHUB_STEP_SUMMARY"

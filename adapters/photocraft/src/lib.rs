@@ -5,17 +5,15 @@
 //! ARTCRAFT_PHOTOCRAFT_SAF_JNI022_FIX_V1
 
 use android_activity::AndroidApp;
+use craft::host::{FileError, Files, PendingPick, PickId, PickKind, PickRequest, Picked, WriteIntent};
 use jni::{
     JavaVM, jni_sig, jni_str,
     objects::{JObject, JString, JValue},
 };
-use photocraft_codecs::{ChannelLayout, EncodeOptions, Image};
 use photocraft_doc::Document;
 use photocraft_engine::Session;
-use photocraft_ui_egui::{
-    FileDialogAnswer, FileDialogReply, FileDialogRequest, Inbox, PhotocraftApp, Services,
-};
-use std::collections::HashMap;
+use photocraft_ui_egui::{Inbox, PhotocraftApp, Services};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -205,65 +203,101 @@ impl AndroidFileBridge {
     }
 }
 
-#[derive(Default)]
-struct PickerState {
+struct AndroidFiles {
+    bridge: AndroidFileBridge,
     next_id: AtomicU64,
-    replies: Mutex<HashMap<u64, FileDialogReply>>,
+    queued: Mutex<VecDeque<(PickId, PickRequest)>>,
+    active: Mutex<Option<(PickId, PickRequest)>>,
+    answers: Mutex<HashMap<PickId, Picked>>,
+    save_bytes: Mutex<HashMap<PickId, Vec<u8>>>,
+    forgotten: Mutex<HashSet<PickId>>,
+    folders: Mutex<HashMap<String, PathBuf>>,
 }
 
-impl PickerState {
-    fn launch(
-        &self,
-        bridge: &AndroidFileBridge,
-        request: FileDialogRequest,
-        reply: FileDialogReply,
-    ) {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
-        let launch_result = match request {
-            FileDialogRequest::Open { multiple, .. } => {
-                self.replies
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(id, reply);
-                bridge.request_open(id, multiple)
-            }
-            FileDialogRequest::Save { suggested } => {
-                let name = Path::new(&suggested)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "Untitled.pcraft".to_string());
-                self.replies
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(id, reply);
-                bridge.request_save(id, &name)
-            }
-            FileDialogRequest::Folder { .. } => {
-                reply.send(Some(FileDialogAnswer::Unavailable(
-                    "Choosing folders is not supported by this Android file picker yet. Use Open or Save As for individual files.".into(),
-                )));
-                return;
-            }
-        };
-        if let Err(error) = launch_result {
-            if let Some(reply) = self
-                .replies
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&id)
-            {
-                reply.send(Some(FileDialogAnswer::Unavailable(format!(
-                    "Could not start Android file picker: {error}"
-                ))));
-            }
+impl AndroidFiles {
+    fn new(bridge: AndroidFileBridge) -> Self {
+        Self {
+            bridge,
+            next_id: AtomicU64::new(0),
+            queued: Mutex::new(VecDeque::new()),
+            active: Mutex::new(None),
+            answers: Mutex::new(HashMap::new()),
+            save_bytes: Mutex::new(HashMap::new()),
+            forgotten: Mutex::new(HashSet::new()),
+            folders: Mutex::new(HashMap::new()),
         }
     }
 
-    fn poll(&self, bridge: &AndroidFileBridge, ctx: &egui::Context) {
+    fn enqueue(&self, request: PickRequest, bytes: Option<Vec<u8>>) -> PickId {
+        let id = PickId(self.next_id.fetch_add(1, Ordering::Relaxed).wrapping_add(1));
+        if let Some(bytes) = bytes {
+            self.save_bytes.lock().unwrap_or_else(|e| e.into_inner()).insert(id, bytes);
+        }
+        self.queued.lock().unwrap_or_else(|e| e.into_inner()).push_back((id, request));
+        self.start_next();
+        id
+    }
+
+    fn start_next(&self) {
+        loop {
+            let next = {
+                let mut active = self.active.lock().unwrap_or_else(|e| e.into_inner());
+                if active.is_some() {
+                    return;
+                }
+                let next = self.queued.lock().unwrap_or_else(|e| e.into_inner()).pop_front();
+                if let Some((id, request)) = &next {
+                    *active = Some((*id, request.clone()));
+                }
+                next
+            };
+            let Some((id, request)) = next else {
+                return;
+            };
+            let launch = match request.kind {
+                PickKind::Open => self.bridge.request_open(id.0, false),
+                PickKind::OpenMany => self.bridge.request_open(id.0, true),
+                PickKind::Save => {
+                    let name = request.file_name.as_deref()
+                        .filter(|name| !name.trim().is_empty())
+                        .unwrap_or("Untitled.pcraft");
+                    self.bridge.request_save(id.0, name)
+                }
+                PickKind::Folder => Err("Choosing folders is not supported by this Android file picker yet. Use Open or Save As for individual files.".into()),
+            };
+            if let Err(error) = launch {
+                let failed = self.active.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some((failed_id, failed_request)) = failed {
+                    self.complete(
+                        failed_id,
+                        failed_request,
+                        Picked::Unavailable(format!("Could not start Android file picker: {error}")),
+                    );
+                }
+                continue;
+            }
+            return;
+        }
+    }
+
+    fn complete(&self, id: PickId, request: PickRequest, picked: Picked) {
+        self.save_bytes.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        if self.forgotten.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+            return;
+        }
+        if let Some(path) = picked.first_path() {
+            if let Some(parent) = path.parent() {
+                self.folders.lock().unwrap_or_else(|e| e.into_inner())
+                    .insert(request.purpose.clone(), parent.to_path_buf());
+            }
+        }
+        self.answers.lock().unwrap_or_else(|e| e.into_inner()).insert(id, picked);
+    }
+
+    fn poll(&self, ctx: &egui::Context) {
         // Each result is one short JSON object queued by PhotoCraftActivity after picker I/O ends.
         for _ in 0..8 {
-            let raw = match bridge.poll_result() {
+            let raw = match self.bridge.poll_result() {
                 Ok(Some(raw)) => raw,
                 Ok(None) => break,
                 Err(error) => {
@@ -278,55 +312,123 @@ impl PickerState {
                     continue;
                 }
             };
-            let Some(id) = value.get("id").and_then(serde_json::Value::as_u64) else {
+            let Some(raw_id) = value.get("id").and_then(serde_json::Value::as_u64) else {
                 log::error!("Android picker result has no request id: {raw}");
                 continue;
             };
-            let Some(reply) = self
-                .replies
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&id)
-            else {
-                log::warn!("Ignoring stale Android picker reply {id}");
+            let active = {
+                let mut active = self.active.lock().unwrap_or_else(|e| e.into_inner());
+                if active.as_ref().map(|(id, _)| id.0) == Some(raw_id) {
+                    active.take()
+                } else {
+                    None
+                }
+            };
+            let Some((id, request)) = active else {
+                log::warn!("Ignoring stale Android picker reply {raw_id}");
                 continue;
             };
-            let status = value
-                .get("status")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("error");
-            let kind = value
-                .get("kind")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            let answer = match status {
-                "cancel" => None,
+            let status = value.get("status").and_then(serde_json::Value::as_str).unwrap_or("error");
+            let kind = value.get("kind").and_then(serde_json::Value::as_str).unwrap_or("");
+            let picked = match status {
+                "cancel" => Picked::Cancelled,
                 "ok" if kind == "open" => {
-                    let paths = value
-                        .get("paths")
+                    let paths = value.get("paths")
                         .and_then(serde_json::Value::as_array)
                         .into_iter()
                         .flatten()
                         .filter_map(serde_json::Value::as_str)
-                        .map(str::to_owned)
+                        .map(PathBuf::from)
                         .collect::<Vec<_>>();
-                    (!paths.is_empty()).then_some(FileDialogAnswer::Paths(paths))
+                    if paths.is_empty() { Picked::Cancelled } else { Picked::Paths(paths) }
                 }
-                "ok" if kind == "save" => value
-                    .get("path")
-                    .and_then(serde_json::Value::as_str)
-                    .map(|path| FileDialogAnswer::SaveTo(path.to_owned())),
-                _ => Some(FileDialogAnswer::Unavailable(
-                    value
-                        .get("message")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("Android file operation failed")
-                        .to_owned(),
-                )),
+                "ok" if kind == "save" => match value.get("path").and_then(serde_json::Value::as_str) {
+                    Some(path) => {
+                        let target = PathBuf::from(path);
+                        let bytes = self.save_bytes.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                        if let Some(bytes) = bytes {
+                            match write_mobile(&self.bridge, path, &bytes) {
+                                Ok(()) => Picked::Saved { path: target, file_type: None },
+                                Err(error) => Picked::Failed(error),
+                            }
+                        } else {
+                            Picked::Saved { path: target, file_type: None }
+                        }
+                    }
+                    None => Picked::Unavailable("Android save picker returned no destination path.".into()),
+                },
+                _ => Picked::Unavailable(
+                    value.get("message").and_then(serde_json::Value::as_str)
+                        .unwrap_or("Android file operation failed").to_owned(),
+                ),
             };
-            reply.send(answer);
+            self.complete(id, request, picked);
             ctx.request_repaint();
+            self.start_next();
         }
+    }
+}
+
+impl Files for AndroidFiles {
+    fn pick(&self, request: PickRequest) -> PickId {
+        self.enqueue(request, None)
+    }
+
+    fn take_answer(&self, id: PickId) -> Option<Picked> {
+        self.answers.lock().unwrap_or_else(|e| e.into_inner()).remove(&id)
+    }
+
+    fn forget(&self, id: PickId) {
+        self.answers.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        self.save_bytes.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        let active = self.active.lock().unwrap_or_else(|e| e.into_inner());
+        if active.as_ref().is_some_and(|(active_id, _)| *active_id == id) {
+            self.forgotten.lock().unwrap_or_else(|e| e.into_inner()).insert(id);
+            return;
+        }
+        drop(active);
+        self.queued.lock().unwrap_or_else(|e| e.into_inner()).retain(|(queued_id, _)| *queued_id != id);
+    }
+
+    fn pending_pick(&self) -> Option<PendingPick> {
+        let active = self.active.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, request)) = active.as_ref() {
+            return Some(PendingPick { request: request.clone(), sheet: false });
+        }
+        drop(active);
+        self.queued.lock().unwrap_or_else(|e| e.into_inner()).front()
+            .map(|(_, request)| PendingPick { request: request.clone(), sheet: false })
+    }
+
+    fn read(&self, path: &Path) -> Result<Vec<u8>, FileError> {
+        fs::read(path).map_err(|error| FileError::Other(format!("{}: {error}", path.display())))
+    }
+
+    fn write(&self, path: &Path, bytes: &[u8], _intent: WriteIntent) -> Result<bool, FileError> {
+        let path = path.to_string_lossy();
+        write_mobile(&self.bridge, path.as_ref(), bytes).map_err(FileError::Other)?;
+        Ok(false)
+    }
+
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
+    }
+
+    fn last_folder(&self, purpose: &str) -> Option<PathBuf> {
+        self.folders.lock().unwrap_or_else(|e| e.into_inner()).get(purpose).cloned()
+    }
+
+    fn save(&self, mut request: PickRequest, bytes: Vec<u8>) -> PickId {
+        request.kind = PickKind::Save;
+        self.enqueue(request, Some(bytes))
+    }
+
+    fn can_pick(&self) -> bool {
+        true
+    }
+
+    fn browser_saves(&self) -> bool {
+        false
     }
 }
 
@@ -361,44 +463,31 @@ fn write_mobile(bridge: &AndroidFileBridge, path: &str, bytes: &[u8]) -> Result<
     }
 }
 
-fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: PathBuf, inbox: Inbox) -> Services {
+fn services(bridge: AndroidFileBridge, files: Arc<AndroidFiles>, settings_dir: PathBuf, inbox: Inbox) -> Services {
     let write_bridge = bridge.clone_for_services();
     let save_bridge = bridge.clone_for_services();
-    let prefs_bridge = bridge.clone_for_services();
-    let load_prefs_path = prefs_path.clone();
+    let settings = craft::settings::SettingsStore::<photocraft_engine::prefs::SavedPrefs>::open_at(settings_dir);
     Services {
+        // The app's file features use the shared host Files service. Its Android implementation
+        // stages SAF selections privately and commits writes back to the selected content URI.
+        files: Some(files),
+        settings: Some(settings),
         // Files the system asked us to open (ACTION_VIEW/ACTION_SEND) are queued here and drained
         // by the app's own per-frame inbox, exactly like a document chosen in the picker.
         inbox: Some(inbox),
         import: Some(Box::new(
-            |name: &str, bytes: &[u8], max_svg_group_depth: usize| {
-                photocraft_io::import_with_svg_group_depth(name, bytes, max_svg_group_depth)
-                    .map(|r| (r.document, r.warnings))
-                    .map_err(|e| e.to_string())
+            |name: &str, bytes: &[u8], options: &photocraft_io::ImportOptions| {
+                photocraft_io::import_with_options(name, bytes, options)
+                    .map(|result| (result.document, result.warnings))
+                    .map_err(|error| error.to_string())
             },
         )),
         export: Some(Box::new(
             |doc: &Document, path: &str, settings: &photocraft_ui_egui::ExportSettings| {
-                let mut opts = photocraft_io::ExportOptions::default();
-                if let Some(q) = settings.jpeg_quality {
-                    opts.encode.jpeg_quality = q;
-                }
-                opts.encode.webp_lossless = settings.webp_lossless;
-                if let Some(q) = settings.webp_quality {
-                    opts.encode.webp_quality = q;
-                }
-                opts.tiff_layers = settings.tiff_layers;
-                opts.xmp = if settings.xmp_all {
-                    photocraft_io::XmpEmbed::All
-                } else {
-                    photocraft_io::XmpEmbed::None
-                };
-                opts.tga_bits = settings.tga_bits;
-                opts.image_previews = settings.image_previews;
-                opts.psd_maximize_compatibility = settings.psd_maximize_compatibility;
-                photocraft_io::export(doc, path, &opts)
-                    .map(|r| (r.bytes, r.warnings))
-                    .map_err(|e| e.to_string())
+                let options = settings.io_options();
+                photocraft_io::export(doc, path, &options)
+                    .map(|result| (result.bytes, result.warnings))
+                    .map_err(|error| error.to_string())
             },
         )),
         // Native .pcraft Save uses save_file rather than export. Route it through the same SAF-aware writer.
@@ -408,24 +497,8 @@ fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: Pat
                   settings: &photocraft_ui_egui::ExportSettings,
                   ctl: &photocraft_ui_egui::jobs_ui::SaveCtl| {
                 ctl.progress(0.0, "Encoding");
-                let mut opts = photocraft_io::ExportOptions::default();
-                if let Some(q) = settings.jpeg_quality {
-                    opts.encode.jpeg_quality = q;
-                }
-                opts.encode.webp_lossless = settings.webp_lossless;
-                if let Some(q) = settings.webp_quality {
-                    opts.encode.webp_quality = q;
-                }
-                opts.tiff_layers = settings.tiff_layers;
-                opts.xmp = if settings.xmp_all {
-                    photocraft_io::XmpEmbed::All
-                } else {
-                    photocraft_io::XmpEmbed::None
-                };
-                opts.tga_bits = settings.tga_bits;
-                opts.image_previews = settings.image_previews;
-                opts.psd_maximize_compatibility = settings.psd_maximize_compatibility;
-                let result = photocraft_io::export(doc, path, &opts).map_err(|e| e.to_string())?;
+                let options = settings.io_options();
+                let result = photocraft_io::export(doc, path, &options).map_err(|error| error.to_string())?;
                 ctl.commit()?;
                 ctl.progress(0.85, "Writing");
                 write_mobile(&save_bridge, path, &result.bytes)?;
@@ -433,29 +506,8 @@ fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: Pat
                 Ok(result.warnings)
             },
         )),
-        file_dialog: Some(Box::new(move |request, _parent, reply| {
-            picker.launch(&bridge, request, reply);
-        })),
         write: Some(Box::new(move |path: &str, bytes: &[u8]| {
             write_mobile(&write_bridge, path, bytes)
-        })),
-        load_prefs: Some(Box::new(move || fs::read_to_string(&load_prefs_path).ok())),
-        save_prefs: Some(Box::new(move |text: &str| {
-            write_mobile(
-                &prefs_bridge,
-                &prefs_path.to_string_lossy(),
-                text.as_bytes(),
-            )
-        })),
-        encode_png: Some(Box::new(|w, h, rgba| {
-            let img = Image::from_u8(w, h, ChannelLayout::Rgba, rgba.to_vec())
-                .map_err(|e| e.to_string())?;
-            photocraft_codecs::encode(
-                &img,
-                photocraft_codecs::Format::Png,
-                &EncodeOptions::default(),
-            )
-            .map_err(|e| e.to_string())
         })),
         ..Services::default()
     }
@@ -532,9 +584,9 @@ fn apply_android_modifiers(state: &mut egui::Modifiers, raw: &mut egui::RawInput
 
 
 struct PhotoCraftAndroidApp {
-    inner: PhotocraftApp,
+    inner: Box<PhotocraftApp>,
     bridge: AndroidFileBridge,
-    picker: Arc<PickerState>,
+    picker: Arc<AndroidFiles>,
     ime: ime_bridge::ime::ImeBridge,
     modifiers: egui::Modifiers,
     ai_menu: ai_menu::AndroidAiMenu,
@@ -636,7 +688,7 @@ impl PhotoCraftAndroidApp {
     /// sweep of the whole directory clears out copies this diff never saw (an older session, or a
     /// crash); it runs once, half a minute after start, to let session restore finish first.
     fn staged_prune_tick(&mut self) {
-        let current: Vec<String> = self.inner.ui.recent_files.clone();
+        let current: Vec<String> = self.inner.ui.recent_files.to_vec();
         let open: Vec<String> = self
             .inner
             .session
@@ -666,7 +718,7 @@ impl PhotoCraftAndroidApp {
 
 impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.picker.poll(&self.bridge, ctx);
+        self.picker.poll(ctx);
         // Deliver any file the system asked us to open through the app's own inbox.
         drain_incoming(&self.bridge, &self.intent_inbox, &mut self.intent_warmup);
         self.staged_prune_tick();
@@ -708,13 +760,12 @@ fn android_main(android_app: AndroidApp) {
             return;
         }
     };
-    let prefs_path = files_dir.join("PhotoCraft").join("preferences.json");
-    if let Some(parent) = prefs_path.parent() {
-        if let Err(error) = fs::create_dir_all(parent) {
-            log::error!("Could not create preferences directory: {error}");
-        }
+    let settings_dir = files_dir.join("PhotoCraft");
+    if let Err(error) = fs::create_dir_all(&settings_dir) {
+        log::error!("Could not create preferences directory: {error}");
+        return;
     }
-    let picker = Arc::new(PickerState::default());
+    let picker = Arc::new(AndroidFiles::new(bridge.clone_for_services()));
     let intent_inbox: Inbox = Arc::new(Mutex::new(Vec::new()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -733,13 +784,13 @@ fn android_main(android_app: AndroidApp) {
         "PhotoCraft",
         options,
         Box::new(move |cc| {
-            PhotocraftApp::setup_context(&cc.egui_ctx, photocraft_ui_egui::theme::ThemeKind::Pro);
+            PhotocraftApp::setup_context(&cc.egui_ctx, photocraft_ui_egui::theme::AppTheme::pro());
             let mut app = PhotocraftApp::new(
                 Session::new(),
                 services(
                     app_bridge.clone_for_services(),
                     app_picker.clone(),
-                    prefs_path.clone(),
+                    settings_dir.clone(),
                     app_intent_inbox.clone(),
                 ),
             );
@@ -790,7 +841,7 @@ fn android_main(android_app: AndroidApp) {
                 picker: app_picker.clone(),
                 ime: ime_bridge::ime::ImeBridge::new(&app_bridge.app),
                 modifiers: egui::Modifiers::default(),
-                ai_menu: ai_menu::AndroidAiMenu::new(files_dir.join("PhotoCraft").join("ai-tools-visible")),
+                ai_menu: ai_menu::AndroidAiMenu::new(settings_dir.join("ai-tools-visible")),
                 intent_inbox: app_intent_inbox.clone(),
                 intent_warmup: 2,
                 staged_seen: Vec::new(),

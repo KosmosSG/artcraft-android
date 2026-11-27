@@ -395,4 +395,40 @@ mod tests {
     fn path_encoding_is_safe() {
         assert_eq!(percent_encode("a/b c.png"), "a%2Fb%20c.png");
     }
+
+    #[test]
+    fn png_signature_uses_real_binary_bytes() {
+        assert_eq!(b"\x89PNG\r\n\x1a\n".len(), 8);
+        assert!(b"\x89PNG\r\n\x1a\n".starts_with(&[0x89, b'P', b'N', b'G']));
+    }
+
+    #[test]
+    fn parses_content_length_and_chunked_comfyui_responses() {
+        let body = br#"{"prompt_id":"abc"}"#;
+        let mut fixed = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        ).into_bytes();
+        fixed.extend_from_slice(body);
+        assert_eq!(split_http_response(&fixed).unwrap(), body);
+
+        let mut chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+        chunked.extend_from_slice(format!("{:X}\r\n", body.len()).as_bytes());
+        chunked.extend_from_slice(body);
+        chunked.extend_from_slice(b"\r\n0\r\n\r\n");
+        assert_eq!(split_http_response(&chunked).unwrap(), body);
+    }
+
+    #[test]
+    fn rejects_truncated_and_ambiguous_comfyui_responses() {
+        assert!(split_http_response(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nabc"
+        ).is_err());
+        assert!(split_http_response(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n"
+        ).is_err());
+        assert!(split_http_response(
+            b"HTTP/1.1 302 Found\r\nLocation: /\r\nContent-Length: 0\r\n\r\n"
+        ).is_err());
+    }
 }

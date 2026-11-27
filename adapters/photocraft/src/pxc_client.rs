@@ -150,7 +150,7 @@ impl PxcClient {
                     if bytes.len() > MAX_PNG {
                         return Err(PxcError::Limit("Generated PNG exceeds the 24 MiB result limit".into()));
                     }
-                    if !bytes.starts_with(b"\\x89PNG\\r\\n\\x1a\\n") {
+                    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
                         return Err(PxcError::Protocol("ComfyUI returned a non-PNG image".into()));
                     }
                     return Ok(bytes);
@@ -312,31 +312,64 @@ fn percent_encode(value: &str) -> String {
 }
 
 fn split_http_response(raw: &[u8]) -> Result<Vec<u8>, PxcError> {
-    let split = raw.windows(4).position(|w| w == b"\\r\\n\\r\\n")
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n")
         .ok_or_else(|| PxcError::Http("ComfyUI returned incomplete HTTP headers".into()))?;
+    if split > 16 * 1024 {
+        return Err(PxcError::Limit("ComfyUI response headers are too large".into()));
+    }
     let header = std::str::from_utf8(&raw[..split])
         .map_err(|_| PxcError::Http("ComfyUI returned invalid HTTP headers".into()))?;
-    let status = header.lines().next().unwrap_or("");
+    let mut lines = header.split("\r\n");
+    let status = lines.next().unwrap_or("");
     let code = status.split_whitespace().nth(1).unwrap_or("");
-    if code != "200" {
+    if !(status.starts_with("HTTP/1.0 ") || status.starts_with("HTTP/1.1 ")) || code != "200" {
         return Err(PxcError::Http(format!("ComfyUI HTTP {code}")));
     }
     let mut content_length = None;
-    for line in header.lines().skip(1) {
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("Content-Length") {
-                content_length = value.trim().parse::<usize>().ok();
+    let mut chunked = false;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            return Err(PxcError::Http("Malformed ComfyUI response header".into()));
+        };
+        let value = value.trim();
+        if name.eq_ignore_ascii_case("Content-Length") {
+            if content_length.is_some() {
+                return Err(PxcError::Http("Duplicate ComfyUI Content-Length".into()));
             }
+            let size = value.parse::<usize>()
+                .map_err(|_| PxcError::Http("Invalid ComfyUI Content-Length".into()))?;
+            if size > MAX_RESPONSE {
+                return Err(PxcError::Limit("ComfyUI response is too large".into()));
+            }
+            content_length = Some(size);
+        } else if name.eq_ignore_ascii_case("Transfer-Encoding") {
+            if !value.eq_ignore_ascii_case("chunked") {
+                return Err(PxcError::Http("Unsupported ComfyUI transfer encoding".into()));
+            }
+            chunked = true;
         }
     }
-    let body = &raw[split + 4..];
-    if let Some(n) = content_length {
-        if n > MAX_RESPONSE { return Err(PxcError::Limit("ComfyUI response is too large".into())); }
-        if body.len() < n { return Err(PxcError::Http("ComfyUI response body was truncated".into())); }
-        Ok(body[..n].to_vec())
-    } else {
-        Ok(body.to_vec())
+    if chunked && content_length.is_some() {
+        return Err(PxcError::Http("Conflicting ComfyUI response framing".into()));
     }
+    let body = &raw[split + 4..];
+    if chunked {
+        return match crate::ai_tools::decode_chunked_body(body)
+            .map_err(PxcError::Http)? {
+            Some(decoded) => Ok(decoded),
+            None => Err(PxcError::Http("ComfyUI returned an incomplete chunked response".into())),
+        };
+    }
+    if let Some(size) = content_length {
+        if body.len() < size {
+            return Err(PxcError::Http("ComfyUI response body was truncated".into()));
+        }
+        return Ok(body[..size].to_vec());
+    }
+    if body.len() > MAX_RESPONSE {
+        return Err(PxcError::Limit("ComfyUI response is too large".into()));
+    }
+    Ok(body.to_vec())
 }
 
 #[cfg(test)]

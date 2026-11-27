@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compile-unsigned:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'KosmosSG/artcraft-android' && github.head_ref == '${newBranch}'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'KosmosSG/artcraft-android' && github.head_ref == 'integration/deckcraft-v0191-review-20261128'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

@@ -429,6 +429,10 @@ impl AndroidAiMenu {
         self.txt2img_next_job = self.txt2img_next_job.wrapping_add(1);
         let job_id = JobId(self.txt2img_next_job);
         let mut job = Job::new(job_id, origin);
+        if let Err(error) = job.consent() {
+            self.connection_status = error.into();
+            return;
+        }
         let (tx, rx) = mpsc::channel();
         self.txt2img_job = Some(job);
         self.txt2img_result = Some(rx);

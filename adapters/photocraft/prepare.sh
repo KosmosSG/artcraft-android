@@ -60,18 +60,15 @@ import file_associations
 file_associations.patch_cargo_toml(path, app)
 text = path.read_text()
 if package_name:
-    text, count = re.subn(r'(?m)^package = "com\\.artcraft\\.photocraft"
-echo "Installed PhotoCraft SAF adapter in $DEST (upstream PhotoCraft crates were not edited)."
-, f'package = "{package_name}"', text, count=1)
-    if count != 1:
+    old = 'package = "com.artcraft.photocraft"'
+    if text.count(old) != 1:
         raise SystemExit("Could not apply isolated PhotoCraft package override")
+    text = text.replace(old, f'package = "{package_name}"', 1)
 if app_name:
-    text, count = re.subn(r'(?m)^label = "PhotoCraft"
-echo "Installed PhotoCraft SAF adapter in $DEST (upstream PhotoCraft crates were not edited)."
-, f'label = "{app_name}"', text)
-    if count < 1:
+    old = 'label = "PhotoCraft"'
+    if old not in text:
         raise SystemExit("Could not apply PhotoCraft display-name override")
+    text = text.replace(old, f'label = "{app_name}"')
 path.write_text(text)
 tomllib.loads(text)
-PY
 echo "Installed PhotoCraft SAF adapter in $DEST (upstream PhotoCraft crates were not edited)."

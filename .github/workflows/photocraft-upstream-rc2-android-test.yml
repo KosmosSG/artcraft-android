@@ -46,6 +46,12 @@ jobs:
           echo "Upstream checkout: $ACTUAL"
           test "$ACTUAL" = "9e518a5c55e52028869cc6d91b0555d5e7ddafae"
 
+      - name: Install Rust Android toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+
       - name: Build separate temporary-signed ARM64 test APK
         shell: bash
         run: |

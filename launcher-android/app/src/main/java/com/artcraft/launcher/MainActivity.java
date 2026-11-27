@@ -99,7 +99,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         settings=getSharedPreferences("launcher",MODE_PRIVATE);
         downloads=(DownloadManager)getSystemService(DOWNLOAD_SERVICE);
-        dark=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        dark=true; // Approved teal launcher baseline is dark by default.
         if(settings.contains("dark_theme")) dark=settings.getBoolean("dark_theme",true);
         initPalette();
         buildLayout();
@@ -133,16 +133,15 @@ public final class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        // Match the v0.7.0 launcher UI: warm paper / near-black surfaces, hairline rules,
-        // restrained blue accent, and inverted monochrome primary controls.
-        bg=Color.parseColor(dark?"#121316":"#F2F1EE");
-        surface=bg;
-        border=dark?Color.argb(38,242,241,238):Color.argb(41,16,16,20);
-        foreground=Color.parseColor(dark?"#F2F1EE":"#101014");
-        muted=dark?Color.argb(153,242,241,238):Color.argb(158,16,16,20);
-        accent=Color.parseColor(dark?"#74AAFF":"#1659C4");
-        buttonFill=Color.parseColor(dark?"#FFFFFF":"#101014");
-        buttonOutline=dark?Color.argb(102,242,241,238):Color.argb(102,16,16,20);
+        // Restore the approved ArtCraft teal/charcoal design (Android.5 visual baseline).
+        bg=Color.parseColor(dark?"#15181B":"#F2F1EE");
+        surface=Color.parseColor(dark?"#2F353A":"#FFFFFF");
+        border=Color.parseColor(dark?"#687179":"#687179");
+        foreground=Color.parseColor(dark?"#F5F7F8":"#101014");
+        muted=Color.parseColor(dark?"#CAD1D5":"#687179");
+        accent=Color.parseColor(dark?"#17B8AE":"#17B8AE");
+        buttonFill=Color.parseColor(dark?"#17B8AE":"#17B8AE");
+        buttonOutline=Color.parseColor(dark?"#687179":"#687179");
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -212,7 +211,7 @@ public final class MainActivity extends Activity {
     }
 
     private TextView action(String label,boolean primary,int color,Runnable click) {
-        int ink=primary?Color.parseColor(dark?"#0B0B0C":"#F2F1EE"):foreground;
+        int ink=primary?Color.parseColor(dark?"#15181B":"#F5F7F8"):foreground;
         TextView button=text(label,13,ink,true);
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(13),dp(10),dp(13),dp(10));

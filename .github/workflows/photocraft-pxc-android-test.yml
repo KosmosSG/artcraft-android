@@ -429,6 +429,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BASELINE=36cace94c2fb589cae68a614eef6d8e98a4230c4
+          git reset "$BASELINE" -- adapters/photocraft/src/lib.rs adapters/photocraft/src/ai_menu.rs adapters/photocraft/src/ai_background_editor.rs
           git apply --3way "$RUNNER_TEMP/photocraft-pxc.patch"
           test -f adapters/photocraft/src/pxc_client.rs
           grep -Fq 'mod pxc_client;' adapters/photocraft/src/lib.rs

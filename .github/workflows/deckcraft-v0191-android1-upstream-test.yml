@@ -34,9 +34,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --depth=1 origin e62ae8dafa60bc05857d4a234c676009ea9ad2a3
-          EXPECTED="$(printf '%s\\n' .github/workflows/deckcraft-v0191-android1-upstream-test.yml)"
+          EXPECTED="$(printf '%s\n' .github/workflows/deckcraft-v0191-android1-upstream-test.yml)"
           ACTUAL="$(git diff --name-only e62ae8dafa60bc05857d4a234c676009ea9ad2a3 HEAD)"
-          test "$ACTUAL" = "$EXPECTED" || { echo 'STOP: published baseline modifications detected'; exit 1; }
+          printf 'Expected changed paths:\n%s\nActual changed paths:\n%s\n' "$EXPECTED" "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo 'STOP: integration branch scope changed'; exit 1; }
           test -s baseline/deckcraft/android/patch_v016_menu.py
           test -s baseline/deckcraft/android/patch_v017_photocraft_updates.py
           test -s baseline/deckcraft/android/patch_v017_checked_updates.py

@@ -309,6 +309,16 @@ jobs:
           set -euo pipefail
           python3 -m venv /tmp/wordcraft-overlay-preflight
           /tmp/wordcraft-overlay-preflight/bin/pip install "Pillow==11.3.0"
+          /tmp/wordcraft-overlay-preflight/bin/python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          source = Path("tools/approved-branding/assets/WordCraft.png")
+          target = Path("wordcraft/android/icon/wordcraft-approved-192.png")
+          with Image.open(source) as image:
+              assert image.width >= 192 and image.height >= 192
+              image.convert("RGBA").resize((192, 192), Image.Resampling.LANCZOS).save(target)
+          print("PASS: approved WordCraft icon staged before overlay preflight")
+          PY
           /tmp/wordcraft-overlay-preflight/bin/python -m py_compile wordcraft/android/patch_builder.py wordcraft/android/patch_unsaved_dcs.py wordcraft/android/patch_unsaved_dcs_v014.py wordcraft/android/font_paths.py wordcraft/android/patch_stylus_ink.py wordcraft/android/patch_pressure_ink.py wordcraft/android/patch_touch_guard.py
           /tmp/wordcraft-overlay-preflight/bin/python wordcraft/android/patch_builder.py builder
           /tmp/wordcraft-overlay-preflight/bin/python -m unittest discover -s wordcraft/android -p 'test_workspace_v014.py' -v

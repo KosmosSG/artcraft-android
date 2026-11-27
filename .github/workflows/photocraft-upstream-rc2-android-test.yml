@@ -62,14 +62,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP_VERSION="$(python3 - <<'PY'
-          import pathlib, tomllib
-          data = tomllib.loads(pathlib.Path("source/photocraft/Cargo.toml").read_text())
-          print(data["workspace"]["package"]["version"])
+          # The upstream RC tag is authoritative for the candidate APK version. Some upstream
+          # release tags retain the previous workspace package version, so align the workspace
+          # package metadata before invoking the builder (the protected baseline is never changed).
+          APP_VERSION="${UPSTREAM_TAG#v}"
+          python3 - "$APP_VERSION" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path("source/photocraft/Cargo.toml")
+          text = path.read_text()
+          version = sys.argv[1]
+          pattern = r'(?ms)(^\[workspace\.package\]\s*.*?^version\s*=\s*)["\'][^"\']+["\']'
+          updated, count = re.subn(pattern, lambda m: m.group(1) + '"' + version + '"', text, count=1)
+          if count != 1:
+              raise SystemExit("Could not safely update [workspace.package].version")
+          path.write_text(updated)
+          print(f"Candidate workspace package version: {version}")
           PY
-          )"
           echo "Upstream release tag: $UPSTREAM_TAG"
-          echo "APK versionName from upstream workspace manifest: $APP_VERSION"
+          echo "APK versionName from upstream release tag: $APP_VERSION"
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
           bash build.sh -photocraft -packagename="$TEST_PACKAGE"
           APK="output/photocraft-$APP_VERSION.apk"

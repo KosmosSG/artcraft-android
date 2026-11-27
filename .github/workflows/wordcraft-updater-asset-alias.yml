@@ -46,8 +46,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/wordcraft-updater-alias"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ORIGINAL_ASSET" --dir "$RUNNER_TEMP/wordcraft-updater-alias"
           original="$RUNNER_TEMP/wordcraft-updater-alias/$ORIGINAL_ASSET"
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ORIGINAL_ASSET" \
+            --output "$original"
           test -s "$original"
           actual="$(sha256sum "$original" | awk '{print $1}')"
           test "$actual" = "$EXPECTED_SHA256"

@@ -59,20 +59,12 @@ jobs:
         run: |
           set -euo pipefail
           BASELINE=36cace94c2fb589cae68a614eef6d8e98a4230c4
-          git diff --binary "$BASELINE"...HEAD -- \
-            adapters/photocraft/src/pxc_client.rs \
-            adapters/photocraft/src/lib.rs \
-            adapters/photocraft/src/ai_menu.rs \
-            adapters/photocraft/src/ai_background_editor.rs \
-            > "$RUNNER_TEMP/photocraft-pxc.patch"
+          git diff --binary "$BASELINE"...HEAD -- adapters/photocraft/src/pxc_client.rs adapters/photocraft/src/lib.rs adapters/photocraft/src/ai_menu.rs adapters/photocraft/src/ai_background_editor.rs > "$RUNNER_TEMP/photocraft-pxc.patch"
           test -s "$RUNNER_TEMP/photocraft-pxc.patch"
           echo "Saved PxC-only adapter changes before running the release-preservation pipeline."
           # Run the published-release integrity gate against pristine adapter files, then
           # apply the PxC-only patch after all owner Android overlays have been restored.
-          git checkout "$BASELINE" -- \\
-            adapters/photocraft/src/lib.rs \\
-            adapters/photocraft/src/ai_menu.rs \\
-            adapters/photocraft/src/ai_background_editor.rs
+          git checkout "$BASELINE" -- adapters/photocraft/src/lib.rs adapters/photocraft/src/ai_menu.rs adapters/photocraft/src/ai_background_editor.rs
           rm -f adapters/photocraft/src/pxc_client.rs
           python3 tools/photocraft_v019_preservation_gate.py --check-immutable-base
 

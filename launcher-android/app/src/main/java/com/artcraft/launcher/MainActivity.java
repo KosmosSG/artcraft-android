@@ -31,6 +31,10 @@ import android.widget.LinearLayout;
 import android.widget.ImageView;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
+import android.widget.EditText;
+import android.widget.HorizontalScrollView;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -53,7 +57,12 @@ public final class MainActivity extends Activity {
     private final Map<String,CatalogClient.Release> available=new HashMap<>();
     private SharedPreferences settings;
     private DownloadManager downloads;
-    private LinearLayout root, list;
+    private LinearLayout root, list, filterRow;
+    private EditText searchField;
+    private TextView gridToggle, tableToggle;
+    private String searchQuery = "";
+    private int activeFilter = 0; // 0 all, 1 installed, 2 updates, 3 not installed
+    private boolean tableView = false;
     private TextView banner, summary, downloadTitle, downloadInfo, downloadButton;
     private ProgressBar downloadProgress;
     private LinearLayout downloadPanel;
@@ -234,6 +243,7 @@ public final class MainActivity extends Activity {
         welcome.addView(descriptor);
         summary=text("",12,accent,true);
         welcome.addView(summary);
+        addCatalogToolbar(page);
         TextView section=text("YOUR APPS",13,foreground,true);
         section.setPadding(dp(4),dp(23),0,dp(12));
         page.addView(section);
@@ -274,38 +284,155 @@ public final class MainActivity extends Activity {
     private boolean officialExpanded = true;
     private boolean communityExpanded = false;
 
+    private void addCatalogToolbar(LinearLayout page) {
+        LinearLayout controls=horizontal();
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams controlsLp=new LinearLayout.LayoutParams(-1,dp(48));
+        controlsLp.setMargins(0,dp(16),0,dp(5));
+        page.addView(controls,controlsLp);
+        searchField=new EditText(this);
+        searchField.setSingleLine(true); searchField.setTextSize(14);
+        searchField.setTextColor(foreground); searchField.setHintTextColor(muted);
+        searchField.setHint("Search apps"); searchField.setPadding(dp(13),0,dp(10),0);
+        searchField.setBackground(shape(surface,border,11)); searchField.setText(searchQuery);
+        controls.addView(searchField,new LinearLayout.LayoutParams(0,-1,1f));
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value,int start,int count,int after) {}
+            @Override public void onTextChanged(CharSequence value,int start,int before,int count) {
+                searchQuery=value==null?"":value.toString(); updateCards();
+            }
+            @Override public void afterTextChanged(Editable value) {}
+        });
+        gridToggle=text("▦",21,tableView?muted:Color.WHITE,true);
+        gridToggle.setGravity(Gravity.CENTER); gridToggle.setContentDescription("Show apps as cards");
+        gridToggle.setBackground(shape(tableView?surface:buttonFill,border,10));
+        LinearLayout.LayoutParams toggleLp=new LinearLayout.LayoutParams(dp(44),-1);
+        toggleLp.setMargins(dp(7),0,0,0); controls.addView(gridToggle,toggleLp);
+        gridToggle.setOnClickListener(v->{tableView=false;updateCards();});
+        tableToggle=text("☷",21,tableView?Color.WHITE:muted,true);
+        tableToggle.setGravity(Gravity.CENTER); tableToggle.setContentDescription("Show apps as a table");
+        tableToggle.setBackground(shape(tableView?buttonFill:surface,border,10));
+        LinearLayout.LayoutParams tableLp=new LinearLayout.LayoutParams(dp(44),-1);
+        tableLp.setMargins(dp(5),0,0,0); controls.addView(tableToggle,tableLp);
+        tableToggle.setOnClickListener(v->{tableView=true;updateCards();});
+        HorizontalScrollView filters=new HorizontalScrollView(this);
+        filters.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams filtersLp=new LinearLayout.LayoutParams(-1,dp(42));
+        filtersLp.setMargins(0,dp(4),0,dp(7)); page.addView(filters,filtersLp);
+        filterRow=horizontal(); filterRow.setGravity(Gravity.CENTER_VERTICAL);
+        filters.addView(filterRow); updateFilterButtons();
+    }
+
+    private void updateFilterButtons() {
+        if(filterRow==null)return;
+        filterRow.removeAllViews();
+        String[] labels={"All apps","Installed","Updates","Not installed"};
+        for(int i=0;i<labels.length;i++) {
+            final int selected=i;
+            TextView chip=action(labels[i],activeFilter==i,accent,()->{
+                activeFilter=selected; updateFilterButtons(); updateCards();
+            });
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(34));
+            lp.setMargins(0,0,dp(7),0); filterRow.addView(chip,lp);
+        }
+    }
+
+    private boolean matchesCatalog(CatalogClient.App app) {
+        PackageInfo pkg=installed(app.packageName);
+        CatalogClient.Release release=available.get(app.key);
+        if(activeFilter==1 && pkg==null)return false;
+        if(activeFilter==2 && (pkg==null || release==null ||
+            ReleaseRules.compareVersions(release.version,pkg.versionName)<=0))return false;
+        if(activeFilter==3 && pkg!=null)return false;
+        String needle=searchQuery.trim().toLowerCase(Locale.ROOT);
+        return needle.isEmpty() || app.name.toLowerCase(Locale.ROOT).contains(needle) ||
+            app.key.toLowerCase(Locale.ROOT).contains(needle) ||
+            (app.repo!=null && app.repo.toLowerCase(Locale.ROOT).contains(needle));
+    }
+
     private void updateCards() {
         if(list==null)return;
         int position=scroller==null?0:scroller.getScrollY();
         list.removeAllViews();
         int width=getResources().getConfiguration().screenWidthDp;
-        // Match the reference launcher breakpoint: single-column mobile below 680dp.
         int columns=width<680?1:(width<1050?2:3);
-        int installedCount=0,officialInstalled=0,communityInstalled=0,updates=0;
-        int officialCount=0,communityCount=0;
+        int installedCount=0,updates=0,officialCount=0;
+        java.util.ArrayList<CatalogClient.App> official=new java.util.ArrayList<>();
+        java.util.ArrayList<CatalogClient.App> community=new java.util.ArrayList<>();
         for(CatalogClient.App app:CatalogClient.APPS) {
             PackageInfo pkg=installed(app.packageName);
-            if(app.community) communityCount++; else officialCount++;
-            if(pkg!=null) {
-                installedCount++;
-                if(app.community)communityInstalled++; else officialInstalled++;
-            }
+            if(pkg!=null)installedCount++;
             CatalogClient.Release remote=available.get(app.key);
-            if(pkg!=null && remote!=null && ReleaseRules.compareVersions(remote.version,pkg.versionName)>0) updates++;
+            if(pkg!=null && remote!=null && ReleaseRules.compareVersions(remote.version,pkg.versionName)>0)updates++;
+            if(matchesCatalog(app)) { if(app.community)community.add(app); else official.add(app); }
+            if(!app.community)officialCount++;
         }
+        int communityCount=CatalogClient.APPS.length-officialCount;
         summary.setText(installedCount+" of "+CatalogClient.APPS.length+" apps installed  ·  "+
-            officialInstalled+"/"+officialCount+" official  ·  "+communityInstalled+"/"+communityCount+
-            " community  ·  "+(checking?"Checking releases…":updates+" updates"));
-
-        addSectionHeader("OFFICIAL ARTCRAFT APPS",officialCount,officialInstalled,officialExpanded,
+            officialCount+" official  ·  "+communityCount+" community  ·  "+
+            (checking?"Checking releases…":updates+" updates"));
+        if(gridToggle!=null) {
+            gridToggle.setTextColor(tableView?muted:Color.WHITE);
+            gridToggle.setBackground(shape(tableView?surface:buttonFill,border,10));
+            tableToggle.setTextColor(tableView?Color.WHITE:muted);
+            tableToggle.setBackground(shape(tableView?buttonFill:surface,border,10));
+        }
+        addSectionHeader("OFFICIAL ARTCRAFT APPS",official.size(),countInstalled(official),officialExpanded,
             ()->{officialExpanded=!officialExpanded;updateCards();});
-        if(officialExpanded)addAppGrid(false,columns);
-
-        addSectionHeader("COMMUNITY APPS",communityCount,communityInstalled,communityExpanded,
+        if(officialExpanded) { if(tableView)addAppTable(official); else addAppGrid(official,columns); }
+        addSectionHeader("COMMUNITY APPS",community.size(),countInstalled(community),communityExpanded,
             ()->{communityExpanded=!communityExpanded;updateCards();});
-        if(communityExpanded)addAppGrid(true,columns);
-
+        if(communityExpanded) { if(tableView)addAppTable(community); else addAppGrid(community,columns); }
+        if(official.isEmpty() && community.isEmpty())
+            list.addView(text("No apps match this search or filter.",13,muted,false));
         if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
+    }
+
+    private int countInstalled(java.util.List<CatalogClient.App> apps) {
+        int count=0;
+        for(CatalogClient.App app:apps)if(installed(app.packageName)!=null)count++;
+        return count;
+    }
+
+    private void addAppGrid(java.util.List<CatalogClient.App> group,int columns) {
+        for(int i=0;i<group.size();i+=columns) {
+            LinearLayout row=horizontal(); row.setGravity(Gravity.TOP);
+            list.addView(row,new LinearLayout.LayoutParams(-1,-2));
+            for(int j=0;j<columns;j++) {
+                int idx=i+j;
+                if(idx>=group.size()) {
+                    View blank=new View(this);
+                    row.addView(blank,new LinearLayout.LayoutParams(0,dp(1),1f)); continue;
+                }
+                LinearLayout.LayoutParams cardLp=new LinearLayout.LayoutParams(0,-2,1f);
+                cardLp.setMargins(dp(4),dp(4),dp(4),dp(8));
+                row.addView(appCard(group.get(idx)),cardLp);
+            }
+        }
+    }
+
+    private void addAppTable(java.util.List<CatalogClient.App> group) {
+        for(CatalogClient.App app:group) {
+            PackageInfo pkg=installed(app.packageName);
+            CatalogClient.Release remote=available.get(app.key);
+            LinearLayout row=horizontal(); row.setPadding(dp(10),dp(9),dp(8),dp(9));
+            row.setBackground(shape(surface,border,10));
+            LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);
+            rowLp.setMargins(dp(2),dp(3),dp(2),dp(3)); list.addView(row,rowLp);
+            row.addView(appIcon(app),new LinearLayout.LayoutParams(dp(38),dp(38)));
+            LinearLayout labels=vertical(); labels.setPadding(dp(10),0,dp(6),0);
+            row.addView(labels,new LinearLayout.LayoutParams(0,-2,1f));
+            labels.addView(text(app.name,14,foreground,true));
+            String status=pkg==null?"Not installed":"Installed · v"+safe(pkg.versionName);
+            if(remote!=null)status+=" · latest v"+remote.version;
+            labels.addView(text(status,10,muted,false));
+            boolean update=pkg!=null && remote!=null &&
+                ReleaseRules.compareVersions(remote.version,pkg.versionName)>0;
+            String label=update?"Update":(pkg!=null?"Open":(app.community && remote==null?"Explore":"Download"));
+            Runnable click=update || (pkg==null && remote!=null)?()->confirmDownload(app,remote):
+                pkg!=null?()->openApp(app):app.community?()->openCommunityRepo(app):()->lookupAppRelease(app,true);
+            row.addView(action(label,true,accent,click),new LinearLayout.LayoutParams(-2,dp(36)));
+        }
     }
 
     private void addSectionHeader(String heading,int total,int installed,boolean expanded,Runnable toggle) {

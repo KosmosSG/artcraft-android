@@ -2,3 +2,4 @@ One-shot owner-authorized PDFCraft v0.22.0-android.1 permanent signing and GitHu
 Candidate run: 45935775231
 Candidate source: 0c6c55a14ed304c7465d953b5602539499c9b529
 No production signing key is stored in this branch. The workflow reads the existing repository PDFCraft signing secrets and verifies the protected Android.10 certificate before publishing.
+Retry after moving Pillow setup ahead of adapter tests.

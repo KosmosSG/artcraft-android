@@ -39,7 +39,10 @@ theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
 icon = "@drawable/ic_launcher"
 
 [[package.metadata.android.application.activity]]
-name = ".PhotoCraftActivity"
+# Keep the Java Activity class stable when the isolated test package is overridden.
+# A relative name would resolve inside com.artcraft.photocraft.pxc.test, but the
+# compiled Java source intentionally remains com.artcraft.photocraft.PhotoCraftActivity.
+name = "com.artcraft.photocraft.PhotoCraftActivity"
 config_changes = "orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|density|layoutDirection"
 label = "PhotoCraft"
 launch_mode = "singleTask"

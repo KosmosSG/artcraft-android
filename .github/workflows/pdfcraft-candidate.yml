@@ -13,7 +13,7 @@ on:
       - tools/test_pdfcraft_adapter.py
       - tools/pdfcraft/**
       - templates/android/pdfcraft_*
-      - assets/pdfcraft/approved-icon.webp
+      - tools/pdfcraft/pc-icon.b64
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
@@ -68,7 +68,7 @@ jobs:
           tools/test_pdfcraft_adapter.py
           EOF
           diff -u "$RUNNER_TEMP/expected-files.txt" "$RUNNER_TEMP/changed-files.txt"
-          test -f assets/pdfcraft/approved-icon.webp
+          test -f tools/pdfcraft/pc-icon.b64
           test -f templates/android/pdfcraft_stylus_wheel.rs
           test -f templates/android/pdfcraft_mobile.rs
           test -f templates/android/pdfcraft_mobile_java.txt
@@ -81,7 +81,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" -m pip install --disable-pip-version-check --no-input Pillow
           echo "$RUNNER_TEMP/pdfcraft-tools/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('assets/pdfcraft/approved-icon.webp'); im.verify(); print('Approved Pc icon:', im.format, im.size)"
+          python3 tools/pdfcraft/pc_brand.py
+          "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('tools/approved-branding/assets/PDFCraft.png'); im.verify(); assert im.size == (256, 256); print('Protected Android.10 Pc icon:', im.format, im.size)"
 
       - name: Verify the exact official upstream tag and source commit
         shell: bash
@@ -150,7 +151,7 @@ jobs:
           test ! -e keys/artcraft-builder.jks
           test ! -e keys/.keystore-password
           test "$PDFCRAFT_ANDROID_TEST_PACKAGE" != "com.artcraft.pdfcraft"
-          bash build.sh -pdfcraft -appname=PDFCraft "-packagename=$PDFCRAFT_ANDROID_TEST_PACKAGE" -appicon=assets/pdfcraft/approved-icon.webp
+          bash build.sh -pdfcraft -appname=PDFCraft "-packagename=$PDFCRAFT_ANDROID_TEST_PACKAGE" -appicon=tools/approved-branding/assets/PDFCraft.png
           test -f output/pdfcraft-0.22.0.apk
 
       - name: Verify APK package, version, ABI, Pc icon and disposable signature
@@ -180,7 +181,7 @@ jobs:
           sha256sum "$APK" | tee output/SHA256SUMS.txt
           echo "Candidate package: $PDFCRAFT_ANDROID_TEST_PACKAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "Version name: $PDFCRAFT_ANDROID_VERSION_NAME; version code: $EXPECTED_EPHEMERAL_VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
-          echo "The APK uses the approved Pc raster icon and a fresh runner-only signing key." >> "$GITHUB_STEP_SUMMARY"
+          echo "The APK uses the exact protected Android.10 Pc raster icon and a fresh runner-only signing key." >> "$GITHUB_STEP_SUMMARY"
           echo "Known upstream defect: layered-PDF Layers tab regression, issue #8126; this candidate does not claim to fix it." >> "$GITHUB_STEP_SUMMARY"
           echo "Do not install over production PDFCraft or treat this artifact as an update." >> "$GITHUB_STEP_SUMMARY"
 

@@ -173,7 +173,7 @@ impl PxcClient {
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 8_000_000 {
             return Err(PxcError::Limit("Text-to-image canvas exceeds 8 million pixels".into()));
         }
-        if checkpoint.is_empty() || checkpoint.len() > 512 || checkpoint.contains(&['\\r','\\n'][..]) {
+        if checkpoint.is_empty() || checkpoint.len() > 512 || checkpoint.contains(&['\r','\n'][..]) {
             return Err(PxcError::Protocol("Invalid checkpoint name".into()));
         }
         let workflow = simple_txt2img_workflow(checkpoint, prompt, seed, width, height);

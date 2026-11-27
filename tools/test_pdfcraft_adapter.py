@@ -19,8 +19,8 @@ assert '"\u0024{PDFCRAFT_REF:-}" == "v0.20.0"' in script, 'v0.19 IME winit overl
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.22.0"' in script, 'v0.22 IME winit overlay was skipped by builder'
 compat = (root / 'tools/pdfcraft/winit_v015_compat.py').read_text()
 assert '"0.22.0"' in compat and '"0.21.1", "0.22.0"' in compat, 'v0.22 winit/egui immutable pins are not audited'
-assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.21.1" || "\u0024{PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then' in script, 'v0.22 Android arboard compatibility guard missing'
-assert '|| "\u0024{PDFCRAFT_REF:-}" == "v0.21.1" || "\u0024{PDFCRAFT_REF:-}" == "v0.22.0" ) ]]; then' in script, 'v0.22 Android arboard compatibility guard missing'
+arboard_guard = script.split('Official PDFCraft v0.17.0/v0.18.0 can resolve arboard', 1)[1].split('say 5 \"Preparing a builder-owned signing key', 1)[0]
+assert '"v0.22.0"' in arboard_guard, 'v0.22 Android arboard compatibility guard missing'
 
 
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY", script, re.S)

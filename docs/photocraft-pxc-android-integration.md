@@ -50,6 +50,16 @@ The existing Android companion foundation is a different, deliberately restricte
 4. **Feature rollout:** Text to Image and Upscale first; then Fill, Remove and Expand after selection/mask and crop-state tests; then reference/edit modes.
 5. **Device acceptance:** test on HONOR MagicPad 4 ARM64, including large documents, cancel/retry, app background/resume, Wi-Fi loss, server restart, stale-result rejection, Undo/Redo and APK size.
 
+## Current implementation status (2026-11-27)
+
+- ComfyUI endpoint validation and read-only connection/model diagnostics are present in the Android adapter.
+- Text to Image is connected to the native AI Tools menu. The worker submits a bounded API-format workflow, polls history, downloads the first output PNG, and fully decodes it before the UI thread inserts a separate undoable layer.
+- The result is discarded if the active document identity/revision changed during generation.
+- HTTP response handling supports bounded Content-Length and chunked bodies. Unit tests cover workflow structure, prompt limits, path encoding, PNG signature bytes, and response framing.
+- The CI test APK uses package `com.artcraft.photocraft.pxc.test`; it is not an update to the published PhotoCraft app.
+- Not implemented yet: Fill, Remove Object, Generative Expand, Refine, Upscale, mask/selection upload, WebSocket progress, and cooperative ComfyUI interrupt. These remain disabled in the UI.
+- The CI build and on-device ComfyUI round-trip are still validation gates; do not describe this phase as device-tested until those checks pass.
+
 ## Security and reliability requirements
 
 - Do not bind an unauthenticated server to `0.0.0.0`; use an explicitly configured private-LAN endpoint and explicit opt-in.

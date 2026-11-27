@@ -5,6 +5,7 @@ on:
       - integration/deckcraft-upstream-v0191-20261128
     paths:
       - '.github/workflows/deckcraft-v0191-android1-test.yml'
+      - 'deckcraft/android/patch_deckcraft_v013.py'
   workflow_dispatch:
     inputs:
       approve_candidate_build:
@@ -37,13 +38,13 @@ jobs:
           BASELINE=31037b4c5971f02b1d78e1ced942cd38a87eca10
           git fetch --depth=1 origin "$BASELINE"
           test "$(git rev-parse FETCH_HEAD)" = "$BASELINE"
-          EXPECTED=.github/workflows/deckcraft-v0191-android1-test.yml
+          EXPECTED="$(printf '%s\\n' .github/workflows/deckcraft-v0191-android1-test.yml deckcraft/android/patch_deckcraft_v013.py)"
           ACTUAL="$(git diff --name-only "$BASELINE" HEAD)"
           test "$ACTUAL" = "$EXPECTED" || { echo "::error::Protected baseline or unrelated files changed"; printf '%s\n' "$ACTUAL"; exit 1; }
-          for file in deckcraft/android/patch_v013_host.py deckcraft/android/patch_shared_fonts.py deckcraft/android/patch_update_settings.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v018_stylus_wheel.py deckcraft/android/patch_v0181_android2_polish.py deckcraft/android/patch_v0181_android3_brand_hub_slider.py deckcraft/android/patch_v0181_android4_wheel_dialog.py deckcraft/android/patch_v0181_android5_dk_logo_scale.py deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py deckcraft/android/patch_v0181_android8_native_hover_delivery.py; do
+          for file in deckcraft/android/patch_deckcraft_v013.py deckcraft/android/patch_v013_host.py deckcraft/android/patch_shared_fonts.py deckcraft/android/patch_update_settings.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v018_stylus_wheel.py deckcraft/android/patch_v0181_android2_polish.py deckcraft/android/patch_v0181_android3_brand_hub_slider.py deckcraft/android/patch_v0181_android4_wheel_dialog.py deckcraft/android/patch_v0181_android5_dk_logo_scale.py deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py deckcraft/android/patch_v0181_android8_native_hover_delivery.py; do
             test -s "$file" || { echo "::error::Missing approved Android patch: $file"; exit 1; }
           done
-          echo "PASS: exact v0.18.1-android.8 baseline, one workflow file added, all approved DeckCraft Android overlays retained"
+          echo "PASS: exact v0.18.1-android.8 baseline, only the integration workflow and one v0.19.1 compatibility patch changed; all approved Android overlays retained"
       - name: Checkout pinned Android builder
         uses: actions/checkout@v4
         with:

@@ -32,8 +32,13 @@ with tempfile.TemporaryDirectory() as folder:
     dst = Path(folder) / 'source'
     shutil.copytree(source, dst, ignore=shutil.ignore_patterns('.git', 'target'))
     test_package = os.environ.get('PDFCRAFT_ANDROID_TEST_PACKAGE', 'com.artcraft.pdfcraft.v0220test1')
-    approved_icon = root / 'assets' / 'pdfcraft' / 'approved-icon.webp'
-    assert approved_icon.is_file(), 'approved PDFCraft Pc launcher icon is missing'
+    # Rebuild the exact original Pc raster artwork used by protected Android.10.
+    subprocess.run([sys.executable, str(root / 'tools/pdfcraft/pc_brand.py')], check=True)
+    approved_icon = root / 'tools' / 'approved-branding' / 'assets' / 'PDFCraft.png'
+    assert approved_icon.is_file(), 'protected Android.10 PDFCraft Pc launcher icon is missing'
+    original_icon = (root / 'tools/pdfcraft/pc-icon.b64').read_text().strip()
+    import base64
+    assert approved_icon.read_bytes() == base64.b64decode(original_icon, validate=True)
     def run(code, *args):
         subprocess.run([sys.executable, '-c', code, *map(str, args)], check=True,
                        env={**os.environ,
@@ -163,9 +168,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'view.push(self.menu_item(ANDROID_TOOLS, None, false))' in menu
     assert 'PDFCRAFT_ANDROID_HELP_REQUEST' in menu
     assert 'PDFCRAFT_ANDROID_ICON_MENU' in menu
-    assert 'crate::android_approved_brand::paint(ui.painter(), rect.shrink(2.0))' in menu
+    assert 'crate::android_approved_brand::paint(ui.ctx(), ui.painter(), rect.shrink(2.0))' in menu
     brand_module = (dst / 'crates/ui-egui/src/android_approved_brand.rs').read_text()
     assert 'PDFCRAFT_ANDROID_APPROVED_PC_BRAND' in brand_module
+    assert 'image::load_from_memory(include_bytes!("android_pc_icon.png"))' in brand_module
+    assert (dst / 'crates/ui-egui/src/android_pc_icon.png').read_bytes() == base64.b64decode(original_icon, validate=True)
+    ui_cargo = (dst / 'crates/ui-egui/Cargo.toml').read_text()
+    assert 'image = { version = "0.25", default-features = false, features = ["png"] }' in ui_cargo
     assert 'mod android_approved_brand;' in (dst / 'crates/ui-egui/src/lib.rs').read_text()
     assert '"Import Fonts…"' in menu and '"Check for Updates…"' in menu
     assert '"Automatic update check…"' not in menu

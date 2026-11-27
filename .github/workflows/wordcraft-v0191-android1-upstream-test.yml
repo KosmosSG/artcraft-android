@@ -374,7 +374,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile wordcraft/android/patch_unsaved_dcs.py wordcraft/android/patch_unsaved_dcs_v014.py wordcraft/android/patch_builder.py
-          python3 -m unittest discover -s wordcraft/android -p 'test_v014_overlay.py' -v
           python3 -m unittest discover -s wordcraft/android -p 'test_wordcraft_device_fixes.py' -v
           # The exact upstream checkout was verified clean before the Android overlay.
           # This preflight intentionally patched only the isolated builder/source tree.

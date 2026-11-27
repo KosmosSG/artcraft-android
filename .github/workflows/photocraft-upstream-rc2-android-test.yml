@@ -1,0 +1,82 @@
+name: PhotoCraft upstream RC2 Android test
+
+on:
+  push:
+    branches:
+      - integration/photocraft-upstream-20261127
+  pull_request:
+    branches:
+      - photocraft-upstream-base-20261127
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARTCRAFT_TARGET_SDK: "35"
+      ARTCRAFT_BUILD_TOOLS_VERSION: "35.0.0"
+      UPSTREAM_TAG: "v0.24.0-rc.2"
+      UPSTREAM_SHA: "9e518a5"
+      TEST_PACKAGE: "com.artcraft.photocraft.test"
+    steps:
+      - name: Checkout protected integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check protected baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE="$(git rev-list -n 1 photocraft-v0.23.1-android.5)"
+          test "$BASELINE" = "36cace94c2fb589cae68a614eef6d8e98a4230c4"
+          echo "Protected baseline: $BASELINE"
+
+      - name: Check out exact Storytold upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source/photocraft
+          git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
+          ACTUAL="$(git -C source/photocraft rev-parse HEAD)"
+          echo "Upstream checkout: $ACTUAL"
+          test "$ACTUAL" = "9e518a5c55e52028869cc6d91b0555d5e7ddafae"
+
+      - name: Install Rust Android toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+
+      - name: Build separate temporary-signed ARM64 test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build.sh -photocraft -packagename="$TEST_PACKAGE"
+          APK="output/photocraft-0.24.0.apk"
+          test -s "$APK"
+          mkdir -p verified
+          cp "$APK" "verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+
+      - name: Verify test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="verified/PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED.apk"
+          AAPT="$ANDROID_HOME/build-tools/$ARTCRAFT_BUILD_TOOLS_VERSION/aapt"
+          "$AAPT" dump badging "$APK" | grep -Fq "name='$TEST_PACKAGE'"
+          "$AAPT" dump badging "$APK" | grep -Fq "versionName='0.24.0'"
+          unzip -l "$APK" | grep -Fq "lib/arm64-v8a/"
+          test "$(unzip -l "$APK" | grep -c "lib/armeabi-v7a/")" -eq 0 || exit 1
+          sha256sum "$APK" | tee verified/SHA256SUMS.txt
+
+      - name: Upload verified test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCraft-v0.24.0-rc.2-android-test-ARM64-TEMP-SIGNED
+          path: verified/*
+          if-no-files-found: error

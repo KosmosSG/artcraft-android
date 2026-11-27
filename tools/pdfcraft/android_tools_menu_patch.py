@@ -58,9 +58,10 @@ pub(crate) fn paint(ctx: &egui::Context, painter: &Painter, rect: Rect) {
     let texture_id = egui::Id::new("pdfcraft.android.approved_pc_icon");
     let texture = ctx.data_mut(|data| data.get_temp::<TextureHandle>(texture_id))
         .unwrap_or_else(|| {
-            let rgba = image::load_from_memory(include_bytes!("android_pc_icon.png"))
-                .expect("protected PDFCraft Pc menu artwork must decode")
-                .to_rgba8();
+            let rgba = match image::load_from_memory(include_bytes!("android_pc_icon.png")) {
+                Ok(image) => image.to_rgba8(),
+                Err(_) => return,
+            };
             let size = [rgba.width() as usize, rgba.height() as usize];
             let image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
             let texture = ctx.load_texture(

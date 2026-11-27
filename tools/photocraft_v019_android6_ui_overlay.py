@@ -199,7 +199,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
                 photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()
             ),
             5 => { if let Err(e) = self.bridge.request_font_import(false) { log::warn!("Font import: {e}"); } },
-            20 => self.ai_menu.open_from_pc(5),
+            34 => self.ai_menu.open_from_pc(5),
             6 => { if let Err(e) = self.bridge.request_font_import(true) { log::warn!("Font folder: {e}"); } },
             7 => self.android_fonts.refresh(),
             8 => { if let Err(e) = self.bridge.request_update_check() { log::warn!("Update check: {e}"); } },

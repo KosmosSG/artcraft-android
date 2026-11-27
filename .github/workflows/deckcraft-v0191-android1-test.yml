@@ -38,7 +38,7 @@ jobs:
           for file in deckcraft/android/patch_v013_host.py deckcraft/android/patch_shared_fonts.py deckcraft/android/patch_update_settings.py deckcraft/android/patch_gpu_diagnostics.py deckcraft/android/patch_gpu_cache.py deckcraft/android/patch_app_menu_updater.py deckcraft/android/patch_v016_menu.py deckcraft/android/patch_v016_ctrlw.py deckcraft/android/patch_v016_pptx_save.py deckcraft/android/patch_v016_magicos_mime.py deckcraft/android/patch_v017_photocraft_updates.py deckcraft/android/patch_v017_checked_updates.py deckcraft/android/patch_v018_stylus_wheel.py deckcraft/android/patch_v0181_android2_polish.py deckcraft/android/patch_v0181_android3_brand_hub_slider.py deckcraft/android/patch_v0181_android4_wheel_dialog.py deckcraft/android/patch_v0181_android5_dk_logo_scale.py deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py deckcraft/android/patch_v0181_android8_native_hover_delivery.py; do
             test -s "$file" || { echo "::error::Missing approved Android patch: $file"; exit 1; }
           done
-          echo "PASS: exact v0.19.1-android.8 baseline, one workflow file added, all approved DeckCraft Android overlays retained"
+          echo "PASS: exact v0.18.1-android.8 baseline, one workflow file added, all approved DeckCraft Android overlays retained"
       - name: Checkout pinned Android builder
         uses: actions/checkout@v4
         with:
@@ -557,7 +557,7 @@ jobs:
           Reserve the original key for owner-approved releases only.
           Test candidate package installs separately from production DeckCraft.
           Do not confuse this test certificate with an original-key release.
-          Preserves Android v0.17 published features while testing official upstream v0.19.1.
+          Preserves all published Android.8 customizations while testing official upstream v0.19.1.
           DeckCraft Android.1: eight bordered adjustable slot rows, accessible light/dark dialog,
           Default new-install/reset wheel size 75%, opacity 100%, positions labelled accurately.
           Preserves launcher-red round Dk hub, eight white native icons and live customization.

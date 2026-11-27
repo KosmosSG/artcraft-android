@@ -12,6 +12,10 @@ import tomllib
 root = Path(__file__).resolve().parents[1]
 source = Path(sys.argv[1]).resolve()
 script = (root / 'lib/build-common.sh').read_text()
+workflow = (root / '.github/workflows/pdfcraft-candidate.yml').read_text()
+assert 'tools/pdfcraft/pc_brand.py' in workflow, 'candidate does not stage the protected Android.10 Pc artwork'
+assert '-appicon=tools/approved-branding/assets/PDFCraft.png' in workflow, 'candidate launcher icon is not the protected Pc artwork'
+assert 'assets/pdfcraft/approved-icon.webp' not in workflow, 'candidate still overrides the protected launcher artwork'
 # Regression guard: pinned upstream v0.19.0/v0.20.0 must receive the Android IME-reset
 # winit overlay; a skipped guard compiled but failed at egui-winit previously.
 assert '"\u0024{PDFCRAFT_REF:-}" == "v0.19.0"' in script

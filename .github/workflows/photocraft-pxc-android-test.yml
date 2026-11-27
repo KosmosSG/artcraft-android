@@ -62,7 +62,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Build disposable ARM64 APK
-        run: bash build-debug.sh -photocraft
+        run: bash build-debug.sh -photocraft -packagename=com.artcraft.photocraft.pxc.test
 
       - name: Upload disposable test APK
         uses: actions/upload-artifact@v5

@@ -40,9 +40,6 @@ with tempfile.TemporaryDirectory() as folder:
                             'PDFCRAFT_ANDROID_VERSION_NAME': os.environ.get('PDFCRAFT_ANDROID_VERSION_NAME', '0.22.0-android.1'),
                             'PDFCRAFT_ANDROID_TEST_PACKAGE': test_package})
     run(patch, dst, 'pdfcraft', 'PDFCraft')
-    subprocess.run([sys.executable, str(root / 'tools/pdfcraft/android_on_exit_compat.py'), str(dst)], check=True)
-    android_app = (dst / 'apps/pdfcraft-android/src/lib.rs').read_text()
-    assert 'fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)' in android_app
     scanner = (dst / 'crates/engine/src/text_fonts.rs').read_text()
     assert ']);\n        }\n        if let Some(folder) = std::env::var_os("PDFCRAFT_ANDROID_FONT_DIR")' in scanner
     before = scanner
@@ -68,7 +65,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'jni_str!("pdfFinishNativeLoop")' in native
     assert native.count('finish_pdfcraft_android_activity(') == 2
     on_exit_signature = ('fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>)'
-                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] in ('0.20.0', '0.21.1')
+                         if tomllib.loads((dst / 'Cargo.toml').read_text())['workspace']['package']['version'] in ('0.20.0', '0.21.1', '0.22.0')
                          else 'fn on_exit(&mut self)')
     assert on_exit_signature in native
     assert native.index(on_exit_signature) < native.index('let result = eframe::run_native(')

@@ -36,6 +36,7 @@ pub(crate) struct AndroidAiMenu {
     model_result: Option<Receiver<Result<ModelInventory, String>>>,
     model_status: String,
     last_visible: bool,
+    visible: bool,
     preference_path: PathBuf,
 }
 
@@ -44,9 +45,8 @@ impl AndroidAiMenu {
         let visible = std::fs::read(&preference_path)
             .map(|value| value.as_slice() != b"0")
             .unwrap_or(true);
-        // Window's checked item and Android's separate menu strip read the
-        // same Android-only UI state. Default is visible on first launch.
-        photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(visible);
+        // Visibility is Android-shell state; upstream no longer exposes the old
+        // ArtCraft-specific menu visibility hook.
         Self {
             show_about: false,
             show_connection: false,
@@ -66,6 +66,7 @@ impl AndroidAiMenu {
             model_result: None,
             model_status: "Model inventory has not been checked.".into(),
             last_visible: visible,
+            visible,
             preference_path,
         }
     }
@@ -90,7 +91,7 @@ impl AndroidAiMenu {
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
         // A hidden AI Tools menu must not apply an invisible in-flight result.
         // Window → Show AI Tools can be toggled at any time.
-        if !photocraft_ui_egui::menus::artcraft_ai_tools_visible() {
+        if !self.visible {
             self.cancel_cpu_job();
             self.cpu_consent = false;
         }
@@ -141,9 +142,22 @@ impl AndroidAiMenu {
             }
             None => {}
         }
-        let visible = photocraft_ui_egui::menus::artcraft_ai_tools_visible();
+        let visible = self.visible;
         self.persist_visibility(visible);
-        if !visible { return layer_changed; }
+        if !visible {
+            egui::Panel::top("artcraft_photocraft_android_ai_menu_hidden").show(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    ui.menu_button("AI Tools", |ui| {
+                        if ui.button("Show AI Tools").clicked() {
+                            self.visible = true;
+                            ui.close();
+                        }
+                    });
+                });
+            });
+            self.persist_visibility(self.visible);
+            if !self.visible { return layer_changed; }
+        }
         // egui 0.36 uses Panel::top instead of TopBottomPanel. Mount the
         // Android-only native menu in its own top strip, without editing the
         // upstream Filter menu or painting a floating palette.
@@ -178,9 +192,19 @@ impl AndroidAiMenu {
                             self.show_about = true;
                             ui.close();
                         }
+                        if ui.button("Hide AI Tools").clicked() {
+                            self.visible = false;
+                            ui.close();
+                        }
                     });
             });
         });
+        self.persist_visibility(self.visible);
+        if !self.visible {
+            self.cancel_cpu_job();
+            self.cpu_consent = false;
+            return layer_changed;
+        }
 
         if self.show_background_setup {
             let mut open = self.show_background_setup;

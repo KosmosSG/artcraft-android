@@ -316,7 +316,7 @@ jobs:
           assert original['app']=='deckcraft'
           assert original['version_name']=='0.14.1-android.17'
           assert original['version_code']==100000021
-          staged=Path('builder/baseline/tools/approved-branding/assets/manifest.json')
+          staged=Path('builder/tools/approved-branding/assets/manifest.json')
           cfg=json.loads(staged.read_text())
           assert cfg==original, 'Branding copied manifest drifted; refuse build'
           cfg['version_name']='0.19.1-android.1'

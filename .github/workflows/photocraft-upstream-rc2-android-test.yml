@@ -111,6 +111,8 @@ jobs:
             -alias artcraftbuilder -keyalg RSA -keysize 2048 -validity 30 \
             -dname "CN=PhotoCraft CI Disposable Test, OU=CI, O=ArtCraft, C=US"
           chmod 600 keys/artcraft-builder.jks
+          EXPECTED_CERT="$(keytool -exportcert -keystore keys/artcraft-builder.jks -alias artcraftbuilder -storepass "$TEST_KEY_PASSWORD" | sha256sum | awk '{print tolower($1)}')"
+          echo "EXPECTED_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
 
           echo "Upstream release tag: $UPSTREAM_TAG"
           echo "APK versionName from upstream release tag: $APP_VERSION"
@@ -135,7 +137,6 @@ jobs:
             exit 1
           fi
           # Prove the APK is signed by the disposable key generated in this job.
-          EXPECTED_CERT="$(keytool -exportcert -keystore keys/artcraft-builder.jks -alias artcraftbuilder -storepass "$TEST_KEY_PASSWORD" | sha256sum | awk '{print tolower($1)}')"
           ACTUAL_CERT="$(apksigner verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2)}' | tr -d ':')"
           test -n "$ACTUAL_CERT"
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"

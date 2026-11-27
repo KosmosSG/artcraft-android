@@ -58,6 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BASELINE=36cace94c2fb589cae68a614eef6d8e98a4230c4
           git diff --binary "$BASELINE"...HEAD -- \
             adapters/photocraft/src/pxc_client.rs \
             adapters/photocraft/src/lib.rs \

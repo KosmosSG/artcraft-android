@@ -6,7 +6,7 @@ on:
       - integration/photocraft-upstream-20261127
   pull_request:
     branches:
-      - main
+      - photocraft-upstream-base-20261127
   workflow_dispatch:
 
 permissions:

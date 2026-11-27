@@ -154,21 +154,22 @@ jobs:
           assert s.count(formula)==1, 'Pinned version generator changed; stop'
           project.write_text(s.replace(formula,'return 100000037',1))
           PY
-          # v0.19.1 now returns Result from the stable updater request; port only this changed API anchor in the ephemeral baseline checkout.
+          # v0.19.1 returns Result from the stable updater request; adapt this single anchor in the disposable baseline checkout.
           python3 - <<'PY'
           from pathlib import Path
           p=Path('baseline/deckcraft/android/patch_deckcraft_v013.py')
           s=p.read_text()
-          old='                #[cfg(not(target_arch = "wasm32"))]\\n                updates_ui::request_check(self);'
-          new='''                #[cfg(target_os = "android")]
-                  if let Some(open) = self.services.open_async.as_mut() { open("deckcraft-updates", 0); }
-                  #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-                  updates_ui::request_check(self)?;'''
+          old = """                #[cfg(not(target_arch = "wasm32"))]
+                          updates_ui::request_check(self);"""
+          new = """                #[cfg(target_os = "android")]
+                          if let Some(open) = self.services.open_async.as_mut() { open("deckcraft-updates", 0); }
+                          #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+                          updates_ui::request_check(self)?;"""
           if s.count(old)!=1: raise SystemExit(f'v0.19.1 updater anchor drift: {s.count(old)}')
           p.write_text(s.replace(old,new,1))
           print('PASS: v0.19.1 updater Result API compatibility adapter')
           PY
-          python3 baseline/deckcraft/android/patch_v013_host.py builder
+                    python3 baseline/deckcraft/android/patch_v013_host.py builder
           python3 baseline/deckcraft/android/patch_shared_fonts.py builder
           python3 baseline/deckcraft/android/patch_update_settings.py builder
           python3 baseline/deckcraft/android/port_egui037.py builder egui-source winit-source

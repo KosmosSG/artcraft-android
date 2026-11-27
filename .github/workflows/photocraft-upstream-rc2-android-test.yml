@@ -44,7 +44,7 @@ jobs:
           git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/storytold/photocraft.git source/photocraft
           ACTUAL="$(git -C source/photocraft rev-parse HEAD)"
           echo "Upstream checkout: $ACTUAL"
-          test "$ACTUAL" = "9e518a5"
+          test "$ACTUAL" = "9e518a5c55e52028869cc6d91b0555d5e7ddafae"
 
       - name: Build separate temporary-signed ARM64 test APK
         shell: bash

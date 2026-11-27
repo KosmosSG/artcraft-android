@@ -138,6 +138,14 @@ jobs:
           test -d "$SDK_ROOT/ndk/27.2.12479018"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
+      - name: Install Pillow before branding regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
+          "$RUNNER_TEMP/pdfcraft-tools/bin/pip" install --disable-pip-version-check --no-input Pillow
+          echo "$RUNNER_TEMP/pdfcraft-tools/bin" >> "$GITHUB_PATH"
+
       - name: Re-run Android adapter and keyboard regression checks
         shell: bash
         run: |
@@ -160,8 +168,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m venv "$RUNNER_TEMP/pdfcraft-tools"
-          "$RUNNER_TEMP/pdfcraft-tools/bin/pip" install --disable-pip-version-check --no-input Pillow
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" tools/pdfcraft/pc_brand.py
           "$RUNNER_TEMP/pdfcraft-tools/bin/python" -c "from PIL import Image; im=Image.open('tools/approved-branding/assets/PDFCraft.png'); im.verify(); assert im.size==(256,256)"
 

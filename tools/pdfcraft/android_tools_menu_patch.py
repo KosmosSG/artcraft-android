@@ -46,7 +46,7 @@ def install_approved_brand_module():
         assert cargo_text.count(anchor) == 1, "PDFCraft UI dependency anchor changed"
         cargo_path.write_text(cargo_text.replace(
             anchor,
-            anchor + '\\nimage = { version = "0.25", default-features = false, features = ["png"] }',
+            anchor + '\nimage = { version = "0.25", default-features = false, features = ["png"] }',
             1,
         ))
 

@@ -137,7 +137,8 @@ jobs:
             exit 1
           fi
           # Prove the APK is signed by the disposable key generated in this job.
-          ACTUAL_CERT="$(apksigner verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2)}' | tr -d ':')"
+          APKSIGNER="$ANDROID_HOME/build-tools/$ARTCRAFT_BUILD_TOOLS_VERSION/apksigner"
+          ACTUAL_CERT="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2)}' | tr -d ':')"
           test -n "$ACTUAL_CERT"
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"
           echo "Verified disposable CI signing certificate: $ACTUAL_CERT"

@@ -100,7 +100,6 @@ public final class MainActivity extends Activity {
         if(settings.contains("dark_theme")) dark=settings.getBoolean("dark_theme",true);
         initPalette();
         buildLayout();
-        playLauncherEntrance();
         IntentFilter filter=new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
         if(Build.VERSION.SDK_INT>=33) registerReceiver(downloadReceiver,filter,Context.RECEIVER_EXPORTED);
         else registerReceiver(downloadReceiver,filter);
@@ -145,266 +144,21 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     }
 
-    /** Visible launch transition for the launcher surface, rather than an imperceptible card-only reveal. */
+    /** Start after the first laid-out frame so the launch transition is actually visible. */
     private void playLauncherEntrance() {
-        if(root==null) return;
-        root.setAlpha(0.72f);
-        root.setTranslationY(dp(22));
-        root.setScaleX(0.975f);
-        root.setScaleY(0.975f);
+        if(root==null || isFinishing()) return;
+        root.animate().cancel();
         root.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-            .setStartDelay(40L)
-            .setDuration(420L)
-            .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
-            .start();
-    }
-
-    private int dp(float n) { return (int)(n*getResources().getDisplayMetrics().density+0.5f); }
-    private GradientDrawable shape(int fill,int stroke,int radius) {
-        GradientDrawable d=new GradientDrawable();
-        d.setColor(fill);
-        d.setCornerRadius(dp(radius));
-        if(stroke!=Color.TRANSPARENT) d.setStroke(dp(1),stroke);
-        return d;
-    }
-
-    /** Shared icon treatment: same rounded-square gradient and lettering as ArtCraft's Ac badge. */
-    private int mix(int base,int tint,float part) {
-        float rest=1f-part;
-        return Color.rgb(
-            Math.round(Color.red(base)*rest+Color.red(tint)*part),
-            Math.round(Color.green(base)*rest+Color.green(tint)*part),
-            Math.round(Color.blue(base)*rest+Color.blue(tint)*part));
-    }
-    private TextView artCraftBadge(String letters,int diameterDp,int tint) {
-        int typeSize=letters.length()>2?14:diameterDp>=50?25:20;
-        TextView badge=text(letters,typeSize,Color.WHITE,true);
-        badge.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
-        badge.setGravity(Gravity.CENTER);
-        int darkStop=mix(Color.rgb(19,43,69),tint,0.44f);
-        int lightStop=mix(Color.rgb(23,61,91),tint,0.88f);
-        GradientDrawable background=new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,new int[]{darkStop,lightStop});
-        background.setCornerRadius(dp(diameterDp*0.29f));
-        background.setStroke(dp(1),mix(Color.WHITE,tint,0.73f));
-        badge.setBackground(background);
-        return badge;
-    }
-
-    private TextView text(String value,int sp,int color,boolean bold) {
-        TextView t=new TextView(this);
-        t.setText(value); t.setTextColor(color); t.setTextSize(sp);
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        if(bold) t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
-        return t;
-    }
-    private LinearLayout vertical() {
-        LinearLayout l=new LinearLayout(this);
-        l.setOrientation(LinearLayout.VERTICAL);return l;
-    }
-    private LinearLayout horizontal() {
-        LinearLayout l=new LinearLayout(this);
-        l.setOrientation(LinearLayout.HORIZONTAL);
-        l.setGravity(Gravity.CENTER_VERTICAL);return l;
-    }
-
-    private TextView action(String label,boolean primary,int color,Runnable click) {
-        int ink=primary?Color.parseColor(dark?"#0B0B0C":"#F2F1EE"):foreground;
-        TextView button=text(label,13,ink,true);
-        button.setGravity(Gravity.CENTER);
-        button.setPadding(dp(13),dp(10),dp(13),dp(10));
-        button.setBackground(shape(primary?buttonFill:Color.TRANSPARENT,
-            primary?Color.TRANSPARENT:buttonOutline,0));
-        button.setOnClickListener(v->click.run());
-        return button;
-    }
-
-    private void buildLayout() {
-        root=vertical();root.setBackgroundColor(bg);
-        setContentView(root);
-        LinearLayout head=horizontal();
-        head.setPadding(dp(16),0,dp(16),0);
-        root.addView(head,new LinearLayout.LayoutParams(-1,dp(52)));
-        ImageView emblem=new ImageView(this);
-        emblem.setImageResource(R.drawable.ac_brand_icon);
-        emblem.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        emblem.setContentDescription("ArtCraft Ac logo");
-        head.addView(emblem,new LinearLayout.LayoutParams(dp(30),dp(30)));
-        LinearLayout heading=vertical();
-        heading.setPadding(dp(12),0,0,0);
-        head.addView(heading,new LinearLayout.LayoutParams(0,-2,1f));
-        heading.addView(text("Craft App Suite",18,foreground,true));
-        TextView refresh=text("↻",21,muted,false);
-        refresh.setGravity(Gravity.CENTER);
-        refresh.setContentDescription("Check for updates");
-        head.addView(refresh,new LinearLayout.LayoutParams(dp(42),dp(46)));
-        refresh.setOnClickListener(v->refreshCatalog());
-        TextView menu=text("⚙",19,muted,false);
-        menu.setGravity(Gravity.CENTER);
-        menu.setPadding(dp(9),0,dp(1),0);
-        head.addView(menu,new LinearLayout.LayoutParams(dp(43),dp(48)));
-        menu.setOnClickListener(v->openMenu(menu));
-
-        scroller=new ScrollView(this);
-        scroller.setFillViewport(true);scroller.setClipToPadding(false);
-        root.addView(scroller,new LinearLayout.LayoutParams(-1,0,1f));
-        LinearLayout page=vertical();page.setPadding(dp(17),dp(7),dp(17),dp(20));
-        scroller.addView(page);
-        addCatalogToolbar(page);
-        summary=text("",12,muted,false);
-        summary.setPadding(dp(2),dp(10),dp(2),dp(8));
-        page.addView(summary);
-        list=vertical();page.addView(list);
-        downloadPanel=vertical();
-        downloadPanel.setPadding(dp(18),dp(12),dp(18),dp(12));
-        downloadPanel.setBackground(shape(surface,border,12));
-        LinearLayout.LayoutParams downloadLp=new LinearLayout.LayoutParams(-1,-2);
-        downloadLp.setMargins(dp(18),0,dp(18),dp(8));
-        root.addView(downloadPanel,downloadLp);
-        LinearLayout downloadRow=horizontal();
-        downloadPanel.addView(downloadRow,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout downloadText=vertical();
-        downloadRow.addView(downloadText,new LinearLayout.LayoutParams(0,-2,1f));
-        downloadTitle=text("Downloading…",14,foreground,true);
-        downloadInfo=text("Starting download",12,muted,false);
-        downloadInfo.setPadding(0,dp(2),0,0);
-        downloadText.addView(downloadTitle);
-        downloadText.addView(downloadInfo);
-        downloadButton=action("Cancel",false,accent,this::cancelDownload);
-        LinearLayout.LayoutParams buttonLp=new LinearLayout.LayoutParams(dp(96),dp(38));
-        buttonLp.setMargins(dp(8),0,0,0);
-        downloadRow.addView(downloadButton,buttonLp);
-        downloadProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
-        downloadProgress.setMax(100);
-        downloadProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
-        LinearLayout.LayoutParams barLp=new LinearLayout.LayoutParams(-1,dp(5));
-        barLp.setMargins(0,dp(10),0,0);
-        downloadPanel.addView(downloadProgress,barLp);
-        downloadPanel.setVisibility(View.GONE);
-        banner=text("Updates are checked manually. You can enable startup checking in settings.",13,foreground,false);
-        banner.setPadding(dp(18),dp(14),dp(18),dp(14));
-        banner.setBackground(shape(dark?Color.BLACK:Color.parseColor("#E5E9EC"),border,0));
-        root.addView(banner,new LinearLayout.LayoutParams(-1,-2));
-        updateCards();
-    }
-
-    private boolean officialExpanded = true;
-    private boolean communityExpanded = false;
-
-    private void addCatalogToolbar(LinearLayout page) {
-        LinearLayout controls=horizontal();
-        controls.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams controlsLp=new LinearLayout.LayoutParams(-1,dp(42));
-        controlsLp.setMargins(0,dp(12),0,dp(4));
-        page.addView(controls,controlsLp);
-        searchField=new EditText(this);
-        searchField.setSingleLine(true); searchField.setTextSize(14);
-        searchField.setTextColor(foreground); searchField.setHintTextColor(muted);
-        searchField.setHint("Search apps"); searchField.setPadding(dp(13),0,dp(10),0);
-        searchField.setBackground(shape(surface,border,0)); searchField.setText(searchQuery);
-        controls.addView(searchField,new LinearLayout.LayoutParams(0,-1,1f));
-        searchField.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence value,int start,int count,int after) {}
-            @Override public void onTextChanged(CharSequence value,int start,int before,int count) {
-                searchQuery=value==null?"":value.toString(); updateCards();
-            }
-            @Override public void afterTextChanged(Editable value) {}
-        });
-        gridToggle=text("▦",21,tableView?muted:Color.WHITE,true);
-        gridToggle.setGravity(Gravity.CENTER); gridToggle.setContentDescription("Show apps as cards");
-        gridToggle.setBackground(shape(tableView?Color.TRANSPARENT:buttonFill,border,0));
-        LinearLayout.LayoutParams toggleLp=new LinearLayout.LayoutParams(dp(44),-1);
-        toggleLp.setMargins(dp(7),0,0,0); controls.addView(gridToggle,toggleLp);
-        gridToggle.setOnClickListener(v->{tableView=false;updateCards();});
-        tableToggle=text("☷",21,tableView?Color.WHITE:muted,true);
-        tableToggle.setGravity(Gravity.CENTER); tableToggle.setContentDescription("Show apps as a table");
-        tableToggle.setBackground(shape(tableView?buttonFill:Color.TRANSPARENT,border,0));
-        LinearLayout.LayoutParams tableLp=new LinearLayout.LayoutParams(dp(44),-1);
-        tableLp.setMargins(dp(5),0,0,0); controls.addView(tableToggle,tableLp);
-        tableToggle.setOnClickListener(v->{tableView=true;updateCards();});
-        HorizontalScrollView filters=new HorizontalScrollView(this);
-        filters.setHorizontalScrollBarEnabled(false);
-        LinearLayout.LayoutParams filtersLp=new LinearLayout.LayoutParams(-1,dp(42));
-        filtersLp.setMargins(0,dp(4),0,dp(7)); page.addView(filters,filtersLp);
-        filterRow=horizontal(); filterRow.setGravity(Gravity.CENTER_VERTICAL);
-        filters.addView(filterRow); updateFilterButtons();
-    }
-
-    private void updateFilterButtons() {
-        if(filterRow==null)return;
-        filterRow.removeAllViews();
-        String[] labels={"All apps","Installed","Updates","Not installed"};
-        for(int i=0;i<labels.length;i++) {
-            final int selected=i;
-            TextView chip=action(labels[i],activeFilter==i,accent,()->{
-                activeFilter=selected; updateFilterButtons(); updateCards();
-            });
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(34));
-            lp.setMargins(0,0,dp(7),0); filterRow.addView(chip,lp);
-        }
-    }
-
-    private boolean matchesCatalog(CatalogClient.App app) {
-        PackageInfo pkg=installed(app.packageName);
-        CatalogClient.Release release=available.get(app.key);
-        if(activeFilter==1 && pkg==null)return false;
-        if(activeFilter==2 && (pkg==null || release==null ||
-            ReleaseRules.compareVersions(release.version,pkg.versionName)<=0))return false;
-        if(activeFilter==3 && pkg!=null)return false;
-        String needle=searchQuery.trim().toLowerCase(Locale.ROOT);
-        return needle.isEmpty() || app.name.toLowerCase(Locale.ROOT).contains(needle) ||
-            app.key.toLowerCase(Locale.ROOT).contains(needle) ||
-            (app.repo!=null && app.repo.toLowerCase(Locale.ROOT).contains(needle));
-    }
-
-    private void updateCards() {
-        if(list==null)return;
-        int position=scroller==null?0:scroller.getScrollY();
-        list.removeAllViews();
-        int width=getResources().getConfiguration().screenWidthDp;
-        int columns=width<680?1:(width<1050?2:3);
-        int installedCount=0,updates=0,officialCount=0;
-        java.util.ArrayList<CatalogClient.App> official=new java.util.ArrayList<>();
-        java.util.ArrayList<CatalogClient.App> community=new java.util.ArrayList<>();
-        for(CatalogClient.App app:CatalogClient.APPS) {
-            PackageInfo pkg=installed(app.packageName);
-            if(pkg!=null)installedCount++;
-            CatalogClient.Release remote=available.get(app.key);
-            if(pkg!=null && remote!=null && ReleaseRules.compareVersions(remote.version,pkg.versionName)>0)updates++;
-            if(matchesCatalog(app)) { if(app.community)community.add(app); else official.add(app); }
-            if(!app.community)officialCount++;
-        }
-        int communityCount=CatalogClient.APPS.length-officialCount;
-        summary.setText(installedCount+" of "+CatalogClient.APPS.length+" apps installed  ·  "+
-            officialCount+" official  ·  "+communityCount+" community  ·  "+
-            (checking?"Checking releases…":updates+" updates"));
-        if(gridToggle!=null) {
-            gridToggle.setTextColor(tableView?muted:Color.WHITE);
-            gridToggle.setBackground(shape(tableView?Color.TRANSPARENT:buttonFill,border,0));
-            tableToggle.setTextColor(tableView?Color.parseColor(dark?"#0B0B0C":"#F2F1EE"):muted);
-            tableToggle.setBackground(shape(tableView?buttonFill:Color.TRANSPARENT,border,0));
-        }
-        addSectionHeader("OFFICIAL ARTCRAFT APPS",official.size(),countInstalled(official),officialExpanded,
-            ()->{officialExpanded=!officialExpanded;updateCards();});
-        if(officialExpanded) { if(tableView)addAppTable(official); else addAppGrid(official,columns); }
-        addSectionHeader("COMMUNITY APPS",community.size(),countInstalled(community),communityExpanded,
-            ()->{communityExpanded=!communityExpanded;updateCards();});
-        if(communityExpanded) { if(tableView)addAppTable(community); else addAppGrid(community,columns); }
-        if(official.isEmpty() && community.isEmpty())
-            list.addView(text("No apps match this search or filter.",13,muted,false));
-        if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
-    }
-
-    /** Subtle card entrance motion, matching the reference launcher's animated reveal. */
-    private void animateCatalogItem(View view,int index) {
-        if(view==null) return;
-        view.setAlpha(0f);
-        view.setTranslationY(dp(9));
-        view.animate().alpha(1f).translationY(0f)
-            .setStartDelay(Math.min(index,8)*28L)
-            .setDuration(220L)
-            .setInterpolator(new android.view.animation.DecelerateInterpolator())
-            .start();
+            .setStartDelay(30L)
+            .setDuration(620L)
+            .setInterpolator(new android.view.animation.DecelerateInterpolator(1.35f))
+            .withEndAction(()->{
+                if(root!=null) {
+                    root.setAlpha(1f);
+                    root.setTranslationY(0f);
+                    root.setScaleX(1f);root.setScaleY(1f);
+                }
+            }).start();
     }
 
     private int countInstalled(java.util.List<CatalogClient.App> apps) {
@@ -522,8 +276,33 @@ public final class MainActivity extends Activity {
         CatalogClient.Release remote=available.get(app.key);
         LinearLayout card=vertical();
         card.setPadding(dp(20),dp(18),dp(20),dp(18));
-        card.setBackground(shape(surface,border,0));
+        GradientDrawable cardSurface=shape(surface,border,0);
+        card.setBackground(cardSurface);
         card.setElevation(0f);
+        card.setOnHoverListener((v,event)->{
+            boolean hovering=event.getAction()==android.view.MotionEvent.ACTION_HOVER_ENTER ||
+                event.getAction()==android.view.MotionEvent.ACTION_HOVER_MOVE;
+            boolean leaving=event.getAction()==android.view.MotionEvent.ACTION_HOVER_EXIT;
+            if(hovering) {
+                v.animate().translationY(-dp(5)).scaleX(1.012f).scaleY(1.012f)
+                    .setDuration(180L).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                cardSurface.setColor(mix(surface,app.color,0.08f));
+            } else if(leaving) {
+                v.animate().translationY(0f).scaleX(1f).scaleY(1f)
+                    .setDuration(220L).start();
+                cardSurface.setColor(surface);
+            }
+            return false;
+        });
+        card.setOnTouchListener((v,event)->{
+            if(event.getAction()==android.view.MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.975f).scaleY(0.975f).setDuration(90L).start();
+            } else if(event.getAction()==android.view.MotionEvent.ACTION_UP ||
+                      event.getAction()==android.view.MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(180L).start();
+            }
+            return false;
+        });
         LinearLayout row=horizontal();card.addView(row);
         View icon=appIcon(app);
         row.addView(icon,new LinearLayout.LayoutParams(dp(46),dp(46)));

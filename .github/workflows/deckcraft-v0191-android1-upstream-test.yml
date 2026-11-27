@@ -3,7 +3,7 @@ on:
   push:
     branches: [integration/deckcraft-v0191-android1-20261128]
     paths:
-      - '.github/workflows/deckcraft-v0191a1-coldstart-hover-test.yml'
+      - '.github/workflows/deckcraft-v0191-android1-upstream-test.yml'
       - 'deckcraft/android/patch_v016_menu.py'
       - 'deckcraft/android/patch_v017_photocraft_updates.py'
       - 'deckcraft/android/patch_v017_checked_updates.py'
@@ -14,7 +14,7 @@ on:
       - 'deckcraft/android/patch_v0181_android5_dk_logo_scale.py'
       - 'deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py'
       - 'deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py'
-      - 'deckcraft/android/patch_v0181_android1_native_hover_delivery.py'
+      - 'deckcraft/android/patch_v0181_android8_native_hover_delivery.py'
       - 'deckcraft/android/stylus_wheel.rs'
       - 'deckcraft/android/patch_v016_ctrlw.py'
       - 'deckcraft/android/patch_v016_pptx_save.py'
@@ -54,7 +54,7 @@ jobs:
           test -s deckcraft/android/patch_v0181_android5_dk_logo_scale.py
           test -s deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py
           test -s deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py
-          test -s deckcraft/android/patch_v0181_android1_native_hover_delivery.py
+          test -s deckcraft/android/patch_v0181_android8_native_hover_delivery.py
           test -s docs/ARTCRAFT_ANDROID_UPDATE_MENU_STANDARD.md
           test -s deckcraft/android/patch_v016_ctrlw.py
           test -s deckcraft/android/patch_v016_pptx_save.py
@@ -67,7 +67,7 @@ jobs:
           python3 -m py_compile deckcraft/android/patch_v0181_android5_dk_logo_scale.py
           python3 -m py_compile deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py
           python3 -m py_compile deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py
-          python3 -m py_compile deckcraft/android/patch_v0181_android1_native_hover_delivery.py
+          python3 -m py_compile deckcraft/android/patch_v0181_android8_native_hover_delivery.py
           python3 -m py_compile deckcraft/android/patch_v0181_android3_brand_hub_slider.py
           python3 -m py_compile deckcraft/android/patch_v0181_android2_polish.py
           python3 -m py_compile deckcraft/android/patch_v018_stylus_wheel.py
@@ -181,7 +181,7 @@ jobs:
           python3 deckcraft/android/patch_v0181_android5_dk_logo_scale.py builder
           python3 deckcraft/android/patch_v0181_android6_photocraft_wheel_parity.py builder
           python3 deckcraft/android/patch_v0181_android7_gray_hub_defaults_hover.py builder
-          python3 deckcraft/android/patch_v0181_android1_native_hover_delivery.py builder
+          python3 deckcraft/android/patch_v0181_android8_native_hover_delivery.py builder
           python3 - <<'PY'
           from pathlib import Path
           ui=Path('builder/source/deckcraft/crates/ui-egui/src/lib.rs').read_text()
@@ -603,7 +603,7 @@ jobs:
           Reserve the original key for owner-approved releases only.
           Test candidate package installs separately from production DeckCraft.
           Do not confuse this test certificate with an original-key release.
-          Preserves Android v0.17 published features while testing official upstream v0.19.1.
+          Preserves protected DeckCraft v0.18.1-android.8 features while testing official upstream v0.19.1.
           DeckCraft Android.1: eight bordered adjustable slot rows, accessible light/dark dialog,
           Default new-install/reset wheel size 75%, opacity 100%, positions labelled accurately.
           Preserves launcher-red round Dk hub, eight white native icons and live customization.

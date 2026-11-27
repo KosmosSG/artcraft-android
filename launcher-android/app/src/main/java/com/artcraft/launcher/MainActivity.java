@@ -100,6 +100,7 @@ public final class MainActivity extends Activity {
         if(settings.contains("dark_theme")) dark=settings.getBoolean("dark_theme",true);
         initPalette();
         buildLayout();
+        playLauncherEntrance();
         IntentFilter filter=new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
         if(Build.VERSION.SDK_INT>=33) registerReceiver(downloadReceiver,filter,Context.RECEIVER_EXPORTED);
         else registerReceiver(downloadReceiver,filter);
@@ -142,6 +143,20 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+    }
+
+    /** Visible launch transition for the launcher surface, rather than an imperceptible card-only reveal. */
+    private void playLauncherEntrance() {
+        if(root==null) return;
+        root.setAlpha(0.72f);
+        root.setTranslationY(dp(22));
+        root.setScaleX(0.975f);
+        root.setScaleY(0.975f);
+        root.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+            .setStartDelay(40L)
+            .setDuration(420L)
+            .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+            .start();
     }
 
     private int dp(float n) { return (int)(n*getResources().getDisplayMetrics().density+0.5f); }
@@ -434,7 +449,7 @@ public final class MainActivity extends Activity {
             labels.addView(text(status,10,muted,false));
             boolean update=pkg!=null && remote!=null &&
                 ReleaseRules.compareVersions(remote.version,pkg.versionName)>0;
-            String label=update?"Update":(pkg!=null?"Open":(app.community?"Explore":"Download"));
+            String label=update?"Update":(pkg!=null?"Open":"Download");
             Runnable click=update && !app.community?()->confirmDownload(app,remote):
                 pkg!=null?()->openApp(app):app.community?()->openCommunityRepo(app):
                 remote!=null?()->confirmDownload(app,remote):()->lookupAppRelease(app,true);
@@ -536,8 +551,7 @@ public final class MainActivity extends Activity {
         LinearLayout buttons=horizontal();
         buttons.setPadding(0,dp(12),0,0);
         card.addView(buttons);
-        String label=needsUpdate && !app.community?"Update":(installed!=null?"Open":
-            (app.community?"Explore":"Download"));
+        String label=needsUpdate && !app.community?"Update":(installed!=null?"Open":"Download");
         Runnable onPrimary;
         if(needsUpdate && !app.community)onPrimary=()->confirmDownload(app,remote);
         else if(installed!=null)onPrimary=()->openApp(app);

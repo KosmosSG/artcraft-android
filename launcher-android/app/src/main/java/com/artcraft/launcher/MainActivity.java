@@ -380,6 +380,18 @@ public final class MainActivity extends Activity {
         if(scroller!=null)scroller.post(()->scroller.scrollTo(0,position));
     }
 
+    /** Subtle card entrance motion, matching the reference launcher's animated reveal. */
+    private void animateCatalogItem(View view,int index) {
+        if(view==null) return;
+        view.setAlpha(0f);
+        view.setTranslationY(dp(9));
+        view.animate().alpha(1f).translationY(0f)
+            .setStartDelay(Math.min(index,8)*28L)
+            .setDuration(220L)
+            .setInterpolator(new android.view.animation.DecelerateInterpolator())
+            .start();
+    }
+
     private int countInstalled(java.util.List<CatalogClient.App> apps) {
         int count=0;
         for(CatalogClient.App app:apps)if(installed(app.packageName)!=null)count++;
@@ -398,7 +410,9 @@ public final class MainActivity extends Activity {
                 }
                 LinearLayout.LayoutParams cardLp=new LinearLayout.LayoutParams(0,-2,1f);
                 cardLp.setMargins(dp(4),dp(4),dp(4),dp(8));
-                row.addView(appCard(group.get(idx)),cardLp);
+                View card=appCard(group.get(idx));
+                row.addView(card,cardLp);
+                animateCatalogItem(card,i+j);
             }
         }
     }
@@ -420,9 +434,10 @@ public final class MainActivity extends Activity {
             labels.addView(text(status,10,muted,false));
             boolean update=pkg!=null && remote!=null &&
                 ReleaseRules.compareVersions(remote.version,pkg.versionName)>0;
-            String label=update?"Update":(pkg!=null?"Open":(app.community && remote==null?"Explore":"Download"));
-            Runnable click=update || (pkg==null && remote!=null)?()->confirmDownload(app,remote):
-                pkg!=null?()->openApp(app):app.community?()->openCommunityRepo(app):()->lookupAppRelease(app,true);
+            String label=update?"Update":(pkg!=null?"Open":(app.community?"Explore":"Download"));
+            Runnable click=update && !app.community?()->confirmDownload(app,remote):
+                pkg!=null?()->openApp(app):app.community?()->openCommunityRepo(app):
+                remote!=null?()->confirmDownload(app,remote):()->lookupAppRelease(app,true);
             row.addView(action(label,true,accent,click),new LinearLayout.LayoutParams(-2,dp(36)));
         }
     }
@@ -521,13 +536,13 @@ public final class MainActivity extends Activity {
         LinearLayout buttons=horizontal();
         buttons.setPadding(0,dp(12),0,0);
         card.addView(buttons);
-        String label=needsUpdate?"Update":(installed!=null?"Open":
-            (app.community && remote==null?"Explore":"Download"));
+        String label=needsUpdate && !app.community?"Update":(installed!=null?"Open":
+            (app.community?"Explore":"Download"));
         Runnable onPrimary;
-        if(needsUpdate || (installed==null && remote!=null))
-            onPrimary=()->confirmDownload(app,remote);
+        if(needsUpdate && !app.community)onPrimary=()->confirmDownload(app,remote);
         else if(installed!=null)onPrimary=()->openApp(app);
         else if(app.community)onPrimary=()->openCommunityRepo(app);
+        else if(remote!=null)onPrimary=()->confirmDownload(app,remote);
         else onPrimary=()->lookupAppRelease(app,true);
         TextView primary=action(label,true,accent,onPrimary);
         buttons.addView(primary,new LinearLayout.LayoutParams(0,dp(40),1f));
@@ -650,6 +665,7 @@ public final class MainActivity extends Activity {
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         popup.setOutsideTouchable(true);
         popup.setElevation(dp(16));
+        popup.setAnimationStyle(android.R.style.Animation_Dialog);
 
         menuGroup(content,"UPDATES");
         menuItem(content,popup,"Check App Updates",true,this::refreshCatalog);

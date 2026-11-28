@@ -1,15 +1,9 @@
 name: DeckCraft v0.19.1-android.1 optimized original-certificate stable publish
 on:
-  push:
-    branches:
-      - integration/deckcraft-upstream-v0191-20261128
-    paths:
-      - '.github/workflows/deckcraft-v0191-android1-permanent-publish.yml'
-      - 'deckcraft/android/patch_deckcraft_v013.py'
   workflow_dispatch:
     inputs:
-      approve_candidate_build:
-        description: "Authorize one disposable ARM64 integration build only (no production signing or release)"
+      confirm_production_publish:
+        description: "Authorize permanent signing and publication of DeckCraft v0.19.1-android.1"
         required: true
         type: boolean
         default: false
@@ -21,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   compile-unsigned:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0191-20261128' && (github.event_name == 'push')
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/deckcraft-upstream-v0191-20261128' && github.event_name == 'workflow_dispatch' && inputs.confirm_production_publish == true
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -581,10 +575,17 @@ jobs:
           echo 'EXPERIMENTAL: legacy .ppt import is NOT supported or advertised by extension; device-verify MagicOS defaults before any release.' >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain verified production-signed APK before release publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-v0.19.1-android.1-PRODUCTION-SIGNED-RECOVERY
+          path: verified-release/
+          if-no-files-found: error
+          retention-days: 14
       - name: Permanently sign optimized ARM64 APK and publish stable release
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DECKCRAFT_RELEASE_TOKEN }}
           KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
           STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
           KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}

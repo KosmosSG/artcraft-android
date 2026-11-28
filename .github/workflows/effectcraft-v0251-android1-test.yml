@@ -110,7 +110,7 @@ jobs:
               assert m.get(k)==v, (k,m.get(k))
           m["version_name"]="0.25.1-android.1"
           m["version_code"]=16860001
-          manifest.write_text(json.dumps(m,indent=2)+"\\n")
+          manifest.write_text(json.dumps(m,indent=2)+"\n")
           print("PASS: only disposable build metadata advanced to 0.25.1-android.1 / 16860001")
           PY
 

@@ -51,6 +51,17 @@ pub fn artcraft_queue_pc_menu_action(action: u8) {
 pub fn artcraft_take_pc_menu_action() -> u8 {
     ARTCRAFT_PC_MENU_ACTION.swap(0, std::sync::atomic::Ordering::Relaxed)
 }
+#[cfg(target_os = "android")]
+static ARTCRAFT_PC_TXT2IMG_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+pub fn artcraft_request_pc_txt2img() {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+#[cfg(target_os = "android")]
+pub fn artcraft_take_pc_txt2img_request() -> bool {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
 ''')
     replace(brand,
 '''    ui.ctx().data_mut(|d| d.insert_temp(rect_id(), r));
@@ -137,6 +148,14 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
         }
     }
 ''')
+    replace(ai,
+'''    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+''',
+'''    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+        if photocraft_ui_egui::menus::artcraft_take_pc_txt2img_request() {
+            self.show_txt2img = true;
+        }
+''')
     replace(fonts,
 '''pub(crate) struct AndroidFonts {
     message: Option<String>,''',
@@ -185,10 +204,10 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
 ''')
 
     replace(host,
-'''        if self.ai_menu.show(ui, &mut self.inner.session) {
+'''        self.inner.ui(ui, _frame);
 ''',
-'''        // Consume the Pc menu action before AndroidAiMenu::show draws its windows.
-        // This guarantees Text-to-Image state is set in the same frame as rendering.
+'''        self.inner.ui(ui, _frame);
+        // Dispatch Pc menu actions after the editor UI pass.
         match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {
             1 => {
                 let visible = !photocraft_ui_egui::menus::artcraft_ai_tools_visible();
@@ -223,7 +242,6 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             }
             _ => {}
         }
-        if self.ai_menu.show(ui, &mut self.inner.session) {
     ''')
     # Replace the sentinel with a single action variable rather than consuming
     # the atomic twice (the second take would always return 0).

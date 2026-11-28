@@ -191,7 +191,26 @@ jobs:
           APK="$(find output -maxdepth 1 -type f -name 'effectcraft-0.25.1.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
           mkdir -p candidate
-          cp "$APK" candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk
+          cp "$APK" candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST-UNOPTIMIZED.apk
+          OPT_APK="candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk"
+          cp "$APK" "$OPT_APK"
+          BEFORE_BYTES="$(stat -c %s "$OPT_APK")"
+          TMP_APK="candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST-stripped.apk"
+          cp "$OPT_APK" "$TMP_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 "$TMP_APK" "$OPT_APK"
+          rm -f "$TMP_APK"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          apk=Path("candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk")
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+          print("PASS: optimized APK ZIP integrity")
+          PY
+          AFTER_BYTES="$(stat -c %s "$OPT_APK")"
+          echo "APK size before optimization: $BEFORE_BYTES bytes"
+          echo "APK size after optimization:  $AFTER_BYTES bytes"
+          echo "APK optimization delta: $((BEFORE_BYTES-AFTER_BYTES)) bytes"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk > candidate/signing.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk > candidate/badging.txt
           grep -F "name='com.artcraft.effectcraft.upstreamtest'" candidate/badging.txt

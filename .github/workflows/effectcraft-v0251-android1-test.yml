@@ -27,6 +27,7 @@ jobs:
       - name: Checkout protected EffectCraft Android baseline and integration overlay
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Verify exact protected baseline, scoped changes and release lock

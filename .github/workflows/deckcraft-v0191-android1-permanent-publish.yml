@@ -612,7 +612,7 @@ jobs:
           "$BT/zipalign" -c -P 16 4 "$INPUT"
           "$BT/apksigner" sign --ks "$K" --ks-type PKCS12 --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS --v2-signing-enabled true --v4-signing-enabled false --out "verified-release/$APK" "$INPUT"
           "$BT/apksigner" verify --verbose --print-certs "verified-release/$APK" > "$RUNNER_TEMP/deckcraft-signer.txt"
-          grep -F "$CERT" "$RUNNER_TEMP/deckcraft-signer.txt"
+          grep -F '79:11:c6:0b:dc:ae:5b:ea:6a:25:2e:33:16:48:55:ca:d1:50:19:4b:8c:a5:67:a4:f7:52:ac:d0:10:c8:0d:c9' "$RUNNER_TEMP/deckcraft-signer.txt"
           "$BT/aapt" dump badging "verified-release/$APK" > "$RUNNER_TEMP/deckcraft-badging.txt"
           grep -F "name='com.artcraft.deckcraft'" "$RUNNER_TEMP/deckcraft-badging.txt"
           grep -F "versionName='0.19.1-android.1'" "$RUNNER_TEMP/deckcraft-badging.txt"

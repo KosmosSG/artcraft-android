@@ -246,7 +246,7 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
     h=host.read_text(encoding="utf-8")
     if h.count("let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();") != 1:
         raise RuntimeError("Expected exactly one Pc action queue consumer")
-    if h.count("\\n        match pc_action {\\n") != 1:
+    if h.count("\n        match pc_action {\n") != 1:
         raise RuntimeError("Pc action dispatch block changed")
     host.write_text(h,encoding="utf-8")
 

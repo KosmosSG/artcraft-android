@@ -103,6 +103,9 @@ impl AndroidAiMenu {
     /// Returns true after a new undoable layer is inserted so the host can
     /// synchronize PhotoCraft canvas caches before rendering the editor.
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
+        if photocraft_ui_egui::menus::artcraft_take_pc_txt2img_request() {
+            self.show_txt2img = true;
+        }
         // A hidden AI Tools menu must not apply an invisible in-flight result.
         // Window → Show AI Tools can be toggled at any time.
         let layer_changed = self.poll_cpu_result(session, ui.ctx());

@@ -148,6 +148,12 @@ jobs:
           python3 tools/effectcraft/render_wheel_ec_logo.py .
           test -s source/effectcraft/crates/ui-egui/src/stylus_wheel.rs
           grep -Fq 'include_bytes!("stylus_wheel_ec.rgba")' source/effectcraft/crates/ui-egui/src/stylus_wheel.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('crates/ui-egui/src/app/input.rs','crates/ui-egui/src/widgets.rs'):
+              p=Path('source/effectcraft')/name
+              p.write_text(p.read_text().rstrip()+'\\n')
+          PY
           git -C source/effectcraft diff --check
           echo "PASS: approved Android overlay applied only in disposable checkout; no production signing or release"
 

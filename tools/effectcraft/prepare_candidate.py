@@ -38,6 +38,11 @@ change_once(
     '{version_line}\nedition.workspace = true',
 )
 change_once("{serde_dep}{rfd_dep}{cpal_dep}{host_deps}", '{serde_dep}{rfd_dep}{cpal_dep}{host_deps}effectcraft-text = {{ path = "../../crates/text" }}\\n')
+change_once(
+    "        done(paths);",
+    "        done(Ok(paths));",
+)
+
 path.write_text(source)
 print("PASS: EffectCraft host-wired session and Android revision applied only in temporary CI checkout.")
 

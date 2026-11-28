@@ -1,0 +1,225 @@
+name: EffectCraft v0.25.1-android.1 isolated ARM64 integration test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/effectcraft-upstream-v0251-20261128
+    paths:
+      - .github/workflows/effectcraft-v0251-android1-test.yml
+      - tools/effectcraft/upstream-lock.json
+      - tools/effectcraft/verify_upstream.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-v0251-android1-isolated-test
+  cancel-in-progress: false
+
+jobs:
+  arm64-test:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/effectcraft-upstream-v0251-20261128' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_STRIP: 'symbols'
+      CARGO_PROFILE_RELEASE_LTO: 'thin'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1'
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: '3'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+      - name: Checkout protected EffectCraft Android baseline and integration overlay
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact protected baseline, scoped changes and release lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE=2e2c525e7baf20cc769b125dc0a55766b2cd1bcb
+          git fetch --depth=1 origin "$BASELINE"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASELINE"
+          git merge-base --is-ancestor "$BASELINE" HEAD
+          ACTUAL="$(git diff --name-only "$BASELINE" HEAD | sort)"
+          EXPECTED="$(printf '%s\n' \
+            .github/workflows/effectcraft-v0251-android1-test.yml \
+            tools/effectcraft/upstream-lock.json \
+            tools/effectcraft/verify_upstream.py | sort)"
+          test "$ACTUAL" = "$EXPECTED" || {
+            echo "::error::Unexpected changes outside the isolated EffectCraft integration scope"
+            printf '%s\n' "$ACTUAL"
+            exit 1
+          }
+          test ! -e keys/artcraft-builder.jks
+          test ! -e keys/.keystore-password
+          python3 tools/effectcraft/verify_upstream.py
+          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+          python3 -m py_compile tools/effectcraft/*.py
+          echo "PASS: protected Android baseline remains the parent; only EffectCraft integration metadata/workflow changed"
+
+      - name: Checkout immutable official Storytold EffectCraft v0.25.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: f5ce0dc56803a47ea9e483f400ab1c24426caa50
+          path: source/effectcraft
+          persist-credentials: false
+
+      - name: Verify upstream source, stable release and dependency pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source/effectcraft rev-parse HEAD)" = f5ce0dc56803a47ea9e483f400ab1c24426caa50
+          grep -Fq 'version = "0.25.1"' source/effectcraft/Cargo.toml
+          grep -Fq 'rust-version = "1.95"' source/effectcraft/Cargo.toml
+          grep -Fq 'rev=a517b3846ee8457d84ee4975110bfda6797c44dc' source/effectcraft/Cargo.lock
+          grep -Fq 'rev=6d518fc799681571963842f95b55a6b68431b15a' source/effectcraft/Cargo.lock
+          grep -Fq 'pub fn session() -> Session' source/effectcraft/crates/host/src/lib.rs
+          echo "PASS: upstream v0.25.1, winit and egui dependency pins verified"
+
+      - name: Install Python patch dependencies
+        run: python3 -m pip install 'Pillow==11.3.0' 'toml==0.10.2'
+
+      - name: Prepare isolated builder and stage Android revision metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/effectcraft/prepare_candidate.py .
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          build=Path("lib/build-common.sh")
+          s=build.read_text()
+          old='version_line = f\'version = "{app_version}-android.3"\' if app == "effectcraft" else "version.workspace = true"'
+          new='version_line = f\'version = "{app_version}-android.1"\' if app == "effectcraft" else "version.workspace = true"'
+          assert s.count(old)==1, "EffectCraft Android version hook drift"
+          s=s.replace(old,new,1)
+          assert s.count("version_code = 16781315")==1, "EffectCraft versionCode hook drift"
+          s=s.replace("version_code = 16781315","version_code = 16860001",1)
+          build.write_text(s)
+          manifest=Path("tools/approved-branding/assets/manifest.json")
+          m=json.loads(manifest.read_text())
+          expected={"app":"effectcraft","package":"com.artcraft.effectcraft",
+                    "version_name":"0.16.0-android.8","version_code":16781320}
+          for k,v in expected.items():
+              assert m.get(k)==v, (k,m.get(k))
+          m["version_name"]="0.25.1-android.1"
+          m["version_code"]=16860001
+          manifest.write_text(json.dumps(m,indent=2)+"\n")
+          print("PASS: only disposable build metadata advanced to 0.25.1-android.1 / 16860001")
+          PY
+
+      - name: Rebase approved Android pointer and hover handling onto pinned upstream winit
+        shell: bash
+        env:
+          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
+        run: |
+          set -euo pipefail
+          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
+          git init -q vendor/winit
+          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
+          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
+          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
+          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
+          python3 tools/effectcraft/v020_winit_compat.py \
+            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
+            vendor/winit/src/platform_impl/android/mod.rs
+          python3 tools/effectcraft/patch_android_lifecycle.py vendor/winit
+          python3 tools/effectcraft/patch_android13_input.py vendor/winit
+          python3 tools/effectcraft/patch_android14_glass.py vendor/winit
+          python3 tools/effectcraft/patch_stylus_native.py vendor/android-activity
+          git -C vendor/winit diff --check
+
+      - name: Apply existing approved EffectCraft Android overlays to upstream v0.25.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/effectcraft/integrate_updater.py .
+          python3 tools/effectcraft/patch_stylus_wheel.py .
+          python3 tools/effectcraft/patch_wheel_photocraft_parity.py .
+          python3 tools/effectcraft/patch_updater_download.py .
+          python3 tools/effectcraft/patch_updater_photocraft_dialog.py .
+          python3 tools/effectcraft/render_wheel_ec_logo.py .
+          python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
+          git -C source/effectcraft diff --check
+          echo "PASS: approved Android overlay applied only in disposable checkout; no production signing or release"
+
+      - name: Configure Java 21 and Rust 1.95 for ARM64 Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Install Android SDK 35, build tools 35 and NDK 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$ANDROID_HOME"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -maxdepth 4 -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build disposable-key ARM64 test APK in a separate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s tools/approved-branding/assets/EffectCraft.png
+          bash build.sh -effectcraft \
+            -packagename=com.artcraft.effectcraft.upstreamtest \
+            -appicon=tools/approved-branding/assets/EffectCraft.png
+          APK="$(find output -maxdepth 1 -type f -name 'effectcraft-0.25.1.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          mkdir -p candidate
+          cp "$APK" candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk > candidate/signing.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk > candidate/badging.txt
+          grep -F "name='com.artcraft.effectcraft.upstreamtest'" candidate/badging.txt
+          grep -F "versionName='0.25.1-android.1'" candidate/badging.txt
+          grep -F "versionCode='16860001'" candidate/badging.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          apk=Path("candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk")
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              libs=[n for n in names if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs), libs
+              assert any(n.endswith(".dex") for n in names)
+          print("PASS: package, version, DEX and ARM64-only native payload")
+          PY
+          if grep -Eiq '10c93a0a55b9d66b6c64ac87372d5f3118c74a11c99fecb6e9f3951d2cbe8577' candidate/signing.txt; then
+            echo "::error::Test APK unexpectedly carries the production certificate"
+            exit 1
+          fi
+          sha256sum candidate/*.apk > candidate/SHA256SUMS.txt
+          {
+            echo "### EffectCraft v0.25.1-android.1 isolated ARM64 candidate"
+            echo "Package: com.artcraft.effectcraft.upstreamtest"
+            echo "Version: 0.25.1-android.1 (versionCode 16860001)"
+            echo "Temporary builder signing only. No production key, tag, release, or publication."
+            cat candidate/SHA256SUMS.txt
+            grep '^package:' candidate/badging.txt
+            grep -m1 'certificate SHA-256 digest' candidate/signing.txt
+            echo "Device testing remains required."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload isolated test APK (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-v0.25.1-android.1-ARM64-ISOLATED-TEST
+          path: candidate/
+          retention-days: 14
+          if-no-files-found: error

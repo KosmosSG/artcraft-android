@@ -11,6 +11,7 @@ on:
       - .github/workflows/effectcraft-v0251-android1-test.yml
       - tools/effectcraft/upstream-lock.json
       - tools/effectcraft/verify_upstream.py
+      - tools/effectcraft/prepare_candidate.py
 
 permissions:
   contents: read
@@ -51,7 +52,8 @@ jobs:
           EXPECTED="$(printf '%s\n' \
             .github/workflows/effectcraft-v0251-android1-test.yml \
             tools/effectcraft/upstream-lock.json \
-            tools/effectcraft/verify_upstream.py | sort)"
+            tools/effectcraft/verify_upstream.py \
+            tools/effectcraft/prepare_candidate.py | sort)"
           test "$ACTUAL" = "$EXPECTED" || {
             echo "::error::Unexpected changes outside the isolated EffectCraft integration scope"
             printf '%s\n' "$ACTUAL"
@@ -101,8 +103,6 @@ jobs:
           new='version_line = f\'version = "{app_version}-android.1"\' if app == "effectcraft" else "version.workspace = true"'
           assert s.count(old)==1, "EffectCraft Android version hook drift"
           s=s.replace(old,new,1)
-          assert s.count("version_code = 16781315")==1, "EffectCraft versionCode hook drift"
-          s=s.replace("version_code = 16781315","version_code = 16860001",1)
           build.write_text(s)
           manifest=Path("tools/approved-branding/assets/manifest.json")
           m=json.loads(manifest.read_text())
@@ -219,7 +219,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/EffectCraft-v0.25.1-android.1-ARM64-TEST.apk > candidate/badging.txt
           grep -F "name='com.artcraft.effectcraft.upstreamtest'" candidate/badging.txt
           grep -F "versionName='0.25.1-android.1'" candidate/badging.txt
-          grep -F "versionCode='16860001'" candidate/badging.txt
+          grep -E "versionCode='[1-9][0-9]*'" candidate/badging.txt
           python3 - <<'PY'
           from pathlib import Path
           import zipfile
@@ -240,7 +240,7 @@ jobs:
           {
             echo "### EffectCraft v0.25.1-android.1 isolated ARM64 candidate"
             echo "Package: com.artcraft.effectcraft.upstreamtest"
-            echo "Version: 0.25.1-android.1 (versionCode 16860001)"
+            echo "Version: 0.25.1-android.1 (cargo-apk2 semver-derived test versionCode)"
             echo "Temporary builder signing only. No production key, tag, release, or publication."
             cat candidate/SHA256SUMS.txt
             grep '^package:' candidate/badging.txt

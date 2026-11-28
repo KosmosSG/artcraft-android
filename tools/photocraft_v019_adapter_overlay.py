@@ -193,6 +193,17 @@ pub fn artcraft_pad_set_left(v: bool) {
 pub fn artcraft_take_update_request() -> bool {
     ARTCRAFT_UPDATE_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)
 }
+#[cfg(target_os = "android")]
+static ARTCRAFT_PC_TXT2IMG_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+pub fn artcraft_request_pc_txt2img() {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+#[cfg(target_os = "android")]
+pub fn artcraft_take_pc_txt2img_request() -> bool {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
 '''
     )
     replace_once(

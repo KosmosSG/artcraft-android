@@ -2,6 +2,13 @@ name: EffectCraft v0.25.1-android.1 isolated ARM64 integration test
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/effectcraft-upstream-v0251-20261128
+    paths:
+      - .github/workflows/effectcraft-v0251-android1-test.yml
+      - tools/effectcraft/upstream-lock.json
+      - tools/effectcraft/verify_upstream.py
 
 permissions:
   contents: read
@@ -12,7 +19,7 @@ concurrency:
 
 jobs:
   arm64-test:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/effectcraft-upstream-v0251-20261128' && github.event_name == 'workflow_dispatch'
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/integration/effectcraft-upstream-v0251-20261128' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

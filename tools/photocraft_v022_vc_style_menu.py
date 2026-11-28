@@ -83,6 +83,10 @@ def main() -> None:
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
+                if ui.button("Text to Image · PxC / ComfyUI…").clicked() {
+                    crate::menus::artcraft_request_pc_txt2img();
+                    ui.close();
+                }
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -145,6 +149,8 @@ def main() -> None:
     assert output.count('ui.menu_button("Stylus Wheel", |ui| {') == 1
     assert output.count('action(ui, "Customization", 35);') == 1
     assert output.count('ui.menu_button("Diagnostics", |ui| {') == 1
+    assert output.count("artcraft_request_pc_txt2img()") == 1
+    host_output = host.read_text(encoding="utf-8")
     assert output.count('ui.menu_button("Touch Shortcut Pad", |ui| {') == 1
     assert 'Keyboard Diagnostics (test)' not in output
     print("PASS: VectorCraft-style compact Pc menu with PhotoCraft actions preserved")

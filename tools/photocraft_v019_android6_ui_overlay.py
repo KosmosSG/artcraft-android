@@ -51,6 +51,17 @@ pub fn artcraft_queue_pc_menu_action(action: u8) {
 pub fn artcraft_take_pc_menu_action() -> u8 {
     ARTCRAFT_PC_MENU_ACTION.swap(0, std::sync::atomic::Ordering::Relaxed)
 }
+#[cfg(target_os = "android")]
+static ARTCRAFT_PC_TXT2IMG_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+pub fn artcraft_request_pc_txt2img() {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+#[cfg(target_os = "android")]
+pub fn artcraft_take_pc_txt2img_request() -> bool {
+    ARTCRAFT_PC_TXT2IMG_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
 ''')
     replace(brand,
 '''    ui.ctx().data_mut(|d| d.insert_temp(rect_id(), r));
@@ -74,6 +85,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
+                action(ui, "Text to Image · PxC / ComfyUI…", 34);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -131,6 +143,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             2 => self.show_background_setup = true,
             3 => self.show_connection = true,
             4 => self.show_about = true,
+            5 => self.show_txt2img = true,
             _ => {}
         }
     }
@@ -186,16 +199,21 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
 '''        self.inner.ui(ui, _frame);
 ''',
 '''        self.inner.ui(ui, _frame);
-        // The in-app Pc mark is a menu launcher; act only after upstream
-        // painted its title bar, to avoid borrowing the document UI twice.
-        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {
+        // Text-to-Image uses its own one-shot signal, separate from numeric Pc
+        // menu actions. Open the existing consent-gated dialog on the UI frame.
+        if photocraft_ui_egui::menus::artcraft_take_pc_txt2img_request() {
+            self.ai_menu.open_from_pc(5);
+        }
+        // Dispatch the legacy Pc action queue. Text-to-Image is intentionally
+        // handled by its dedicated request flag in the final Pc menu, so it
+        // cannot collide with the Stylus Wheel action (34).
+        let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();
+        match pc_action {
             1 => {
                 let visible = !photocraft_ui_egui::menus::artcraft_ai_tools_visible();
                 photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(visible);
             }
-            2..=4 => self.ai_menu.open_from_pc(
-                photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()
-            ),
+            2..=4 => self.ai_menu.open_from_pc(pc_action),
             5 => { if let Err(e) = self.bridge.request_font_import(false) { log::warn!("Font import: {e}"); } },
             6 => { if let Err(e) = self.bridge.request_font_import(true) { log::warn!("Font folder: {e}"); } },
             7 => self.android_fonts.refresh(),
@@ -210,7 +228,7 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             12 => { photocraft_ui_egui::menus::artcraft_pad_set_left(false);
                     photocraft_ui_egui::menus::artcraft_pad_set_visible(true); }
             13..=16 => {
-                let id = match photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder() {
+                let id = match pc_action {
                     13 => "window.theme.toggle",
                     14 => "window.theme.pro",
                     15 => "window.theme.proLight",
@@ -222,19 +240,14 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             }
             _ => {}
         }
-''')
-    # Replace the sentinel with a single action variable rather than consuming
-    # the atomic twice (the second take would always return 0).
+    ''')
+    # The action queue is consumed exactly once by the dispatch block above.
+    # Validate that staged shape directly; do not rewrite it a second time.
     h=host.read_text(encoding="utf-8")
-    needle='''        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {'''
-    if h.count(needle) != 1:
-        raise RuntimeError("Action queue staged incorrectly")
-    h=h.replace(needle,'''        let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();
-        match pc_action {''',1)
-    sentinel='photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()'
-    if h.count(sentinel) != 2:
-        raise RuntimeError("Action queue placeholders changed")
-    h=h.replace(sentinel,'pc_action')
+    if h.count("let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();") != 1:
+        raise RuntimeError("Expected exactly one Pc action queue consumer")
+    if h.count("\n        match pc_action {\n") != 1:
+        raise RuntimeError("Pc action dispatch block changed")
     host.write_text(h,encoding="utf-8")
 
     replace(host, "    fn request_update_check(&self) -> Result<(), String> {\n",

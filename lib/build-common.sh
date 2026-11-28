@@ -323,7 +323,7 @@ PY
 say 4 "Preparing the NativeActivity launcher..."
 if [[ -x "adapters/$APP/prepare.sh" ]]; then
     echo "Using app-specific adapter: adapters/$APP/prepare.sh"
-    bash "adapters/$APP/prepare.sh" "$APP" "$TITLE" "$SRC" "$MODE"
+    bash "adapters/$APP/prepare.sh" "$APP" "$TITLE" "$SRC" "$MODE" "$APPNAME" "$PACKAGENAME" "$APPICON"
 else
     python3 - "$ROOT" "$SRC" "$APP" "$TITLE" "$TARGET_SDK" "$APPNAME" "$PACKAGENAME" "$APPICON" <<'PY'
 from pathlib import Path
@@ -2711,6 +2711,39 @@ print(f"  UI crate: {ui_pkg}")
 print(f"  UI app type: {app_type}")
 print(f"  Icon: {icon.relative_to(src)}")
 print("  Orientation: sensor (allows portrait and landscape rotation)")
+PY
+fi
+
+# Apply user-requested build identity overrides after the app-specific adapter has
+# copied its protected manifest. This keeps release-owned prepare.sh byte-identical.
+if [[ -n "$APPNAME" || -n "$PACKAGENAME" || -n "$APPICON" ]]; then
+    python3 - "$ANDROID_DIR/Cargo.toml" "$ANDROID_DIR" "$APPNAME" "$PACKAGENAME" "$APPICON" "$ROOT" <<'PY'
+from pathlib import Path
+import json, shutil, sys, tomllib
+manifest = Path(sys.argv[1])
+android_dir = Path(sys.argv[2])
+app_name, package_name, app_icon, root = sys.argv[3:]
+text = manifest.read_text()
+if package_name:
+    old = 'package = "com.artcraft.photocraft"'
+    if text.count(old) != 1:
+        raise SystemExit("PhotoCraft package override anchor is not unique")
+    text = text.replace(old, "package = " + json.dumps(package_name), 1)
+if app_name:
+    old = 'label = "PhotoCraft"'
+    if old not in text:
+        raise SystemExit("PhotoCraft display-name override anchor is missing")
+    text = text.replace(old, "label = " + json.dumps(app_name))
+manifest.write_text(text)
+tomllib.loads(text)
+if app_icon:
+    icon = Path(app_icon)
+    if not icon.is_absolute():
+        icon = Path(root) / icon
+    if not icon.is_file():
+        raise SystemExit(f"Requested PhotoCraft icon not found: {icon}")
+    (android_dir / "res" / "drawable").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(icon, android_dir / "res" / "drawable" / "ic_launcher.png")
 PY
 fi
 

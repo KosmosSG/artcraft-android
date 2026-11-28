@@ -39,6 +39,7 @@ def main() -> None:
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
+                action(ui, "Text to Image · PxC / ComfyUI…", 34);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -73,7 +74,7 @@ def main() -> None:
             });'''
     old_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", old)})
     new_ids = sorted({int(n) for n in __import__("re").findall(r", (\d+)\);", replacement)})
-    if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]:
+    if old_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,34] or new_ids != [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,19,34]:
         raise RuntimeError(f"Pc menu action parity changed: {old_ids} vs {new_ids}")
     # The Appearance submenu contains Theme only; its existing action IDs are
     # deliberately retained, so the Android bridge and preference persistence

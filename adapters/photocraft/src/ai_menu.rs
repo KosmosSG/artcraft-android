@@ -85,15 +85,6 @@ impl AndroidAiMenu {
         }
     }
 
-    /// Open a specific Android AI panel from the preserved PhotoCraft Pc menu.
-    /// The Pc menu dispatch uses the stable AI action ID (5) for Text to Image.
-    pub(crate) fn open_from_pc(&mut self, action: u8) {
-        match action {
-            5 => self.show_txt2img = true,
-            _ => log::warn!("Unknown PhotoCraft AI panel action from Pc menu: {action}"),
-        }
-    }
-
     fn persist_visibility(&mut self, visible: bool) {
         if visible == self.last_visible { return; }
         // Hide/show always responds even if storage is temporarily unavailable.

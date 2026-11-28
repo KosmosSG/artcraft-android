@@ -42,6 +42,20 @@ change_once(
     "        done(paths);",
     "        done(Ok(paths));",
 )
+change_once(
+    """            FileDialog::Open { many: true, .. } => saf_open_paths_many(&bridge, &state),
+            FileDialog::Open { .. } | FileDialog::OpenProject => {
+                saf_open_paths(&bridge, &state).into_iter().take(1).collect()
+            }
+            FileDialog::Folder => saf_folder_path(&bridge, &state).into_iter().collect(),
+            FileDialog::Save { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),""",
+    """            FileDialog::Open { many: true, .. } | FileDialog::Script { many: true, .. } => saf_open_paths_many(&bridge, &state),
+            FileDialog::Open { .. } | FileDialog::OpenProject | FileDialog::Script { many: false, .. } => {
+                saf_open_paths(&bridge, &state).into_iter().take(1).collect()
+            }
+            FileDialog::Folder | FileDialog::ScriptFolder { .. } => saf_folder_path(&bridge, &state).into_iter().collect(),
+            FileDialog::Save { default, .. } | FileDialog::ScriptSave { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),""",
+)
 
 path.write_text(source)
 print("PASS: EffectCraft host-wired session and Android revision applied only in temporary CI checkout.")

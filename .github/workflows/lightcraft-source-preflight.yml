@@ -1,0 +1,52 @@
+name: LightCraft pinned source preflight (no APK or signing)
+on:
+  push:
+    branches: [review/lightcraft-approved-icon-20261022]
+    paths: ['tools/lightcraft/**', '.github/workflows/lightcraft-source-preflight.yml']
+permissions:
+  contents: read
+concurrency:
+  group: lightcraft-source-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: suite
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/lightcraft
+          ref: ec0cda9a6f320e3b32f659f16718f7bce6c3f12f
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: morte2437/photocraft-android
+          ref: 71c919b768c6d70bc8231b92e3de6a81fb949996
+          path: android-reference
+          persist-credentials: false
+      - name: Test provenance rejection cases
+        run: python3 -m unittest discover -s suite/tools/lightcraft -p 'test_*.py' -v
+      - name: Check immutable source, host APIs, reference recipe and original Lc
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 suite/tools/lightcraft/audit_source.py source builder android-reference suite > lightcraft-source-preflight.json
+          cat lightcraft-source-preflight.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: lightcraft-source-preflight
+          path: lightcraft-source-preflight.json
+          if-no-files-found: error
+          retention-days: 14

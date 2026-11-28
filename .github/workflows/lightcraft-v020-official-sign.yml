@@ -1,0 +1,94 @@
+name: LightCraft v0.20.0 Original Certificate Signing (NO PUBLISH)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/lightcraft-upstream-20261110
+    paths:
+      - '.github/workflows/lightcraft-v020-official-sign.yml'
+
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sign:
+    if: github.repository == 'KosmosSG/artcraft-android' && github.ref_name == 'integration/lightcraft-upstream-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Require protected signing configuration
+        env:
+          KEYSTORE_B64: ${{ secrets.LIGHTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.LIGHTCRAFT_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64"
+          test -n "$STOREPASS"
+      - name: Download independently verified production-package build
+        uses: actions/download-artifact@v4
+        with:
+          run-id: '42792173179'
+          github-token: ${{ github.token }}
+          name: LightCraft-v0.20.0-android.1-PRODUCTION-PACKAGE-RESIGN-REQUIRED
+          path: input
+      - name: Verify package, sign using ORIGINAL production key, and verify certificate
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LIGHTCRAFT_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.LIGHTCRAFT_KEYSTORE_PASSWORD }}
+          KEYPASS: ${{ secrets.LIGHTCRAFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          APK=input/LightCraft-v0.20.0-android.1-arm64-v8a-RESIGN-REQUIRED.apk
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          SIGNER="$SDK/build-tools/35.0.0/apksigner"
+          test -x "$AAPT" && test -x "$SIGNER"
+          "$AAPT" dump badging "$APK" > /tmp/lightcraft-badging
+          grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.20.0-android.1'" /tmp/lightcraft-badging
+          unzip -Z1 "$APK" | grep -Eq '^lib/arm64-v8a/[^/]+\.so$'
+          # Reject wrong APK bytes and non-increasing versionCode before accessing the permanent key.
+          sed 's#verified/##g' input/SHA256SUMS.txt | (cd input && sha256sum -c -)
+          curl --fail --location --retry 3 --silent --show-error \
+            'https://github.com/KosmosSG/artcraft-android/releases/download/lightcraft-v0.18.0-android.1/LightCraft-v0.18.0-android.1-arm64-v8a.apk' \
+            -o /tmp/lightcraft-v018.apk
+          printf '%s  %s\n' '035eb16d7ebfe35bc3cd109de71223e678aa63a982fe471ca327079d132d39f0' '/tmp/lightcraft-v018.apk' | sha256sum -c -
+          "$AAPT" dump badging /tmp/lightcraft-v018.apk > /tmp/lightcraft-previous-badging
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          def code(path):
+              data = Path(path).read_text()
+              found = re.search(r"(?m)^package: name='com\.artcraft\.lightcraft' versionCode='(\d+)'", data)
+              if not found:
+                  raise SystemExit("STOP: published/current package versionCode not parseable")
+              return int(found.group(1))
+          prev = code("/tmp/lightcraft-previous-badging")
+          new = code("/tmp/lightcraft-badging")
+          print(f"Production versionCode continuity: {prev} -> {new}")
+          if new <= prev:
+              raise SystemExit("STOP: new versionCode is not higher than published production APK")
+          PY
+          printf %s "$KEYSTORE_B64" | base64 -d > /tmp/lightcraft-release.p12
+          printf %s "$STOREPASS" > /tmp/lightcraft-storepass
+          mkdir -p verified
+          cp "$APK" verified/LightCraft-v0.20.0-android.1-arm64-v8a.apk
+          "$SIGNER" sign --ks /tmp/lightcraft-release.p12 --ks-type PKCS12 --ks-key-alias artcraftbuilder --ks-pass file:/tmp/lightcraft-storepass --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true verified/LightCraft-v0.20.0-android.1-arm64-v8a.apk
+          "$SIGNER" verify --verbose --print-certs verified/LightCraft-v0.20.0-android.1-arm64-v8a.apk > /tmp/lightcraft-certificate
+          EXPECTED='b2c894be26afd541ed9915aa3861b82b040f938dfcd84d853feaed8ce29bf2f4'
+          grep -Fqi "certificate SHA-256 digest: $EXPECTED" /tmp/lightcraft-certificate || { echo 'STOP: production certificate fingerprint mismatch'; exit 1; }
+          "$AAPT" dump badging verified/LightCraft-v0.20.0-android.1-arm64-v8a.apk | grep -Eq "^package: name='com.artcraft.lightcraft' versionCode='[0-9]+' versionName='0.20.0-android.1'"
+          sha256sum verified/*.apk > verified/SHA256SUMS.txt
+          rm -f /tmp/lightcraft-release.p12 /tmp/lightcraft-storepass /tmp/lightcraft-v018.apk
+      - name: Upload verified permanent-signed APK for manual publication only
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCraft-v0.20.0-android.1-PRODUCTION-SIGNED-VERIFIED
+          path: verified/
+          if-no-files-found: error
+          retention-days: 14

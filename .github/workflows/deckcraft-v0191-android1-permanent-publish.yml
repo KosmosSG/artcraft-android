@@ -575,17 +575,9 @@ jobs:
           echo 'EXPERIMENTAL: legacy .ppt import is NOT supported or advertised by extension; device-verify MagicOS defaults before any release.' >> "$GITHUB_STEP_SUMMARY"
           echo "Build complete; NO production signing or GitHub Release." >> "$GITHUB_STEP_SUMMARY"
           cat unsigned/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
-      - name: Retain verified production-signed APK before release publication
-        uses: actions/upload-artifact@v4
-        with:
-          name: DeckCraft-v0.19.1-android.1-PRODUCTION-SIGNED-RECOVERY
-          path: verified-release/
-          if-no-files-found: error
-          retention-days: 14
-      - name: Permanently sign optimized ARM64 APK and publish stable release
+      - name: Permanently sign and verify optimized ARM64 APK with original certificate
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.DECKCRAFT_RELEASE_TOKEN }}
           KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
           STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
           KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
@@ -596,9 +588,6 @@ jobs:
           APK=DeckCraft-v0.19.1-android.1-arm64-v8a.apk
           CERT=7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
           BT="$ANDROID_HOME/build-tools/35.0.0"
-          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
-            echo "::error::Release or tag already exists; refusing to overwrite"; exit 1
-          fi
           for v in KEYSTORE_B64 STOREPASS KEYALIAS KEYPASS; do [[ -n "${!v}" ]] || { echo "::error::Missing signing secret $v"; exit 1; }; done
           umask 077
           K="$RUNNER_TEMP/deckcraft-original.p12"; C="$RUNNER_TEMP/deckcraft-original.pem"
@@ -654,6 +643,24 @@ jobs:
           Upstream: storytold/deckcraft v0.19.1
           Rollback baseline: v0.18.1-android.8
           NOTES
+      - name: Retain verified production-signed APK before release publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-v0.19.1-android.1-PRODUCTION-SIGNED-RECOVERY
+          path: verified-release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish stable release and verify uploaded APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DECKCRAFT_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=deckcraft-v0.19.1-android.1
+          APK=DeckCraft-v0.19.1-android.1-arm64-v8a.apk
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Release or tag already exists; refusing to overwrite"; exit 1
+          fi
           gh release create "$TAG" "verified-release/$APK" verified-release/SHA256SUMS.txt verified-release/signing-certificate-sha256.txt verified-release/RELEASE-NOTES.md -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "DeckCraft v0.19.1-android.1 — Stable ARM64" --notes-file verified-release/RELEASE-NOTES.md
           PUB="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")"
           jq -e --arg tag "$TAG" --arg sha "$GITHUB_SHA" '.tag_name==$tag and .draft==false and .prerelease==false and .target_commitish==$sha' <<<"$PUB" >/dev/null

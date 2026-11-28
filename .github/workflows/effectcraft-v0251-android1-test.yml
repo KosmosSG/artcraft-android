@@ -152,7 +152,7 @@ jobs:
           from pathlib import Path
           for name in ('crates/ui-egui/src/app/input.rs','crates/ui-egui/src/widgets.rs'):
               p=Path('source/effectcraft')/name
-              p.write_text(p.read_text().rstrip()+'\\n')
+              p.write_text(p.read_text().rstrip()+'\n')
           PY
           git -C source/effectcraft diff --check
           echo "PASS: approved Android overlay applied only in disposable checkout; no production signing or release"

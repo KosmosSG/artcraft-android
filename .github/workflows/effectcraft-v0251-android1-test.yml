@@ -185,10 +185,9 @@ jobs:
         run: |
           set -euo pipefail
           test -s tools/approved-branding/assets/EffectCraft.png
-          cp tools/approved-branding/assets/EffectCraft.png source/effectcraft/EffectCraft.png
           bash build.sh -effectcraft \
             -packagename=com.artcraft.effectcraft.upstreamtest \
-            -appicon=source/effectcraft/EffectCraft.png
+            -appicon=tools/approved-branding/assets/EffectCraft.png
           APK="$(find output -maxdepth 1 -type f -name 'effectcraft-0.25.1.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
           mkdir -p candidate

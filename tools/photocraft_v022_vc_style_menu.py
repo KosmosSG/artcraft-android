@@ -51,7 +51,7 @@ def main() -> None:
             raise RuntimeError(f"Expected exact prior PhotoCraft feature once: {needle}")
     if previous.count('theme_action(ui,') != 14:
         raise RuntimeError("Full 14-theme catalogue not present: aborting rather than losing themes")
-    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,34,35):
+    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,34,35,37):
         if f", {id});" not in previous:
             raise RuntimeError(f"Pc action ID {id} absent from previous menu")
 
@@ -83,6 +83,7 @@ def main() -> None:
             ui.menu_button("AI Tools", |ui| {
                 action(ui, "Remove Background · U2NetP…", 2);
                 action(ui, "ComfyUI Connection…", 3);
+                action(ui, "Text to Image · PxC / ComfyUI…", 37);
                 action(ui, "About AI Tools…", 4);
                 ui.separator();
                 action(ui, if crate::menus::artcraft_ai_tools_visible() {
@@ -134,7 +135,8 @@ def main() -> None:
 
     # Open the established official PhotoCraft keyboard shortcut preferences
     # instead of inventing an Android-only nonfunctional settings screen.
-    new_dispatch = '''            36 => {
+    new_dispatch = '''            37 => self.ai_menu.open_from_pc(5),
+            36 => {
                 if let Err(error) = photocraft_ui_egui::menus::invoke(
                     &mut self.inner, ui.ctx(), "edit.keyboardShortcuts", serde_json::json!({})
                 ) { log::warn!("Keyboard Shortcuts menu: {error}"); }
@@ -145,6 +147,9 @@ def main() -> None:
     assert output.count('ui.menu_button("Stylus Wheel", |ui| {') == 1
     assert output.count('action(ui, "Customization", 35);') == 1
     assert output.count('ui.menu_button("Diagnostics", |ui| {') == 1
+    assert output.count('action(ui, "Text to Image · PxC / ComfyUI…", 37);') == 1
+    host_output = host.read_text(encoding="utf-8")
+    assert host_output.count('37 => self.ai_menu.open_from_pc(5),') == 1
     assert output.count('ui.menu_button("Touch Shortcut Pad", |ui| {') == 1
     assert 'Keyboard Diagnostics (test)' not in output
     print("PASS: VectorCraft-style compact Pc menu with PhotoCraft actions preserved")

@@ -185,11 +185,10 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
 ''')
 
     replace(host,
-'''        self.inner.ui(ui, _frame);
+'''        if self.ai_menu.show(ui, &mut self.inner.session) {
 ''',
-'''        self.inner.ui(ui, _frame);
-        // The in-app Pc mark is a menu launcher; act only after upstream
-        // painted its title bar, to avoid borrowing the document UI twice.
+'''        // Consume the Pc menu action before AndroidAiMenu::show draws its windows.
+        // This guarantees Text-to-Image state is set in the same frame as rendering.
         match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {
             1 => {
                 let visible = !photocraft_ui_egui::menus::artcraft_ai_tools_visible();
@@ -224,8 +223,9 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             }
             _ => {}
         }
+        if self.ai_menu.show(ui, &mut self.inner.session) {
 ''')
-    # Replace the sentinel with a single action variable rather than consuming
+ rather than consuming
     # the atomic twice (the second take would always return 0).
     h=host.read_text(encoding="utf-8")
     needle='''        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {'''

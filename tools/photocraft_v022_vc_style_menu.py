@@ -119,7 +119,7 @@ def main() -> None:
                 ui.label("Official upstream: v0.22.0");
                 ui.label("ARM64 test build · disposable signing");
             });'''
-    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,18,19,35,36):
+    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,18,19,35,36,37):
         if f", {id});" not in new_menu:
             raise RuntimeError(f"Restyle dropped action {id}")
     if 'artcraft_queue_pc_menu_action(34)' not in new_menu:

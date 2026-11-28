@@ -199,6 +199,11 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
 '''        self.inner.ui(ui, _frame);
 ''',
 '''        self.inner.ui(ui, _frame);
+        // Text-to-Image uses its own one-shot signal, separate from numeric Pc
+        // menu actions. Open the existing consent-gated dialog on the UI frame.
+        if photocraft_ui_egui::menus::artcraft_take_pc_txt2img_request() {
+            self.ai_menu.open_from_pc(5);
+        }
         // Dispatch the legacy Pc action queue. Text-to-Image is intentionally
         // handled by its dedicated request flag in the final Pc menu, so it
         // cannot collide with the Stylus Wheel action (34).
@@ -236,18 +241,13 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
             _ => {}
         }
     ''')
-    # Replace the sentinel with a single action variable rather than consuming
-    # the atomic twice (the second take would always return 0).
+    # The action queue is consumed exactly once by the dispatch block above.
+    # Validate that staged shape directly; do not rewrite it a second time.
     h=host.read_text(encoding="utf-8")
-    needle='''        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {'''
-    if h.count(needle) != 1:
-        raise RuntimeError("Action queue staged incorrectly")
-    h=h.replace(needle,'''        let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();
-        match pc_action {''',1)
-    sentinel='photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()'
-    if h.count(sentinel) != 2:
-        raise RuntimeError("Action queue placeholders changed")
-    h=h.replace(sentinel,'pc_action')
+    if h.count("let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();") != 1:
+        raise RuntimeError("Expected exactly one Pc action queue consumer")
+    if h.count("match pc_action {") != 1:
+        raise RuntimeError("Pc action dispatch block changed")
     host.write_text(h,encoding="utf-8")
 
     replace(host, "    fn request_update_check(&self) -> Result<(), String> {\n",

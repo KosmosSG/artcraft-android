@@ -224,8 +224,8 @@ pub fn artcraft_take_pc_menu_action() -> u8 {
             _ => {}
         }
         if self.ai_menu.show(ui, &mut self.inner.session) {
-''')
- rather than consuming
+    ''')
+    # Replace the sentinel with a single action variable rather than consuming
     # the atomic twice (the second take would always return 0).
     h=host.read_text(encoding="utf-8")
     needle='''        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {'''

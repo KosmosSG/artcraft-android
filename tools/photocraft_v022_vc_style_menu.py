@@ -51,7 +51,7 @@ def main() -> None:
             raise RuntimeError(f"Expected exact prior PhotoCraft feature once: {needle}")
     if previous.count('theme_action(ui,') != 14:
         raise RuntimeError("Full 14-theme catalogue not present: aborting rather than losing themes")
-    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,34,35,37):
+    for id in (1,2,3,4,5,6,7,8,9,10,11,12,13,16,19,34,35):
         if f", {id});" not in previous:
             raise RuntimeError(f"Pc action ID {id} absent from previous menu")
 

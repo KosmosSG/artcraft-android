@@ -199,15 +199,16 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
 '''        self.inner.ui(ui, _frame);
 ''',
 '''        self.inner.ui(ui, _frame);
-        // Dispatch Pc menu actions after the editor UI pass.
-        match photocraft_ui_egui::menus::artcraft_take_pc_menu_action() {
+        // Dispatch the legacy Pc action queue. Text-to-Image is intentionally
+        // handled by its dedicated request flag in the final Pc menu, so it
+        // cannot collide with the Stylus Wheel action (34).
+        let pc_action = photocraft_ui_egui::menus::artcraft_take_pc_menu_action();
+        match pc_action {
             1 => {
                 let visible = !photocraft_ui_egui::menus::artcraft_ai_tools_visible();
                 photocraft_ui_egui::menus::artcraft_set_ai_tools_visible(visible);
             }
-            2..=4 => self.ai_menu.open_from_pc(
-                photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder()
-            ),
+            2..=4 => self.ai_menu.open_from_pc(pc_action),
             5 => { if let Err(e) = self.bridge.request_font_import(false) { log::warn!("Font import: {e}"); } },
             6 => { if let Err(e) = self.bridge.request_font_import(true) { log::warn!("Font folder: {e}"); } },
             7 => self.android_fonts.refresh(),
@@ -222,7 +223,7 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
             12 => { photocraft_ui_egui::menus::artcraft_pad_set_left(false);
                     photocraft_ui_egui::menus::artcraft_pad_set_visible(true); }
             13..=16 => {
-                let id = match photocraft_ui_egui::menus::artcraft_take_pc_menu_action_unused_placeholder() {
+                let id = match pc_action {
                     13 => "window.theme.toggle",
                     14 => "window.theme.pro",
                     15 => "window.theme.proLight",

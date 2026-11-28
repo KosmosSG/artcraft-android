@@ -579,30 +579,51 @@ jobs:
         shell: bash
         env:
           KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
-          STOREPASS: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
-          KEYALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
-          KEYPASS: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          umask 077
           TAG=deckcraft-v0.19.1-android.1
           APK=DeckCraft-v0.19.1-android.1-arm64-v8a.apk
           CERT=7911c60bdcae5bea6a252e33164855cad150194b8ca567a4f752acd010c80dc9
           BT="$ANDROID_HOME/build-tools/35.0.0"
-          for v in KEYSTORE_B64 STOREPASS KEYALIAS KEYPASS; do [[ -n "${!v}" ]] || { echo "::error::Missing signing secret $v"; exit 1; }; done
-          umask 077
-          K="$RUNNER_TEMP/deckcraft-original.p12"; C="$RUNNER_TEMP/deckcraft-original.pem"
+          for v in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [[ -n "${!v}" ]] || { echo "::error::Missing signing secret $v"; exit 1; }
+          done
+          export DECKCRAFT_KEYSTORE_PASSWORD="$STORE_PASSWORD"
+          export DECKCRAFT_KEY_PASSWORD="$KEY_PASSWORD"
+          K="$RUNNER_TEMP/deckcraft-original.p12"
+          C="$RUNNER_TEMP/deckcraft-original.pem"
           trap 'rm -f "$K" "$C"' EXIT
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$K"
-          keytool -exportcert -rfc -storetype PKCS12 -keystore "$K" -alias "$KEYALIAS" -storepass:env STOREPASS > "$C"
-          FP="$(openssl x509 -in "$C" -outform DER | sha256sum | cut -d' ' -f1)"
-          [[ "$FP" == "$CERT" ]] || { echo "::error::Original DeckCraft certificate mismatch"; exit 1; }
+          if ! printf '%s' "$KEYSTORE_B64" | base64 --decode > "$K"; then
+            echo "::error::DeckCraft keystore base64 decoding failed"; exit 1
+          fi
+          test -s "$K" || { echo "::error::Decoded DeckCraft keystore is empty"; exit 1; }
+          if ! keytool -exportcert -rfc -storetype PKCS12 -keystore "$K" -storepass:env DECKCRAFT_KEYSTORE_PASSWORD -alias "$KEY_ALIAS" > "$C"; then
+            echo "::error::DeckCraft PKCS12 keystore could not be opened with the configured alias/store password"; exit 1
+          fi
+          actual="$(openssl x509 -in "$C" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$actual" == "$CERT" ]] || { echo "::error::Original DeckCraft certificate mismatch; refusing to sign"; exit 1; }
+          echo "PASS: original DeckCraft production certificate continuity verified"
           mkdir -p verified-release
           INPUT=unsigned/DeckCraft-v0.19.1-android.1-arm64-v8a-UNSIGNED.apk
           test -s "$INPUT"
           "$BT/zipalign" -c -P 16 4 "$INPUT"
-          "$BT/apksigner" sign --ks "$K" --ks-type PKCS12 --ks-key-alias "$KEYALIAS" --ks-pass env:STOREPASS --key-pass env:KEYPASS --v2-signing-enabled true --v4-signing-enabled false --out "verified-release/$APK" "$INPUT"
+          "$BT/apksigner" sign \
+            --ks "$K" \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:DECKCRAFT_KEYSTORE_PASSWORD \
+            --key-pass env:DECKCRAFT_KEY_PASSWORD \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "verified-release/$APK" "$INPUT"
           "$BT/apksigner" verify --verbose --print-certs "verified-release/$APK" > "$RUNNER_TEMP/deckcraft-signer.txt"
-          grep -F '79:11:c6:0b:dc:ae:5b:ea:6a:25:2e:33:16:48:55:ca:d1:50:19:4b:8c:a5:67:a4:f7:52:ac:d0:10:c8:0d:c9' "$RUNNER_TEMP/deckcraft-signer.txt"
+          certificate="$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/deckcraft-signer.txt" | awk '{print $NF}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$certificate" == "$CERT" ]] || { echo "::error::Final signed APK certificate mismatch"; exit 1; }
           "$BT/aapt" dump badging "verified-release/$APK" > "$RUNNER_TEMP/deckcraft-badging.txt"
           grep -F "name='com.artcraft.deckcraft'" "$RUNNER_TEMP/deckcraft-badging.txt"
           grep -F "versionName='0.19.1-android.1'" "$RUNNER_TEMP/deckcraft-badging.txt"
@@ -619,7 +640,7 @@ jobs:
               assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs)
           print("PASS: optimized ARM64 payload unchanged after original-key signing")
           PY
-          printf '%s\n' "$CERT" > verified-release/signing-certificate-sha256.txt
+          printf '%s\\n' "$CERT" > verified-release/signing-certificate-sha256.txt
           (cd verified-release && sha256sum "$APK" > SHA256SUMS.txt)
           echo "Pre-strip APK: $(stat -c '%s' builder/output/deckcraft-0.19.1-android.1.apk) bytes"
           echo "Final optimized APK: $(stat -c '%s' "verified-release/$APK") bytes"

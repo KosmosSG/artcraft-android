@@ -148,14 +148,6 @@ pub fn artcraft_take_pc_txt2img_request() -> bool {
         }
     }
 ''')
-    replace(ai,
-'''    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
-''',
-'''    pub(crate) fn show(&mut self, ui: &mut egui::Ui, session: &mut Session) -> bool {
-        if photocraft_ui_egui::menus::artcraft_take_pc_txt2img_request() {
-            self.show_txt2img = true;
-        }
-''')
     replace(fonts,
 '''pub(crate) struct AndroidFonts {
     message: Option<String>,''',

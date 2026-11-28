@@ -106,7 +106,28 @@ jobs:
           print("PASS: only disposable build metadata advanced to 0.25.1-android.1 / 16860001")
           PY
 
-      - name: Apply existing approved Android integrations to upstream source
+      - name: Rebase approved Android pointer and hover handling onto pinned upstream winit
+        shell: bash
+        env:
+          WINIT_SHA: a517b3846ee8457d84ee4975110bfda6797c44dc
+        run: |
+          set -euo pipefail
+          mv vendor/winit "$RUNNER_TEMP/effectcraft-original-winit"
+          git init -q vendor/winit
+          git -C vendor/winit remote add origin https://github.com/storytold/winit.git
+          git -C vendor/winit fetch --quiet --depth 1 origin "$WINIT_SHA"
+          git -C vendor/winit checkout --quiet --detach FETCH_HEAD
+          test "$(git -C vendor/winit rev-parse HEAD)" = "$WINIT_SHA"
+          python3 tools/effectcraft/v020_winit_compat.py \
+            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
+            vendor/winit/src/platform_impl/android/mod.rs
+          python3 tools/effectcraft/patch_android_lifecycle.py vendor/winit
+          python3 tools/effectcraft/patch_android13_input.py vendor/winit
+          python3 tools/effectcraft/patch_android14_glass.py vendor/winit
+          python3 tools/effectcraft/patch_stylus_native.py vendor/android-activity
+          git -C vendor/winit diff --check
+
+      - name: Apply existing approved EffectCraft Android overlays to upstream v0.25.1
         shell: bash
         run: |
           set -euo pipefail
@@ -116,20 +137,9 @@ jobs:
           python3 tools/effectcraft/patch_updater_download.py .
           python3 tools/effectcraft/patch_updater_photocraft_dialog.py .
           python3 tools/effectcraft/render_wheel_ec_logo.py .
-          python3 tools/effectcraft/patch_android_lifecycle.py vendor/winit
-          python3 tools/effectcraft/patch_android13_input.py vendor/winit
-          python3 tools/effectcraft/patch_android14_glass.py vendor/winit
-          python3 tools/effectcraft/patch_stylus_native.py vendor/android-activity
-          python3 tools/effectcraft/v020_winit_compat.py \
-            "$RUNNER_TEMP/effectcraft-original-winit/src/platform_impl/android/mod.rs" \
-            vendor/winit/src/platform_impl/android/mod.rs
-          python3 tools/effectcraft/patch_unsaved_dcs.py source/effectcraft
-          python3 tools/effectcraft/patch_font_catalog.py source/effectcraft
-          python3 tools/effectcraft/patch_android_gestures.py source/effectcraft
-          python3 tools/effectcraft/patch_android_menu_scroll.py source/effectcraft
           python3 -m unittest discover -s tools/effectcraft -p 'test_*.py' -v
           git -C source/effectcraft diff --check
-          echo "PASS: Android overlay applied in disposable checkout; no protected source files rewritten"
+          echo "PASS: approved Android overlay applied only in disposable checkout; no production signing or release"
 
       - name: Configure Java 21 and Rust 1.95 for ARM64 Android
         uses: actions/setup-java@v4
